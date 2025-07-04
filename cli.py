@@ -99,6 +99,50 @@ def git_changes_command(args) -> int:
         return 1
 
 
+def daemon_command(args) -> int:
+    """Handle daemon command.
+    
+    Args:
+        args: Parsed command line arguments
+        
+    Returns:
+        Exit code (0 for success, 1 for errors)
+    """
+    try:
+        import uvicorn
+        from .api import app
+        
+        print("🚀 Starting Autocode Monitoring Daemon")
+        print(f"   📡 API Server: http://{args.host}:{args.port}")
+        print(f"   🌐 Web Interface: http://{args.host}:{args.port}")
+        print("   📊 Dashboard will auto-refresh every 5 seconds")
+        print("   🔄 Checks run automatically per configuration")
+        print("\n   Press Ctrl+C to stop the daemon")
+        print("-" * 50)
+        
+        # Run the FastAPI application with uvicorn
+        uvicorn.run(
+            app,
+            host=args.host,
+            port=args.port,
+            log_level="info" if args.verbose else "warning",
+            access_log=args.verbose
+        )
+        
+        return 0
+        
+    except KeyboardInterrupt:
+        print("\n🛑 Daemon stopped by user")
+        return 0
+    except ImportError as e:
+        print(f"❌ Error: Missing dependency for daemon mode: {e}")
+        print("   Please ensure FastAPI and uvicorn are installed")
+        return 1
+    except Exception as e:
+        print(f"❌ Error starting daemon: {e}")
+        return 1
+
+
 def create_parser() -> argparse.ArgumentParser:
     """Create command line argument parser.
     
@@ -138,6 +182,29 @@ def create_parser() -> argparse.ArgumentParser:
         help="Show detailed diff information"
     )
     
+    # daemon subcommand
+    daemon_parser = subparsers.add_parser(
+        "daemon",
+        help="Start the autocode monitoring daemon with web interface"
+    )
+    daemon_parser.add_argument(
+        "--host",
+        type=str,
+        default="127.0.0.1",
+        help="Host to bind to (default: 127.0.0.1)"
+    )
+    daemon_parser.add_argument(
+        "--port",
+        type=int,
+        default=8080,
+        help="Port to bind to (default: 8080)"
+    )
+    daemon_parser.add_argument(
+        "--verbose", "-v",
+        action="store_true",
+        help="Enable verbose logging"
+    )
+    
     return parser
 
 
@@ -155,6 +222,8 @@ def main():
         exit_code = check_docs_command(args)
     elif args.command == "git-changes":
         exit_code = git_changes_command(args)
+    elif args.command == "daemon":
+        exit_code = daemon_command(args)
     else:
         parser.print_help()
         exit_code = 1

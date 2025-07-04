@@ -1,0 +1,380 @@
+/* Autocode Monitoring Dashboard Styles */
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    background-color: #f5f5f5;
+    color: #333;
+    line-height: 1.6;
+}
+
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+/* Header */
+.header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 30px;
+    padding: 20px;
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.header h1 {
+    font-size: 2rem;
+    color: #2c3e50;
+}
+
+.daemon-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    background: #f8f9fa;
+    border-radius: 20px;
+    font-weight: 500;
+}
+
+/* Status Indicators */
+.status-indicator {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    display: inline-block;
+}
+
+.status-indicator.success {
+    background-color: #28a745;
+}
+
+.status-indicator.warning {
+    background-color: #ffc107;
+}
+
+.status-indicator.error {
+    background-color: #dc3545;
+}
+
+.status-indicator.unknown {
+    background-color: #6c757d;
+}
+
+/* Cards */
+.card {
+    background: white;
+    border-radius: 8px;
+    padding: 20px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    margin-bottom: 20px;
+}
+
+.card h2 {
+    margin-bottom: 15px;
+    color: #2c3e50;
+    font-size: 1.4rem;
+}
+
+/* Overview Section */
+.overview {
+    margin-bottom: 30px;
+}
+
+.status-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 20px;
+}
+
+.stat {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+}
+
+.stat-label {
+    font-size: 0.9rem;
+    color: #6c757d;
+    margin-bottom: 5px;
+}
+
+.stat-value {
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: #2c3e50;
+}
+
+/* Checks Section */
+.checks {
+    margin-bottom: 30px;
+}
+
+.checks h2 {
+    margin-bottom: 20px;
+    color: #2c3e50;
+    font-size: 1.6rem;
+}
+
+.check-card {
+    background: white;
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 15px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    transition: all 0.3s ease;
+}
+
+.check-card:hover {
+    box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+}
+
+.check-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+}
+
+.check-header h3 {
+    color: #2c3e50;
+    font-size: 1.2rem;
+}
+
+.check-controls {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+.check-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.status-text {
+    font-weight: 500;
+    text-transform: capitalize;
+}
+
+.check-details {
+    border-top: 1px solid #e9ecef;
+    padding-top: 15px;
+}
+
+.check-info {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    margin-bottom: 15px;
+}
+
+.check-message {
+    font-size: 1rem;
+    color: #495057;
+}
+
+.check-timestamp {
+    font-size: 0.85rem;
+    color: #6c757d;
+}
+
+.check-details-content {
+    background: #f8f9fa;
+    padding: 15px;
+    border-radius: 4px;
+    font-family: 'Courier New', monospace;
+    font-size: 0.9rem;
+    white-space: pre-wrap;
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+/* Buttons */
+.btn-run {
+    background: #007bff;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    transition: background-color 0.3s ease;
+}
+
+.btn-run:hover {
+    background: #0056b3;
+}
+
+.btn-run:disabled {
+    background: #6c757d;
+    cursor: not-allowed;
+}
+
+/* Configuration Section */
+.config {
+    margin-bottom: 30px;
+}
+
+.config h2 {
+    margin-bottom: 20px;
+    color: #2c3e50;
+    font-size: 1.6rem;
+}
+
+.config-card {
+    background: white;
+    border-radius: 8px;
+    padding: 20px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 30px;
+}
+
+.config-group {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.config-group h4 {
+    color: #2c3e50;
+    margin-bottom: 10px;
+    font-size: 1.1rem;
+}
+
+.config-item {
+    display: flex;
+    align-items: center;
+}
+
+.config-item label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.95rem;
+}
+
+.config-item input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+}
+
+.config-item input[type="number"] {
+    width: 80px;
+    padding: 4px 8px;
+    border: 1px solid #ced4da;
+    border-radius: 4px;
+    font-size: 0.9rem;
+}
+
+/* Footer */
+.footer {
+    background: white;
+    padding: 15px 20px;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    text-align: center;
+    color: #6c757d;
+    font-size: 0.9rem;
+}
+
+.footer p {
+    margin: 0;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .container {
+        padding: 10px;
+    }
+    
+    .header {
+        flex-direction: column;
+        gap: 15px;
+        text-align: center;
+    }
+    
+    .header h1 {
+        font-size: 1.5rem;
+    }
+    
+    .check-header {
+        flex-direction: column;
+        gap: 15px;
+        align-items: flex-start;
+    }
+    
+    .check-controls {
+        width: 100%;
+        justify-content: space-between;
+    }
+    
+    .config-card {
+        grid-template-columns: 1fr;
+    }
+    
+    .status-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* Animation for status changes */
+.status-indicator {
+    transition: background-color 0.3s ease;
+}
+
+.check-card {
+    transition: border-left 0.3s ease;
+}
+
+.check-card.success {
+    border-left: 4px solid #28a745;
+}
+
+.check-card.warning {
+    border-left: 4px solid #ffc107;
+}
+
+.check-card.error {
+    border-left: 4px solid #dc3545;
+}
+
+/* Loading state */
+.loading {
+    opacity: 0.6;
+    pointer-events: none;
+}
+
+/* Utility classes */
+.text-success {
+    color: #28a745;
+}
+
+.text-warning {
+    color: #ffc107;
+}
+
+.text-error {
+    color: #dc3545;
+}
+
+.text-muted {
+    color: #6c757d;
+}
+
+.hidden {
+    display: none;
+}

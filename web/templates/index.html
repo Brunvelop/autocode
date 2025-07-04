@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Autocode Monitoring Dashboard</title>
+    <link rel="stylesheet" href="{{ url_for('static', path='/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <h1>🔧 Autocode Monitoring Dashboard</h1>
+            <div class="daemon-status" id="daemon-status">
+                <span class="status-indicator" id="daemon-indicator"></span>
+                <span id="daemon-text">Connecting...</span>
+            </div>
+        </header>
+
+        <main class="main">
+            <!-- Overview Cards -->
+            <section class="overview">
+                <div class="card">
+                    <h2>📊 System Status</h2>
+                    <div class="status-grid">
+                        <div class="stat">
+                            <span class="stat-label">Uptime</span>
+                            <span class="stat-value" id="uptime">--</span>
+                        </div>
+                        <div class="stat">
+                            <span class="stat-label">Total Checks</span>
+                            <span class="stat-value" id="total-checks">--</span>
+                        </div>
+                        <div class="stat">
+                            <span class="stat-label">Last Check</span>
+                            <span class="stat-value" id="last-check">--</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Checks Section -->
+            <section class="checks">
+                <h2>🔍 Active Checks</h2>
+                
+                <!-- Documentation Check -->
+                <div class="check-card" id="doc-check">
+                    <div class="check-header">
+                        <h3>📚 Documentation Check</h3>
+                        <div class="check-controls">
+                            <button class="btn-run" onclick="runCheck('doc_check')">Run Now</button>
+                            <div class="check-status" id="doc-check-status">
+                                <span class="status-indicator unknown"></span>
+                                <span class="status-text">Unknown</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="check-details">
+                        <div class="check-info">
+                            <span class="check-message" id="doc-check-message">No data available</span>
+                            <span class="check-timestamp" id="doc-check-timestamp"></span>
+                        </div>
+                        <div class="check-details-content" id="doc-check-details"></div>
+                    </div>
+                </div>
+
+                <!-- Git Check -->
+                <div class="check-card" id="git-check">
+                    <div class="check-header">
+                        <h3>🔄 Git Analysis</h3>
+                        <div class="check-controls">
+                            <button class="btn-run" onclick="runCheck('git_check')">Run Now</button>
+                            <div class="check-status" id="git-check-status">
+                                <span class="status-indicator unknown"></span>
+                                <span class="status-text">Unknown</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="check-details">
+                        <div class="check-info">
+                            <span class="check-message" id="git-check-message">No data available</span>
+                            <span class="check-timestamp" id="git-check-timestamp"></span>
+                        </div>
+                        <div class="check-details-content" id="git-check-details"></div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Configuration Section -->
+            <section class="config">
+                <h2>⚙️ Configuration</h2>
+                <div class="config-card">
+                    <div class="config-group">
+                        <h4>📚 Documentation Check</h4>
+                        <div class="config-item">
+                            <label>
+                                <input type="checkbox" id="doc-check-enabled" onchange="updateConfig()">
+                                Enabled
+                            </label>
+                        </div>
+                        <div class="config-item">
+                            <label>
+                                Interval (minutes):
+                                <input type="number" id="doc-check-interval" min="1" max="1440" value="10" onchange="updateConfig()">
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <div class="config-group">
+                        <h4>🔄 Git Analysis</h4>
+                        <div class="config-item">
+                            <label>
+                                <input type="checkbox" id="git-check-enabled" onchange="updateConfig()">
+                                Enabled
+                            </label>
+                        </div>
+                        <div class="config-item">
+                            <label>
+                                Interval (minutes):
+                                <input type="number" id="git-check-interval" min="1" max="1440" value="5" onchange="updateConfig()">
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <footer class="footer">
+            <p>Last updated: <span id="last-updated">--</span></p>
+            <p>Auto-refresh: <span id="auto-refresh-status">ON</span></p>
+        </footer>
+    </div>
+
+    <script src="{{ url_for('static', path='/app.js') }}"></script>
+</body>
+</html>

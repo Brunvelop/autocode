@@ -1,193 +1,137 @@
-# Autocode - Herramientas de Desarrollo Automatizado
+# Autocode - Automated Development Tools
 
-Herramientas automatizadas para mejorar los flujos de desarrollo en el proyecto Vidi.
+Updated autocode system with continuous monitoring and web interface.
 
-## Funcionalidades
+## Features
 
-### 1. Verificador de Documentación
-Script para verificar si la documentación del proyecto está actualizada comparando fechas de modificación entre archivos de código y documentación.
+### CLI Tools (Original)
+- **Documentation Check**: Verify documentation is up-to-date with code changes
+- **Git Analysis**: Analyze git changes for commit message generation
 
-### 2. Analizador de Cambios Git
-Herramienta para analizar cambios git y generar datos estructurados para facilitar la escritura de commits informativos.
+### New: Monitoring Daemon
+- **Continuous Monitoring**: Automatic periodic execution of checks
+- **Web Dashboard**: Simple, clean interface to view check results
+- **Real-time Updates**: Dashboard auto-refreshes every 5 seconds
+- **Manual Triggers**: Run checks on-demand via web interface
+- **Configuration**: Adjust check intervals and enable/disable checks
 
-## Instalación
+## Usage
 
-El módulo es parte del proyecto Vidi y no requiere instalación separada.
-
-## Uso
-
-### Interfaz de Línea de Comandos
+### CLI Commands
 
 ```bash
-# Verificar documentación (comportamiento por defecto)
-python -m autocode.cli
-python -m autocode.cli check-docs
+# Traditional CLI usage (unchanged)
+uv run -m autocode.cli check-docs
+uv run -m autocode.cli git-changes
+uv run -m autocode.cli git-changes --verbose
 
-# Analizar cambios git
-python -m autocode.cli git-changes
-
-# Analizar cambios con opciones
-python -m autocode.cli git-changes --output cambios.json --verbose
+# New: Start monitoring daemon
+uv run -m autocode.cli daemon
+uv run -m autocode.cli daemon --port 8080 --verbose
 ```
 
-### API de Python
+### Web Interface
 
-```python
-from autocode import DocChecker, GitAnalyzer
-from pathlib import Path
+1. Start the daemon:
+   ```bash
+   uv run -m autocode.cli daemon
+   ```
 
-# Verificador de documentación
-checker = DocChecker(Path.cwd())
-outdated = checker.get_outdated_docs()
-output = checker.format_results(outdated)
-print(output)
+2. Open your browser to: `http://127.0.0.1:8080`
 
-# Analizador de git
-analyzer = GitAnalyzer(Path.cwd())
-changes = analyzer.analyze_changes()
-print(changes)
+3. The dashboard shows:
+   - **System Status**: Daemon uptime, total checks run, last check time
+   - **Active Checks**: Current status of doc_check and git_check
+   - **Configuration**: Enable/disable checks and adjust intervals
+   - **Manual Controls**: Run checks immediately
+
+### Configuration
+
+Default configuration:
+- **Documentation Check**: Every 10 minutes
+- **Git Analysis**: Every 5 minutes
+- **Web Interface**: Port 8080, localhost only
+
+Adjust intervals in the web interface or modify the default values in `models.py`.
+
+## Architecture
+
+The updated system follows a clean, simple design:
+
+```
+autocode/
+├── cli.py              # CLI interface (enhanced)
+├── doc_checker.py      # Documentation checker (unchanged)
+├── git_analyzer.py     # Git analyzer (unchanged)
+├── daemon.py           # Monitoring daemon
+├── scheduler.py        # Task scheduler
+├── api.py              # FastAPI application
+├── models.py           # Pydantic models
+└── web/                # Web interface
+    ├── templates/
+    │   └── index.html  # Dashboard
+    └── static/
+        ├── style.css   # Styles
+        └── app.js      # Frontend logic
 ```
 
-## Verificador de Documentación
+### Key Design Principles
 
-### Cómo Funciona
+1. **No Code Duplication**: Daemon uses existing DocChecker and GitAnalyzer directly
+2. **Backwards Compatibility**: Original CLI commands work unchanged
+3. **Stateless**: No persistence, current state only
+4. **Simple UI**: Minimal, functional web interface
+5. **FastAPI**: Modern, fast API framework
 
-El verificador sigue una estructura de documentación modular:
+## API Endpoints
 
-1. **Documentación del Proyecto**: `docs/_index.md` - Visión general del proyecto
-2. **Documentación de Módulos**: `docs/[módulo]/_module.md` - Cada directorio de código tiene documentación modular
-3. **Documentación de Archivos**: `docs/[módulo]/[archivo].md` - Documentación individual de archivos
+- `GET /` - Web dashboard
+- `GET /api/status` - Complete system status
+- `GET /api/checks` - All check results
+- `GET /api/checks/{check_name}` - Specific check result
+- `POST /api/checks/{check_name}/run` - Run check manually
+- `GET /api/config` - Current configuration
+- `PUT /api/config` - Update configuration
+- `GET /health` - Health check
 
-### Salida de Ejemplo
+## Development
 
-#### Documentación actualizada:
-```
-✅ Toda la documentación está actualizada
-```
+### Adding New Checks
 
-#### Documentación desactualizada:
-```
-❌ Documentación desactualizada encontrada:
+1. Create the check logic (following existing patterns)
+2. Add it to the daemon's `_setup_tasks()` method
+3. Update the web interface to display the new check
+4. Add API endpoints as needed
 
-Archivos con documentación desactualizada:
-- docs/vidi/inference/engine.md (código más reciente)
+### Frontend Development
 
-Archivos sin documentación:
-- docs/autocode/_module.md (documentación del módulo)
-- autocode/cli.py
-- autocode/doc_checker.py
-```
+The web interface uses vanilla JavaScript with:
+- Automatic refresh every 5 seconds
+- Manual refresh with spacebar
+- Configuration updates in real-time
+- Responsive design
 
-## Analizador de Cambios Git
+### Testing
 
-### Cómo Funciona
-
-El analizador de git examina:
-- **Cambios staged** (ya añadidos con `git add`)
-- **Cambios unstaged** (modificaciones sin añadir)
-- **Archivos untracked** (archivos nuevos)
-- **Archivos eliminados**
-- **Archivos renombrados**
-
-### Salida de Ejemplo
-
-#### Salida en consola:
-```
-📊 Repository Status:
-   Total files changed: 3
-   Modified: 1
-   Added: 1
-   Deleted: 0
-   Untracked: 1
-
-📄 Modified Files:
-   - autocode/git_analyzer.py
-   - autocode/cli.py
-   - autocode/README.md
-
-💾 Detailed changes saved to: git_changes.json
-```
-
-#### Archivo JSON generado:
-```json
-{
-  "timestamp": "2025-01-07T09:34:00.123456",
-  "repository_status": {
-    "total_files": 3,
-    "modified": 1,
-    "added": 1,
-    "deleted": 0,
-    "untracked": 1,
-    "renamed": 0
-  },
-  "modified_files": [
-    "autocode/git_analyzer.py",
-    "autocode/cli.py",
-    "autocode/README.md"
-  ],
-  "changes": [
-    {
-      "file": "autocode/git_analyzer.py",
-      "status": "untracked",
-      "staged": false,
-      "additions": 245,
-      "deletions": 0,
-      "diff": "+++ New file content:\n..."
-    },
-    {
-      "file": "autocode/cli.py",
-      "status": "modified",
-      "staged": false,
-      "additions": 85,
-      "deletions": 12,
-      "diff": "@@ -1,12 +1,85 @@\n..."
-    }
-  ]
-}
-```
-
-### Opciones de Comando
-
-- `--output, -o`: Especifica el archivo de salida JSON (por defecto: `git_changes.json`)
-- `--verbose, -v`: Muestra información detallada de los diffs en la consola
-
-### Estados de Archivos
-
-- **modified**: Archivo modificado
-- **added**: Archivo añadido al índice
-- **deleted**: Archivo eliminado
-- **untracked**: Archivo nuevo sin seguimiento
-- **renamed**: Archivo renombrado
-- **copied**: Archivo copiado
-
-## Códigos de Salida
-
-### check-docs
-- `0`: Toda la documentación está actualizada
-- `1`: Hay documentación desactualizada o faltante
-
-### git-changes
-- `0`: Análisis completado exitosamente
-- `1`: Error durante el análisis
-
-## Integración con Workflows
-
-### Automatización de Commits
 ```bash
-# Generar análisis de cambios
-python -m autocode.cli git-changes
+# Test CLI functionality
+uv run -m autocode.cli check-docs
+uv run -m autocode.cli git-changes
 
-# Usar el JSON generado para escribir commits informativos
-# (el archivo git_changes.json contiene toda la información necesaria)
+# Test daemon (Ctrl+C to stop)
+uv run -m autocode.cli daemon --verbose
 ```
 
-### Verificación de Documentación en CI/CD
-```bash
-# Verificar documentación antes de commit
-python -m autocode.cli check-docs
-if [ $? -eq 0 ]; then
-    echo "✅ Documentación actualizada"
-else
-    echo "❌ Actualizar documentación"
-    exit 1
-fi
+## Dependencies
+
+- **FastAPI**: Web framework
+- **Uvicorn**: ASGI server
+- **Jinja2**: Template engine
+- **Pydantic**: Data validation
+- Existing dependencies (unchanged)
+
+## Keyboard Shortcuts
+
+When viewing the web dashboard:
+- **Space**: Manual refresh
+- **R**: Toggle auto-refresh on/off
