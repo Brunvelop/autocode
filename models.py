@@ -31,10 +31,18 @@ class CheckConfig(BaseModel):
     interval_minutes: int = 5
 
 
+class TokenConfig(BaseModel):
+    """Configuration for token counting and alerts."""
+    enabled: bool = True
+    threshold: int = 50000  # 50k tokens by default
+    model: str = "gpt-4"    # Model for encoding
+
+
 class DaemonConfig(BaseModel):
     """Configuration for the daemon."""
     doc_check: CheckConfig = CheckConfig(enabled=True, interval_minutes=10)
     git_check: CheckConfig = CheckConfig(enabled=True, interval_minutes=5)
+    token_alerts: TokenConfig = TokenConfig()
 
 
 class ApiConfig(BaseModel):

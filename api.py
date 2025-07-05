@@ -5,7 +5,7 @@ FastAPI application for autocode daemon.
 import asyncio
 import logging
 from pathlib import Path
-from typing import Dict, Any
+from typing import Dict, Any, List
 
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.staticfiles import StaticFiles
@@ -169,6 +169,116 @@ async def get_config():
         raise HTTPException(status_code=503, detail="Daemon not initialized")
     
     return daemon.config
+
+
+@app.get("/api/tokens/count")
+async def count_tokens(file_path: str = "git_changes.json"):
+    """Count tokens in a file.
+    
+    Args:
+        file_path: Path to the file (relative to project root)
+        
+    Returns:
+        Token statistics for the file
+    """
+    if not daemon:
+        raise HTTPException(status_code=503, detail="Daemon not initialized")
+    
+    try:
+        from .token_counter import TokenCounter
+        
+        # Use token configuration from daemon
+        token_counter = TokenCounter(daemon.config.daemon.token_alerts.model)
+        
+        # Resolve file path relative to project root
+        file_path_obj = daemon.project_root / file_path
+        
+        if not file_path_obj.exists():
+            raise HTTPException(status_code=404, detail=f"File not found: {file_path}")
+        
+        # Get token statistics
+        token_stats = token_counter.get_token_statistics(file_path_obj)
+        
+        # Add threshold check
+        threshold_check = token_counter.check_threshold(
+            token_stats["token_count"], 
+            daemon.config.daemon.token_alerts.threshold
+        )
+        
+        # Combine results
+        result = {
+            **token_stats,
+            "threshold_check": threshold_check,
+            "config": {
+                "threshold": daemon.config.daemon.token_alerts.threshold,
+                "model": daemon.config.daemon.token_alerts.model,
+                "alerts_enabled": daemon.config.daemon.token_alerts.enabled
+            }
+        }
+        
+        return result
+        
+    except ImportError:
+        raise HTTPException(status_code=500, detail="Token counting not available (tiktoken not installed)")
+    except Exception as e:
+        logger.error(f"Error counting tokens: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/tokens/count-multiple")
+async def count_tokens_multiple(file_paths: List[str]):
+    """Count tokens in multiple files.
+    
+    Args:
+        file_paths: List of file paths (relative to project root)
+        
+    Returns:
+        Aggregated token statistics
+    """
+    if not daemon:
+        raise HTTPException(status_code=503, detail="Daemon not initialized")
+    
+    try:
+        from .token_counter import count_tokens_in_multiple_files
+        
+        # Resolve file paths
+        resolved_paths = []
+        for file_path in file_paths:
+            file_path_obj = daemon.project_root / file_path
+            if file_path_obj.exists():
+                resolved_paths.append(file_path_obj)
+        
+        if not resolved_paths:
+            raise HTTPException(status_code=404, detail="No valid files found")
+        
+        # Count tokens
+        result = count_tokens_in_multiple_files(
+            resolved_paths, 
+            daemon.config.daemon.token_alerts.model
+        )
+        
+        # Add threshold check for total
+        from .token_counter import TokenCounter
+        token_counter = TokenCounter(daemon.config.daemon.token_alerts.model)
+        threshold_check = token_counter.check_threshold(
+            result["total_tokens"],
+            daemon.config.daemon.token_alerts.threshold
+        )
+        
+        result["threshold_check"] = threshold_check
+        result["config"] = {
+            "threshold": daemon.config.daemon.token_alerts.threshold,
+            "model": daemon.config.daemon.token_alerts.model,
+            "alerts_enabled": daemon.config.daemon.token_alerts.enabled
+        }
+        
+        return result
+        
+    except ImportError:
+        raise HTTPException(status_code=500, detail="Token counting not available (tiktoken not installed)")
+    except Exception as e:
+        logger.error(f"Error counting tokens: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.put("/api/config")

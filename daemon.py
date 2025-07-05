@@ -128,41 +128,80 @@ class AutocodeDaemon:
             return result
     
     def run_git_check(self) -> CheckResult:
-        """Run git analysis using existing GitAnalyzer."""
+        """Run git analysis and generate git_changes.json with token counting."""
         start_time = time.time()
         
         try:
             self.logger.info("Running git analysis")
             
-            # Use existing GitAnalyzer
-            changes_data = self.git_analyzer.analyze_changes()
+            # Generate git_changes.json (like CLI does)
+            git_changes_file = self.project_root / "git_changes.json"
+            changes_data = self.git_analyzer.save_changes_to_file(git_changes_file)
             
+            # Count tokens if enabled
+            token_info = None
+            token_warning = None
+            
+            if self.config.daemon.token_alerts.enabled:
+                try:
+                    from .token_counter import TokenCounter
+                    token_counter = TokenCounter(self.config.daemon.token_alerts.model)
+                    token_info = token_counter.get_token_statistics(git_changes_file)
+                    
+                    # Check threshold
+                    if token_info["token_count"] > self.config.daemon.token_alerts.threshold:
+                        token_warning = {
+                            "message": f"Token count exceeds threshold!",
+                            "current": token_info["token_count"],
+                            "threshold": self.config.daemon.token_alerts.threshold,
+                            "percentage": (token_info["token_count"] / self.config.daemon.token_alerts.threshold) * 100,
+                            "tokens_over": token_info["token_count"] - self.config.daemon.token_alerts.threshold
+                        }
+                        self.logger.warning(f"Token alert: {token_info['token_count']} tokens exceeds threshold of {self.config.daemon.token_alerts.threshold}")
+                    
+                except Exception as e:
+                    self.logger.error(f"Error counting tokens: {e}")
+            
+            # Determine status and message
             status = changes_data["repository_status"]
             total_files = status["total_files"]
             
             if total_files == 0:
-                result = CheckResult(
-                    check_name="git_check",
-                    status="success",
-                    message="✅ No changes detected",
-                    details=changes_data,
-                    timestamp=datetime.now(),
-                    duration_seconds=time.time() - start_time
-                )
+                result_status = "success"
+                message = "✅ No changes detected"
+            elif token_warning:
+                result_status = "warning"
+                message = f"⚠️ {total_files} files + TOKEN ALERT: {token_warning['current']:,} > {token_warning['threshold']:,} tokens"
             else:
-                result = CheckResult(
-                    check_name="git_check",
-                    status="warning",
-                    message=f"📊 {total_files} files changed (M:{status['modified']} A:{status['added']} D:{status['deleted']})",
-                    details=changes_data,
-                    timestamp=datetime.now(),
-                    duration_seconds=time.time() - start_time
-                )
+                result_status = "warning"
+                message = f"📊 {total_files} files changed (M:{status['modified']} A:{status['added']} D:{status['deleted']})"
+            
+            # Add token info to details
+            enhanced_details = changes_data.copy()
+            if token_info:
+                enhanced_details["token_info"] = token_info
+            if token_warning:
+                enhanced_details["token_warning"] = token_warning
+            
+            # Add git_changes.json file path to details
+            enhanced_details["git_changes_file"] = str(git_changes_file)
+            
+            result = CheckResult(
+                check_name="git_check",
+                status=result_status,
+                message=message,
+                details=enhanced_details,
+                timestamp=datetime.now(),
+                duration_seconds=time.time() - start_time
+            )
             
             self.results["git_check"] = result
             self.total_checks_run += 1
             
             self.logger.info(f"Git check completed: {result.status} - {result.message}")
+            if token_info:
+                self.logger.info(f"Token count: {token_info['token_count']:,} tokens in git_changes.json")
+            
             return result
             
         except Exception as e:

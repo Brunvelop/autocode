@@ -219,6 +219,104 @@ def opencode_command(args) -> int:
         return 1
 
 
+def count_tokens_command(args) -> int:
+    """Handle count-tokens command.
+    
+    Args:
+        args: Parsed command line arguments
+        
+    Returns:
+        Exit code (0 for success, 1 for errors)
+    """
+    try:
+        from .token_counter import TokenCounter, count_tokens_in_multiple_files
+        
+        project_root = Path.cwd()
+        
+        # Initialize token counter with specified model
+        token_counter = TokenCounter(args.model)
+        
+        if args.file:
+            # Count tokens in a single file
+            file_path = project_root / args.file
+            if not file_path.exists():
+                print(f"❌ File not found: {args.file}")
+                return 1
+            
+            stats = token_counter.get_token_statistics(file_path)
+            
+            print(f"📊 Token Analysis for {args.file}:")
+            print(f"   Tokens: {stats['token_count']:,}")
+            print(f"   Model: {stats['model']}")
+            print(f"   File size: {stats['file_size_mb']:.2f} MB")
+            print(f"   Tokens per KB: {stats['tokens_per_kb']:.1f}")
+            
+            # Check threshold if provided
+            if args.threshold:
+                threshold_check = token_counter.check_threshold(stats['token_count'], args.threshold)
+                if threshold_check['exceeds_threshold']:
+                    print(f"⚠️  WARNING: Exceeds threshold of {args.threshold:,} tokens")
+                    print(f"   Over by: {threshold_check['tokens_over']:,} tokens")
+                else:
+                    print(f"✅ Within threshold of {args.threshold:,} tokens")
+                    print(f"   Remaining: {threshold_check['tokens_remaining']:,} tokens")
+            
+        elif args.directory:
+            # Count tokens in multiple files
+            directory_path = project_root / args.directory
+            if not directory_path.exists():
+                print(f"❌ Directory not found: {args.directory}")
+                return 1
+            
+            # Find files matching pattern
+            pattern = args.pattern or "*"
+            file_paths = list(directory_path.rglob(pattern))
+            
+            if not file_paths:
+                print(f"❌ No files found matching pattern '{pattern}' in {args.directory}")
+                return 1
+            
+            # Count tokens in all files
+            results = count_tokens_in_multiple_files(file_paths, args.model)
+            
+            print(f"📊 Token Analysis for {args.directory} (pattern: {pattern}):")
+            print(f"   Total files: {results['file_count']}")
+            print(f"   Total tokens: {results['total_tokens']:,}")
+            print(f"   Average per file: {results['average_tokens_per_file']:.0f}")
+            print(f"   Model: {results['model']}")
+            
+            # Show individual files if verbose
+            if args.verbose:
+                print(f"\n📋 Individual Files:")
+                for file_stat in results['file_statistics']:
+                    if file_stat['token_count'] > 0:
+                        rel_path = Path(file_stat['file_path']).relative_to(project_root)
+                        print(f"   {rel_path}: {file_stat['token_count']:,} tokens")
+            
+            # Check threshold if provided
+            if args.threshold:
+                threshold_check = token_counter.check_threshold(results['total_tokens'], args.threshold)
+                if threshold_check['exceeds_threshold']:
+                    print(f"⚠️  WARNING: Total exceeds threshold of {args.threshold:,} tokens")
+                    print(f"   Over by: {threshold_check['tokens_over']:,} tokens")
+                else:
+                    print(f"✅ Total within threshold of {args.threshold:,} tokens")
+                    print(f"   Remaining: {threshold_check['tokens_remaining']:,} tokens")
+        
+        else:
+            print("❌ Error: Either --file or --directory must be specified")
+            return 1
+        
+        return 0
+        
+    except ImportError:
+        print("❌ Error: tiktoken not installed. Run 'uv add tiktoken' to install.")
+        return 1
+    except Exception as e:
+        print(f"❌ Error counting tokens: {e}")
+        return 1
+
+
 def create_parser() -> argparse.ArgumentParser:
     """Create command line argument parser.
     
@@ -339,6 +437,49 @@ def create_parser() -> argparse.ArgumentParser:
         help="Working directory for OpenCode execution (default: current directory)"
     )
     
+    # count-tokens subcommand
+    count_tokens_parser = subparsers.add_parser(
+        "count-tokens",
+        help="Count tokens in files for LLM analysis"
+    )
+    
+    # File or directory options (mutually exclusive)
+    file_group = count_tokens_parser.add_mutually_exclusive_group(required=True)
+    file_group.add_argument(
+        "--file", "-f",
+        type=str,
+        help="Count tokens in a specific file"
+    )
+    file_group.add_argument(
+        "--directory", "-d",
+        type=str,
+        help="Count tokens in all files in a directory"
+    )
+    
+    # Additional options
+    count_tokens_parser.add_argument(
+        "--pattern", "-p",
+        type=str,
+        default="*",
+        help="File pattern to match when using --directory (default: *)"
+    )
+    count_tokens_parser.add_argument(
+        "--model", "-m",
+        type=str,
+        default="gpt-4",
+        help="LLM model for token encoding (default: gpt-4)"
+    )
+    count_tokens_parser.add_argument(
+        "--threshold", "-t",
+        type=int,
+        help="Token threshold for warnings"
+    )
+    count_tokens_parser.add_argument(
+        "--verbose", "-v",
+        action="store_true",
+        help="Show detailed per-file information"
+    )
+    
     return parser
 
 
@@ -360,6 +501,8 @@ def main():
         exit_code = daemon_command(args)
     elif args.command == "opencode":
         exit_code = opencode_command(args)
+    elif args.command == "count-tokens":
+        exit_code = count_tokens_command(args)
     else:
         parser.print_help()
         exit_code = 1

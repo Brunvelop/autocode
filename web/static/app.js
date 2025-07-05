@@ -150,6 +150,11 @@ class AutocodeDashboard {
         const timestampElement = card.querySelector('.check-timestamp');
         timestampElement.textContent = `Last run: ${this.formatTimestamp(result.timestamp)}`;
         
+        // Update token information for git_check
+        if (checkName === 'git_check' && result.details && result.details.token_info) {
+            this.updateTokenInfo(result.details);
+        }
+        
         // Update details
         const detailsElement = card.querySelector('.check-details-content');
         if (result.details) {
@@ -162,6 +167,37 @@ class AutocodeDashboard {
             }
         } else {
             detailsElement.textContent = 'No details available';
+        }
+    }
+    
+    updateTokenInfo(details) {
+        const tokenInfo = document.getElementById('git-check-tokens');
+        const tokenCount = document.getElementById('git-token-count');
+        const tokenThreshold = document.getElementById('git-token-threshold');
+        const tokenWarning = document.getElementById('git-token-warning');
+        
+        if (details.token_info) {
+            tokenInfo.style.display = 'block';
+            tokenCount.textContent = details.token_info.token_count.toLocaleString();
+            
+            // Set threshold display
+            const threshold = details.token_warning ? details.token_warning.threshold : 50000;
+            tokenThreshold.textContent = `/ ${threshold.toLocaleString()}`;
+            
+            // Set warning status
+            if (details.token_warning) {
+                tokenWarning.textContent = '⚠️ Exceeds threshold!';
+                tokenWarning.className = 'token-warning error';
+                tokenWarning.style.color = '#dc3545';
+                tokenWarning.style.fontWeight = 'bold';
+            } else {
+                tokenWarning.textContent = '✅ Within limits';
+                tokenWarning.className = 'token-warning success';
+                tokenWarning.style.color = '#28a745';
+                tokenWarning.style.fontWeight = 'normal';
+            }
+        } else {
+            tokenInfo.style.display = 'none';
         }
     }
     
@@ -179,6 +215,17 @@ class AutocodeDashboard {
         
         gitCheckEnabled.checked = config.daemon.git_check.enabled;
         gitCheckInterval.value = config.daemon.git_check.interval_minutes;
+        
+        // Update token alerts config
+        const tokenAlertsEnabled = document.getElementById('token-alerts-enabled');
+        const tokenThreshold = document.getElementById('token-threshold');
+        const tokenModel = document.getElementById('token-model');
+        
+        if (config.daemon.token_alerts) {
+            tokenAlertsEnabled.checked = config.daemon.token_alerts.enabled;
+            tokenThreshold.value = config.daemon.token_alerts.threshold;
+            tokenModel.value = config.daemon.token_alerts.model;
+        }
     }
     
     formatDuration(seconds) {
@@ -304,6 +351,11 @@ async function updateConfig() {
             git_check: {
                 enabled: document.getElementById('git-check-enabled').checked,
                 interval_minutes: parseInt(document.getElementById('git-check-interval').value)
+            },
+            token_alerts: {
+                enabled: document.getElementById('token-alerts-enabled').checked,
+                threshold: parseInt(document.getElementById('token-threshold').value),
+                model: document.getElementById('token-model').value
             }
         },
         api: {

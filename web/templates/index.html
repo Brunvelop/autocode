@@ -80,6 +80,15 @@
                             <span class="check-message" id="git-check-message">No data available</span>
                             <span class="check-timestamp" id="git-check-timestamp"></span>
                         </div>
+                        <!-- Token Information -->
+                        <div class="token-info" id="git-check-tokens" style="display: none;">
+                            <div class="token-stats">
+                                <span class="token-label">📊 Tokens:</span>
+                                <span class="token-count" id="git-token-count">0</span>
+                                <span class="token-threshold" id="git-token-threshold">/ 50,000</span>
+                                <span class="token-warning" id="git-token-warning"></span>
+                            </div>
+                        </div>
                         <div class="check-details-content" id="git-check-details"></div>
                     </div>
                 </div>
@@ -117,6 +126,32 @@
                             <label>
                                 Interval (minutes):
                                 <input type="number" id="git-check-interval" min="1" max="1440" value="5" onchange="updateConfig()">
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <div class="config-group">
+                        <h4>🔢 Token Alerts</h4>
+                        <div class="config-item">
+                            <label>
+                                <input type="checkbox" id="token-alerts-enabled" onchange="updateConfig()">
+                                Enabled
+                            </label>
+                        </div>
+                        <div class="config-item">
+                            <label>
+                                Token Threshold:
+                                <input type="number" id="token-threshold" min="1000" max="200000" value="50000" onchange="updateConfig()">
+                            </label>
+                        </div>
+                        <div class="config-item">
+                            <label>
+                                Model:
+                                <select id="token-model" onchange="updateConfig()">
+                                    <option value="gpt-4">GPT-4</option>
+                                    <option value="gpt-3.5-turbo">GPT-3.5-turbo</option>
+                                    <option value="claude-3-opus">Claude-3-opus</option>
+                                </select>
                             </label>
                         </div>
                     </div>
