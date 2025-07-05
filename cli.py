@@ -5,12 +5,46 @@ CLI interface for autocode tools.
 import argparse
 import json
 import sys
+import yaml
 from pathlib import Path
 from typing import Optional
 
 from .doc_checker import DocChecker
 from .git_analyzer import GitAnalyzer
 from .opencode_executor import OpenCodeExecutor, validate_opencode_setup
+from .doc_indexer import DocIndexer
+from .models import AutocodeConfig
+
+
+def load_config(project_root: Path) -> AutocodeConfig:
+    """Load configuration from autocode_config.yml.
+    
+    Args:
+        project_root: Project root directory
+        
+    Returns:
+        Loaded configuration with defaults
+    """
+    config_file = project_root / "autocode_config.yml"
+    
+    if not config_file.exists():
+        # Return default configuration if file doesn't exist
+        return AutocodeConfig()
+    
+    try:
+        with open(config_file, 'r', encoding='utf-8') as f:
+            config_data = yaml.safe_load(f)
+        
+        if not config_data:
+            return AutocodeConfig()
+        
+        # Parse configuration with Pydantic
+        return AutocodeConfig(**config_data)
+        
+    except Exception as e:
+        print(f"⚠️  Warning: Error loading config from {config_file}: {e}")
+        print("   Using default configuration")
+        return AutocodeConfig()
 
 
 def check_docs_command(args) -> int:
@@ -25,6 +59,9 @@ def check_docs_command(args) -> int:
     # Get project root (current working directory)
     project_root = Path.cwd()
     
+    # Load configuration
+    config = load_config(project_root)
+    
     # Initialize checker
     checker = DocChecker(project_root)
     
@@ -34,6 +71,23 @@ def check_docs_command(args) -> int:
     # Format and display results
     output = checker.format_results(outdated_results)
     print(output)
+    
+    # Generate documentation index if docs are up to date and config allows it
+    if not outdated_results and config.doc_index.enabled and config.doc_index.auto_generate:
+        try:
+            # Initialize doc indexer with CLI override if provided
+            indexer = DocIndexer(project_root, config.doc_index, args.doc_index_output)
+            
+            # Generate the index
+            index_path = indexer.generate_index()
+            
+            # Show success message
+            relative_path = index_path.relative_to(project_root)
+            print(f"📋 Documentation index generated: {relative_path}")
+            
+        except Exception as e:
+            print(f"⚠️  Warning: Failed to generate documentation index: {e}")
+            # Don't fail the command for index generation issues
     
     # Return appropriate exit code
     return 1 if outdated_results else 0
@@ -338,6 +392,11 @@ def create_parser() -> argparse.ArgumentParser:
     check_docs_parser = subparsers.add_parser(
         "check-docs",
         help="Check if documentation is up to date"
+    )
+    check_docs_parser.add_argument(
+        "--doc-index-output",
+        type=str,
+        help="Override output path for documentation index"
     )
     
     # git-changes subcommand

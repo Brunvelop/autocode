@@ -201,6 +201,89 @@ body {
     overflow-y: auto;
 }
 
+/* Documentation Index Information */
+.doc-index-info {
+    margin-bottom: 15px;
+    padding: 12px;
+    background: #e8f5e8;
+    border-radius: 4px;
+    border-left: 3px solid #28a745;
+}
+
+.index-stats {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.index-label {
+    font-weight: 600;
+    color: #2c3e50;
+    font-size: 0.95rem;
+    margin-bottom: 8px;
+}
+
+.index-stats-grid {
+    display: flex;
+    gap: 20px;
+    align-items: center;
+}
+
+.index-stat {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+}
+
+.index-stat-value {
+    font-size: 1.2rem;
+    font-weight: 600;
+    color: #28a745;
+}
+
+.index-stat-label {
+    font-size: 0.8rem;
+    color: #6c757d;
+    text-transform: uppercase;
+    margin-top: 2px;
+}
+
+/* Token Information */
+.token-info {
+    margin-bottom: 15px;
+    padding: 12px;
+    background: #fff3cd;
+    border-radius: 4px;
+    border-left: 3px solid #ffc107;
+}
+
+.token-stats {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.token-label {
+    font-weight: 600;
+    color: #856404;
+}
+
+.token-count {
+    font-weight: 600;
+    color: #2c3e50;
+}
+
+.token-threshold {
+    color: #6c757d;
+}
+
+.token-warning {
+    font-weight: 500;
+    margin-left: 10px;
+}
+
 /* Buttons */
 .btn-run {
     background: #007bff;

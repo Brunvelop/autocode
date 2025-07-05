@@ -51,10 +51,19 @@ class ApiConfig(BaseModel):
     host: str = "127.0.0.1"
 
 
+class DocIndexConfig(BaseModel):
+    """Configuration for documentation indexing."""
+    enabled: bool = True
+    output_path: str = ".clinerules/docs_index.json"
+    auto_generate: bool = True
+    update_on_docs_change: bool = True
+
+
 class AutocodeConfig(BaseModel):
     """Complete configuration for autocode daemon."""
     daemon: DaemonConfig = DaemonConfig()
     api: ApiConfig = ApiConfig()
+    doc_index: DocIndexConfig = DocIndexConfig()
 
 
 class StatusResponse(BaseModel):

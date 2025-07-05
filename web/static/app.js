@@ -150,6 +150,17 @@ class AutocodeDashboard {
         const timestampElement = card.querySelector('.check-timestamp');
         timestampElement.textContent = `Last run: ${this.formatTimestamp(result.timestamp)}`;
         
+        // Update documentation index information for doc_check
+        if (checkName === 'doc_check' && result.details && result.details.doc_index_stats) {
+            this.updateDocIndexInfo(result.details);
+        } else if (checkName === 'doc_check') {
+            // Hide index info if not available
+            const indexInfo = document.getElementById('doc-index-info');
+            if (indexInfo) {
+                indexInfo.style.display = 'none';
+            }
+        }
+        
         // Update token information for git_check
         if (checkName === 'git_check' && result.details && result.details.token_info) {
             this.updateTokenInfo(result.details);
@@ -167,6 +178,24 @@ class AutocodeDashboard {
             }
         } else {
             detailsElement.textContent = 'No details available';
+        }
+    }
+    
+    updateDocIndexInfo(details) {
+        const indexInfo = document.getElementById('doc-index-info');
+        const modulesElement = document.getElementById('doc-index-modules');
+        const filesElement = document.getElementById('doc-index-files');
+        const purposesElement = document.getElementById('doc-index-purposes');
+        
+        if (details.doc_index_stats && details.doc_index_status === 'generated') {
+            indexInfo.style.display = 'block';
+            
+            const stats = details.doc_index_stats;
+            modulesElement.textContent = stats.total_modules || 0;
+            filesElement.textContent = stats.total_files || 0;
+            purposesElement.textContent = stats.total_purposes_found || 0;
+        } else {
+            indexInfo.style.display = 'none';
         }
     }
     

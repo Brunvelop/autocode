@@ -11,6 +11,7 @@ from typing import Dict, Optional
 
 from .doc_checker import DocChecker
 from .git_analyzer import GitAnalyzer
+from .doc_indexer import DocIndexer
 from .scheduler import Scheduler
 from .models import CheckResult, DaemonStatus, AutocodeConfig
 
@@ -75,11 +76,49 @@ class AutocodeDaemon:
             outdated_docs = self.doc_checker.get_outdated_docs()
             
             if not outdated_docs:
+                # Generate documentation index if enabled and auto_generate is true
+                index_generated = False
+                index_path = None
+                index_stats = None
+                if self.config.doc_index.enabled and self.config.doc_index.auto_generate:
+                    try:
+                        indexer = DocIndexer(self.project_root, self.config.doc_index)
+                        index_path = indexer.generate_index()
+                        index_generated = True
+                        
+                        # Read generated index for statistics
+                        import json
+                        with open(index_path, 'r', encoding='utf-8') as f:
+                            index_data = json.load(f)
+                            index_stats = index_data.get('documentation_stats', {})
+                        
+                        self.logger.info(f"Documentation index generated: {index_path}")
+                    except Exception as e:
+                        self.logger.warning(f"Failed to generate documentation index: {e}")
+                
+                # Build success message
+                message = "✅ All documentation is up to date!"
+                if index_generated:
+                    relative_path = index_path.relative_to(self.project_root)
+                    message += f" + Index updated: {relative_path.name}"
+                
+                # Build details
+                details = {"outdated_count": 0, "files": []}
+                if index_generated:
+                    details["doc_index_generated"] = str(index_path.relative_to(self.project_root))
+                    details["doc_index_status"] = "generated"
+                    if index_stats:
+                        details["doc_index_stats"] = index_stats
+                elif self.config.doc_index.enabled:
+                    details["doc_index_status"] = "generation_failed"
+                else:
+                    details["doc_index_status"] = "disabled"
+                
                 result = CheckResult(
                     check_name="doc_check",
                     status="success",
-                    message="✅ All documentation is up to date!",
-                    details={"outdated_count": 0, "files": []},
+                    message=message,
+                    details=details,
                     timestamp=datetime.now(),
                     duration_seconds=time.time() - start_time
                 )
