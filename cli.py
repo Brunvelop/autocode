@@ -10,6 +10,7 @@ from typing import Optional
 
 from .doc_checker import DocChecker
 from .git_analyzer import GitAnalyzer
+from .opencode_executor import OpenCodeExecutor, validate_opencode_setup
 
 
 def check_docs_command(args) -> int:
@@ -143,6 +144,81 @@ def daemon_command(args) -> int:
         return 1
 
 
+def opencode_command(args) -> int:
+    """Handle opencode command.
+    
+    Args:
+        args: Parsed command line arguments
+        
+    Returns:
+        Exit code (0 for success, 1 for errors)
+    """
+    # Get project root (current working directory)
+    project_root = Path.cwd()
+    
+    try:
+        # Initialize OpenCode executor
+        executor = OpenCodeExecutor(project_root)
+        
+        # Validate OpenCode setup if requested
+        if args.validate:
+            is_valid, message = validate_opencode_setup(project_root)
+            if is_valid:
+                print(f"✅ {message}")
+                return 0
+            else:
+                print(f"❌ {message}")
+                return 1
+        
+        # List available prompts if requested
+        if args.list_prompts:
+            prompts_info = executor.get_prompts_info()
+            if prompts_info:
+                print("📋 Available Prompts:")
+                for prompt_name, description in prompts_info.items():
+                    print(f"   • {prompt_name}: {description}")
+            else:
+                print("❌ No prompts found")
+            return 0
+        
+        # Execute OpenCode
+        if args.prompt_file:
+            # Load prompt from file
+            exit_code, stdout, stderr = executor.execute_with_prompt_file(
+                args.prompt_file,
+                debug=args.debug,
+                json_output=args.json,
+                quiet=args.quiet,
+                cwd=Path(args.cwd) if args.cwd else None
+            )
+        elif args.prompt:
+            # Use direct prompt
+            exit_code, stdout, stderr = executor.execute_opencode(
+                args.prompt,
+                debug=args.debug,
+                json_output=args.json,
+                quiet=args.quiet,
+                cwd=Path(args.cwd) if args.cwd else None
+            )
+        else:
+            print("❌ Error: Either --prompt or --prompt-file must be specified")
+            return 1
+        
+        # Format and display output
+        formatted_output = executor.format_output(
+            exit_code, stdout, stderr, 
+            json_output=args.json, 
+            verbose=args.verbose
+        )
+        print(formatted_output)
+        
+        return exit_code
+        
+    except Exception as e:
+        print(f"❌ Error executing OpenCode: {e}")
+        return 1
+
+
 def create_parser() -> argparse.ArgumentParser:
     """Create command line argument parser.
     
@@ -205,6 +281,64 @@ def create_parser() -> argparse.ArgumentParser:
         help="Enable verbose logging"
     )
     
+    # opencode subcommand
+    opencode_parser = subparsers.add_parser(
+        "opencode",
+        help="Execute OpenCode AI analysis with prompts"
+    )
+    
+    # Main options - either prompt or prompt-file is required
+    prompt_group = opencode_parser.add_mutually_exclusive_group()
+    prompt_group.add_argument(
+        "--prompt", "-p",
+        type=str,
+        help="Direct prompt to send to OpenCode"
+    )
+    prompt_group.add_argument(
+        "--prompt-file", "-f",
+        type=str,
+        help="Load prompt from internal file (e.g., 'code-review')"
+    )
+    
+    # Utility options
+    opencode_parser.add_argument(
+        "--list-prompts",
+        action="store_true",
+        help="List all available internal prompts"
+    )
+    opencode_parser.add_argument(
+        "--validate",
+        action="store_true",
+        help="Validate OpenCode setup and configuration"
+    )
+    
+    # Execution options
+    opencode_parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Enable debug mode (overrides config)"
+    )
+    opencode_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output results in JSON format"
+    )
+    opencode_parser.add_argument(
+        "--quiet",
+        action="store_true",
+        help="Enable quiet mode (overrides config)"
+    )
+    opencode_parser.add_argument(
+        "--verbose", "-v",
+        action="store_true",
+        help="Show detailed output including debug info"
+    )
+    opencode_parser.add_argument(
+        "--cwd",
+        type=str,
+        help="Working directory for OpenCode execution (default: current directory)"
+    )
+    
     return parser
 
 
@@ -224,6 +358,8 @@ def main():
         exit_code = git_changes_command(args)
     elif args.command == "daemon":
         exit_code = daemon_command(args)
+    elif args.command == "opencode":
+        exit_code = opencode_command(args)
     else:
         parser.print_help()
         exit_code = 1
