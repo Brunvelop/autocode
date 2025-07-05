@@ -12,6 +12,7 @@ from typing import Dict, Optional
 from ..core.doc_checker import DocChecker
 from ..core.git_analyzer import GitAnalyzer
 from ..core.doc_indexer import DocIndexer
+from ..core.test_checker import TestChecker
 from .scheduler import Scheduler
 from ..api.models import CheckResult, DaemonStatus, AutocodeConfig
 
@@ -35,6 +36,7 @@ class AutocodeDaemon:
         # Initialize components
         self.doc_checker = DocChecker(self.project_root)
         self.git_analyzer = GitAnalyzer(self.project_root)
+        self.test_checker = TestChecker(self.project_root, self.config.tests)
         self.scheduler = Scheduler()
         
         # State
@@ -62,6 +64,15 @@ class AutocodeDaemon:
                 name="git_check",
                 func=self.run_git_check,
                 interval_seconds=self.config.daemon.git_check.interval_minutes * 60,
+                enabled=True
+            )
+        
+        # Add test check task
+        if self.config.daemon.test_check.enabled:
+            self.scheduler.add_task(
+                name="test_check",
+                func=self.run_test_check,
+                interval_seconds=self.config.daemon.test_check.interval_minutes * 60,
                 enabled=True
             )
     
@@ -257,6 +268,118 @@ class AutocodeDaemon:
             self.total_checks_run += 1
             return result
     
+    def run_test_check(self) -> CheckResult:
+        """Run test check using existing TestChecker."""
+        start_time = time.time()
+        
+        try:
+            self.logger.info("Running test check")
+            
+            # Use existing TestChecker
+            test_statuses = self.test_checker.get_test_statuses()
+            
+            # Count tests by status
+            missing_tests = [test for test in test_statuses if test.status == 'missing']
+            passing_tests = [test for test in test_statuses if test.status == 'passing']
+            failing_tests = [test for test in test_statuses if test.status == 'failing']
+            orphaned_tests = [test for test in test_statuses if test.status == 'orphaned']
+            
+            total_tests = len(test_statuses)
+            missing_count = len(missing_tests)
+            passing_count = len(passing_tests)
+            failing_count = len(failing_tests)
+            orphaned_count = len(orphaned_tests)
+            
+            # Count by type
+            unit_tests = [test for test in test_statuses if test.test_type == 'unit']
+            integration_tests = [test for test in test_statuses if test.test_type == 'integration']
+            
+            # Determine status and message
+            if missing_count == 0 and failing_count == 0:
+                if orphaned_count > 0:
+                    result_status = "warning"
+                    message = f"✅ All tests found, {orphaned_count} orphaned tests detected"
+                else:
+                    result_status = "success"
+                    message = f"✅ All tests found and passing ({passing_count} tests)"
+            elif failing_count > 0:
+                result_status = "error"
+                message = f"❌ {failing_count} tests failing, {missing_count} tests missing"
+            else:
+                result_status = "warning"
+                message = f"⚠️ {missing_count} tests missing, {passing_count} tests passing"
+            
+            # Build details
+            details = {
+                "total_tests": total_tests,
+                "missing_count": missing_count,
+                "passing_count": passing_count,
+                "failing_count": failing_count,
+                "orphaned_count": orphaned_count,
+                "unit_tests": len(unit_tests),
+                "integration_tests": len(integration_tests),
+                "test_breakdown": {
+                    "unit": {
+                        "missing": len([t for t in unit_tests if t.status == 'missing']),
+                        "passing": len([t for t in unit_tests if t.status == 'passing']),
+                        "failing": len([t for t in unit_tests if t.status == 'failing']),
+                        "orphaned": len([t for t in unit_tests if t.status == 'orphaned'])
+                    },
+                    "integration": {
+                        "missing": len([t for t in integration_tests if t.status == 'missing']),
+                        "passing": len([t for t in integration_tests if t.status == 'passing']),
+                        "failing": len([t for t in integration_tests if t.status == 'failing']),
+                        "orphaned": len([t for t in integration_tests if t.status == 'orphaned'])
+                    }
+                },
+                "test_files": [
+                    {
+                        "code_file": str(test.code_file.relative_to(self.project_root)) if test.code_file else None,
+                        "test_file": str(test.test_file.relative_to(self.project_root)) if test.test_file else None,
+                        "status": test.status,
+                        "test_type": test.test_type
+                    } for test in test_statuses
+                ]
+            }
+            
+            # Add execution results if available
+            if self.config.tests.auto_execute:
+                try:
+                    execution_results = self.test_checker.execute_tests()
+                    details["execution_results"] = execution_results
+                except Exception as e:
+                    details["execution_error"] = str(e)
+                    self.logger.warning(f"Failed to execute tests: {e}")
+            
+            result = CheckResult(
+                check_name="test_check",
+                status=result_status,
+                message=message,
+                details=details,
+                timestamp=datetime.now(),
+                duration_seconds=time.time() - start_time
+            )
+            
+            self.results["test_check"] = result
+            self.total_checks_run += 1
+            
+            self.logger.info(f"Test check completed: {result.status} - {result.message}")
+            return result
+            
+        except Exception as e:
+            self.logger.error(f"Test check failed: {e}")
+            result = CheckResult(
+                check_name="test_check",
+                status="error",
+                message=f"❌ Error running test check: {str(e)}",
+                details={"error": str(e)},
+                timestamp=datetime.now(),
+                duration_seconds=time.time() - start_time
+            )
+            self.results["test_check"] = result
+            self.total_checks_run += 1
+            return result
+    
     def run_check_manually(self, check_name: str) -> CheckResult:
         """Run a specific check manually.
         
@@ -270,6 +393,8 @@ class AutocodeDaemon:
             return self.run_doc_check()
         elif check_name == "git_check":
             return self.run_git_check()
+        elif check_name == "test_check":
+            return self.run_test_check()
         else:
             raise ValueError(f"Unknown check: {check_name}")
     
@@ -318,6 +443,16 @@ class AutocodeDaemon:
                 self.scheduler.enable_task("git_check")
             else:
                 self.scheduler.disable_task("git_check")
+        
+        if "test_check" in self.scheduler.tasks:
+            self.scheduler.update_task_interval(
+                "test_check",
+                config.daemon.test_check.interval_minutes * 60
+            )
+            if config.daemon.test_check.enabled:
+                self.scheduler.enable_task("test_check")
+            else:
+                self.scheduler.disable_task("test_check")
     
     async def start(self):
         """Start the daemon."""
@@ -328,6 +463,7 @@ class AutocodeDaemon:
         self.logger.info("Running initial checks")
         self.run_doc_check()
         self.run_git_check()
+        self.run_test_check()
         
         # Start scheduler
         await self.scheduler.start()

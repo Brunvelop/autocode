@@ -137,7 +137,7 @@ async def run_check(check_name: str, background_tasks: BackgroundTasks):
     if not daemon:
         raise HTTPException(status_code=503, detail="Daemon not initialized")
     
-    if check_name not in ["doc_check", "git_check"]:
+    if check_name not in ["doc_check", "git_check", "test_check"]:
         raise HTTPException(status_code=400, detail=f"Unknown check: {check_name}")
     
     try:

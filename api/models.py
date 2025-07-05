@@ -42,6 +42,7 @@ class DaemonConfig(BaseModel):
     """Configuration for the daemon."""
     doc_check: CheckConfig = CheckConfig(enabled=True, interval_minutes=10)
     git_check: CheckConfig = CheckConfig(enabled=True, interval_minutes=5)
+    test_check: CheckConfig = CheckConfig(enabled=True, interval_minutes=5)
     token_alerts: TokenConfig = TokenConfig()
 
 
@@ -59,11 +60,21 @@ class DocIndexConfig(BaseModel):
     update_on_docs_change: bool = True
 
 
+class TestConfig(BaseModel):
+    """Configuration for test checking."""
+    enabled: bool = True
+    directories: List[str] = ["vidi/", "autocode/", "tools/"]
+    exclude: List[str] = ["__pycache__/", "*.pyc", "__init__.py"]
+    test_frameworks: List[str] = ["pytest"]
+    auto_execute: bool = True
+
+
 class AutocodeConfig(BaseModel):
     """Complete configuration for autocode daemon."""
     daemon: DaemonConfig = DaemonConfig()
     api: ApiConfig = ApiConfig()
     doc_index: DocIndexConfig = DocIndexConfig()
+    tests: TestConfig = TestConfig()
 
 
 class StatusResponse(BaseModel):

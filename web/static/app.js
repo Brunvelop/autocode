@@ -166,6 +166,11 @@ class AutocodeDashboard {
             this.updateTokenInfo(result.details);
         }
         
+        // Update test information for test_check
+        if (checkName === 'test_check' && result.details) {
+            this.updateTestInfo(result.details);
+        }
+        
         // Update details
         const detailsElement = card.querySelector('.check-details-content');
         if (result.details) {
@@ -173,6 +178,8 @@ class AutocodeDashboard {
                 detailsElement.textContent = result.details.formatted_output;
             } else if (checkName === 'git_check' && result.details.repository_status) {
                 detailsElement.textContent = this.formatGitDetails(result.details);
+            } else if (checkName === 'test_check') {
+                detailsElement.textContent = this.formatTestDetails(result.details);
             } else {
                 detailsElement.textContent = JSON.stringify(result.details, null, 2);
             }
@@ -230,6 +237,56 @@ class AutocodeDashboard {
         }
     }
     
+    updateTestInfo(details) {
+        const testInfo = document.getElementById('test-check-stats');
+        const missingCount = document.getElementById('test-missing-count');
+        const passingCount = document.getElementById('test-passing-count');
+        const failingCount = document.getElementById('test-failing-count');
+        const orphanedCount = document.getElementById('test-orphaned-count');
+        const unitCount = document.getElementById('test-unit-count');
+        const integrationCount = document.getElementById('test-integration-count');
+        
+        if (details && typeof details.missing_count !== 'undefined') {
+            testInfo.style.display = 'block';
+            
+            missingCount.textContent = details.missing_count || 0;
+            passingCount.textContent = details.passing_count || 0;
+            failingCount.textContent = details.failing_count || 0;
+            orphanedCount.textContent = details.orphaned_count || 0;
+            unitCount.textContent = `${details.unit_tests || 0} Unit`;
+            integrationCount.textContent = `${details.integration_tests || 0} Integration`;
+        } else {
+            testInfo.style.display = 'none';
+        }
+    }
+    
+    formatTestDetails(details) {
+        let output = `Test Status:\n`;
+        output += `  Total tests: ${details.total_tests || 0}\n`;
+        output += `  Missing: ${details.missing_count || 0}\n`;
+        output += `  Passing: ${details.passing_count || 0}\n`;
+        output += `  Failing: ${details.failing_count || 0}\n`;
+        output += `  Orphaned: ${details.orphaned_count || 0}\n`;
+        
+        output += `\nTest Types:\n`;
+        output += `  Unit tests: ${details.unit_tests || 0}\n`;
+        output += `  Integration tests: ${details.integration_tests || 0}\n`;
+        
+        if (details.execution_results) {
+            output += `\nExecution Results:\n`;
+            output += `  Exit code: ${details.execution_results.exit_code}\n`;
+            if (details.execution_results.stdout) {
+                output += `  Output: ${details.execution_results.stdout.substring(0, 200)}...\n`;
+            }
+        }
+        
+        if (details.execution_error) {
+            output += `\nExecution Error: ${details.execution_error}\n`;
+        }
+        
+        return output;
+    }
+    
     updateConfigUI(config) {
         // Update doc check config
         const docCheckEnabled = document.getElementById('doc-check-enabled');
@@ -244,6 +301,13 @@ class AutocodeDashboard {
         
         gitCheckEnabled.checked = config.daemon.git_check.enabled;
         gitCheckInterval.value = config.daemon.git_check.interval_minutes;
+        
+        // Update test check config
+        const testCheckEnabled = document.getElementById('test-check-enabled');
+        const testCheckInterval = document.getElementById('test-check-interval');
+        
+        testCheckEnabled.checked = config.daemon.test_check.enabled;
+        testCheckInterval.value = config.daemon.test_check.interval_minutes;
         
         // Update token alerts config
         const tokenAlertsEnabled = document.getElementById('token-alerts-enabled');
@@ -380,6 +444,10 @@ async function updateConfig() {
             git_check: {
                 enabled: document.getElementById('git-check-enabled').checked,
                 interval_minutes: parseInt(document.getElementById('git-check-interval').value)
+            },
+            test_check: {
+                enabled: document.getElementById('test-check-enabled').checked,
+                interval_minutes: parseInt(document.getElementById('test-check-interval').value)
             },
             token_alerts: {
                 enabled: document.getElementById('token-alerts-enabled').checked,

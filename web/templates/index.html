@@ -83,6 +83,57 @@
                     </div>
                 </div>
 
+                <!-- Test Check -->
+                <div class="check-card" id="test-check">
+                    <div class="check-header">
+                        <h3>🧪 Test Check</h3>
+                        <div class="check-controls">
+                            <button class="btn-run" onclick="runCheck('test_check')">Run Now</button>
+                            <div class="check-status" id="test-check-status">
+                                <span class="status-indicator unknown"></span>
+                                <span class="status-text">Unknown</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="check-details">
+                        <div class="check-info">
+                            <span class="check-message" id="test-check-message">No data available</span>
+                            <span class="check-timestamp" id="test-check-timestamp"></span>
+                        </div>
+                        <!-- Test Statistics -->
+                        <div class="test-info" id="test-check-stats" style="display: none;">
+                            <div class="test-breakdown">
+                                <span class="test-label">🧪 Tests:</span>
+                                <div class="test-stats-grid">
+                                    <div class="test-stat">
+                                        <span class="test-stat-value" id="test-missing-count">--</span>
+                                        <span class="test-stat-label">Missing</span>
+                                    </div>
+                                    <div class="test-stat">
+                                        <span class="test-stat-value" id="test-passing-count">--</span>
+                                        <span class="test-stat-label">Passing</span>
+                                    </div>
+                                    <div class="test-stat">
+                                        <span class="test-stat-value" id="test-failing-count">--</span>
+                                        <span class="test-stat-label">Failing</span>
+                                    </div>
+                                    <div class="test-stat">
+                                        <span class="test-stat-value" id="test-orphaned-count">--</span>
+                                        <span class="test-stat-label">Orphaned</span>
+                                    </div>
+                                </div>
+                                <div class="test-type-breakdown">
+                                    <span class="test-type-label">Types:</span>
+                                    <span class="test-type-count" id="test-unit-count">0 Unit</span>
+                                    <span class="test-type-separator">|</span>
+                                    <span class="test-type-count" id="test-integration-count">0 Integration</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="check-details-content" id="test-check-details"></div>
+                    </div>
+                </div>
+
                 <!-- Git Check -->
                 <div class="check-card" id="git-check">
                     <div class="check-header">
@@ -146,6 +197,22 @@
                             <label>
                                 Interval (minutes):
                                 <input type="number" id="git-check-interval" min="1" max="1440" value="5" onchange="updateConfig()">
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <div class="config-group">
+                        <h4>🧪 Test Check</h4>
+                        <div class="config-item">
+                            <label>
+                                <input type="checkbox" id="test-check-enabled" onchange="updateConfig()">
+                                Enabled
+                            </label>
+                        </div>
+                        <div class="config-item">
+                            <label>
+                                Interval (minutes):
+                                <input type="number" id="test-check-interval" min="1" max="1440" value="5" onchange="updateConfig()">
                             </label>
                         </div>
                     </div>

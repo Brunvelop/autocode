@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Optional
 
 from .core.doc_checker import DocChecker
+from .core.test_checker import TestChecker
 from .core.git_analyzer import GitAnalyzer
 from .core.opencode_executor import OpenCodeExecutor, validate_opencode_setup
 from .core.doc_indexer import DocIndexer
@@ -273,6 +274,35 @@ def opencode_command(args) -> int:
         return 1
 
 
+def check_tests_command(args) -> int:
+    """Handle check-tests command.
+    
+    Args:
+        args: Parsed command line arguments
+        
+    Returns:
+        Exit code (0 for success, 1 for issues found)
+    """
+    # Get project root (current working directory)
+    project_root = Path.cwd()
+    
+    # Load configuration
+    config = load_config(project_root)
+    
+    # Initialize test checker
+    checker = TestChecker(project_root)
+    
+    # Check for missing/failing tests
+    test_issues = checker.get_missing_and_failing_tests()
+    
+    # Format and display results
+    output = checker.format_results(test_issues)
+    print(output)
+    
+    # Return appropriate exit code
+    return 1 if test_issues else 0
+
+
 def count_tokens_command(args) -> int:
     """Handle count-tokens command.
     
@@ -397,6 +427,12 @@ def create_parser() -> argparse.ArgumentParser:
         "--doc-index-output",
         type=str,
         help="Override output path for documentation index"
+    )
+    
+    # check-tests subcommand
+    check_tests_parser = subparsers.add_parser(
+        "check-tests",
+        help="Check if tests exist and are passing"
     )
     
     # git-changes subcommand
@@ -554,6 +590,8 @@ def main():
     # Route to appropriate command handler
     if args.command == "check-docs":
         exit_code = check_docs_command(args)
+    elif args.command == "check-tests":
+        exit_code = check_tests_command(args)
     elif args.command == "git-changes":
         exit_code = git_changes_command(args)
     elif args.command == "daemon":
