@@ -9,11 +9,11 @@ import yaml
 from pathlib import Path
 from typing import Optional
 
-from .doc_checker import DocChecker
-from .git_analyzer import GitAnalyzer
-from .opencode_executor import OpenCodeExecutor, validate_opencode_setup
-from .doc_indexer import DocIndexer
-from .models import AutocodeConfig
+from .core.doc_checker import DocChecker
+from .core.git_analyzer import GitAnalyzer
+from .core.opencode_executor import OpenCodeExecutor, validate_opencode_setup
+from .core.doc_indexer import DocIndexer
+from .api.models import AutocodeConfig
 
 
 def load_config(project_root: Path) -> AutocodeConfig:
@@ -165,7 +165,7 @@ def daemon_command(args) -> int:
     """
     try:
         import uvicorn
-        from .api import app
+        from .api.server import app
         
         print("🚀 Starting Autocode Monitoring Daemon")
         print(f"   📡 API Server: http://{args.host}:{args.port}")
@@ -283,7 +283,7 @@ def count_tokens_command(args) -> int:
         Exit code (0 for success, 1 for errors)
     """
     try:
-        from .token_counter import TokenCounter, count_tokens_in_multiple_files
+        from .core.token_counter import TokenCounter, count_tokens_in_multiple_files
         
         project_root = Path.cwd()
         

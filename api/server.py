@@ -13,7 +13,7 @@ from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse
 from fastapi import Request
 
-from .daemon import AutocodeDaemon
+from ..orchestration.daemon import AutocodeDaemon
 from .models import (
     StatusResponse,
     CheckExecutionRequest,
@@ -35,8 +35,8 @@ daemon: AutocodeDaemon = None
 daemon_task: asyncio.Task = None
 
 # Setup templates and static files
-templates = Jinja2Templates(directory=Path(__file__).parent / "web" / "templates")
-app.mount("/static", StaticFiles(directory=Path(__file__).parent / "web" / "static"), name="static")
+templates = Jinja2Templates(directory=Path(__file__).parent.parent / "web" / "templates")
+app.mount("/static", StaticFiles(directory=Path(__file__).parent.parent / "web" / "static"), name="static")
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -185,7 +185,7 @@ async def count_tokens(file_path: str = "git_changes.json"):
         raise HTTPException(status_code=503, detail="Daemon not initialized")
     
     try:
-        from .token_counter import TokenCounter
+        from ..core.token_counter import TokenCounter
         
         # Use token configuration from daemon
         token_counter = TokenCounter(daemon.config.daemon.token_alerts.model)
@@ -239,7 +239,7 @@ async def count_tokens_multiple(file_paths: List[str]):
         raise HTTPException(status_code=503, detail="Daemon not initialized")
     
     try:
-        from .token_counter import count_tokens_in_multiple_files
+        from ..core.token_counter import count_tokens_in_multiple_files
         
         # Resolve file paths
         resolved_paths = []
@@ -258,7 +258,7 @@ async def count_tokens_multiple(file_paths: List[str]):
         )
         
         # Add threshold check for total
-        from .token_counter import TokenCounter
+        from ..core.token_counter import TokenCounter
         token_counter = TokenCounter(daemon.config.daemon.token_alerts.model)
         threshold_check = token_counter.check_threshold(
             result["total_tokens"],
