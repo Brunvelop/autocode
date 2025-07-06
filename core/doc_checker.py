@@ -5,7 +5,7 @@ Follows the modular documentation structure from W_1_generate_modular_docs.md
 """
 
 from pathlib import Path
-from typing import List, NamedTuple, Set
+from typing import List, NamedTuple, Set, Optional
 import os
 
 
@@ -20,10 +20,11 @@ class DocStatus(NamedTuple):
 class DocChecker:
     """Checks documentation status against code files following modular structure."""
     
-    def __init__(self, project_root: Path = None):
-        """Initialize DocChecker with project root directory."""
+    def __init__(self, project_root: Path = None, config: Optional['DocsConfig'] = None):
+        """Initialize DocChecker with project root directory and optional configuration."""
         self.project_root = project_root or Path.cwd()
         self.docs_dir = self.project_root / "docs"
+        self.config = config
     
     def find_code_directories(self) -> List[Path]:
         """Auto-discover directories containing Python code (excluding __init__.py only dirs)."""
@@ -39,37 +40,102 @@ class DocChecker:
         
         return code_dirs
     
-    def get_all_python_files(self) -> List[Path]:
-        """Get all Python files from all code directories, excluding __init__.py."""
-        python_files = []
-        code_dirs = self.find_code_directories()
+    def find_configured_directories(self) -> List[Path]:
+        """Find directories based on configuration."""
+        if not self.config or not self.config.directories:
+            return self.find_code_directories()
+        
+        code_dirs = []
+        for dir_pattern in self.config.directories:
+            # Remove trailing slash if present
+            dir_pattern = dir_pattern.rstrip('/')
+            dir_path = self.project_root / dir_pattern
+            
+            if dir_path.exists() and dir_path.is_dir():
+                # Check if directory contains code files with configured extensions
+                code_files = self.get_code_files_in_directory(dir_path)
+                if code_files:
+                    code_dirs.append(dir_path)
+        
+        return code_dirs
+    
+    def should_exclude_file(self, file_path: Path) -> bool:
+        """Check if a file should be excluded based on configuration."""
+        if not self.config or not self.config.exclude:
+            return False
+        
+        for pattern in self.config.exclude:
+            if pattern.endswith('/'):
+                # Directory pattern
+                if pattern.rstrip('/') in str(file_path):
+                    return True
+            elif pattern.startswith('*'):
+                # Extension pattern
+                if file_path.name.endswith(pattern[1:]):
+                    return True
+            else:
+                # Exact filename
+                if file_path.name == pattern:
+                    return True
+        
+        return False
+    
+    def get_supported_extensions(self) -> List[str]:
+        """Get list of supported file extensions."""
+        if self.config and self.config.file_extensions:
+            return self.config.file_extensions
+        # Default to Python files for backward compatibility
+        return [".py"]
+    
+    def get_code_files_in_directory(self, directory: Path) -> List[Path]:
+        """Get all code files in a directory based on configured extensions."""
+        code_files = []
+        extensions = self.get_supported_extensions()
+        
+        for extension in extensions:
+            for code_file in directory.rglob(f"*{extension}"):
+                # Skip __init__.py files only for Python
+                if extension == ".py" and code_file.name == "__init__.py":
+                    continue
+                # Skip excluded files
+                if self.should_exclude_file(code_file):
+                    continue
+                code_files.append(code_file)
+        
+        return code_files
+    
+    def get_all_code_files(self) -> List[Path]:
+        """Get all code files from all code directories based on configured extensions."""
+        code_files = []
+        code_dirs = self.find_configured_directories()
         
         for code_dir in code_dirs:
-            for py_file in code_dir.rglob("*.py"):
-                # Skip __init__.py files
-                if py_file.name == "__init__.py":
-                    continue
-                python_files.append(py_file)
+            code_files.extend(self.get_code_files_in_directory(code_dir))
         
-        return python_files
+        return code_files
+    
+    def get_all_python_files(self) -> List[Path]:
+        """Get all Python files from all code directories, excluding __init__.py."""
+        # Keep for backward compatibility
+        return [f for f in self.get_all_code_files() if f.suffix == ".py"]
     
     def get_all_code_directories_with_subdirs(self) -> Set[Path]:
-        """Get all directories that contain Python code (including subdirectories)."""
+        """Get all directories that contain code files (including subdirectories)."""
         all_dirs = set()
-        code_dirs = self.find_code_directories()
+        code_dirs = self.find_configured_directories()
         
         for code_dir in code_dirs:
             # Add the main directory
             all_dirs.add(code_dir)
             
-            # Add all subdirectories that contain .py files
-            for py_file in code_dir.rglob("*.py"):
-                if py_file.name != "__init__.py":
-                    # Add all parent directories up to the main code directory
-                    current_dir = py_file.parent
-                    while current_dir != code_dir.parent and current_dir != self.project_root:
-                        all_dirs.add(current_dir)
-                        current_dir = current_dir.parent
+            # Add all subdirectories that contain code files
+            code_files = self.get_code_files_in_directory(code_dir)
+            for code_file in code_files:
+                # Add all parent directories up to the main code directory
+                current_dir = code_file.parent
+                while current_dir != code_dir.parent and current_dir != self.project_root:
+                    all_dirs.add(current_dir)
+                    current_dir = current_dir.parent
         
         return all_dirs
     
@@ -88,10 +154,19 @@ class DocChecker:
     
     def map_doc_to_code_file(self, doc_file: Path) -> Path:
         """Map a documentation file back to its corresponding code file."""
-        # Convert docs/autocode/cli.md -> autocode/cli.py
+        # Convert docs/autocode/cli.md -> autocode/cli.* (try all supported extensions)
         relative_doc = doc_file.relative_to(self.docs_dir)
-        code_path = self.project_root / relative_doc.with_suffix('.py')
-        return code_path
+        base_path = self.project_root / relative_doc.with_suffix('')
+        
+        # Try to find the actual code file with supported extensions
+        extensions = self.get_supported_extensions()
+        for extension in extensions:
+            code_path = base_path.with_suffix(extension)
+            if code_path.exists():
+                return code_path
+        
+        # If no file found, default to .py for backward compatibility
+        return base_path.with_suffix('.py')
     
     def map_module_doc_to_directory(self, doc_file: Path) -> Path:
         """Map a _module.md file back to its corresponding code directory."""
@@ -113,12 +188,12 @@ class DocChecker:
                 if not code_path.exists() or not code_path.is_dir():
                     orphaned.append(DocStatus(code_path, doc_file, 'orphaned', 'module'))
                 else:
-                    # Check if directory actually contains Python files (excluding __init__.py)
-                    python_files = [f for f in code_path.rglob("*.py") if f.name != "__init__.py"]
-                    if not python_files:
+                    # Check if directory actually contains code files
+                    code_files = self.get_code_files_in_directory(code_path)
+                    if not code_files:
                         orphaned.append(DocStatus(code_path, doc_file, 'orphaned', 'module'))
             else:
-                # This is a file documentation
+                # This is a file documentation - need to check all possible extensions
                 code_path = self.map_doc_to_code_file(doc_file)
                 if not code_path.exists():
                     orphaned.append(DocStatus(code_path, doc_file, 'orphaned', 'file'))
@@ -128,6 +203,7 @@ class DocChecker:
     def map_code_file_to_doc(self, code_file: Path) -> Path:
         """Map a code file to its corresponding documentation file."""
         # Convert autocode/doc_checker.py -> docs/autocode/doc_checker.md
+        # Convert autocode/web/static/app.js -> docs/autocode/web/static/app.md
         relative_path = code_file.relative_to(self.project_root)
         doc_path = self.docs_dir / relative_path.with_suffix('.md')
         return doc_path
@@ -151,11 +227,11 @@ class DocChecker:
         # For directories, check against the newest file in that directory
         if code_path.is_dir():
             newest_code_time = 0
-            for py_file in code_path.rglob("*.py"):
-                if py_file.name != "__init__.py":
-                    newest_code_time = max(newest_code_time, py_file.stat().st_mtime)
+            code_files = self.get_code_files_in_directory(code_path)
+            for code_file in code_files:
+                newest_code_time = max(newest_code_time, code_file.stat().st_mtime)
             
-            if newest_code_time == 0:  # No Python files found
+            if newest_code_time == 0:  # No code files found
                 return 'up_to_date'
             
             doc_mtime = doc_file.stat().st_mtime
@@ -188,8 +264,8 @@ class DocChecker:
             results.append(DocStatus(code_dir, module_doc, status, 'module'))
         
         # 3. Check individual file documentation
-        python_files = self.get_all_python_files()
-        for code_file in python_files:
+        code_files = self.get_all_code_files()
+        for code_file in code_files:
             doc_file = self.map_code_file_to_doc(code_file)
             status = self.is_doc_outdated(code_file, doc_file)
             results.append(DocStatus(code_file, doc_file, status, 'file'))

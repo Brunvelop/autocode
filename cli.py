@@ -63,8 +63,8 @@ def check_docs_command(args) -> int:
     # Load configuration
     config = load_config(project_root)
     
-    # Initialize checker
-    checker = DocChecker(project_root)
+    # Initialize checker with configuration
+    checker = DocChecker(project_root, config.docs)
     
     # Check for outdated documentation
     outdated_results = checker.get_outdated_docs()
@@ -289,8 +289,8 @@ def check_tests_command(args) -> int:
     # Load configuration
     config = load_config(project_root)
     
-    # Initialize test checker
-    checker = TestChecker(project_root)
+    # Initialize test checker with configuration
+    checker = TestChecker(project_root, config.tests)
     
     # Check for missing/failing tests
     test_issues = checker.get_missing_and_failing_tests()

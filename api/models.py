@@ -60,6 +60,14 @@ class DocIndexConfig(BaseModel):
     update_on_docs_change: bool = True
 
 
+class DocsConfig(BaseModel):
+    """Configuration for documentation checking."""
+    enabled: bool = True
+    directories: List[str] = ["vidi/", "autocode/"]
+    file_extensions: List[str] = [".py", ".js", ".html", ".css", ".ts", ".jsx", ".tsx"]
+    exclude: List[str] = ["__pycache__/", "*.pyc", "__init__.py"]
+
+
 class TestConfig(BaseModel):
     """Configuration for test checking."""
     enabled: bool = True
@@ -74,6 +82,7 @@ class AutocodeConfig(BaseModel):
     daemon: DaemonConfig = DaemonConfig()
     api: ApiConfig = ApiConfig()
     doc_index: DocIndexConfig = DocIndexConfig()
+    docs: DocsConfig = DocsConfig()
     tests: TestConfig = TestConfig()
 
 

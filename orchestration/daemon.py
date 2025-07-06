@@ -34,7 +34,7 @@ class AutocodeDaemon:
         self.logger = logging.getLogger(__name__)
         
         # Initialize components
-        self.doc_checker = DocChecker(self.project_root)
+        self.doc_checker = DocChecker(self.project_root, self.config.docs)
         self.git_analyzer = GitAnalyzer(self.project_root)
         self.test_checker = TestChecker(self.project_root, self.config.tests)
         self.scheduler = Scheduler()
