@@ -39,10 +39,9 @@ doc_index:
 docs:
   enabled: true
   directories:
-    - "vidi/"
     - "autocode/"
     - "examples/"
-    - "tools/"
+    - "docs/"
   file_extensions:
     - ".py"
     - ".js"
@@ -59,7 +58,7 @@ docs:
 tests:
   enabled: true
   directories:
-    - "vidi/"
+    - "tests/"
   exclude:
     - "__pycache__/"
     - "*.pyc"

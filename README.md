@@ -25,32 +25,70 @@ Automated code quality and development tools with AI integration, featuring cont
 ## 📦 Installation
 
 ### Prerequisites
-Autocode uses [uv](https://github.com/astral-sh/uv) for dependency management:
+Autocode uses [uv](https://github.com/astral-sh/uv) for dependency management. Install it first:
 
 ```bash
-# Install uv if you don't have it
+# Linux/macOS
 curl -LsSf https://astral.sh/uv/install.sh | sh
-# or on Windows: powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
+
+# Windows
+powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
+
+# Alternative: Install via pip
+pip install uv
 ```
 
-### Development Installation (Current)
-Since the package is not yet published to PyPI, install from source:
+### 🔧 Development Installation
+For development and contribution:
 
 ```bash
+# 1. Clone the repository
+git clone https://github.com/brunvelop/autocode.git
+cd autocode
+
+# 2. Install dependencies and setup environment
+uv sync
+
+# 3. Verify installation
+uv run autocode --help
+
+# 4. Run tests (optional)
+uv run pytest tests/
+
+# 5. Start development server
+uv run autocode daemon
+```
+
+### 🚀 Production Installation
+For using Autocode in your projects:
+
+```bash
+# Clone and install
 git clone https://github.com/brunvelop/autocode.git
 cd autocode
 uv sync
-uv run autocode --help
-```
 
-### Alternative with pip
-```bash
-git clone https://github.com/brunvelop/autocode.git
-cd autocode
+# Or with pip (alternative)
 pip install -e .
 ```
 
-### Future PyPI Installation
+### 📋 Installation Verification
+After installation, verify everything works:
+
+```bash
+# Check CLI access
+uv run autocode --help
+
+# Test basic functionality
+uv run autocode check-docs
+uv run autocode git-changes
+
+# Start web dashboard
+uv run autocode daemon
+# Then open: http://127.0.0.1:8080
+```
+
+### 🔮 Future PyPI Installation
 Once published, it will be available as:
 ```bash
 uv add autocode
@@ -91,36 +129,84 @@ uv run autocode daemon
 Create `autocode_config.yml` in your project root:
 
 ```yaml
+# Daemon configuration
+daemon:
+  doc_check:
+    enabled: true
+    interval_minutes: 1
+  git_check:
+    enabled: true
+    interval_minutes: 1
+  test_check:
+    enabled: true
+    interval_minutes: 5
+  auto_update:
+    enabled: false
+    trigger_on_docs: true
+    trigger_on_git: true
+    interval_minutes: 15
+
+# API server settings
+api:
+  port: 8080
+  host: "127.0.0.1"
+
 # Documentation settings
 docs:
   enabled: true
-  docs_dir: "docs"
-  
+  directories:
+    - "autocode/"
+    - "examples/"
+    - "docs/"
+  file_extensions:
+    - ".py"
+    - ".js"
+    - ".html"
+    - ".css"
+    - ".md"
+  exclude:
+    - "__pycache__/"
+    - "*.pyc"
+    - "__init__.py"
+
 # Test settings  
 tests:
   enabled: true
-  test_dir: "tests"
+  directories:
+    - "tests/"
+  exclude:
+    - "__pycache__/"
+    - "*.pyc"
+    - "__init__.py"
+  test_frameworks:
+    - "pytest"
+  auto_execute: true
   
 # Doc index generation
 doc_index:
   enabled: true
   auto_generate: true
   output_path: ".clinerules/docs_index.json"
+  update_on_docs_change: true
 
 # OpenCode integration
 opencode:
   enabled: true
+  model: "claude-4-sonnet"
+  max_tokens: 64000
   config_path: ".opencode.json"
   timeout: 300
+  quiet_mode: true
+  json_output: true
 ```
 
 ## 📚 Documentation
 
-- **[CLI Interface](docs/cli.md)**: Interfaz unificada de comandos
-- **[Módulo Core](docs/core/_module.md)**: Herramientas fundamentales de análisis
-- **[Módulo API](docs/api/_module.md)**: Interfaz web y REST API  
-- **[Módulo Orchestration](docs/orchestration/_module.md)**: Automatización y programación
-- **[Módulo Web](docs/web/_module.md)**: Dashboard web interactivo
+- **[CLI Interface](docs/autocode/cli.md)**: Interfaz unificada de comandos
+- **[Módulo Core](docs/autocode/core/_module.md)**: Herramientas fundamentales de análisis
+- **[Módulo API](docs/autocode/api/_module.md)**: Interfaz web y REST API  
+- **[Módulo Orchestration](docs/autocode/orchestration/_module.md)**: Automatización y programación
+- **[Módulo Web](docs/autocode/web/_module.md)**: Dashboard web interactivo
 - **[Examples](examples/)**: Ejemplos de uso y plantillas
 
 ## 🔧 Architecture
@@ -205,6 +291,74 @@ uv run autocode daemon --verbose
 - `GET /api/config` - Current configuration
 - `PUT /api/config` - Update configuration
 - `GET /health` - Health check
+
+## 🔧 Troubleshooting
+
+### Common Issues
+
+#### `ModuleNotFoundError: No module named 'autocode'`
+**Solution**: Ensure you're in the correct directory and the package is installed:
+```bash
+# Make sure you're in the autocode directory
+cd autocode
+
+# Reinstall the package
+uv sync
+# or
+pip install -e .
+
+# Verify installation
+uv run autocode --help
+```
+
+#### `Port 8080 already in use`
+**Solution**: Change the port in `autocode_config.yml`:
+```yaml
+api:
+  port: 8081  # or any other available port
+  host: "127.0.0.1"
+```
+
+#### `uv` command not found
+**Solution**: Install uv first:
+```bash
+# Windows
+powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
+
+# Linux/macOS
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Alternative
+pip install uv
+```
+
+#### Permission denied errors
+**Solution**: On Windows, run PowerShell as administrator. On Linux/macOS:
+```bash
+chmod +x ~/.local/bin/uv
+```
+
+#### Dashboard not loading
+**Solution**: 
+1. Ensure daemon is running: `uv run autocode daemon`
+2. Check if port is accessible: `http://127.0.0.1:8080`
+3. Check firewall settings
+4. Try different browser or incognito mode
+
+#### Token count warnings
+**Solution**: This is normal for large projects. Adjust token threshold in config:
+```yaml
+opencode:
+  max_tokens: 100000  # increase limit
+```
+
+### Getting Help
+
+If you encounter issues not covered here:
+
+1. **Check the logs**: Run daemon with `--verbose` flag
+2. **Search issues**: Check [GitHub Issues](https://github.com/brunvelop/autocode/issues)
+3. **Create an issue**: Include error logs and system information
 
 ## 🤝 Contributing
 
