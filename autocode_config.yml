@@ -1,0 +1,69 @@
+# Autocode Daemon Configuration
+# This file shows example configuration options
+
+daemon:
+  doc_check:
+    enabled: true
+    interval_minutes: 1
+  git_check:
+    enabled: true
+    interval_minutes: 1
+  test_check:
+    enabled: true
+    interval_minutes: 5
+  auto_update:
+    enabled: false  # Starts disabled - user must enable explicitly
+    trigger_on_docs: true
+    trigger_on_git: true
+    interval_minutes: 15
+
+api:
+  port: 8080
+  host: "127.0.0.1"
+
+opencode:
+  enabled: true
+  model: "claude-4-sonnet"
+  max_tokens: 64000
+  debug: true
+  config_path: ".opencode.json"
+  quiet_mode: true
+  json_output: true
+
+doc_index:
+  enabled: true
+  output_path: ".clinerules/docs_index.json"
+  auto_generate: true
+  update_on_docs_change: true
+
+docs:
+  enabled: true
+  directories:
+    - "vidi/"
+    - "autocode/"
+    - "examples/"
+    - "tools/"
+  file_extensions:
+    - ".py"
+    - ".js"
+    - ".html"
+    - ".css"
+    - ".ts"
+    - ".jsx"
+    - ".tsx"
+  exclude:
+    - "__pycache__/"
+    - "*.pyc"
+    - "__init__.py"
+
+tests:
+  enabled: true
+  directories:
+    - "vidi/"
+  exclude:
+    - "__pycache__/"
+    - "*.pyc"
+    - "__init__.py"
+  test_frameworks:
+    - "pytest"
+  auto_execute: true
