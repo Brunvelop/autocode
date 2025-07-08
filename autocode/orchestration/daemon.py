@@ -15,6 +15,7 @@ from ..core.doc_indexer import DocIndexer
 from ..core.test_checker import TestChecker
 from .scheduler import Scheduler
 from ..api.models import CheckResult, DaemonStatus, AutocodeConfig
+from ..cli import load_config
 
 
 class AutocodeDaemon:
@@ -28,7 +29,7 @@ class AutocodeDaemon:
             config: Daemon configuration
         """
         self.project_root = project_root or Path.cwd()
-        self.config = config or AutocodeConfig()
+        self.config = config or load_config(self.project_root)
         
         # Setup logging
         self.logger = logging.getLogger(__name__)

@@ -17,18 +17,42 @@ from .core.doc_indexer import DocIndexer
 from .api.models import AutocodeConfig
 
 
-def load_config(project_root: Path) -> AutocodeConfig:
-    """Load configuration from autocode_config.yml.
+def find_config_file(start_path: Path) -> Optional[Path]:
+    """Find autocode_config.yml by searching up the directory tree.
     
     Args:
-        project_root: Project root directory
+        start_path: Starting directory to search from
+        
+    Returns:
+        Path to autocode_config.yml if found, None otherwise
+    """
+    current = start_path.resolve()
+    while current != current.parent:  # Until we reach filesystem root
+        config_file = current / "autocode_config.yml"
+        if config_file.exists():
+            return config_file
+        current = current.parent
+    return None
+
+
+def load_config(working_dir: Path = None) -> AutocodeConfig:
+    """Load configuration from autocode_config.yml.
+    
+    Searches up the directory tree starting from working_dir (or cwd) 
+    until it finds autocode_config.yml.
+    
+    Args:
+        working_dir: Directory to start search from (defaults to cwd)
         
     Returns:
         Loaded configuration with defaults
     """
-    config_file = project_root / "autocode_config.yml"
+    if working_dir is None:
+        working_dir = Path.cwd()
     
-    if not config_file.exists():
+    config_file = find_config_file(working_dir)
+    
+    if config_file is None:
         # Return default configuration if file doesn't exist
         return AutocodeConfig()
     
@@ -60,8 +84,8 @@ def check_docs_command(args) -> int:
     # Get project root (current working directory)
     project_root = Path.cwd()
     
-    # Load configuration
-    config = load_config(project_root)
+    # Load configuration (searches up directory tree)
+    config = load_config()
     
     # Initialize checker with configuration
     checker = DocChecker(project_root, config.docs)
@@ -286,8 +310,8 @@ def check_tests_command(args) -> int:
     # Get project root (current working directory)
     project_root = Path.cwd()
     
-    # Load configuration
-    config = load_config(project_root)
+    # Load configuration (searches up directory tree)
+    config = load_config()
     
     # Initialize test checker with configuration
     checker = TestChecker(project_root, config.tests)
