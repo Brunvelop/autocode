@@ -2,7 +2,7 @@
 
 ## 🎯 Propósito del Módulo
 
-El módulo orchestration proporciona el sistema de automatización y programación para el sistema autocode. Su responsabilidad principal es orquestar la ejecución automática de verificaciones, gestionar tareas programadas, y proporcionar monitoreo continuo del sistema. Actúa como el cerebro que coordina todas las operaciones automatizadas del sistema.
+El módulo `autocode/orchestration` proporciona el sistema de automatización y programación para el sistema autocode. Su responsabilidad principal es orquestar la ejecución automática de verificaciones, gestionar tareas programadas, y proporcionar monitoreo continuo del sistema. Actúa como el cerebro que coordina todas las operaciones automatizadas del sistema, integrando los componentes core a través de un daemon robusto y un scheduler configurable.
 
 ## 🏗️ Arquitectura del Módulo
 

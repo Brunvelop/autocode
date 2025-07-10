@@ -1,665 +1,395 @@
-# Autocode Dashboard JavaScript (app.js)
+# app.js
 
 ## 🎯 Propósito
+JavaScript del dashboard de monitoreo que proporciona interfaz interactiva en tiempo real para el daemon de autocode. Maneja la actualización automática de estado, ejecución manual de verificaciones, configuración dinámica y interacción con la API REST.
 
-El archivo `app.js` implementa la lógica completa del dashboard web de autocode, proporcionando una interfaz interactiva y en tiempo real para monitorear el estado del sistema. Su responsabilidad principal es gestionar la comunicación con la API backend, actualizar la UI dinámicamente, y ofrecer controles interactivos para la gestión del sistema autocode.
-
-## 🏗️ Arquitectura del Archivo
-
+## 🏗️ Arquitectura
 ```mermaid
 graph TB
-    subgraph "AutocodeDashboard Class Architecture"
-        subgraph "Core Components"
-            CONSTRUCTOR[Constructor<br/>Initialization]
-            INIT[init()<br/>Setup & Start]
-            CONFIG[Configuration<br/>Settings & Options]
-        end
-        
-        subgraph "API Communication"
-            FETCH_STATUS[fetchAndUpdateStatus()<br/>Get System Status]
-            FETCH_CONFIG[fetchAndUpdateConfig()<br/>Get Configuration]
-            UPDATE_CONFIG[updateConfig()<br/>Save Configuration]
-            RUN_CHECK[runCheck()<br/>Execute Check]
-        end
-        
-        subgraph "UI Management"
-            UPDATE_UI[updateUI()<br/>Main UI Update]
-            UPDATE_DAEMON[updateDaemonStatus()<br/>Daemon Status]
-            UPDATE_CHECKS[updateCheckResults()<br/>Check Results]
-            UPDATE_METRICS[updateSystemStats()<br/>System Metrics]
-        end
-        
-        subgraph "Real-time Features"
-            AUTO_REFRESH[Auto Refresh<br/>5-second Timer]
-            VISIBILITY[Visibility Handler<br/>Pause/Resume]
-            KEYBOARD[Keyboard Shortcuts<br/>Space & R keys]
-            ERROR_HANDLING[Error Handling<br/>Network & API Errors]
-        end
-    end
+    A[AutocodeDashboard] --> B[Auto Refresh System]
+    A --> C[API Communication]
+    A --> D[UI Management]
+    A --> E[Event Handling]
     
-    CONSTRUCTOR --> INIT
-    INIT --> CONFIG
-    INIT --> AUTO_REFRESH
+    B --> F[Timer Management]
+    B --> G[Status Updates]
     
-    AUTO_REFRESH --> FETCH_STATUS
-    FETCH_STATUS --> UPDATE_UI
-    UPDATE_UI --> UPDATE_DAEMON
-    UPDATE_UI --> UPDATE_CHECKS
-    UPDATE_UI --> UPDATE_METRICS
+    C --> H[Fetch Status]
+    C --> I[Fetch Config]
+    C --> J[Run Checks]
+    C --> K[Update Config]
     
-    CONFIG --> FETCH_CONFIG
-    CONFIG --> UPDATE_CONFIG
+    D --> L[Status Cards]
+    D --> M[Configuration Panel]
+    D --> N[System Metrics]
     
-    VISIBILITY --> AUTO_REFRESH
-    KEYBOARD --> FETCH_STATUS
-    KEYBOARD --> AUTO_REFRESH
+    E --> O[Keyboard Shortcuts]
+    E --> P[Button Clicks]
+    E --> Q[Visibility Changes]
     
-    FETCH_STATUS --> ERROR_HANDLING
-    RUN_CHECK --> ERROR_HANDLING
+    L --> R[Doc Check Card]
+    L --> S[Git Check Card]
+    L --> T[Test Check Card]
     
-    classDef core fill:#e1f5fe
-    classDef api fill:#f3e5f5
-    classDef ui fill:#e8f5e8
-    classDef realtime fill:#fff3e0
-    
-    class CONSTRUCTOR,INIT,CONFIG core
-    class FETCH_STATUS,FETCH_CONFIG,UPDATE_CONFIG,RUN_CHECK api
-    class UPDATE_UI,UPDATE_DAEMON,UPDATE_CHECKS,UPDATE_METRICS ui
-    class AUTO_REFRESH,VISIBILITY,KEYBOARD,ERROR_HANDLING realtime
+    R --> U[Doc Index Info]
+    S --> V[Token Info]
+    T --> W[Test Stats]
 ```
 
 ## 📋 Responsabilidades
-
-### Gestión del Estado del Dashboard
-- **Inicialización**: Setup completo del dashboard al cargar la página
-- **Estado Global**: Mantiene el estado de conexión, timers y configuración
-- **Ciclo de Vida**: Gestiona inicialización, ejecución activa y limpieza
-- **Configuración**: Maneja configuración personalizable del dashboard
-
-### Comunicación con API Backend
-- **Fetch Status**: Obtiene estado actual del sistema cada 5 segundos
-- **Fetch Configuration**: Carga configuración inicial del sistema
-- **Update Configuration**: Envía cambios de configuración al backend
-- **Execute Checks**: Ejecuta verificaciones individuales on-demand
-- **Error Handling**: Manejo robusto de errores de red y API
-
-### Actualización de Interfaz Usuario
-- **Dynamic Updates**: Actualiza UI sin recargar página
-- **Status Indicators**: Gestiona indicadores visuales de estado
-- **Metrics Display**: Muestra métricas del sistema en tiempo real
-- **Interactive Controls**: Maneja botones, formularios y controles
-- **Visual Feedback**: Proporciona feedback visual para acciones
-
-### Funcionalidades Tiempo Real
-- **Auto Refresh**: Actualización automática cada 5 segundos
-- **Visibility Management**: Pausa cuando tab no está visible
-- **Keyboard Shortcuts**: Shortcuts Space (refresh) y R (toggle)
-- **Performance Optimization**: Gestión eficiente de recursos
-- **Connection Monitoring**: Detecta y maneja pérdidas de conexión
+- **Gestión de estado**: Actualizar UI con datos en tiempo real del daemon
+- **Comunicación API**: Interactuar con endpoints REST para obtener datos y ejecutar comandos
+- **Auto-refresh**: Actualizar automáticamente el estado cada 5 segundos
+- **Configuración dinámica**: Permitir modificar configuración sin reiniciar daemon
+- **Interacción usuario**: Manejar clicks, keyboard shortcuts y eventos de navegador
+- **Formateo de datos**: Mostrar información de forma legible y estructurada
 
 ## 🔗 Dependencias
+### Externas
+- **Fetch API** - Comunicación HTTP con el servidor
+- **DOM API** - Manipulación de elementos HTML
+- **Event API** - Manejo de eventos de navegador
+- **JSON** - Serialización/deserialización de datos
+- **Date** - Formateo de timestamps y duraciones
 
-### Browser APIs Requeridas
-- **Fetch API**: Para comunicación HTTP con backend
-- **DOM APIs**: querySelector, getElementById, innerHTML, etc.
-- **Timer APIs**: setInterval, clearInterval para auto-refresh
-- **Event APIs**: addEventListener para user interactions
-- **Visibility API**: document.visibilitychange para optimización
-- **Performance API**: Para métricas de rendimiento
+### Endpoints API
+- `GET /api/status` - Estado completo del daemon y verificaciones
+- `GET /api/config` - Configuración actual del daemon
+- `PUT /api/config` - Actualización de configuración
+- `POST /api/checks/{check_name}/run` - Ejecución manual de verificaciones
 
-### Integración con Backend
-- **API Endpoints**: `/api/status`, `/api/config`, `/api/checks/{name}/run`
-- **JSON Communication**: Request/response en formato JSON
-- **HTTP Methods**: GET para lectura, POST para acciones, PUT para updates
-- **Error Codes**: Manejo de códigos de estado HTTP
-
-### DOM Dependencies
-```html
-<!-- Elementos requeridos en HTML -->
-<div id="daemon-indicator"></div>
-<div id="daemon-text"></div>
-<div id="uptime"></div>
-<div id="total-checks"></div>
-<div id="last-check"></div>
-<div id="last-updated"></div>
-<div id="auto-refresh-status"></div>
-
-<!-- Check cards con estructura específica -->
-<div id="doc-check" class="check-card">
-    <div class="check-status">
-        <div class="status-indicator"></div>
-        <div class="status-text"></div>
-    </div>
-    <div class="check-message"></div>
-    <div class="check-details-content"></div>
-</div>
-```
-
-## 💡 Patrones de Uso
-
-### Inicialización Automática
+## 📊 Interfaces Públicas
+### Clase Principal
 ```javascript
-// Inicialización automática al cargar DOM
-document.addEventListener('DOMContentLoaded', function() {
-    dashboard = new AutocodeDashboard();
+class AutocodeDashboard {
+    constructor()
+    init()
     
-    // Setup de keyboard shortcuts globales
-    document.addEventListener('keydown', function(event) {
-        if (event.code === 'Space' && event.target.tagName !== 'INPUT') {
-            event.preventDefault();
-            dashboard.fetchAndUpdateStatus();
-        }
-        
-        if (event.code === 'KeyR' && event.target.tagName !== 'INPUT') {
-            event.preventDefault();
-            if (dashboard.refreshTimer) {
-                dashboard.stopAutoRefresh();
-            } else {
-                dashboard.startAutoRefresh();
-            }
-        }
-    });
-});
-```
-
-### Llamadas API Típicas
-```javascript
-// Ejemplo de llamada API con error handling
-async fetchAndUpdateStatus() {
-    try {
-        this.isLoading = true;
-        const response = await fetch('/api/status');
-        
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
-        
-        const data = await response.json();
-        this.updateUI(data);
-        this.updateLastUpdated();
-        
-    } catch (error) {
-        console.error('Error fetching status:', error);
-        this.handleError(error);
-    } finally {
-        this.isLoading = false;
-    }
+    // Data Management
+    async loadInitialData()
+    async fetchAndUpdateStatus()
+    async fetchAndUpdateConfig()
+    
+    // Auto Refresh
+    startAutoRefresh()
+    stopAutoRefresh()
+    
+    // UI Updates
+    updateUI(data)
+    updateDaemonStatus(daemon)
+    updateSystemStats(daemon)
+    updateCheckResults(checks)
+    updateCheckCard(checkName, result)
+    updateConfigUI(config)
+    
+    // Specialized Updates
+    updateDocIndexInfo(details)
+    updateTokenInfo(details)
+    updateTestInfo(details)
+    
+    // Formatting
+    formatDuration(seconds)
+    formatTimestamp(timestamp)
+    formatGitDetails(details)
+    formatTestDetails(details)
+    
+    // Error Handling
+    handleError(error)
 }
 ```
 
-### Ejecutar Checks Individuales
+### Funciones Globales
 ```javascript
-// Función global para ejecutar checks
-async function runCheck(checkName) {
-    const button = event.target;
-    button.disabled = true;
-    button.textContent = 'Running...';
-    
-    try {
-        const response = await fetch(`/api/checks/${checkName}/run`, {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'}
-        });
-        
-        if (response.ok) {
-            dashboard.fetchAndUpdateStatus();
-        }
-    } finally {
-        button.disabled = false;
-        button.textContent = 'Run Now';
-    }
-}
+async function runCheck(checkName)
+async function updateConfig()
 ```
 
 ## 🔧 Configuración
-
-### Configuración de la Clase
+### Inicialización
 ```javascript
-class AutocodeDashboard {
-    constructor() {
-        // Configuración principal
-        this.refreshInterval = 5000; // 5 segundos
-        this.refreshTimer = null;
-        this.isLoading = false;
-        
-        // Estados del sistema
-        this.connectionStatus = 'loading';
-        this.lastSuccessfulUpdate = null;
-        this.errorCount = 0;
-        
-        // Configuración de features
-        this.enableAutoRefresh = true;
-        this.enableKeyboardShortcuts = true;
-        this.enableVisibilityPause = true;
-    }
+constructor() {
+    this.refreshInterval = 5000; // 5 segundos
+    this.refreshTimer = null;
+    this.isLoading = false;
+    
+    this.init();
 }
 ```
 
-### Configuración de API Endpoints
+### Auto-refresh System
 ```javascript
-// URLs de API utilizadas
-const API_ENDPOINTS = {
-    status: '/api/status',
-    config: '/api/config',
-    runCheck: (checkName) => `/api/checks/${checkName}/run`
-};
+startAutoRefresh() {
+    this.refreshTimer = setInterval(() => {
+        if (!this.isLoading) {
+            this.fetchAndUpdateStatus();
+        }
+    }, this.refreshInterval);
+}
 ```
 
-### Configuración de UI Elements
+## 💡 Patrones de Uso
+### Inicialización del Dashboard
 ```javascript
-// Elementos DOM principales
-const UI_ELEMENTS = {
-    daemonIndicator: '#daemon-indicator',
-    daemonText: '#daemon-text',
-    uptime: '#uptime',
-    totalChecks: '#total-checks',
-    lastCheck: '#last-check',
-    lastUpdated: '#last-updated',
-    autoRefreshStatus: '#auto-refresh-status'
-};
+// Inicialización automática cuando DOM está listo
+document.addEventListener('DOMContentLoaded', function() {
+    dashboard = new AutocodeDashboard();
+});
 ```
 
-## ⚠️ Consideraciones Especiales
-
-### Gestión de Memoria
-- **Timer Cleanup**: Limpieza automática de timers al cerrar página
-- **Event Listener Cleanup**: Remoción de listeners en beforeunload
-- **Memory Leaks Prevention**: Evita acumulación de referencias circulares
-- **Efficient Updates**: Actualiza solo elementos que han cambiado
-
-### Performance Optimization
-- **Visibility API**: Pausa refresh cuando tab no está visible
-- **Debouncing**: Previene multiple calls simultáneos
-- **Efficient DOM Updates**: Minimiza manipulaciones del DOM
-- **Error Recovery**: Recuperación automática de errores de red
-
-### Error Handling Strategies
-- **Network Errors**: Retry automático con backoff exponencial
-- **API Errors**: Diferentes strategies según código HTTP
-- **UI Error States**: Estados visuales para diferentes tipos de error
-- **Graceful Degradation**: Funcionalidad reducida en caso de errores
-
-### Browser Compatibility
-- **ES6+ Features**: Requires modern browser support
-- **Fetch API**: Polyfill needed for older browsers
-- **Modern DOM APIs**: querySelector, addEventListener, etc.
-- **CSS Custom Properties**: Para theming dinámico
-
-## 🧪 Testing y Validación
-
-### Testing Manual en Console
+### Actualización Manual
 ```javascript
-// Verificar existencia del dashboard
-console.log(typeof dashboard !== 'undefined');
+// Ejecutar verificación específica
+await runCheck('doc_check');
+await runCheck('git_check');
+await runCheck('test_check');
 
-// Verificar estado del auto-refresh
-console.log('Auto-refresh active:', dashboard.refreshTimer !== null);
-
-// Test manual de API
-fetch('/api/status')
-  .then(response => response.json())
-  .then(data => console.log('API test:', data));
-
-// Test de funciones principales
-dashboard.fetchAndUpdateStatus();
-dashboard.updateConfig();
+// Actualizar configuración
+await updateConfig();
 ```
 
-### Debugging Utilities
+### Keyboard Shortcuts
 ```javascript
-// Utilidades de debug disponibles
-window.dashboardUtils = {
-    getState: () => ({
-        refreshTimer: !!dashboard.refreshTimer,
-        isLoading: dashboard.isLoading,
-        connectionStatus: dashboard.connectionStatus,
-        errorCount: dashboard.errorCount
-    }),
-    
-    forceRefresh: () => dashboard.fetchAndUpdateStatus(),
-    toggleAutoRefresh: () => {
+// Espacio: Actualizar estado manualmente
+// R: Toggle auto-refresh on/off
+document.addEventListener('keydown', function(event) {
+    if (event.code === 'Space') {
+        dashboard.fetchAndUpdateStatus();
+    }
+    if (event.code === 'KeyR') {
         if (dashboard.refreshTimer) {
             dashboard.stopAutoRefresh();
         } else {
             dashboard.startAutoRefresh();
         }
-    },
-    
-    simulateError: () => dashboard.handleError(new Error('Test error')),
-    clearErrors: () => dashboard.errorCount = 0
-};
+    }
+});
 ```
 
-### Performance Monitoring
+## ⚠️ Consideraciones
+### Funcionamiento
+- **Auto-refresh**: Se actualiza cada 5 segundos automáticamente
+- **Pause on hide**: Se pausa cuando la pestaña no está visible
+- **Error handling**: Maneja errores de red y API graciosamente
+- **Loading states**: Previene múltiples requests simultáneos
+
+### Limitaciones
+- **Dependencia de API**: Requiere que el servidor esté funcionando
+- **Polling**: Usa polling en lugar de WebSockets para simplicidad
+- **Browser compatibility**: Requiere navegador moderno con Fetch API
+- **No persistencia**: Estado se pierde al recargar página
+
+## 🧪 Testing
+### Pruebas Manuales
 ```javascript
-// Monitor performance de updates
-updateUI(data) {
-    performance.mark('ui-update-start');
-    
-    // Update logic here
-    this.updateDaemonStatus(data.daemon);
-    this.updateSystemStats(data.daemon);
-    this.updateCheckResults(data.checks);
-    
-    performance.mark('ui-update-end');
-    performance.measure('ui-update', 'ui-update-start', 'ui-update-end');
+// Test inicialización
+const dashboard = new AutocodeDashboard();
+console.log('Dashboard initialized');
+
+// Test fetch status
+await dashboard.fetchAndUpdateStatus();
+console.log('Status updated');
+
+// Test run check
+await runCheck('doc_check');
+console.log('Check executed');
+```
+
+### Debugging
+```javascript
+// Habilitar logging detallado
+console.log('Dashboard status:', {
+    isLoading: dashboard.isLoading,
+    refreshTimer: dashboard.refreshTimer,
+    refreshInterval: dashboard.refreshInterval
+});
+```
+
+## 🔄 Flujo de Datos
+### Flujo de Inicialización
+1. **DOM Ready**: Evento DOMContentLoaded dispara inicialización
+2. **Constructor**: Configura propiedades y llama init()
+3. **Init**: Inicia auto-refresh y carga datos iniciales
+4. **Load Initial**: Obtiene status y configuración inicial
+5. **Update UI**: Actualiza todos los elementos de la interfaz
+
+### Flujo de Auto-refresh
+1. **Timer**: Se ejecuta cada 5 segundos
+2. **Check Loading**: Verifica si hay request en progreso
+3. **Fetch Status**: Obtiene estado actual del daemon
+4. **Update UI**: Actualiza elementos del dashboard
+5. **Update Timestamp**: Muestra hora de última actualización
+
+### Flujo de Ejecución Manual
+1. **Button Click**: Usuario hace click en "Run Now"
+2. **Disable Button**: Cambia estado a "Running..."
+3. **API Call**: POST a /api/checks/{check_name}/run
+4. **Handle Response**: Procesa respuesta del servidor
+5. **Re-enable Button**: Restaura estado original
+6. **Refresh Status**: Actualiza estado inmediatamente
+
+### Flujo de Actualización de Configuración
+1. **Get Form Values**: Obtiene valores de formulario
+2. **Build Config**: Construye objeto de configuración
+3. **API Call**: PUT a /api/config
+4. **Handle Response**: Procesa confirmación del servidor
+5. **Update UI**: Refleja cambios en la interfaz
+
+## 📈 Elementos de UI Gestionados
+### Cards de Estado
+```javascript
+// Doc Check Card
+updateCheckCard('doc_check', result) {
+    // Actualiza status, mensaje, timestamp
+    // Muestra información de índice de documentación
+    // Formatea salida detallada
+}
+
+// Git Check Card
+updateCheckCard('git_check', result) {
+    // Actualiza estadísticas de repositorio
+    // Muestra información de tokens
+    // Formatea cambios detallados
+}
+
+// Test Check Card
+updateCheckCard('test_check', result) {
+    // Actualiza contadores de tests
+    // Muestra estadísticas por tipo
+    // Formatea resultados de ejecución
 }
 ```
 
-## 🔄 Flujo de Datos y Estados
-
-### Ciclo de Vida del Dashboard
-```mermaid
-sequenceDiagram
-    participant Page
-    participant Dashboard
-    participant API
-    participant UI
-    
-    Page->>Dashboard: DOMContentLoaded
-    Dashboard->>Dashboard: constructor()
-    Dashboard->>Dashboard: init()
-    Dashboard->>Dashboard: startAutoRefresh()
-    Dashboard->>API: loadInitialData()
-    API-->>Dashboard: initial response
-    Dashboard->>UI: updateUI()
-    
-    loop Every 5 seconds
-        Dashboard->>API: fetchAndUpdateStatus()
-        API-->>Dashboard: status data
-        Dashboard->>UI: updateUI()
-    end
-    
-    Page->>Dashboard: beforeunload
-    Dashboard->>Dashboard: cleanup()
-```
-
-### Estados del Sistema
+### Información Especializada
 ```javascript
-// Estados posibles del dashboard
-const DASHBOARD_STATES = {
-    INITIALIZING: 'initializing',
-    ACTIVE: 'active',
-    ERROR: 'error',
-    OFFLINE: 'offline',
-    LOADING: 'loading'
-};
+// Doc Index Info
+updateDocIndexInfo(details) {
+    // Modules count
+    // Files count
+    // Purposes found
+}
 
-// Estados de conexión
-const CONNECTION_STATES = {
-    CONNECTED: 'connected',
-    CONNECTING: 'connecting',
-    DISCONNECTED: 'disconnected',
-    ERROR: 'error'
-};
-```
+// Token Info
+updateTokenInfo(details) {
+    // Token count
+    // Threshold comparison
+    // Warning indicators
+}
 
-### Gestión de Estado Interno
-```javascript
-class AutocodeDashboard {
-    constructor() {
-        this.state = {
-            // Sistema
-            dashboardState: 'initializing',
-            connectionState: 'connecting',
-            
-            // Timers
-            refreshTimer: null,
-            retryTimer: null,
-            
-            // Contadores
-            successfulUpdates: 0,
-            failedUpdates: 0,
-            totalApiCalls: 0,
-            
-            // Timestamps
-            lastUpdate: null,
-            lastError: null,
-            startTime: Date.now()
-        };
-    }
+// Test Info
+updateTestInfo(details) {
+    // Missing/Passing/Failing/Orphaned counts
+    // Unit/Integration breakdown
 }
 ```
 
-## 📊 Métricas y Monitoreo
-
-### Métricas de Performance
+### System Stats
 ```javascript
-// Métricas tracked automáticamente
-const METRICS = {
-    apiResponseTimes: [],
-    uiUpdateTimes: [],
-    errorRates: {
-        network: 0,
-        api: 0,
-        parsing: 0
-    },
-    userInteractions: {
-        manualRefresh: 0,
-        checkExecutions: 0,
-        configChanges: 0
-    }
-};
-```
-
-### Analytics de Usuario
-```javascript
-// Track user interactions
-trackUserAction(action, details) {
-    console.log(`User action: ${action}`, details);
-    
-    // Future: send to analytics service
-    if (window.gtag) {
-        window.gtag('event', action, {
-            event_category: 'dashboard',
-            event_label: details.checkName || details.setting,
-            value: details.duration || 1
-        });
-    }
+updateSystemStats(daemon) {
+    // Uptime formatting
+    // Total checks counter
+    // Last check timestamp
 }
 ```
 
 ## 🚀 Extensibilidad
-
-### Plugin System (Future)
+### Nuevas Verificaciones
 ```javascript
-// Extensible plugin architecture
-class DashboardPlugin {
-    constructor(name, dashboard) {
-        this.name = name;
-        this.dashboard = dashboard;
-    }
-    
-    init() {
-        // Plugin initialization
-    }
-    
-    onStatusUpdate(data) {
-        // Handle status updates
-    }
-    
-    render() {
-        // Plugin UI rendering
+// Añadir nueva card de verificación
+updateCheckCard('custom_check', result) {
+    // Lógica específica para nueva verificación
+    if (checkName === 'custom_check' && result.details) {
+        this.updateCustomInfo(result.details);
     }
 }
 
-// Plugin registration
-dashboard.registerPlugin(new CustomMetricsPlugin('custom-metrics', dashboard));
-```
-
-### Custom Widgets
-```javascript
-// Add custom widgets to dashboard
-class CustomWidget {
-    constructor(containerId, options) {
-        this.container = document.getElementById(containerId);
-        this.options = options;
-    }
-    
-    render(data) {
-        // Custom widget rendering logic
-    }
-    
-    update(data) {
-        // Update widget with new data
-    }
+// Función de actualización específica
+updateCustomInfo(details) {
+    const customInfo = document.getElementById('custom-check-info');
+    // Actualizar elementos específicos
 }
 ```
 
-### Theme System
+### Nuevos Endpoints
 ```javascript
-// Dynamic theme switching
-class ThemeManager {
-    static setTheme(themeName) {
-        document.documentElement.setAttribute('data-theme', themeName);
-        localStorage.setItem('dashboard-theme', themeName);
-    }
-    
-    static getTheme() {
-        return localStorage.getItem('dashboard-theme') || 'default';
-    }
-}
-```
-
-## 🔧 Debugging y Desarrollo
-
-### Debug Mode
-```javascript
-// Enable debug mode
-class AutocodeDashboard {
-    enableDebugMode() {
-        this.debug = true;
-        this.logLevel = 'debug';
-        console.log('Dashboard debug mode enabled');
+// Añadir nuevo endpoint
+async function callCustomEndpoint(data) {
+    try {
+        const response = await fetch('/api/custom-endpoint', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(data)
+        });
         
-        // Expose internal state to window
-        window.dashboardDebug = {
-            state: this.state,
-            methods: {
-                fetchStatus: () => this.fetchAndUpdateStatus(),
-                updateUI: (data) => this.updateUI(data),
-                simulateError: (type) => this.simulateError(type)
-            }
-        };
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+        
+        return await response.json();
+    } catch (error) {
+        console.error('Custom endpoint error:', error);
+        throw error;
     }
 }
 ```
 
-### Development Helpers
-```javascript
-// Development utilities
-if (process.env.NODE_ENV === 'development') {
-    // Hot reload support
-    if (module.hot) {
-        module.hot.accept();
-    }
-    
-    // Development console commands
-    window.dev = {
-        dashboard: () => dashboard,
-        forceUpdate: () => dashboard.fetchAndUpdateStatus(),
-        getMetrics: () => METRICS,
-        clearStorage: () => localStorage.clear()
-    };
-}
-```
-
-## 📖 API Reference
-
-### Clase Principal: AutocodeDashboard
-
-#### Constructor
-```javascript
-constructor()
-```
-Inicializa nueva instancia del dashboard con configuración por defecto.
-
-#### Métodos Principales
-
-##### `init()`
-Configura el dashboard completo: event listeners, auto-refresh, y carga inicial.
-
-##### `fetchAndUpdateStatus()`
-Obtiene estado actual del sistema y actualiza la UI. Método principal del ciclo de refresh.
-
-##### `updateUI(data)`
-Actualiza toda la interfaz con nuevos datos del sistema.
-
-##### `startAutoRefresh()` / `stopAutoRefresh()`
-Controla el timer de actualización automática.
-
-##### `handleError(error)`
-Maneja errores de API y red con recovery automático.
-
-#### Métodos de UI
-
-##### `updateDaemonStatus(daemon)`
-Actualiza indicadores de estado del daemon.
-
-##### `updateSystemStats(daemon)`
-Actualiza métricas del sistema (uptime, checks, etc.).
-
-##### `updateCheckResults(checks)`
-Actualiza resultados de todos los checks.
-
-##### `updateConfigUI(config)`
-Actualiza controles de configuración.
-
-### Funciones Globales
-
-#### `runCheck(checkName)`
-Ejecuta un check específico via API call.
-
-#### `updateConfig()`
-Envía configuración actualizada al backend.
-
-### Event Handlers
-
-#### Document Ready
-```javascript
-document.addEventListener('DOMContentLoaded', function() {
-    dashboard = new AutocodeDashboard();
-});
-```
-
-#### Keyboard Shortcuts
+### Nuevos Keyboard Shortcuts
 ```javascript
 document.addEventListener('keydown', function(event) {
-    // Space: Manual refresh
-    // R: Toggle auto-refresh
+    // Existing shortcuts...
+    
+    // Nueva funcionalidad
+    if (event.code === 'KeyC' && event.target.tagName !== 'INPUT') {
+        event.preventDefault();
+        // Ejecutar acción personalizada
+        dashboard.customAction();
+    }
 });
 ```
 
-#### Visibility Change
+### Formateo Personalizado
 ```javascript
-document.addEventListener('visibilitychange', function() {
-    // Pause/resume based on tab visibility
-});
+// Añadir nuevo formateador
+formatCustomDetails(details) {
+    let output = `Custom Status:\n`;
+    output += `  Metric 1: ${details.metric1}\n`;
+    output += `  Metric 2: ${details.metric2}\n`;
+    
+    if (details.items) {
+        output += `\nItems:\n`;
+        details.items.forEach(item => {
+            output += `  - ${item.name}: ${item.value}\n`;
+        });
+    }
+    
+    return output;
+}
 ```
 
-#### Page Unload
+### Event Handling Personalizado
 ```javascript
-window.addEventListener('beforeunload', function() {
-    dashboard.stopAutoRefresh();
+// Añadir nuevo event handler
+document.addEventListener('custom-event', function(event) {
+    if (dashboard) {
+        dashboard.handleCustomEvent(event.detail);
+    }
 });
+
+// En la clase AutocodeDashboard
+handleCustomEvent(data) {
+    // Procesar evento personalizado
+    this.updateCustomUI(data);
+}
 ```
 
-## 🔄 Integración con Sistema
-
-### Integración con FastAPI Backend
-- **API Calls**: Consume todos los endpoints REST disponibles
-- **Error Coordination**: Manejo coordinado de errores frontend/backend
-- **Data Format**: Expectativa de formato JSON estructurado específico
-- **Authentication**: Preparado para futura autenticación (headers, tokens)
-
-### Integración con HTML Template
-- **DOM Binding**: Se conecta automáticamente a elementos con IDs específicos
-- **CSS Classes**: Utiliza clases CSS para estados visuales
-- **Form Integration**: Integra con formularios para configuración
-- **Event Delegation**: Maneja eventos de elementos dinámicos
-
-### Futuras Integraciones
-- **WebSocket Support**: Para updates más eficientes que polling
-- **Service Worker**: Para funcionalidad offline y caching
-- **Web Push**: Para notificaciones del sistema
-- **IndexedDB**: Para storage persistente de configuración local
+### Configuración Dinámica
+```javascript
+// Añadir nuevos campos de configuración
+updateConfigUI(config) {
+    // Configuración existente...
+    
+    // Nuevos campos
+    if (config.custom_settings) {
+        const customSetting = document.getElementById('custom-setting');
+        customSetting.checked = config.custom_settings.enabled;
+    }
+}

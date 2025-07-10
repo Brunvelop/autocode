@@ -74,16 +74,27 @@ graph TB
 **Documentación**: [static/_module.md](static/_module.md)
 
 #### `static/app.js` - Dashboard JavaScript Interactivo
-**Propósito**: Lógica principal del dashboard con actualizaciones en tiempo real
-**Documentación**: [static/app.js.md](static/app.js.md)
+**Propósito**: Lógica principal del dashboard con actualizaciones en tiempo real y gestión completa del estado
+**Documentación**: [static/app.md](static/app.md)
 
-**Características principales**:
-- Clase `AutocodeDashboard` para gestión completa del estado
-- Auto-refresh cada 5 segundos con pause/resume automático
-- API client con manejo robusto de errores
-- Actualización dinámica de métricas y estados
-- Keyboard shortcuts (Space para refresh, R para toggle auto-refresh)
-- Manejo de visibilidad de página para optimización de recursos
+**Características implementadas**:
+- **Clase AutocodeDashboard**: Gestión completa del estado con propiedades:
+  - `refreshInterval: 5000` (5 segundos)
+  - `refreshTimer: TimerID` para control de intervalos
+  - `isLoading: boolean` para prevenir requests concurrentes
+- **Auto-refresh inteligente**: Pausa automática cuando la página no está visible
+- **API Client robusto**: Manejo completo de errores HTTP y timeouts
+- **Actualización dinámica**: Métricas, estados, y estadísticas en tiempo real
+- **Keyboard shortcuts**: Space (refresh manual), R (toggle auto-refresh)
+- **Gestión de visibilidad**: `document.visibilitychange` para optimización de recursos
+
+**Funcionalidades específicas**:
+- **`runCheck(checkName)`**: Ejecución manual de checks con UI feedback
+- **`updateConfig()`**: Actualización dinámica de configuración via API
+- **Token alerts**: Visualización de alertas con thresholds configurables
+- **Documentation index**: Estadísticas dinámicas de documentación generada
+- **Test breakdown**: Desglose detallado por tipos (unit/integration) y estados
+- **Connection status**: Indicadores visuales de estado de conexión API
 
 #### `static/style.css` - Estilos CSS del Dashboard
 **Propósito**: Diseño visual y responsivo para la interfaz web

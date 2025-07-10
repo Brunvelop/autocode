@@ -1,0 +1,167 @@
+{
+  "timestamp": "2025-07-10T11:48:59.667707",
+  "project_name": "Autocode - Documentación Técnica",
+  "config": {
+    "output_path": ".clinerules\\docs_index.json",
+    "generated_by": "autocode-doc-indexer",
+    "version": "1.0.0"
+  },
+  "documentation_stats": {
+    "total_files": 15,
+    "total_modules": 9,
+    "total_directories": 8,
+    "total_purposes_found": 24
+  },
+  "structure": {
+    "docs/": {
+      "type": "module",
+      "index_file": "docs\\_index.md",
+      "purpose": "El módulo autocode proporciona herramientas automatizadas para la calidad del código y el desarrollo del proyecto Vidi. Su responsabilidad principal es automatizar tareas de mantenimiento como la verificación de documentación, el análisis de cambios en git, y la integración con OpenCode AI para análisis inteligente de código, incluyendo tanto herramientas CLI como un sistema de monitoreo continuo con interfaz web.",
+      "last_modified": "2025-07-08T13:38:30.956838",
+      "module_file": "docs\\_module.md",
+      "subdirectories": {
+        "docs\\autocode/": {
+          "type": "module",
+          "module_file": "docs\\autocode\\_module.md",
+          "purpose": "El módulo autocode es el núcleo central del sistema de automatización de calidad de código. Su responsabilidad principal es proporcionar una plataforma integrada que combina verificación de documentación, análisis de cambios git, validación de tests, y monitoreo en tiempo real, todo a través de una arquitectura modular y extensible que puede ser utilizada tanto programáticamente como mediante interfaz de línea de comandos y dashboard web.",
+          "last_modified": "2025-07-10T11:46:19.234905",
+          "subdirectories": {
+            "docs\\autocode\\api/": {
+              "type": "module",
+              "module_file": "docs\\autocode\\api\\_module.md",
+              "purpose": "El módulo api proporciona la interfaz web y API RESTful para el sistema autocode. Su responsabilidad principal es ofrecer un dashboard web en tiempo real para monitorear el estado del sistema, gestionar la configuración, y proporcionar una API programática para integración con otros sistemas. Combina una interfaz amigable para humanos con endpoints RESTful para automatización.",
+              "last_modified": "2025-07-08T13:38:30.957838",
+              "files": {
+                "docs\\autocode\\api\\models.md": {
+                  "type": "file_doc",
+                  "purpose": "Los modelos de datos Pydantic proporcionan estructuras tipificadas y validadas para toda la comunicación de la API de autocode. Su responsabilidad principal es garantizar la integridad de los datos, validación automática de tipos, y serialización JSON consistente entre el servidor FastAPI y los clientes de la API.",
+                  "last_modified": "2025-07-08T13:38:30.957838"
+                },
+                "docs\\autocode\\api\\server.md": {
+                  "type": "file_doc",
+                  "purpose": "El servidor FastAPI proporciona la interfaz web y API RESTful para el sistema autocode. Su responsabilidad principal es orquestar todas las operaciones de monitoreo, exponer endpoints para integración programática, y ofrecer un dashboard web en tiempo real para supervisión visual del estado del sistema.",
+                  "last_modified": "2025-07-08T13:38:30.958839"
+                }
+              }
+            },
+            "docs\\autocode\\core/": {
+              "type": "module",
+              "module_file": "docs\\autocode\\core\\_module.md",
+              "purpose": "El módulo core contiene las herramientas fundamentales del sistema autocode. Su responsabilidad principal es proporcionar los componentes básicos para análisis y verificación de código, incluyendo verificación de documentación, análisis de cambios git, integración con OpenCode AI, conteo de tokens para LLM, y generación de índices de documentación.",
+              "last_modified": "2025-07-08T13:38:30.959839",
+              "files": {
+                "docs\\autocode\\core\\doc_checker.md": {
+                  "type": "file_doc",
+                  "purpose": "DocChecker es el componente central para verificar el estado de la documentación modular en el proyecto Vidi. Su responsabilidad es comparar fechas de modificación entre archivos de código fuente y su documentación correspondiente, siguiendo la estructura modular establecida (_index.md, _module.md, archivo.md).",
+                  "last_modified": "2025-07-08T13:38:30.959839"
+                },
+                "docs\\autocode\\core\\doc_indexer.md": {
+                  "type": "file_doc",
+                  "purpose": "Genera índices estructurados de documentación modular en formato JSON, aprovechando la estructura jerárquica de documentación del proyecto (\\_index.md, \\_module.md, archivo.md) para crear un mapa completo con propósitos extraídos automáticamente.",
+                  "last_modified": "2025-07-08T13:38:30.959839"
+                },
+                "docs\\autocode\\core\\git_analyzer.md": {
+                  "type": "file_doc",
+                  "purpose": "GitAnalyzer es el componente responsable de analizar cambios en el repositorio git para extraer información útil sobre modificaciones, estadísticas y diffs detallados. Su principal uso es generar datos estructurados que pueden ayudar en la creación de mensajes de commit descriptivos y análisis de cambios del proyecto.",
+                  "last_modified": "2025-07-08T13:38:30.960839"
+                },
+                "docs\\autocode\\core\\opencode_executor.md": {
+                  "type": "file_doc",
+                  "purpose": "La clase OpenCodeExecutor proporciona integración con OpenCode AI para análisis inteligente de código en modo headless (sin interfaz gráfica). Su responsabilidad principal es ejecutar OpenCode de forma automatizada, gestionar configuración, y formatear resultados para procesamiento posterior en pipelines de automatización.",
+                  "last_modified": "2025-07-08T13:38:30.960839"
+                },
+                "docs\\autocode\\core\\test_checker.md": {
+                  "type": "file_doc",
+                  "purpose": "TestChecker es el componente responsable de verificar el estado de los tests en el proyecto Vidi siguiendo una estructura modular. Su responsabilidad principal es detectar tests faltantes, validar tests existentes, y identificar tests huérfanos que ya no corresponden a código existente. Mapea automáticamente archivos de código a sus tests correspondientes pero no los crea, proporcionando información para que los desarrolladores mantengan una cobertura de tests adecuada.",
+                  "last_modified": "2025-07-08T13:38:30.961838"
+                },
+                "docs\\autocode\\core\\token_counter.md": {
+                  "type": "file_doc",
+                  "purpose": "El módulo token_counter.py proporciona funcionalidad para contar tokens en texto y archivos para varios modelos de LLM. Su responsabilidad principal es la medición precisa de tokens usando tiktoken, estimación de costos de API, y análisis de límites de contexto para operaciones de IA.",
+                  "last_modified": "2025-07-08T13:38:30.961838"
+                }
+              }
+            },
+            "docs\\autocode\\orchestration/": {
+              "type": "module",
+              "module_file": "docs\\autocode\\orchestration\\_module.md",
+              "purpose": "El módulo autocode/orchestration proporciona el sistema de automatización y programación para el sistema autocode. Su responsabilidad principal es orquestar la ejecución automática de verificaciones, gestionar tareas programadas, y proporcionar monitoreo continuo del sistema. Actúa como el cerebro que coordina todas las operaciones automatizadas del sistema, integrando los componentes core a través de un daemon robusto y un scheduler configurable.",
+              "last_modified": "2025-07-10T11:48:50.516512",
+              "files": {
+                "docs\\autocode\\orchestration\\daemon.md": {
+                  "type": "file_doc",
+                  "purpose": "Daemon de monitoreo continuo que ejecuta verificaciones periódicas automatizadas usando DocChecker, GitAnalyzer y TestChecker. Coordina la ejecución programada de verificaciones, mantiene estado y resultados, y proporciona interfaz para el dashboard web.",
+                  "last_modified": "2025-07-09T13:58:40.473912"
+                },
+                "docs\\autocode\\orchestration\\scheduler.md": {
+                  "type": "file_doc",
+                  "purpose": "Sistema de programación de tareas periódicas que ejecuta funciones a intervalos regulares de forma asíncrona. Proporciona gestión dinámica de tareas, soporte para funciones síncronas y asíncronas, y manejo robusto de errores.",
+                  "last_modified": "2025-07-09T14:00:02.390920"
+                }
+              }
+            },
+            "docs\\autocode\\web/": {
+              "type": "module",
+              "module_file": "docs\\autocode\\web\\_module.md",
+              "purpose": "El módulo autocode/web proporciona una interfaz web moderna y dashboard interactivo para el monitoreo visual en tiempo real del sistema autocode. Su responsabilidad principal es ofrecer una experiencia de usuario amigable y responsiva para supervisar el estado de verificaciones, métricas del sistema y configuración de automatización, complementando la API REST con componentes frontend completos.",
+              "last_modified": "2025-07-10T11:42:51.767952",
+              "subdirectories": {
+                "docs\\autocode\\web\\static/": {
+                  "type": "module",
+                  "module_file": "docs\\autocode\\web\\static\\_module.md",
+                  "purpose": "Módulo que contiene los assets estáticos del dashboard web de autocode: JavaScript para interactividad, CSS para estilos visuales y cualquier recurso estático necesario para el funcionamiento de la interfaz web de monitoreo.",
+                  "last_modified": "2025-07-09T14:05:41.629653",
+                  "files": {
+                    "docs\\autocode\\web\\static\\app.md": {
+                      "type": "file_doc",
+                      "purpose": "JavaScript del dashboard de monitoreo que proporciona interfaz interactiva en tiempo real para el daemon de autocode. Maneja la actualización automática de estado, ejecución manual de verificaciones, configuración dinámica y interacción con la API REST.",
+                      "last_modified": "2025-07-09T14:01:29.499908"
+                    },
+                    "docs\\autocode\\web\\static\\style.md": {
+                      "type": "file_doc",
+                      "purpose": "Estilos CSS para el dashboard de monitoreo de autocode que define la apariencia visual, layout responsive, indicadores de estado, animaciones y temas visuales. Proporciona una interfaz profesional y moderna para el monitoreo en tiempo real del daemon.",
+                      "last_modified": "2025-07-09T14:04:24.502627"
+                    }
+                  }
+                },
+                "docs\\autocode\\web\\templates/": {
+                  "type": "module",
+                  "module_file": "docs\\autocode\\web\\templates\\_module.md",
+                  "purpose": "El módulo autocode/web/templates contiene las plantillas HTML que definen la estructura y layout del dashboard web de autocode. Su responsabilidad principal es proporcionar templates Jinja2 bien estructurados, semánticos y optimizados que sirven como base para la interfaz web, integrándose perfectamente con FastAPI y los assets estáticos para crear una experiencia de usuario cohesiva.",
+                  "last_modified": "2025-07-10T11:41:58.650348",
+                  "files": {
+                    "docs\\autocode\\web\\templates\\index.md": {
+                      "type": "file_doc",
+                      "purpose": "Template HTML principal del dashboard de monitoreo de autocode que proporciona interfaz web completa para visualizar estado del daemon, resultados de verificaciones, configuración dinámica y control manual. Utiliza FastAPI templates con Jinja2 para servir contenido dinámico.",
+                      "last_modified": "2025-07-09T14:02:56.044370"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "files": {
+            "docs\\autocode\\cli.md": {
+              "type": "file_doc",
+              "purpose": "Interfaz de línea de comandos unificada para autocode que proporciona acceso a todas las funcionalidades del proyecto a través de subcomandos especializados. Actúa como punto de entrada único para verificación de documentación, análisis de cambios git, monitoreo continuo, análisis de IA con OpenCode, verificación de tests, y conteo de tokens para análisis de LLM.",
+              "last_modified": "2025-07-09T13:56:29.840756"
+            }
+          }
+        },
+        "docs\\examples/": {
+          "type": "module",
+          "module_file": "docs\\examples\\_module.md",
+          "purpose": "El módulo examples contiene ejemplos prácticos y casos de uso que demuestran cómo utilizar autocode tanto programáticamente como desde la línea de comandos. Su responsabilidad principal es proporcionar código ejecutable que sirva como referencia, tutorial, y punto de partida para desarrolladores que quieran integrar autocode en sus proyectos o flujos de trabajo.",
+          "last_modified": "2025-07-10T11:44:34.136327",
+          "files": {
+            "docs\\examples\\basic_usage.md": {
+              "type": "file_doc",
+              "purpose": "Script de ejemplo que demuestra el uso programático de autocode, mostrando cómo utilizar las funcionalidades principales de DocChecker y GitAnalyzer desde código Python.",
+              "last_modified": "2025-07-09T13:55:32.188835"
+            }
+          }
+        }
+      }
+    }
+  }
+}

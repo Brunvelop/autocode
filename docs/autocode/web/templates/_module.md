@@ -70,24 +70,32 @@ graph TB
 ## 📁 Componentes del Módulo
 
 ### `index.html` - Template Principal del Dashboard
-**Propósito**: Template HTML principal que define toda la estructura del dashboard autocode
-**Documentación**: [index.html.md](index.html.md)
+**Propósito**: Template HTML principal que define toda la estructura del dashboard autocode con monitoreo en tiempo real
+**Documentación**: [index.md](index.md)
 
 **Características principales**:
-- **HTML5 Semantic Structure**: Uso correcto de elementos semánticos
-- **Jinja2 Template Integration**: Templates dinámicos con FastAPI
-- **Responsive Design Foundation**: Base HTML para diseño adaptativo
-- **Asset Integration**: Carga optimizada de CSS y JavaScript
-- **Accessibility Features**: Estructura accesible para screen readers
-- **SEO Optimization**: Meta tags y estructura optimizada
-- **Performance Optimization**: Carga eficiente de recursos
+- **HTML5 Semantic Structure**: Uso correcto de elementos semánticos (header, main, section, footer)
+- **FastAPI/Jinja2 Integration**: Templates dinámicos con `{{ url_for('static', path='/style.css') }}`
+- **Responsive Design Foundation**: Container fluid con viewport meta tag
+- **Asset Integration**: CSS y JavaScript cargados via FastAPI static files
+- **Interactive Dashboard**: Controles dinámicos para ejecutar checks manualmente
+- **Real-time Updates**: Auto-refresh y actualización vía JavaScript
+- **Configuration Panel**: Controles en vivo para configurar intervalos y opciones
 
-**Secciones principales**:
-- **Document Head**: Meta tags, title, asset loading
-- **Header Section**: Título del dashboard y estado general
-- **Main Dashboard**: Cards de métricas y estado de checks
-- **Configuration Panel**: Controles de configuración del sistema
-- **Footer Section**: Información de estado y controles secundarios
+**Secciones implementadas**:
+- **Document Head**: Meta tags, title dinámico, asset loading con FastAPI url_for
+- **Header Section**: Título "🔧 Autocode Monitoring Dashboard" + estado del daemon
+- **System Status**: Overview card con uptime, total checks, y last check
+- **Active Checks**: Tres cards principales (Documentation, Test, Git) con controles
+- **Configuration Section**: Panel de configuración con checkboxes e inputs
+- **Footer Section**: Last updated timestamp y auto-refresh status
+
+**Funcionalidades interactivas**:
+- **Run Now Buttons**: Botones para ejecutar checks manualmente via `runCheck()`
+- **Status Indicators**: Indicadores visuales de estado (unknown, success, warning, error)
+- **Configuration Controls**: Inputs para intervalos, thresholds, y habilitación de checks
+- **Real-time Stats**: Estadísticas dinámicas para documentación, tests, y tokens
+- **Auto-refresh**: Actualización automática del dashboard cada 5 segundos
 
 ## 🔗 Dependencias del Módulo
 

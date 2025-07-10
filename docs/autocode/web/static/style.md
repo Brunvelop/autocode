@@ -1,396 +1,619 @@
-# Autocode Dashboard CSS Styles (style.css)
+# style.css
 
 ## 🎯 Propósito
+Estilos CSS para el dashboard de monitoreo de autocode que define la apariencia visual, layout responsive, indicadores de estado, animaciones y temas visuales. Proporciona una interfaz profesional y moderna para el monitoreo en tiempo real del daemon.
 
-El archivo `style.css` define todos los estilos visuales del dashboard web de autocode, proporcionando un diseño moderno, responsivo y accesible. Su responsabilidad principal es crear una experiencia visual cohesiva que facilite la lectura de métricas, el reconocimiento de estados del sistema, y la interacción eficiente con los controles del dashboard.
-
-## 🏗️ Arquitectura del Archivo
-
+## 🏗️ Arquitectura
 ```mermaid
 graph TB
-    subgraph "CSS Architecture"
-        subgraph "Foundation Layer"
-            RESET[CSS Reset<br/>Normalize Styles]
-            VARIABLES[CSS Variables<br/>Theme System]
-            TYPOGRAPHY[Typography<br/>Font System]
-            BASE[Base Styles<br/>Global Elements]
-        end
-        
-        subgraph "Layout System"
-            GRID[CSS Grid<br/>Main Layout]
-            FLEXBOX[Flexbox<br/>Component Layout]
-            RESPONSIVE[Media Queries<br/>Responsive Design]
-            SPACING[Spacing System<br/>Consistent Margins]
-        end
-        
-        subgraph "Component Styles"
-            CARDS[Card Components<br/>Metric Cards]
-            BUTTONS[Button Styles<br/>Interactive Elements]
-            FORMS[Form Elements<br/>Configuration]
-            INDICATORS[Status Indicators<br/>Visual Feedback]
-        end
-        
-        subgraph "State & Theme"
-            STATUS[Status Colors<br/>Success/Error/Warning]
-            ANIMATIONS[Animations<br/>Transitions & Effects]
-            DARK_MODE[Dark Mode<br/>Theme Variants]
-            ACCESSIBILITY[Accessibility<br/>A11y Enhancements]
-        end
-    end
+    A[style.css] --> B[Global Styles]
+    A --> C[Layout System]
+    A --> D[Component Styles]
+    A --> E[State Indicators]
+    A --> F[Responsive Design]
+    A --> G[Animations]
+    A --> H[Utility Classes]
     
-    RESET --> VARIABLES
-    VARIABLES --> TYPOGRAPHY
-    TYPOGRAPHY --> BASE
+    B --> I[CSS Reset]
+    B --> J[Typography]
+    B --> K[Base Colors]
     
-    BASE --> GRID
-    GRID --> FLEXBOX
-    FLEXBOX --> RESPONSIVE
-    RESPONSIVE --> SPACING
+    C --> L[Container]
+    C --> M[Header]
+    C --> N[Main Content]
+    C --> O[Footer]
     
-    SPACING --> CARDS
-    CARDS --> BUTTONS
-    BUTTONS --> FORMS
-    FORMS --> INDICATORS
+    D --> P[Cards]
+    D --> Q[Check Cards]
+    D --> R[Config Forms]
+    D --> S[Buttons]
     
-    INDICATORS --> STATUS
-    STATUS --> ANIMATIONS
-    ANIMATIONS --> DARK_MODE
-    DARK_MODE --> ACCESSIBILITY
+    E --> T[Success]
+    E --> U[Warning]
+    E --> V[Error]
+    E --> W[Unknown]
     
-    classDef foundation fill:#e1f5fe
-    classDef layout fill:#f3e5f5
-    classDef components fill:#e8f5e8
-    classDef theme fill:#fff3e0
+    F --> X[Mobile]
+    F --> Y[Tablet]
+    F --> Z[Desktop]
     
-    class RESET,VARIABLES,TYPOGRAPHY,BASE foundation
-    class GRID,FLEXBOX,RESPONSIVE,SPACING layout
-    class CARDS,BUTTONS,FORMS,INDICATORS components
-    class STATUS,ANIMATIONS,DARK_MODE,ACCESSIBILITY theme
+    G --> AA[Transitions]
+    G --> BB[Hover Effects]
+    G --> CC[Status Changes]
+    
+    H --> DD[Text Colors]
+    H --> EE[Display Utils]
+    H --> FF[Loading States]
 ```
 
 ## 📋 Responsabilidades
-
-### Sistema de Design Foundations
-- **CSS Variables**: Sistema de tokens de design para consistencia
-- **Typography Scale**: Jerarquía tipográfica clara y legible
-- **Color Palette**: Paleta de colores semántica para estados y feedback
-- **Spacing System**: Sistema de espaciado consistente y escalable
-- **Border Radius**: Consistencia en bordes redondeados
-
-### Layout y Estructura
-- **Grid System**: Layout principal usando CSS Grid
-- **Flexbox Components**: Layout de componentes internos
-- **Responsive Design**: Adaptación a diferentes tamaños de pantalla
-- **Container Queries**: Queries para componentes responsive (futuro)
-- **Aspect Ratios**: Mantenimiento de proporciones en elementos
-
-### Componentes UI
-- **Card System**: Estilos para cards de métricas y checks
-- **Button Variants**: Diferentes tipos de botones (primary, secondary, danger)
-- **Form Controls**: Estilos para inputs, selects y controles
-- **Status Indicators**: Indicadores visuales para estados del sistema
-- **Navigation Elements**: Estilos para navegación y breadcrumbs
-
-### Estados y Feedback Visual
-- **Status Colors**: Verde (success), rojo (error), amarillo (warning)
-- **Loading States**: Animaciones y estilos para estados de carga
-- **Hover & Focus**: Estilos de interacción y accesibilidad
-- **Disabled States**: Estilos para elementos deshabilitados
-- **Active States**: Feedback visual para elementos activos
+- **Diseño visual**: Definir apariencia profesional y moderna del dashboard
+- **Layout responsive**: Adaptar interfaz a diferentes tamaños de pantalla
+- **Indicadores de estado**: Mostrar visualmente el estado de verificaciones y daemon
+- **Interactividad**: Proporcionar feedback visual para interacciones de usuario
+- **Legibilidad**: Asegurar tipografía clara y contrastes apropiados
+- **Consistencia**: Mantener estilo uniforme en todos los componentes
 
 ## 🔗 Dependencias
+### Fuentes
+- **System Fonts**: `-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif`
+- **Monospace**: `'Courier New', monospace` (para código y detalles)
 
-### CSS Features Utilizadas
-- **CSS Grid**: Para layout principal del dashboard
-- **Flexbox**: Para layout de componentes internos
-- **CSS Custom Properties**: Para sistema de theming
-- **CSS Transitions**: Para animaciones suaves
-- **Media Queries**: Para responsive design
-- **CSS Logical Properties**: Para soporte multi-direccional
+### Tecnologías CSS
+- **CSS Grid**: Layout de configuración y estadísticas
+- **Flexbox**: Alineación y distribución de elementos
+- **CSS Transitions**: Animaciones suaves
+- **Media Queries**: Responsive design
+- **CSS Variables**: (implícitas en colores consistentes)
 
-### Browser Support Target
-- **Modern Browsers**: Chrome 60+, Firefox 55+, Safari 12+, Edge 79+
-- **CSS Grid Support**: Requerido para layout principal
-- **Custom Properties**: Para theming dinámico
-- **Flexbox**: Amplio soporte en browsers modernos
+## 📊 Sistema de Colores
+### Colores Principales
+```css
+/* Texto */
+--text-primary: #2c3e50;
+--text-secondary: #495057;
+--text-muted: #6c757d;
 
-### Integration Dependencies
-```html
-<!-- HTML structure esperada -->
-<div class="dashboard-container">
-    <header class="dashboard-header"></header>
-    <main class="dashboard-main">
-        <div class="dashboard-content">
-            <div class="check-card success">
-                <div class="status-indicator"></div>
-                <div class="check-content"></div>
-            </div>
-        </div>
-    </main>
-</div>
+/* Backgrounds */
+--bg-primary: #ffffff;
+--bg-secondary: #f8f9fa;
+--bg-page: #f5f5f5;
+
+/* Estados */
+--success: #28a745;
+--warning: #ffc107;
+--error: #dc3545;
+--unknown: #6c757d;
+
+/* Interacción */
+--primary: #007bff;
+--primary-hover: #0056b3;
 ```
 
-## 💡 Patrones de Uso
-
-### CSS Variables (Design Tokens)
+### Aplicación de Colores
 ```css
-:root {
-    /* Color Palette */
-    --color-primary: #007bff;
-    --color-success: #28a745;
-    --color-warning: #ffc107;
-    --color-danger: #dc3545;
-    --color-info: #17a2b8;
-    
-    /* Neutral Colors */
-    --color-gray-50: #f8f9fa;
-    --color-gray-100: #e9ecef;
-    --color-gray-200: #dee2e6;
-    --color-gray-300: #ced4da;
-    --color-gray-500: #6c757d;
-    --color-gray-700: #495057;
-    --color-gray-900: #212529;
-    
-    /* Spacing Scale */
-    --space-xs: 0.25rem;   /* 4px */
-    --space-sm: 0.5rem;    /* 8px */
-    --space-md: 1rem;      /* 16px */
-    --space-lg: 1.5rem;    /* 24px */
-    --space-xl: 2rem;      /* 32px */
-    --space-2xl: 3rem;     /* 48px */
-    
-    /* Typography */
-    --font-size-xs: 0.75rem;
-    --font-size-sm: 0.875rem;
-    --font-size-base: 1rem;
-    --font-size-lg: 1.125rem;
-    --font-size-xl: 1.25rem;
-    --font-size-2xl: 1.5rem;
-    
-    /* Borders */
-    --border-radius-sm: 0.25rem;
-    --border-radius-md: 0.375rem;
-    --border-radius-lg: 0.5rem;
-    --border-width: 1px;
-    
-    /* Shadows */
-    --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-    --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
-    
-    /* Transitions */
-    --transition-fast: 150ms ease-in-out;
-    --transition-normal: 250ms ease-in-out;
-    --transition-slow: 350ms ease-in-out;
-}
-```
+/* Success (Verde) */
+.status-indicator.success { background-color: #28a745; }
+.text-success { color: #28a745; }
 
-### Component Pattern Examples
-```css
-/* Card Component Pattern */
-.check-card {
-    background: white;
-    border: var(--border-width) solid var(--color-gray-200);
-    border-radius: var(--border-radius-md);
-    padding: var(--space-lg);
-    box-shadow: var(--shadow-sm);
-    transition: box-shadow var(--transition-normal);
-}
+/* Warning (Amarillo) */
+.status-indicator.warning { background-color: #ffc107; }
+.text-warning { color: #ffc107; }
 
-.check-card:hover {
-    box-shadow: var(--shadow-md);
-}
+/* Error (Rojo) */
+.status-indicator.error { background-color: #dc3545; }
+.text-error { color: #dc3545; }
 
-/* Status Color Variants */
-.check-card.success {
-    border-left: 4px solid var(--color-success);
-}
-
-.check-card.warning {
-    border-left: 4px solid var(--color-warning);
-}
-
-.check-card.error {
-    border-left: 4px solid var(--color-danger);
-}
-```
-
-### Responsive Design Patterns
-```css
-/* Mobile First Approach */
-.dashboard-content {
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: var(--space-md);
-}
-
-/* Tablet */
-@media (min-width: 768px) {
-    .dashboard-content {
-        grid-template-columns: repeat(2, 1fr);
-        gap: var(--space-lg);
-    }
-}
-
-/* Desktop */
-@media (min-width: 1024px) {
-    .dashboard-content {
-        grid-template-columns: repeat(3, 1fr);
-        gap: var(--space-xl);
-    }
-}
+/* Unknown (Gris) */
+.status-indicator.unknown { background-color: #6c757d; }
+.text-muted { color: #6c757d; }
 ```
 
 ## 🔧 Configuración
-
-### Theme Configuration
+### Global Reset
 ```css
-/* Light Theme (Default) */
-:root {
-    --bg-primary: #ffffff;
-    --bg-secondary: #f8f9fa;
-    --text-primary: #212529;
-    --text-secondary: #6c757d;
-    --border-color: #dee2e6;
-}
-
-/* Dark Theme */
-[data-theme="dark"] {
-    --bg-primary: #1a1a1a;
-    --bg-secondary: #2d2d2d;
-    --text-primary: #ffffff;
-    --text-secondary: #a0a0a0;
-    --border-color: #404040;
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
 }
 ```
 
-### Layout Configuration
+### Tipografía Base
 ```css
-.dashboard-container {
-    min-height: 100vh;
-    display: grid;
-    grid-template-rows: auto 1fr auto;
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    background-color: #f5f5f5;
+    color: #333;
+    line-height: 1.6;
+}
+```
+
+### Layout Principal
+```css
+.container {
     max-width: 1200px;
     margin: 0 auto;
-    padding: var(--space-md);
+    padding: 20px;
+}
+```
+
+## 💡 Patrones de Uso
+### Cards System
+```css
+.card {
+    background: white;
+    border-radius: 8px;
+    padding: 20px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    margin-bottom: 20px;
 }
 
-.dashboard-header {
-    margin-bottom: var(--space-lg);
+.card:hover {
+    box-shadow: 0 4px 8px rgba(0,0,0,0.15);
 }
+```
 
-.dashboard-main {
+### Status Indicators
+```css
+.status-indicator {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    display: inline-block;
+    transition: background-color 0.3s ease;
+}
+```
+
+### Responsive Grid
+```css
+.status-grid {
     display: grid;
-    grid-template-columns: 250px 1fr;
-    gap: var(--space-lg);
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 20px;
+}
+```
+
+## ⚠️ Consideraciones
+### Funcionamiento
+- **Mobile-first**: Diseño responsive que se adapta a todos los dispositivos
+- **Accessibility**: Contrastes y tamaños apropiados para legibilidad
+- **Performance**: Transiciones suaves sin impacto en rendimiento
+- **Browser support**: Compatible con navegadores modernos
+
+### Limitaciones
+- **No dark mode**: Solo tema claro implementado
+- **Fixed colors**: Colores hardcodeados sin sistema de temas
+- **No CSS variables**: Colores definidos directamente en reglas
+- **Limited animations**: Solo transiciones básicas
+
+## 🧪 Testing
+### Pruebas Visuales
+```html
+<!-- Test de colores de estado -->
+<div class="status-indicator success"></div>
+<div class="status-indicator warning"></div>
+<div class="status-indicator error"></div>
+<div class="status-indicator unknown"></div>
+
+<!-- Test de cards -->
+<div class="card">
+    <h2>Test Card</h2>
+    <p>Card content</p>
+</div>
+```
+
+### Pruebas Responsive
+```css
+/* Verificar breakpoints */
+@media (max-width: 768px) {
+    /* Estilos mobile */
 }
 
+/* Test en diferentes tamaños */
+.container { max-width: 1200px; } /* Desktop */
+.container { padding: 10px; }     /* Mobile */
+```
+
+## 🔄 Estructura de Componentes
+### Header Section
+```css
+.header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 30px;
+    padding: 20px;
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.daemon-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    background: #f8f9fa;
+    border-radius: 20px;
+    font-weight: 500;
+}
+```
+
+### Check Cards
+```css
+.check-card {
+    background: white;
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 15px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    transition: all 0.3s ease;
+}
+
+.check-card.success { border-left: 4px solid #28a745; }
+.check-card.warning { border-left: 4px solid #ffc107; }
+.check-card.error { border-left: 4px solid #dc3545; }
+```
+
+### Configuration Forms
+```css
+.config-card {
+    background: white;
+    border-radius: 8px;
+    padding: 20px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 30px;
+}
+
+.config-item input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+}
+
+.config-item input[type="number"] {
+    width: 80px;
+    padding: 4px 8px;
+    border: 1px solid #ced4da;
+    border-radius: 4px;
+}
+```
+
+## 📈 Información Especializada
+### Documentation Index
+```css
+.doc-index-info {
+    margin-bottom: 15px;
+    padding: 12px;
+    background: #e8f5e8;
+    border-radius: 4px;
+    border-left: 3px solid #28a745;
+}
+
+.index-stats-grid {
+    display: flex;
+    gap: 20px;
+    align-items: center;
+}
+
+.index-stat-value {
+    font-size: 1.2rem;
+    font-weight: 600;
+    color: #28a745;
+}
+```
+
+### Token Information
+```css
+.token-info {
+    margin-bottom: 15px;
+    padding: 12px;
+    background: #fff3cd;
+    border-radius: 4px;
+    border-left: 3px solid #ffc107;
+}
+
+.token-stats {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.token-warning {
+    font-weight: 500;
+    margin-left: 10px;
+}
+```
+
+### Test Information
+```css
+.test-info {
+    margin-bottom: 15px;
+    padding: 12px;
+    background: #e3f2fd;
+    border-radius: 4px;
+    border-left: 3px solid #2196f3;
+}
+
+.test-stats-grid {
+    display: flex;
+    gap: 15px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.test-stat-value {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: #2196f3;
+}
+```
+
+## 🚀 Responsive Design
+### Breakpoints
+```css
+/* Mobile First Approach */
 @media (max-width: 768px) {
-    .dashboard-main {
+    .container {
+        padding: 10px;
+    }
+    
+    .header {
+        flex-direction: column;
+        gap: 15px;
+        text-align: center;
+    }
+    
+    .check-header {
+        flex-direction: column;
+        gap: 15px;
+        align-items: flex-start;
+    }
+    
+    .config-card {
         grid-template-columns: 1fr;
     }
 }
 ```
 
-### Component Configuration
+### Responsive Grids
 ```css
-/* Button System */
-.btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    padding: var(--space-sm) var(--space-md);
-    border: var(--border-width) solid transparent;
-    border-radius: var(--border-radius-md);
-    font-size: var(--font-size-sm);
-    font-weight: 500;
-    text-decoration: none;
-    cursor: pointer;
-    transition: all var(--transition-fast);
+/* Auto-fit grid system */
+.status-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 20px;
 }
 
-.btn-primary {
-    background-color: var(--color-primary);
-    color: white;
+.config-card {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 30px;
+}
+```
+
+## 🎨 Animaciones y Transiciones
+### Smooth Transitions
+```css
+.check-card {
+    transition: all 0.3s ease;
 }
 
-.btn-secondary {
-    background-color: var(--color-gray-100);
-    color: var(--color-gray-700);
+.status-indicator {
+    transition: background-color 0.3s ease;
 }
 
-.btn:disabled {
+.btn-run {
+    transition: background-color 0.3s ease;
+}
+```
+
+### Hover Effects
+```css
+.check-card:hover {
+    box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+}
+
+.btn-run:hover {
+    background: #0056b3;
+}
+```
+
+### State Changes
+```css
+.check-card {
+    transition: border-left 0.3s ease;
+}
+
+.check-card.success {
+    border-left: 4px solid #28a745;
+}
+
+.check-card.warning {
+    border-left: 4px solid #ffc107;
+}
+
+.check-card.error {
+    border-left: 4px solid #dc3545;
+}
+```
+
+## 🔧 Utility Classes
+### Text Colors
+```css
+.text-success {
+    color: #28a745;
+}
+
+.text-warning {
+    color: #ffc107;
+}
+
+.text-error {
+    color: #dc3545;
+}
+
+.text-muted {
+    color: #6c757d;
+}
+```
+
+### Display Utils
+```css
+.hidden {
+    display: none;
+}
+
+.loading {
     opacity: 0.6;
-    cursor: not-allowed;
+    pointer-events: none;
 }
 ```
 
-## ⚠️ Consideraciones Especiales
-
-### Performance Optimizations
-- **Efficient Selectors**: Uso de clases específicas sobre selectors complejos
-- **Minimal Repaints**: Propiedades que no causan layout thrashing
-- **CSS Containment**: Isolation de componentes para mejor performance
-- **GPU Acceleration**: Uso de transform/opacity para animaciones smooth
-
-### Accessibility (A11y)
-- **High Contrast**: Ratios de contraste WCAG AA compliant
-- **Focus Indicators**: Estilos claros para navegación por teclado
-- **Reduced Motion**: Respeto por prefers-reduced-motion
-- **Screen Reader Support**: Estilos que no interfieren con SR navigation
-
-### Browser Compatibility
-- **Fallbacks**: Fallbacks para features no soportadas
-- **Progressive Enhancement**: Funcionalidad básica sin CSS avanzado
-- **Vendor Prefixes**: Prefijos donde sea necesario
-- **Feature Queries**: @supports para feature detection
-
-### Maintainability
-- **Consistent Naming**: Metodología BEM para naming
-- **Modular Architecture**: Separación lógica de componentes
-- **Documentation**: Comentarios claros para secciones complejas
-- **Linting**: Estructura compatible con stylelint
-
-## 🧪 Testing y Validación
-
-### CSS Validation
-```bash
-# Validar CSS con W3C Validator
-curl -F "file=@autocode/web/static/style.css" \
-     https://jigsaw.w3.org/css-validator/validator
-
-# Verificar con stylelint
-npx stylelint autocode/web/static/style.css
-```
-
-### Responsive Testing
+## 🚀 Extensibilidad
+### Nuevos Componentes
 ```css
-/* Test de responsive design */
-@media (max-width: 320px) {
-    /* Móvil pequeño */
+/* Añadir nuevo tipo de card */
+.custom-card {
+    background: white;
+    border-radius: 8px;
+    padding: 20px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    border-left: 4px solid #6f42c1;
 }
 
-@media (min-width: 321px) and (max-width: 768px) {
-    /* Móvil/Tablet */
+/* Nuevo estado */
+.status-indicator.custom {
+    background-color: #6f42c1;
 }
 
-@media (min-width: 769px) and (max-width: 1024px) {
-    /* Tablet/Desktop pequeño */
-}
-
-@media (min-width: 1025px) {
-    /* Desktop */
+.check-card.custom {
+    border-left: 4px solid #6f42c1;
 }
 ```
 
-### Accessibility Testing
+### Dark Mode Support
 ```css
-/* Test de accesibilidad */
-.focus-visible:focus {
-    outline: 2px solid var(--color-primary);
+/* Preparación para dark mode */
+:root {
+    --bg-primary: #ffffff;
+    --bg-secondary: #f8f9fa;
+    --text-primary: #2c3e50;
+    --text-secondary: #495057;
+}
+
+[data-theme="dark"] {
+    --bg-primary: #2d3748;
+    --bg-secondary: #4a5568;
+    --text-primary: #e2e8f0;
+    --text-secondary: #cbd5e0;
+}
+
+.card {
+    background: var(--bg-primary);
+    color: var(--text-primary);
+}
+```
+
+### Nuevas Animaciones
+```css
+/* Fade in animation */
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.fade-in {
+    animation: fadeIn 0.3s ease-out;
+}
+
+/* Pulse animation for updates */
+@keyframes pulse {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+    100% { transform: scale(1); }
+}
+
+.pulse {
+    animation: pulse 1s ease-in-out;
+}
+```
+
+### Responsive Utilities
+```css
+/* Responsive visibility */
+.mobile-only {
+    display: none;
+}
+
+.desktop-only {
+    display: block;
+}
+
+@media (max-width: 768px) {
+    .mobile-only {
+        display: block;
+    }
+    
+    .desktop-only {
+        display: none;
+    }
+}
+```
+
+### Custom Properties
+```css
+/* CSS Variables for easy theming */
+:root {
+    --primary-color: #007bff;
+    --success-color: #28a745;
+    --warning-color: #ffc107;
+    --error-color: #dc3545;
+    --border-radius: 8px;
+    --box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    --transition-speed: 0.3s;
+}
+
+.btn-run {
+    background: var(--primary-color);
+    border-radius: var(--border-radius);
+    transition: all var(--transition-speed) ease;
+}
+```
+
+### Print Styles
+```css
+/* Estilos para impresión */
+@media print {
+    .header, .footer, .config {
+        display: none;
+    }
+    
+    .check-card {
+        page-break-inside: avoid;
+        box-shadow: none;
+        border: 1px solid #000;
+    }
+    
+    .status-indicator {
+        border: 1px solid #000;
+    }
+}
+```
+
+### Accessibility Enhancements
+```css
+/* Focus states */
+.btn-run:focus,
+input:focus {
+    outline: 2px solid #007bff;
     outline-offset: 2px;
 }
 
+/* Reduced motion */
 @media (prefers-reduced-motion: reduce) {
     * {
         animation-duration: 0.01ms !important;
@@ -399,394 +622,13 @@ npx stylelint autocode/web/static/style.css
     }
 }
 
+/* High contrast mode */
 @media (prefers-contrast: high) {
-    .check-card {
-        border: 2px solid var(--text-primary);
+    .card {
+        border: 2px solid #000;
     }
-}
-```
-
-### Browser Testing
-```javascript
-// Test de features en browser console
-// CSS Grid support
-console.log('CSS Grid:', CSS.supports('display', 'grid'));
-
-// Custom properties support
-console.log('CSS Variables:', CSS.supports('color', 'var(--test)'));
-
-// Flexbox support
-console.log('Flexbox:', CSS.supports('display', 'flex'));
-```
-
-## 🔄 Flujo de Datos y Estados
-
-### State Management via CSS
-```css
-/* Estados del dashboard */
-.dashboard-container[data-state="loading"] {
-    .check-card {
-        opacity: 0.6;
-        pointer-events: none;
-    }
-}
-
-.dashboard-container[data-state="error"] {
-    .dashboard-header::after {
-        content: "⚠️ Connection Error";
-        color: var(--color-danger);
-    }
-}
-
-.dashboard-container[data-state="offline"] {
-    filter: grayscale(1);
-}
-```
-
-### Component State Variants
-```css
-/* Status indicators */
-.status-indicator {
-    width: 12px;
-    height: 12px;
-    border-radius: 50%;
-    display: inline-block;
-}
-
-.status-indicator.success {
-    background-color: var(--color-success);
-}
-
-.status-indicator.warning {
-    background-color: var(--color-warning);
-}
-
-.status-indicator.error {
-    background-color: var(--color-danger);
-    animation: pulse 2s infinite;
-}
-
-@keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.5; }
-}
-```
-
-### Interactive States
-```css
-/* Button states */
-.btn {
-    /* Default state */
-}
-
-.btn:hover {
-    transform: translateY(-1px);
-    box-shadow: var(--shadow-md);
-}
-
-.btn:active {
-    transform: translateY(0);
-    box-shadow: var(--shadow-sm);
-}
-
-.btn:focus-visible {
-    outline: 2px solid var(--color-primary);
-    outline-offset: 2px;
-}
-```
-
-## 📊 Métricas y Monitoreo Visual
-
-### Performance Metrics
-```css
-/* Optimized animations */
-.check-card {
-    will-change: transform;
-    backface-visibility: hidden;
-}
-
-.fade-in {
-    animation: fadeIn 300ms ease-out;
-}
-
-@keyframes fadeIn {
-    from {
-        opacity: 0;
-        transform: translateY(10px);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
-}
-```
-
-### Visual Hierarchy
-```css
-/* Typography scale para jerarquía */
-h1 { font-size: var(--font-size-2xl); font-weight: 700; }
-h2 { font-size: var(--font-size-xl); font-weight: 600; }
-h3 { font-size: var(--font-size-lg); font-weight: 500; }
-
-/* Color hierarchy */
-.text-primary { color: var(--text-primary); }
-.text-secondary { color: var(--text-secondary); }
-.text-muted { color: var(--color-gray-500); }
-```
-
-### Status Communication
-```css
-/* Sistema de colores semántico */
-.text-success { color: var(--color-success); }
-.text-warning { color: var(--color-warning); }
-.text-danger { color: var(--color-danger); }
-.text-info { color: var(--color-info); }
-
-.bg-success { background-color: var(--color-success); }
-.bg-warning { background-color: var(--color-warning); }
-.bg-danger { background-color: var(--color-danger); }
-.bg-info { background-color: var(--color-info); }
-```
-
-## 🚀 Extensibilidad
-
-### Theme System Extension
-```css
-/* Extensible theme system */
-[data-theme="dark"] {
-    --bg-primary: #1a1a1a;
-    --bg-secondary: #2d2d2d;
-    /* ... otras variables */
-}
-
-[data-theme="high-contrast"] {
-    --color-success: #00ff00;
-    --color-danger: #ff0000;
-    --border-width: 2px;
-}
-
-/* Seasonal themes */
-[data-theme="christmas"] {
-    --color-primary: #c41e3a;
-    --color-secondary: #228b22;
-}
-```
-
-### Component Variants
-```css
-/* Extendible component system */
-.check-card--large {
-    padding: var(--space-xl);
-    font-size: var(--font-size-lg);
-}
-
-.check-card--compact {
-    padding: var(--space-sm);
-    font-size: var(--font-size-sm);
-}
-
-.btn--large {
-    padding: var(--space-md) var(--space-lg);
-    font-size: var(--font-size-base);
-}
-
-.btn--small {
-    padding: var(--space-xs) var(--space-sm);
-    font-size: var(--font-size-xs);
-}
-```
-
-### Custom Properties API
-```css
-/* Extensible via CSS custom properties */
-.custom-widget {
-    --widget-bg: var(--bg-primary);
-    --widget-border: var(--border-color);
-    --widget-padding: var(--space-md);
     
-    background: var(--widget-bg);
-    border: 1px solid var(--widget-border);
-    padding: var(--widget-padding);
-}
-```
-
-## 🔧 Debugging y Desarrollo
-
-### CSS Debugging Utilities
-```css
-/* Debug mode styles */
-[data-debug="true"] * {
-    outline: 1px solid red !important;
-}
-
-[data-debug="true"] .grid-container {
-    background-image: 
-        linear-gradient(rgba(255,0,0,0.1) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(255,0,0,0.1) 1px, transparent 1px);
-    background-size: 20px 20px;
-}
-
-/* Layout debugging */
-.debug-grid {
-    display: grid;
-    grid-template-columns: repeat(12, 1fr);
-    gap: var(--space-sm);
-    opacity: 0.3;
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    pointer-events: none;
-}
-
-.debug-grid::before {
-    content: "";
-    background: rgba(255, 0, 0, 0.1);
-    grid-column: 1 / -1;
-}
-```
-
-### Development Helpers
-```css
-/* Development-only styles */
-@media screen and (min-width: 0px) {
-    .dev-only {
-        display: block;
-    }
-}
-
-/* Print styles debugging */
-@media print {
-    .no-print { display: none !important; }
-    .print-only { display: block !important; }
-}
-
-/* Animation debugging */
-.debug-animations * {
-    animation-duration: 10s !important;
-    animation-iteration-count: infinite !important;
-}
-```
-
-## 📖 CSS Architecture Reference
-
-### File Organization Pattern
-```css
-/* 1. CSS Reset & Normalize */
-/* 2. CSS Custom Properties */
-/* 3. Base & Typography */
-/* 4. Layout System */
-/* 5. Components */
-/* 6. Utilities */
-/* 7. State & Theme Variants */
-/* 8. Media Queries */
-/* 9. Print Styles */
-/* 10. Debug Utilities */
-```
-
-### Naming Convention (BEM)
-```css
-/* Block */
-.dashboard-card { }
-
-/* Element */
-.dashboard-card__header { }
-.dashboard-card__body { }
-.dashboard-card__footer { }
-
-/* Modifier */
-.dashboard-card--large { }
-.dashboard-card--success { }
-.dashboard-card--loading { }
-
-/* State */
-.dashboard-card.is-active { }
-.dashboard-card.is-disabled { }
-.dashboard-card.is-loading { }
-```
-
-### CSS Logical Properties
-```css
-/* Modern CSS for internationalization */
-.component {
-    margin-block-start: var(--space-md);
-    margin-block-end: var(--space-md);
-    margin-inline-start: var(--space-sm);
-    margin-inline-end: var(--space-sm);
-    
-    border-inline-start: 2px solid var(--color-primary);
-    padding-inline: var(--space-md);
-    padding-block: var(--space-sm);
-}
-```
-
-## 🔄 Integración con Sistema
-
-### Integration with JavaScript
-```css
-/* CSS classes managed by JavaScript */
-.dashboard-container.js-loading {
-    .check-card {
-        opacity: 0.6;
-    }
-}
-
-.dashboard-container.js-error {
     .status-indicator {
-        animation: shake 0.5s ease-in-out;
-    }
-}
-
-@keyframes shake {
-    0%, 100% { transform: translateX(0); }
-    25% { transform: translateX(-5px); }
-    75% { transform: translateX(5px); }
-}
-```
-
-### Integration with HTML Templates
-```css
-/* Styles for Jinja2 template classes */
-.template-loading { opacity: 0.5; }
-.template-error { border-color: var(--color-danger); }
-.template-success { border-color: var(--color-success); }
-
-/* Dynamic content styling */
-.dynamic-content {
-    animation: slideIn 300ms ease-out;
-}
-
-@keyframes slideIn {
-    from { transform: translateY(-10px); opacity: 0; }
-    to { transform: translateY(0); opacity: 1; }
-}
-```
-
-### Future Enhancements
-```css
-/* Container queries (future) */
-@container (min-width: 400px) {
-    .check-card {
-        grid-template-columns: auto 1fr;
-    }
-}
-
-/* Subgrid support (future) */
-.dashboard-grid {
-    display: grid;
-    grid-template-columns: subgrid;
-}
-
-/* CSS Nesting (future) */
-.check-card {
-    padding: var(--space-md);
-    
-    & .status-indicator {
-        margin-right: var(--space-sm);
-    }
-    
-    &:hover {
-        box-shadow: var(--shadow-md);
+        border: 2px solid #000;
     }
 }

@@ -1,8 +1,8 @@
-# Autocode CLI Interface
+# cli.py
 
 ## 🎯 Propósito
 
-El CLI de autocode (`autocode.cli`) es el punto de entrada unificado para todas las herramientas automatizadas de calidad y desarrollo del proyecto Vidi. Proporciona comandos para verificar documentación, analizar cambios git, iniciar el daemon de monitoreo, ejecutar análisis de IA con OpenCode, y contar tokens para análisis de LLM, todo desde una interfaz de línea de comandos integrada.
+Interfaz de línea de comandos unificada para autocode que proporciona acceso a todas las funcionalidades del proyecto a través de subcomandos especializados. Actúa como punto de entrada único para verificación de documentación, análisis de cambios git, monitoreo continuo, análisis de IA con OpenCode, verificación de tests, y conteo de tokens para análisis de LLM.
 
 ## 🏗️ Arquitectura
 

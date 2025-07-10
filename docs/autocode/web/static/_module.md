@@ -1,472 +1,282 @@
-# Autocode Web Static Module - Documentación
+# Web Static Assets Module
 
-## 🎯 Propósito del Módulo
-
-El módulo `autocode/web/static` contiene todos los assets estáticos necesarios para la interfaz web del dashboard autocode. Su responsabilidad principal es proporcionar los recursos client-side (JavaScript, CSS) que implementan la funcionalidad interactiva del dashboard de monitoreo en tiempo real, optimizados para performance y compatibilidad cross-browser.
+## 🎯 Propósito
+Módulo que contiene los assets estáticos del dashboard web de autocode: JavaScript para interactividad, CSS para estilos visuales y cualquier recurso estático necesario para el funcionamiento de la interfaz web de monitoreo.
 
 ## 🏗️ Arquitectura del Módulo
-
 ```mermaid
 graph TB
-    subgraph "Static Assets Architecture"
-        subgraph "JavaScript Layer"
-            JS[app.js<br/>Dashboard Controller]
-            CLASS[AutocodeDashboard<br/>Main Class]
-            API[API Client<br/>Fetch Integration]
-            EVENTS[Event Handlers<br/>User Interactions]
-        end
-        
-        subgraph "CSS Layer"
-            CSS[style.css<br/>Visual Styles]
-            LAYOUT[Layout System<br/>Grid & Flexbox]
-            COMPONENTS[Component Styles<br/>Cards & Buttons]
-            RESPONSIVE[Responsive Design<br/>Media Queries]
-        end
-        
-        subgraph "Browser Integration"
-            DOM[DOM Manipulation<br/>Dynamic Updates]
-            TIMERS[Timer Management<br/>Auto Refresh]
-            STORAGE[Local Storage<br/>Settings Persistence]
-            PERFORMANCE[Performance<br/>Optimization]
-        end
-        
-        subgraph "Data Flow"
-            FETCH[API Calls<br/>Backend Communication]
-            UPDATE[UI Updates<br/>Real-time Refresh]
-            ERROR[Error Handling<br/>Graceful Degradation]
-        end
-    end
+    A[autocode/web/static/] --> B[app.js]
+    A --> C[style.css]
     
-    JS --> CLASS
-    CLASS --> API
-    CLASS --> EVENTS
+    B --> D[AutocodeDashboard Class]
+    B --> E[API Communication]
+    B --> F[UI Management]
+    B --> G[Event Handling]
     
-    CSS --> LAYOUT
-    CSS --> COMPONENTS
-    CSS --> RESPONSIVE
+    C --> H[Visual Styles]
+    C --> I[Layout System]
+    C --> J[Responsive Design]
+    C --> K[Component Styling]
     
-    CLASS --> DOM
-    CLASS --> TIMERS
-    CLASS --> STORAGE
-    CLASS --> PERFORMANCE
+    D --> L[Auto-refresh System]
+    D --> M[Manual Triggers]
+    D --> N[Config Management]
     
-    API --> FETCH
-    EVENTS --> UPDATE
-    UPDATE --> ERROR
+    E --> O[REST API Calls]
+    E --> P[Data Processing]
     
-    classDef javascript fill:#fff3cd
-    classDef styles fill:#d1ecf1
-    classDef browser fill:#d4edda
-    classDef dataflow fill:#f8d7da
+    F --> Q[DOM Manipulation]
+    F --> R[State Updates]
     
-    class JS,CLASS,API,EVENTS javascript
-    class CSS,LAYOUT,COMPONENTS,RESPONSIVE styles
-    class DOM,TIMERS,STORAGE,PERFORMANCE browser
-    class FETCH,UPDATE,ERROR dataflow
+    G --> S[Keyboard Shortcuts]
+    G --> T[Button Clicks]
+    G --> U[Form Changes]
+    
+    H --> V[Status Indicators]
+    H --> W[Cards Design]
+    H --> X[Typography]
+    
+    I --> Y[Grid Systems]
+    I --> Z[Flexbox Layout]
+    
+    J --> AA[Mobile Breakpoints]
+    J --> BB[Desktop Layout]
+    
+    K --> CC[Check Cards]
+    K --> DD[Configuration Forms]
+    K --> EE[Navigation Elements]
 ```
 
 ## 📁 Componentes del Módulo
+### `app.js` - Dashboard JavaScript Application
+**Propósito**: Lógica principal del dashboard que maneja la interacción con la API, actualización de UI en tiempo real, y gestión de eventos de usuario.
 
-### `app.js` - Dashboard JavaScript Interactivo
-**Propósito**: Implementa toda la lógica client-side del dashboard con funcionalidades avanzadas
-**Documentación**: [app.js.md](app.js.md)
+**Responsabilidades**:
+- Comunicación con API REST para obtener estado y configuración
+- Auto-refresh automático cada 5 segundos
+- Actualización dinámica de elementos DOM
+- Manejo de ejecución manual de verificaciones
+- Gestión de configuración en tiempo real
+- Keyboard shortcuts (Space para refresh, R para toggle auto-refresh)
 
-**Funcionalidades principales**:
-- **AutocodeDashboard Class**: Controlador principal del dashboard
-- **API Client Integration**: Comunicación robusta con backend FastAPI
-- **Real-time Updates**: Auto-refresh cada 5 segundos con gestión inteligente
-- **Interactive Controls**: Botones para ejecutar checks y modificar configuración
-- **Keyboard Shortcuts**: Space (refresh), R (toggle auto-refresh)
-- **Performance Optimization**: Pausa automática cuando tab no está visible
-- **Error Handling**: Gestión graceful de errores de red y timeouts
+**Interfaces principales**:
+- `AutocodeDashboard` class con métodos para gestión de estado
+- `runCheck(checkName)` para ejecución manual
+- `updateConfig()` para actualización de configuración
+- Event listeners para interacción de usuario
 
-### `style.css` - Estilos CSS del Dashboard
-**Propósito**: Proporciona todo el diseño visual, layout y responsive design del dashboard
-**Documentación**: [style.css.md](style.css.md)
+**Documentación**: [app.md](app.md)
+
+### `style.css` - Dashboard Styles
+**Propósito**: Estilos visuales completos para el dashboard incluyendo layout responsive, indicadores de estado, animaciones y temas visuales.
+
+**Responsabilidades**:
+- Diseño visual profesional y moderno
+- Sistema de colores para diferentes estados (success, warning, error)
+- Layout responsive para desktop y mobile
+- Animaciones suaves y transiciones
+- Componentes estilizados (cards, forms, buttons)
+- Información especializada (doc index, tokens, tests)
 
 **Características principales**:
-- **Responsive Layout**: Diseño adaptativo para desktop, tablet y mobile
-- **Component Library**: Estilos para cards, buttons, indicators y forms
-- **Color System**: Esquema de colores consistente para estados y feedback
-- **Typography**: Jerarquía tipográfica clara y legible
-- **Animations**: Transiciones suaves para mejora de UX
-- **Accessibility**: Contraste adecuado y soporte para screen readers
+- Mobile-first responsive design
+- CSS Grid y Flexbox para layouts
+- Sistema de colores consistente
+- Transiciones y hover effects
+- Utility classes para uso común
+
+**Documentación**: [style.md](style.md)
 
 ## 🔗 Dependencias del Módulo
+### Internas (otros módulos del proyecto)
+- `autocode.api.server` - Endpoints REST para comunicación
+- `autocode.web.templates` - Templates HTML que cargan estos assets
+- `autocode.orchestration.daemon` - Fuente de datos para el dashboard
 
-### Dependencias de Browser APIs
-- **Fetch API**: Para comunicación HTTP con backend
-- **DOM APIs**: Para manipulación dinámica de elementos
-- **Timer APIs**: setInterval/clearInterval para auto-refresh
-- **Storage APIs**: localStorage para persistir configuraciones
-- **Visibility API**: Para optimización cuando tab no está activo
-- **Performance API**: Para monitoreo de performance
-
-### Compatibilidad Requerida
-- **JavaScript ES6+**: Classes, async/await, arrow functions
-- **CSS3 Features**: Grid, Flexbox, Custom Properties, Media Queries
-- **Modern Browsers**: Chrome 60+, Firefox 55+, Safari 12+, Edge 79+
-
-### Integración con Backend
-- **FastAPI Static Files**: Servidos automáticamente por FastAPI
-- **API Endpoints**: Consume endpoints REST del servidor autocode
-- **JSON Data Format**: Procesamiento de respuestas JSON estructuradas
+### Externas
+- **Navegadores modernos** - API Fetch, DOM manipulation, CSS Grid/Flexbox
+- **FastAPI static files** - Servicio de archivos estáticos
+- **HTTP/JSON** - Comunicación con API
 
 ## 💡 Flujo de Trabajo Típico
+### Inicialización del Dashboard
+1. **Carga de página**: Navegador carga HTML template
+2. **Assets loading**: Se cargan style.css y app.js
+3. **Dashboard init**: AutocodeDashboard se inicializa
+4. **Initial data**: Se obtienen datos de status y configuración
+5. **UI update**: Se actualiza interfaz con datos iniciales
+6. **Auto-refresh**: Se inicia timer para actualizaciones periódicas
 
-### Carga Inicial del Dashboard
-```mermaid
-sequenceDiagram
-    participant Browser
-    participant StaticFiles
-    participant Dashboard
-    participant API
-    
-    Browser->>StaticFiles: Load app.js + style.css
-    StaticFiles-->>Browser: Assets loaded
-    Browser->>Dashboard: Initialize AutocodeDashboard()
-    Dashboard->>Dashboard: setupEventListeners()
-    Dashboard->>Dashboard: startAutoRefresh()
-    Dashboard->>API: loadInitialData()
-    API-->>Dashboard: Initial status data
-    Dashboard->>Dashboard: renderInitialUI()
-```
+### Interacción Usuario
+1. **User action**: Click en botón "Run Now" o cambio de configuración
+2. **Event handling**: JavaScript captura evento
+3. **API call**: Request a endpoint apropiado
+4. **Response processing**: Datos se procesan y formatean
+5. **UI update**: Interfaz se actualiza con nuevos datos
+6. **Visual feedback**: Animaciones y transiciones proporcionan feedback
 
-### Ciclo de Auto-Refresh
-```mermaid
-sequenceDiagram
-    participant Timer
-    participant Dashboard
-    participant API
-    participant UI
-    
-    loop Every 5 seconds
-        Timer->>Dashboard: refresh trigger
-        Dashboard->>API: fetchAndUpdateStatus()
-        API-->>Dashboard: latest data
-        Dashboard->>UI: updateUI(data)
-        Dashboard->>UI: updateLastUpdated()
-    end
-    
-    alt Tab becomes hidden
-        Dashboard->>Timer: stopAutoRefresh()
-    else Tab becomes visible
-        Dashboard->>Timer: startAutoRefresh()
-    end
-```
-
-### Gestión de Interacciones del Usuario
-```mermaid
-sequenceDiagram
-    participant User
-    participant UI
-    participant Dashboard
-    participant API
-    
-    User->>UI: Click "Run Check" button
-    UI->>Dashboard: runCheck(checkName)
-    Dashboard->>API: POST /api/checks/{name}/run
-    API-->>Dashboard: execution result
-    Dashboard->>Dashboard: fetchAndUpdateStatus()
-    Dashboard->>UI: update button state
-    UI-->>User: Visual feedback
-```
+### Actualización Automática
+1. **Timer trigger**: Cada 5 segundos se ejecuta auto-refresh
+2. **Status fetch**: GET request a `/api/status`
+3. **Data comparison**: Se comparan nuevos datos con estado actual
+4. **Selective update**: Solo se actualizan elementos que cambiaron
+5. **Timestamp update**: Se actualiza "Last updated" timestamp
 
 ## 🔧 Configuración del Módulo
-
-### Estructura de Archivos
-```
-autocode/web/static/
-├── app.js          # Dashboard JavaScript logic
-└── style.css       # Visual styles and layout
-```
-
-### Configuración de Servicio (FastAPI)
-```python
-# En autocode/api/server.py
-from fastapi.staticfiles import StaticFiles
-
-app.mount("/static", StaticFiles(directory="autocode/web/static"), name="static")
-```
-
-### Variables de Configuración JavaScript
+### Configuración JavaScript
 ```javascript
-// En app.js - configuración del dashboard
+// Configuración del dashboard
 class AutocodeDashboard {
     constructor() {
         this.refreshInterval = 5000; // 5 segundos
-        this.apiBaseUrl = '/api';
-        this.enableKeyboardShortcuts = true;
-        this.enableAutoRefresh = true;
-        this.enableVisibilityPause = true;
+        this.refreshTimer = null;
+        this.isLoading = false;
     }
 }
 ```
 
-### Variables CSS Custom Properties
+### Configuración CSS
 ```css
-/* En style.css - configuración de tema */
-:root {
-    /* Colores principales */
-    --success-color: #28a745;
-    --warning-color: #ffc107;
-    --error-color: #dc3545;
-    --info-color: #17a2b8;
-    
-    /* Layout */
-    --dashboard-padding: 1rem;
-    --card-border-radius: 0.375rem;
-    --animation-duration: 0.3s;
+/* Configuración responsive */
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 20px;
 }
+
+/* Breakpoints */
+@media (max-width: 768px) {
+    .container {
+        padding: 10px;
+    }
+}
+```
+
+### Integración con Templates
+```html
+<!-- En index.html -->
+<link rel="stylesheet" href="{{ url_for('static', path='/style.css') }}">
+<script src="{{ url_for('static', path='/app.js') }}"></script>
 ```
 
 ## ⚠️ Consideraciones Especiales
+### Rendimiento
+- **Auto-refresh optimizado**: Solo actualiza cuando hay cambios
+- **Loading states**: Previene múltiples requests simultáneos
+- **Efficient DOM updates**: Actualiza solo elementos necesarios
+- **CSS transitions**: Animaciones suaves sin impacto en performance
 
-### Performance y Optimización
-- **Bundle Size**: Archivos optimizados para carga rápida
-- **Memory Management**: Limpieza automática de timers y event listeners
-- **Lazy Loading**: Carga diferida de componentes no críticos
-- **Browser Caching**: Headers apropiados para cacheo eficiente
-- **Visibility Optimization**: Pausa automática cuando no está visible
+### Compatibilidad
+- **Navegadores modernos**: Requiere soporte para Fetch API y ES6
+- **Responsive design**: Funciona en desktop, tablet y mobile
+- **Graceful degradation**: Funciona sin JavaScript para contenido básico
 
-### Compatibilidad Cross-Browser
-- **Polyfills**: Para features no soportadas en browsers antiguos
-- **Graceful Degradation**: Funcionalidad básica en browsers limitados
-- **Progressive Enhancement**: Mejoras para browsers modernos
-- **Feature Detection**: Verificación de APIs disponibles
+### Extensibilidad
+- **Modular JavaScript**: Fácil añadir nuevas verificaciones
+- **CSS variables**: Preparado para theming
+- **Component-based**: Estilos organizados por componentes
+- **API-driven**: Toda la funcionalidad basada en API REST
 
-### Seguridad Client-Side
-- **XSS Prevention**: Sanitización de contenido dinámico
-- **CSP Compliance**: Compatible con Content Security Policy
-- **Input Validation**: Validación de datos antes de envío
-- **Error Information**: No exposición de información sensible
+## 📊 Métricas y Monitoreo
+### Métricas JavaScript
+- **Auto-refresh status**: ON/OFF
+- **API response times**: Tiempo de respuesta de requests
+- **Update frequency**: Frecuencia de actualizaciones de UI
+- **Error rates**: Errores en comunicación con API
 
-### Accesibilidad
-- **Semantic HTML**: Uso correcto de elementos semánticos
-- **ARIA Attributes**: Soporte para screen readers
-- **Keyboard Navigation**: Navegación completa por teclado
-- **Color Contrast**: Cumplimiento de estándares WCAG
+### Métricas CSS
+- **Layout performance**: Tiempo de renderizado
+- **Animation smoothness**: Fluidez de transiciones
+- **Responsive behavior**: Adaptación a diferentes tamaños
+- **Visual consistency**: Consistencia en diferentes navegadores
 
-## 🧪 Testing y Validación
-
-### Testing en Diferentes Navegadores
-```bash
-# Testing manual
-# 1. Chrome DevTools
-open -a "Google Chrome" --args --auto-open-devtools-for-tabs http://localhost:8080
-
-# 2. Firefox Developer Tools
-open -a "Firefox Developer Edition" http://localhost:8080
-
-# 3. Safari Web Inspector
-open -a "Safari" http://localhost:8080
-```
-
-### Validación de JavaScript
+## 🚀 Casos de Uso Comunes
+### Monitoreo en Tiempo Real
 ```javascript
-// Console testing
-// Verificar carga de clases
-console.log(typeof AutocodeDashboard !== 'undefined');
+// Dashboard se actualiza automáticamente
+dashboard.startAutoRefresh();
 
-// Verificar API connectivity
-fetch('/api/status').then(r => console.log('API OK:', r.ok));
-
-// Verificar event listeners
-console.log('Event listeners active:', !!dashboard);
+// Usuario puede ver estado actual sin intervención
+// - Estado del daemon
+// - Resultados de verificaciones
+// - Métricas del sistema
 ```
 
-### Validación de CSS
+### Ejecución Manual
+```javascript
+// Usuario ejecuta verificación específica
+await runCheck('doc_check');
+
+// Dashboard se actualiza inmediatamente
+// - Botón cambia a "Running..."
+// - Resultado se muestra al completar
+// - Estado se actualiza en tiempo real
+```
+
+### Configuración Dinámica
+```javascript
+// Usuario cambia configuración
+updateConfig();
+
+// Cambios se aplican inmediatamente
+// - Daemon actualiza intervalos
+// - UI refleja nuevos valores
+// - No requiere reinicio
+```
+
+### Responsive Usage
 ```css
-/* Verificar custom properties */
-.test-element {
-    color: var(--success-color);
-    border-radius: var(--card-border-radius);
+/* Desktop: Layout completo */
+.config-card {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
 }
-```
 
-### Performance Testing
-```javascript
-// Medir tiempo de carga inicial
-performance.mark('dashboard-start');
-// ... después de inicialización
-performance.mark('dashboard-end');
-performance.measure('dashboard-init', 'dashboard-start', 'dashboard-end');
-```
-
-## 🔄 Flujo de Datos y Estados
-
-### Estado del Módulo JavaScript
-```javascript
-{
-    // AutocodeDashboard instance state
-    refreshInterval: number,
-    refreshTimer: number | null,
-    isLoading: boolean,
-    connectionStatus: 'connected' | 'error' | 'loading',
-    lastUpdated: Date,
-    
-    // Configuration state
-    autoRefreshEnabled: boolean,
-    keyboardShortcutsEnabled: boolean,
-    
-    // UI state
-    activeTab: string,
-    expandedCards: string[],
-    notifications: Array<{type, message, timestamp}>
-}
-```
-
-### Ciclo de Vida del Dashboard
-1. **Initialization**: Carga de scripts y setup inicial
-2. **Setup**: Configuración de event listeners y timers
-3. **Data Loading**: Fetch inicial de datos del API
-4. **Rendering**: Renderizado inicial de UI
-5. **Active Loop**: Ciclo de auto-refresh y user interactions
-6. **Cleanup**: Limpieza al cerrar/navegar (beforeunload)
-
-### Gestión de Errores
-```javascript
-// Error handling patterns
-try {
-    const response = await fetch('/api/status');
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    // ... handle success
-} catch (error) {
-    console.error('API Error:', error);
-    this.handleError(error);
-    this.showErrorMessage('Connection failed. Retrying...');
-}
-```
-
-## 📊 Métricas y Monitoreo Client-Side
-
-### Métricas de Performance
-- **Load Time**: Tiempo de carga inicial de assets
-- **API Response Time**: Latencia de llamadas al backend
-- **DOM Update Time**: Tiempo de actualización de UI
-- **Memory Usage**: Uso de memoria del dashboard
-- **Error Rate**: Frecuencia de errores JavaScript/API
-
-### Analytics de Uso (futuro)
-```javascript
-// User interaction tracking
-class UsageAnalytics {
-    trackButtonClick(buttonName) {
-        // Track user interactions
-    }
-    
-    trackApiCall(endpoint, duration) {
-        // Track API performance
-    }
-    
-    trackError(error, context) {
-        // Track error occurrences
+/* Mobile: Layout apilado */
+@media (max-width: 768px) {
+    .config-card {
+        grid-template-columns: 1fr;
     }
 }
 ```
-
-## 🚀 Extensibilidad
-
-### Añadir Nuevas Funcionalidades
-```javascript
-// Extender AutocodeDashboard
-class ExtendedDashboard extends AutocodeDashboard {
-    constructor() {
-        super();
-        this.customFeatures = true;
-    }
-    
-    addCustomWidget(widgetConfig) {
-        // Implementar nuevo widget
-    }
-}
-```
-
-### Personalización de Estilos
-```css
-/* Custom theme override */
-.dashboard-theme-dark {
-    --success-color: #4ade80;
-    --error-color: #f87171;
-    --background-color: #1f2937;
-}
-```
-
-### Plugins y Extensiones
-```javascript
-// Plugin system
-class DashboardPlugin {
-    constructor(dashboard) {
-        this.dashboard = dashboard;
-    }
-    
-    initialize() {
-        // Plugin initialization
-    }
-    
-    render() {
-        // Plugin UI rendering
-    }
-}
-```
-
-## 🔧 Debugging y Desarrollo
-
-### Modo Debug
-```javascript
-// Habilitar debug mode
-window.DEBUG = true;
-dashboard.enableDebugMode();
-
-// Logs detallados
-console.log('Dashboard state:', dashboard.getState());
-console.log('API calls:', dashboard.apiCallHistory);
-```
-
-### Developer Tools
-```javascript
-// Exponer utilidades de desarrollo
-window.dashboardUtils = {
-    forceRefresh: () => dashboard.fetchAndUpdateStatus(),
-    simulateError: () => dashboard.handleError(new Error('Test error')),
-    getState: () => dashboard.getState(),
-    clearCache: () => localStorage.clear()
-};
-```
-
-### Hot Reload (desarrollo)
-```javascript
-// Development hot reload
-if (process.env.NODE_ENV === 'development') {
-    new EventSource('/dev/reload').onmessage = () => location.reload();
-}
-```
-
-## 📖 Navegación Detallada
-
-### Archivos del Módulo
-- [JavaScript Dashboard](app.js.md) - Lógica completa del dashboard
-- [CSS Styles](style.css.md) - Diseño visual y responsive
-
-### Recursos Relacionados
-- [Web Module Overview](../_module.md) - Módulo web completo
-- [Templates Module](../templates/_module.md) - Templates HTML
-- [API Integration](../../api/_module.md) - Backend integration
 
 ## 🔄 Integración con Otros Módulos
+### Con Templates Module
+- **HTML estructura**: Templates proporcionan DOM structure
+- **Asset loading**: Templates cargan CSS y JS
+- **Element IDs**: Templates definen IDs que JavaScript manipula
 
-### Integración con FastAPI Backend
-- **Static File Serving**: Automático via FastAPI StaticFiles mount
-- **API Consumption**: Consume todos los endpoints REST disponibles
-- **Error Coordination**: Manejo coordinado de errores frontend/backend
+### Con API Server
+- **REST endpoints**: JavaScript consume API endpoints
+- **Real-time data**: Obtiene datos actualizados del daemon
+- **Configuration updates**: Envía cambios de configuración
 
-### Integración con Templates
-- **HTML Structure**: CSS styles aplicados a estructura HTML
-- **JavaScript Binding**: JS bind automático a elementos del DOM
-- **Dynamic Content**: Actualización de contenido via JavaScript
+### Con Core Modules
+- **Indirect integration**: A través de API obtiene datos de DocChecker, GitAnalyzer, etc.
+- **Status display**: Muestra resultados de verificaciones core
+- **Configuration management**: Permite configurar comportamiento core
 
-### Futuras Integraciones
-- **Build System**: Webpack/Vite para bundling optimizado
-- **TypeScript**: Migración a TypeScript para mejor type safety
-- **CSS Preprocessors**: SASS/LESS para estilos más avanzados
-- **Testing Framework**: Jest/Cypress para testing automatizado
+## 📈 Evolución del Módulo
+### Funcionalidad Actual
+- Dashboard básico con auto-refresh
+- Tres tipos de verificaciones (doc, git, test)
+- Configuración dinámica
+- Responsive design
+- Keyboard shortcuts
+
+### Posibles Extensiones
+- **WebSocket support**: Para updates en tiempo real
+- **Dark mode**: Tema oscuro para la interfaz
+- **Charts/Graphs**: Visualización de métricas históricas
+- **Notifications**: Alertas para cambios importantes
+- **Export functionality**: Exportar datos a CSV/JSON
+- **Advanced filtering**: Filtros para diferentes tipos de datos
+
+### Mejoras Técnicas
+- **Service Worker**: Para funcionamiento offline
+- **CSS Grid Level 2**: Layouts más avanzados
+- **Web Components**: Componentes reutilizables
+- **TypeScript**: Mejor type safety
+- **CSS-in-JS**: Estilos más dinámicos
+- **Performance monitoring**: Métricas de rendimiento client-side
