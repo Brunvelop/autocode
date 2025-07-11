@@ -523,8 +523,8 @@ class CodeToDesign:
             loc = node_info["loc"]
             num_methods = node_info["num_methods"]
             
-            # Generate link path
-            link_path = f"{module_path}/{file_name}_class.md#{class_name.lower()}"
+            # Generate link path with relative prefix for GitHub compatibility
+            link_path = f"./{module_path}/{file_name}_class.md#{class_name.lower()}"
             
             # Generate tooltip with metrics
             tooltip = f"{class_name} - LOC: {loc} | Methods: {num_methods}"
