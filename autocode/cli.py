@@ -14,6 +14,7 @@ from .core.test_checker import TestChecker
 from .core.git_analyzer import GitAnalyzer
 from .core.opencode_executor import OpenCodeExecutor, validate_opencode_setup
 from .core.doc_indexer import DocIndexer
+from .core.code_to_design import CodeToDesign
 from .api.models import AutocodeConfig
 
 
@@ -327,6 +328,61 @@ def check_tests_command(args) -> int:
     return 1 if test_issues else 0
 
 
+def code_to_design_command(args) -> int:
+    """Handle code-to-design command.
+    
+    Args:
+        args: Parsed command line arguments
+        
+    Returns:
+        Exit code (0 for success, 1 for errors)
+    """
+    try:
+        project_root = Path.cwd()
+        config = load_config()  # Use existing load_config
+        
+        # Convert CodeToDesignConfig to dict for CodeToDesign
+        if hasattr(config, 'code_to_design'):
+            config_dict = {
+                "output_dir": config.code_to_design.output_dir,
+                "language": config.code_to_design.language,
+                "diagrams": config.code_to_design.diagrams
+            }
+        else:
+            config_dict = {}
+        
+        # Initialize CodeToDesign
+        transformer = CodeToDesign(
+            project_root=project_root,
+            config=config_dict
+        )
+        
+        # Override config with CLI args if provided
+        if args.output_dir:
+            transformer.config['output_dir'] = args.output_dir
+        
+        # Generate design
+        result = transformer.generate_design(
+            directory=args.directory,
+            pattern=args.pattern
+        )
+        
+        if result['status'] == 'success':
+            print("✅ Design generation successful")
+            print(f"   Structures found: {result['structure_count']}")
+            print("   Generated files:")
+            for file_path in result['generated_files']:
+                print(f"     - {file_path}")
+            return 0
+        else:
+            print("❌ Design generation failed")
+            return 1
+            
+    except Exception as e:
+        print(f"❌ Error generating design: {e}")
+        return 1
+
+
 def count_tokens_command(args) -> int:
     """Handle count-tokens command.
     
@@ -556,6 +612,29 @@ def create_parser() -> argparse.ArgumentParser:
         help="Working directory for OpenCode execution (default: current directory)"
     )
     
+    # code-to-design subcommand
+    code_to_design_parser = subparsers.add_parser(
+        "code-to-design",
+        help="Generate design diagrams from code"
+    )
+    code_to_design_parser.add_argument(
+        "--directory", "-d",
+        type=str,
+        required=True,
+        help="Directory to analyze"
+    )
+    code_to_design_parser.add_argument(
+        "--pattern", "-p",
+        type=str,
+        default="*.py",
+        help="File pattern to match (default: *.py)"
+    )
+    code_to_design_parser.add_argument(
+        "--output-dir", "-o",
+        type=str,
+        help="Output directory for generated designs (default: design/)"
+    )
+
     # count-tokens subcommand
     count_tokens_parser = subparsers.add_parser(
         "count-tokens",
@@ -622,6 +701,8 @@ def main():
         exit_code = daemon_command(args)
     elif args.command == "opencode":
         exit_code = opencode_command(args)
+    elif args.command == "code-to-design":
+        exit_code = code_to_design_command(args)
     elif args.command == "count-tokens":
         exit_code = count_tokens_command(args)
     else:

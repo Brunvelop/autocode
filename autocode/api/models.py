@@ -77,6 +77,14 @@ class TestConfig(BaseModel):
     auto_execute: bool = True
 
 
+class CodeToDesignConfig(BaseModel):
+    """Configuration for code-to-design transformation."""
+    enabled: bool = True
+    output_dir: str = "design"
+    language: str = "python"
+    diagrams: List[str] = ["classes"]
+
+
 class AutocodeConfig(BaseModel):
     """Complete configuration for autocode daemon."""
     daemon: DaemonConfig = DaemonConfig()
@@ -84,6 +92,7 @@ class AutocodeConfig(BaseModel):
     doc_index: DocIndexConfig = DocIndexConfig()
     docs: DocsConfig = DocsConfig()
     tests: TestConfig = TestConfig()
+    code_to_design: CodeToDesignConfig = CodeToDesignConfig()
 
 
 class StatusResponse(BaseModel):

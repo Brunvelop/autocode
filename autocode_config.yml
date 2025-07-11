@@ -66,3 +66,10 @@ tests:
   test_frameworks:
     - "pytest"
   auto_execute: true
+
+code_to_design:
+  enabled: true
+  output_dir: "design"
+  language: "python"
+  diagrams:
+    - "classes"
