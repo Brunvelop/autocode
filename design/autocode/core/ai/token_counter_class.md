@@ -1,6 +1,6 @@
 # Classes from token_counter.py
 
-Source: `autocode\core\token_counter.py`
+Source: `autocode\core\ai\token_counter.py`
 
 ## TokenCounter
 

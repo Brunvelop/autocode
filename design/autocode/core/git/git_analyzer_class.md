@@ -1,6 +1,6 @@
 # Classes from git_analyzer.py
 
-Source: `autocode\core\git_analyzer.py`
+Source: `autocode\core\git\git_analyzer.py`
 
 ## FileChange
 

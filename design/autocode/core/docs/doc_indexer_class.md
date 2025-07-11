@@ -1,6 +1,6 @@
 # Classes from doc_indexer.py
 
-Source: `autocode\core\doc_indexer.py`
+Source: `autocode\core\docs\doc_indexer.py`
 
 ## DocIndexer
 

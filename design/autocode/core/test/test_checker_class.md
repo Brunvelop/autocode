@@ -1,6 +1,6 @@
 # Classes from test_checker.py
 
-Source: `autocode\core\test_checker.py`
+Source: `autocode\core\test\test_checker.py`
 
 ## TestStatus
 

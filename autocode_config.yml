@@ -73,3 +73,5 @@ code_to_design:
   language: "python"
   diagrams:
     - "classes"
+  directories:
+    - "autocode/"

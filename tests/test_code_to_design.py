@@ -4,7 +4,7 @@ Tests for code-to-design transformer.
 
 import pytest
 from pathlib import Path
-from autocode.core.code_to_design import CodeToDesign
+from autocode.core.design import CodeToDesign
 
 
 class TestCodeToDesign:

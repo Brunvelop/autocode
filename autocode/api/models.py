@@ -83,6 +83,7 @@ class CodeToDesignConfig(BaseModel):
     output_dir: str = "design"
     language: str = "python"
     diagrams: List[str] = ["classes"]
+    directories: List[str] = ["autocode/"]
 
 
 class AutocodeConfig(BaseModel):

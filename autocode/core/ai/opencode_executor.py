@@ -9,7 +9,7 @@ import yaml
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Any
 
-from ..prompts import load_prompt, list_available_prompts, get_prompt_info
+from ...prompts import load_prompt, list_available_prompts, get_prompt_info
 
 
 class OpenCodeExecutor:

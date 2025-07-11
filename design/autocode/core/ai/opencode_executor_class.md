@@ -1,6 +1,6 @@
 # Classes from opencode_executor.py
 
-Source: `autocode\core\opencode_executor.py`
+Source: `autocode\core\ai\opencode_executor.py`
 
 ## OpenCodeExecutor
 

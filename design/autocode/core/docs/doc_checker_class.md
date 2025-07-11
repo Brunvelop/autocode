@@ -1,6 +1,6 @@
 # Classes from doc_checker.py
 
-Source: `autocode\core\doc_checker.py`
+Source: `autocode\core\docs\doc_checker.py`
 
 ## DocStatus
 

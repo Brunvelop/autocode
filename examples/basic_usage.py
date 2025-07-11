@@ -6,8 +6,8 @@ This example shows how to use autocode programmatically.
 """
 
 from pathlib import Path
-from autocode.core.doc_checker import DocChecker
-from autocode.core.git_analyzer import GitAnalyzer
+from autocode.core.docs import DocChecker
+from autocode.core.git import GitAnalyzer
 
 
 def main():

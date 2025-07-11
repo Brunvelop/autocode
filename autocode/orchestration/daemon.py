@@ -9,10 +9,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, Optional
 
-from ..core.doc_checker import DocChecker
-from ..core.git_analyzer import GitAnalyzer
-from ..core.doc_indexer import DocIndexer
-from ..core.test_checker import TestChecker
+from ..core.docs import DocChecker, DocIndexer
+from ..core.git import GitAnalyzer
+from ..core.test import TestChecker
 from .scheduler import Scheduler
 from ..api.models import CheckResult, DaemonStatus, AutocodeConfig
 from ..cli import load_config
@@ -195,7 +194,7 @@ class AutocodeDaemon:
             
             if self.config.daemon.token_alerts.enabled:
                 try:
-                    from ..core.token_counter import TokenCounter
+                    from ..core.ai import TokenCounter
                     token_counter = TokenCounter(self.config.daemon.token_alerts.model)
                     token_info = token_counter.get_token_statistics(git_changes_file)
                     

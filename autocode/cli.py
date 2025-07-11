@@ -9,12 +9,11 @@ import yaml
 from pathlib import Path
 from typing import Optional
 
-from .core.doc_checker import DocChecker
-from .core.test_checker import TestChecker
-from .core.git_analyzer import GitAnalyzer
-from .core.opencode_executor import OpenCodeExecutor, validate_opencode_setup
-from .core.doc_indexer import DocIndexer
-from .core.code_to_design import CodeToDesign
+from .core.docs import DocChecker, DocIndexer
+from .core.test import TestChecker
+from .core.git import GitAnalyzer
+from .core.ai import OpenCodeExecutor, validate_opencode_setup
+from .core.design import CodeToDesign
 from .api.models import AutocodeConfig
 
 
@@ -361,21 +360,46 @@ def code_to_design_command(args) -> int:
         if args.output_dir:
             transformer.config['output_dir'] = args.output_dir
         
-        # Generate design
-        result = transformer.generate_design(
-            directory=args.directory,
-            pattern=args.pattern
-        )
+        # Determine directories to process
+        if args.directory:
+            # Use specified directory
+            directories = [args.directory]
+        else:
+            # Use directories from configuration
+            if hasattr(config, 'code_to_design') and config.code_to_design.directories:
+                directories = config.code_to_design.directories
+            else:
+                directories = ["autocode/"]  # Default fallback
         
-        if result['status'] == 'success':
-            print("✅ Design generation successful")
-            print(f"   Structures found: {result['structure_count']}")
-            print("   Generated files:")
-            for file_path in result['generated_files']:
-                print(f"     - {file_path}")
+        # Process each directory
+        all_results = []
+        for directory in directories:
+            print(f"🔍 Analyzing directory: {directory}")
+            
+            # Generate design for this directory
+            result = transformer.generate_design(
+                directory=directory,
+                pattern=args.pattern
+            )
+            
+            all_results.append(result)
+            
+            if result['status'] == 'success':
+                print(f"✅ Design generation successful for {directory}")
+                print(f"   Structures found: {result['structure_count']}")
+                print("   Generated files:")
+                for file_path in result['generated_files']:
+                    print(f"     - {file_path}")
+            else:
+                print(f"❌ Design generation failed for {directory}")
+        
+        # Check overall success
+        successful_results = [r for r in all_results if r['status'] == 'success']
+        if successful_results:
+            print(f"\n🎉 Overall: {len(successful_results)}/{len(all_results)} directories processed successfully")
             return 0
         else:
-            print("❌ Design generation failed")
+            print(f"\n❌ Overall: All directories failed")
             return 1
             
     except Exception as e:
@@ -393,7 +417,7 @@ def count_tokens_command(args) -> int:
         Exit code (0 for success, 1 for errors)
     """
     try:
-        from .core.token_counter import TokenCounter, count_tokens_in_multiple_files
+        from .core.ai import TokenCounter, count_tokens_in_multiple_files
         
         project_root = Path.cwd()
         
@@ -620,8 +644,7 @@ def create_parser() -> argparse.ArgumentParser:
     code_to_design_parser.add_argument(
         "--directory", "-d",
         type=str,
-        required=True,
-        help="Directory to analyze"
+        help="Directory to analyze (defaults to directories in config)"
     )
     code_to_design_parser.add_argument(
         "--pattern", "-p",

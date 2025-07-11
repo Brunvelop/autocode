@@ -1,6 +1,6 @@
 # Classes from code_to_design.py
 
-Source: `autocode\core\code_to_design.py`
+Source: `autocode\core\design\code_to_design.py`
 
 ## CodeToDesign
 

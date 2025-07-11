@@ -406,7 +406,7 @@ class CodeToDesign:
         Returns:
             List of generated file paths
         """
-        generated_dir = self.output_base / "generated"
+        generated_dir = self.output_base
         generated_dir.mkdir(parents=True, exist_ok=True)
         
         generated_files = []

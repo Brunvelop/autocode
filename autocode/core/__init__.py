@@ -1,12 +1,28 @@
 """
 Core functionality for autocode.
+
+This module is organized into thematic submodules for better maintainability:
+- docs: Documentation checking and indexing
+- git: Git analysis and change tracking
+- test: Test status checking and validation
+- ai: AI-powered analysis and token counting
+- design: Design generation from code
 """
 
-from .doc_checker import DocChecker
-from .git_analyzer import GitAnalyzer
-from .opencode_executor import OpenCodeExecutor, validate_opencode_setup
-from .doc_indexer import DocIndexer
-from .token_counter import TokenCounter
+# Documentation tools
+from .docs import DocChecker, DocIndexer
+
+# Git analysis tools
+from .git import GitAnalyzer
+
+# Test checking tools
+from .test import TestChecker
+
+# AI and analysis tools
+from .ai import OpenCodeExecutor, validate_opencode_setup, TokenCounter
+
+# Design generation tools
+from .design import CodeToDesign
 
 __all__ = [
     "DocChecker",
@@ -14,5 +30,7 @@ __all__ = [
     "OpenCodeExecutor",
     "validate_opencode_setup",
     "DocIndexer",
-    "TokenCounter"
+    "TokenCounter",
+    "TestChecker",
+    "CodeToDesign"
 ]
