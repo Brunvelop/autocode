@@ -70,8 +70,9 @@ tests:
 code_to_design:
   enabled: true
   output_dir: "design"
-  language: "python"
+  languages: ["python", "javascript", "html", "css"]
   diagrams:
-    - "classes"
+    - "classes"      # Para archivos Python
+    - "components"   # Para archivos Web (HTML/JS/CSS)
   directories:
     - "autocode/"

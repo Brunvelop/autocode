@@ -344,11 +344,16 @@ def code_to_design_command(args) -> int:
         if hasattr(config, 'code_to_design'):
             config_dict = {
                 "output_dir": config.code_to_design.output_dir,
-                "language": config.code_to_design.language,
+                # Handle both old 'language' and new 'languages' format
+                "languages": getattr(config.code_to_design, 'languages', [getattr(config.code_to_design, 'language', 'python')]),
                 "diagrams": config.code_to_design.diagrams
             }
         else:
-            config_dict = {}
+            config_dict = {
+                "output_dir": "design",
+                "languages": ["python"],
+                "diagrams": ["classes"]
+            }
         
         # Initialize CodeToDesign
         transformer = CodeToDesign(
@@ -387,16 +392,29 @@ def code_to_design_command(args) -> int:
             if result['status'] == 'success':
                 print(f"✅ Design generation successful for {directory}")
                 print(f"   Structures found: {result['structure_count']}")
+                if result.get('message'):
+                    print(f"   {result['message']}")
+                print("   Generated files:")
+                for file_path in result['generated_files']:
+                    print(f"     - {file_path}")
+            elif result['status'] == 'warning':
+                print(f"⚠️  Design generation completed with warnings for {directory}")
+                if result.get('message'):
+                    print(f"   {result['message']}")
                 print("   Generated files:")
                 for file_path in result['generated_files']:
                     print(f"     - {file_path}")
             else:
                 print(f"❌ Design generation failed for {directory}")
+                if result.get('error'):
+                    print(f"   Error: {result['error']}")
         
         # Check overall success
-        successful_results = [r for r in all_results if r['status'] == 'success']
+        successful_results = [r for r in all_results if r['status'] in ['success', 'warning']]
         if successful_results:
+            total_files = sum(len(r['generated_files']) for r in successful_results)
             print(f"\n🎉 Overall: {len(successful_results)}/{len(all_results)} directories processed successfully")
+            print(f"   Total files generated: {total_files}")
             return 0
         else:
             print(f"\n❌ Overall: All directories failed")

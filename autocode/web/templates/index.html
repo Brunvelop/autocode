@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Autocode Monitoring Dashboard</title>
+    <link rel="stylesheet" href="{{ url_for('static', path='/design-tokens.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', path='/style.css') }}">
 </head>
 <body>
@@ -245,36 +246,38 @@
                 </div>
             </section>
 
-            <!-- Architecture Diagram Section -->
-            <section class="architecture">
-                <h2>🏗️ Architecture Diagram</h2>
-                <div class="architecture-card">
-                    <div class="architecture-header">
-                        <div class="architecture-info">
-                            <h3 id="architecture-title">Loading...</h3>
-                            <p id="architecture-summary">Fetching architecture information...</p>
+            <!-- UI Designer Section -->
+            <section class="ui-designer">
+                <h2>🎨 UI Component Designer</h2>
+                <div class="ui-designer-card">
+                    <div class="ui-designer-header">
+                        <div class="ui-designer-info">
+                            <h3 id="ui-designer-title">Component Tree Visualization</h3>
+                            <p id="ui-designer-summary">Interactive diagram showing UI component hierarchy and relationships</p>
                         </div>
-                        <div class="architecture-controls">
-                            <button class="btn-run" onclick="refreshArchitecture()">Refresh</button>
-                            <button class="btn-run" onclick="regenerateArchitecture()">Regenerate</button>
+                        <div class="ui-designer-controls">
+                            <button class="btn-run" onclick="generateComponentTree()">Generate Tree</button>
+                            <button class="btn-run" onclick="refreshComponentTree()">Refresh</button>
                         </div>
                     </div>
-                    <div class="architecture-content">
-                        <div class="diagram-container">
-                            <div id="architecture-diagram" class="mermaid-diagram">
+                    <div class="ui-designer-content">
+                        <div class="component-tree-container">
+                            <div id="component-tree-diagram" class="component-tree-diagram">
                                 <div class="loading-message">
-                                    <p>🔄 Loading architecture diagram...</p>
+                                    <p>🎨 Ready to generate component tree</p>
+                                    <p>Click "Generate Tree" to analyze the UI structure</p>
                                 </div>
                             </div>
                         </div>
-                        <div class="architecture-legend">
-                            <h4>💡 Interactive Features:</h4>
+                        <div class="ui-designer-legend">
+                            <h4>🔧 Component Tree Features:</h4>
                             <ul>
-                                <li><strong>Click on any class</strong> to view its detailed documentation</li>
-                                <li><strong>Hover over nodes</strong> to see metrics (LOC, Methods)</li>
-                                <li><strong>Zoom and pan</strong> using mouse wheel and drag</li>
-                                <li><strong>Refresh</strong> to reload the current diagram</li>
-                                <li><strong>Regenerate</strong> to analyze code and rebuild the diagram</li>
+                                <li>Visualizes component hierarchy and nesting relationships</li>
+                                <li>Shows component props and data flow between components</li>
+                                <li>Identifies reusable components and potential optimizations</li>
+                                <li>Interactive navigation to component source code</li>
+                                <li>Real-time updates when UI structure changes</li>
+                                <li>Export capabilities for documentation and design reviews</li>
                             </ul>
                         </div>
                     </div>

@@ -482,6 +482,82 @@ class AutocodeDashboard {
             </div>
         `;
     }
+    
+    renderComponentTree(data) {
+        const titleElement = document.getElementById('ui-designer-title');
+        const summaryElement = document.getElementById('ui-designer-summary');
+        const diagramElement = document.getElementById('component-tree-diagram');
+        
+        // Update title and summary
+        titleElement.textContent = 'Component Tree Visualization';
+        summaryElement.textContent = `Found ${data.metrics.total_components} components in ${data.metrics.total_files} files`;
+        
+        // Initialize Mermaid if not already done
+        if (typeof mermaid === 'undefined') {
+            console.error('Mermaid is not loaded');
+            this.handleComponentTreeError(new Error('Mermaid library not loaded'));
+            return;
+        }
+        
+        // Configure Mermaid
+        mermaid.initialize({
+            startOnLoad: false,
+            theme: 'default',
+            themeVariables: {
+                primaryColor: '#e1f5fe',
+                primaryTextColor: '#0277bd',
+                primaryBorderColor: '#0277bd',
+                lineColor: '#757575',
+                secondaryColor: '#f3e5f5',
+                tertiaryColor: '#e8f5e8'
+            },
+            flowchart: {
+                useMaxWidth: true,
+                htmlLabels: true
+            },
+            securityLevel: 'loose'
+        });
+        
+        // Clear previous diagram
+        diagramElement.innerHTML = '';
+        
+        // Generate unique ID for the diagram
+        const diagramId = `component-tree-diagram-${Date.now()}`;
+        
+        // Create a div for the diagram
+        const diagramDiv = document.createElement('div');
+        diagramDiv.id = diagramId;
+        diagramDiv.className = 'mermaid';
+        diagramDiv.textContent = data.diagram;
+        
+        diagramElement.appendChild(diagramDiv);
+        
+        // Render the diagram
+        mermaid.init(undefined, diagramDiv);
+        
+        console.log('Component tree rendered successfully');
+    }
+    
+    handleComponentTreeError(error) {
+        console.error('Component tree error:', error);
+        
+        const titleElement = document.getElementById('ui-designer-title');
+        const summaryElement = document.getElementById('ui-designer-summary');
+        const diagramElement = document.getElementById('component-tree-diagram');
+        
+        titleElement.textContent = 'Component Tree Error';
+        summaryElement.textContent = error.message;
+        
+        diagramElement.innerHTML = `
+            <div class="loading-message">
+                <p>❌ Error generating component tree</p>
+                <p style="color: #dc3545; font-size: 0.9rem; margin-top: 10px;">${error.message}</p>
+                <p style="color: #6c757d; font-size: 0.85rem; margin-top: 10px;">
+                    Make sure the autocode/web directory contains HTML, JavaScript, or CSS files to analyze.
+                </p>
+            </div>
+        `;
+    }
 }
 
 // Global functions for architecture diagram
@@ -542,6 +618,77 @@ async function regenerateArchitecture() {
         // Re-enable button
         button.disabled = false;
         button.textContent = 'Regenerate';
+    }
+}
+
+// Global functions for UI Designer
+async function generateComponentTree() {
+    console.log('Generating component tree...');
+    
+    // Disable button
+    const button = event.target;
+    button.disabled = true;
+    button.textContent = 'Generating...';
+    
+    try {
+        const response = await fetch('/api/ui-designer/component-tree');
+        
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        
+        const result = await response.json();
+        
+        if (result.status === 'success') {
+            dashboard.renderComponentTree(result);
+            console.log('Component tree generated successfully');
+        } else {
+            throw new Error(result.error || 'Unknown error generating component tree');
+        }
+        
+    } catch (error) {
+        console.error('Error generating component tree:', error);
+        dashboard.handleComponentTreeError(error);
+        
+    } finally {
+        // Re-enable button
+        button.disabled = false;
+        button.textContent = 'Generate Tree';
+    }
+}
+
+async function refreshComponentTree() {
+    console.log('Refreshing component tree...');
+    
+    // Disable button
+    const button = event.target;
+    button.disabled = true;
+    button.textContent = 'Refreshing...';
+    
+    try {
+        const response = await fetch('/api/ui-designer/component-tree');
+        
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        
+        const result = await response.json();
+        
+        if (result.status === 'success') {
+            dashboard.renderComponentTree(result);
+            console.log('Component tree refreshed successfully');
+        } else {
+            throw new Error(result.error || 'Unknown error refreshing component tree');
+        }
+        
+    } catch (error) {
+        console.error('Error refreshing component tree:', error);
+        dashboard.handleComponentTreeError(error);
+        
+    } finally {
+        // Re-enable button
+        button.disabled = false;
+        button.textContent = 'Refresh';
     }
 }
 

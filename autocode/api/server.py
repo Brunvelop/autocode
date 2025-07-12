@@ -415,6 +415,59 @@ async def disable_scheduler_task(task_name: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/api/ui-designer/component-tree")
+async def get_component_tree(directory: str = "autocode/web"):
+    """Generate component tree diagram for UI components."""
+    if not daemon:
+        raise HTTPException(status_code=503, detail="Daemon not initialized")
+    
+    try:
+        from ..core.design.code_to_design import CodeToDesign
+        
+        # Initialize CodeToDesign
+        code_to_design = CodeToDesign(daemon.project_root)
+        
+        # Generate component tree
+        result = code_to_design.generate_component_tree(directory)
+        
+        if result["status"] == "error":
+            raise HTTPException(status_code=500, detail=result["error"])
+        
+        return result
+        
+    except Exception as e:
+        logger.error(f"Error generating component tree: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/ui-designer/component-tree/regenerate")
+async def regenerate_component_tree(background_tasks: BackgroundTasks, directory: str = "autocode/web"):
+    """Regenerate component tree diagram in the background."""
+    if not daemon:
+        raise HTTPException(status_code=503, detail="Daemon not initialized")
+    
+    try:
+        def regenerate_task():
+            """Background task to regenerate the component tree."""
+            from ..core.design.code_to_design import CodeToDesign
+            
+            # Initialize CodeToDesign
+            code_to_design = CodeToDesign(daemon.project_root)
+            
+            # Generate component tree
+            result = code_to_design.generate_component_tree(directory)
+            
+            logger.info(f"Component tree regenerated: {result}")
+        
+        background_tasks.add_task(regenerate_task)
+        
+        return {"message": "Component tree regeneration started"}
+        
+    except Exception as e:
+        logger.error(f"Error regenerating component tree: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # Health check endpoint
 @app.get("/health")
 async def health_check():

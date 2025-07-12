@@ -81,8 +81,9 @@ class CodeToDesignConfig(BaseModel):
     """Configuration for code-to-design transformation."""
     enabled: bool = True
     output_dir: str = "design"
-    language: str = "python"
-    diagrams: List[str] = ["classes"]
+    language: str = "python"  # Kept for backward compatibility
+    languages: List[str] = ["python", "javascript", "html", "css"]  # New multi-language support
+    diagrams: List[str] = ["classes", "components"]  # Support both diagram types
     directories: List[str] = ["autocode/"]
 
 
