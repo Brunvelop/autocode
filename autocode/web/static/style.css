@@ -435,6 +435,213 @@ body {
     border-left: 4px solid #dc3545;
 }
 
+/* Architecture Section */
+.architecture {
+    margin-bottom: 30px;
+}
+
+.architecture h2 {
+    margin-bottom: 20px;
+    color: #2c3e50;
+    font-size: 1.6rem;
+}
+
+.architecture-card {
+    background: white;
+    border-radius: 8px;
+    padding: 20px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    transition: all 0.3s ease;
+}
+
+.architecture-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 20px;
+    gap: 20px;
+}
+
+.architecture-info h3 {
+    color: #2c3e50;
+    font-size: 1.3rem;
+    margin-bottom: 8px;
+}
+
+.architecture-info p {
+    color: #6c757d;
+    font-size: 0.95rem;
+    margin: 0;
+}
+
+.architecture-controls {
+    display: flex;
+    gap: 10px;
+    flex-shrink: 0;
+}
+
+.architecture-content {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.diagram-container {
+    background: #f8f9fa;
+    border-radius: 8px;
+    padding: 20px;
+    min-height: 600px;
+    width: 100%;
+    overflow: auto;
+    position: relative;
+    border: 1px solid #e9ecef;
+}
+
+.mermaid-diagram {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.mermaid-diagram svg {
+    min-width: 1200px;
+    min-height: 600px;
+    max-width: none;
+    height: auto;
+}
+
+.loading-message {
+    text-align: center;
+    color: #6c757d;
+    font-size: 1.1rem;
+    padding: 40px;
+}
+
+.loading-message p {
+    margin: 0;
+}
+
+.architecture-legend {
+    background: #e8f5e8;
+    padding: 15px;
+    border-radius: 6px;
+    border-left: 4px solid #28a745;
+}
+
+.architecture-legend h4 {
+    color: #2c3e50;
+    margin-bottom: 12px;
+    font-size: 1rem;
+}
+
+.architecture-legend ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.architecture-legend li {
+    margin-bottom: 8px;
+    color: #495057;
+    font-size: 0.9rem;
+    line-height: 1.4;
+}
+
+.architecture-legend li:last-child {
+    margin-bottom: 0;
+}
+
+/* Mermaid Diagram Styling */
+.mermaid-diagram .mermaid {
+    background: transparent;
+}
+
+/* Override Mermaid default styles for better integration */
+.mermaid-diagram .node rect,
+.mermaid-diagram .node circle,
+.mermaid-diagram .node ellipse,
+.mermaid-diagram .node polygon {
+    fill: #fff;
+    stroke: #333;
+    stroke-width: 2px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.mermaid-diagram .node rect:hover,
+.mermaid-diagram .node circle:hover,
+.mermaid-diagram .node ellipse:hover,
+.mermaid-diagram .node polygon:hover {
+    fill: #f0f8ff;
+    stroke: #007bff;
+    stroke-width: 3px;
+}
+
+.mermaid-diagram .node .label {
+    color: #333;
+    font-family: inherit;
+    font-size: 12px;
+    cursor: pointer;
+}
+
+.mermaid-diagram .cluster rect {
+    fill: #f8f9fa;
+    stroke: #6c757d;
+    stroke-width: 1px;
+    stroke-dasharray: 5,5;
+}
+
+.mermaid-diagram .cluster .label {
+    color: #495057;
+    font-weight: 600;
+    font-size: 13px;
+}
+
+.mermaid-diagram .edgePath .path {
+    stroke: #6c757d;
+    stroke-width: 2px;
+    fill: none;
+}
+
+.mermaid-diagram .edgeLabel {
+    background-color: #fff;
+    padding: 2px 4px;
+    border-radius: 3px;
+    font-size: 11px;
+}
+
+/* Responsive design for architecture */
+@media (max-width: 768px) {
+    .architecture-header {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    
+    .architecture-controls {
+        justify-content: center;
+        width: 100%;
+    }
+    
+    .diagram-container {
+        padding: 15px;
+        min-height: 300px;
+    }
+    
+    .architecture-legend {
+        padding: 12px;
+    }
+    
+    .architecture-legend li {
+        font-size: 0.85rem;
+    }
+    
+    .mermaid-diagram .node .label {
+        font-size: 10px;
+    }
+}
+
 /* Loading state */
 .loading {
     opacity: 0.6;

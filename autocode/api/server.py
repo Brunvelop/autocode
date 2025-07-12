@@ -37,6 +37,8 @@ daemon_task: asyncio.Task = None
 # Setup templates and static files
 templates = Jinja2Templates(directory=Path(__file__).parent.parent / "web" / "templates")
 app.mount("/static", StaticFiles(directory=Path(__file__).parent.parent / "web" / "static"), name="static")
+# Mount design directory to serve documentation files
+app.mount("/design", StaticFiles(directory=Path(__file__).parent.parent.parent / "design"), name="design")
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -315,6 +317,74 @@ async def get_scheduler_task(task_name: str):
         raise HTTPException(status_code=404, detail=f"Task '{task_name}' not found")
     
     return task_status
+
+
+@app.get("/api/architecture/diagram")
+async def get_architecture_diagram():
+    """Get the architecture diagram content from design/_index.md."""
+    if not daemon:
+        raise HTTPException(status_code=503, detail="Daemon not initialized")
+    
+    try:
+        # Read the design index file
+        design_index_path = daemon.project_root / "design" / "_index.md"
+        
+        if not design_index_path.exists():
+            raise HTTPException(status_code=404, detail="Architecture diagram not found. Run 'autocode code-to-design' first.")
+        
+        with open(design_index_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+        
+        # Extract the Mermaid diagram from the markdown
+        import re
+        mermaid_match = re.search(r'```mermaid\n(.*?)\n```', content, re.DOTALL)
+        
+        if not mermaid_match:
+            raise HTTPException(status_code=404, detail="No Mermaid diagram found in design/_index.md")
+        
+        mermaid_content = mermaid_match.group(1)
+        
+        # Extract project summary
+        summary_match = re.search(r'\*\*Project Summary:\*\* (.+)', content)
+        project_summary = summary_match.group(1) if summary_match else "Unknown"
+        
+        return {
+            "mermaid_content": mermaid_content,
+            "project_summary": project_summary,
+            "last_updated": design_index_path.stat().st_mtime
+        }
+        
+    except Exception as e:
+        logger.error(f"Error reading architecture diagram: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/architecture/regenerate")
+async def regenerate_architecture_diagram(background_tasks: BackgroundTasks):
+    """Regenerate the architecture diagram."""
+    if not daemon:
+        raise HTTPException(status_code=503, detail="Daemon not initialized")
+    
+    try:
+        def regenerate_task():
+            """Background task to regenerate the diagram."""
+            from ..core.design.code_to_design import CodeToDesign
+            
+            # Initialize CodeToDesign
+            code_to_design = CodeToDesign(daemon.project_root)
+            
+            # Generate design for autocode directory
+            result = code_to_design.generate_design("autocode")
+            
+            logger.info(f"Architecture diagram regenerated: {result}")
+        
+        background_tasks.add_task(regenerate_task)
+        
+        return {"message": "Architecture diagram regeneration started"}
+        
+    except Exception as e:
+        logger.error(f"Error regenerating architecture diagram: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/api/scheduler/tasks/{task_name}/enable")

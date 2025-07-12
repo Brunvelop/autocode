@@ -244,6 +244,42 @@
                     </div>
                 </div>
             </section>
+
+            <!-- Architecture Diagram Section -->
+            <section class="architecture">
+                <h2>🏗️ Architecture Diagram</h2>
+                <div class="architecture-card">
+                    <div class="architecture-header">
+                        <div class="architecture-info">
+                            <h3 id="architecture-title">Loading...</h3>
+                            <p id="architecture-summary">Fetching architecture information...</p>
+                        </div>
+                        <div class="architecture-controls">
+                            <button class="btn-run" onclick="refreshArchitecture()">Refresh</button>
+                            <button class="btn-run" onclick="regenerateArchitecture()">Regenerate</button>
+                        </div>
+                    </div>
+                    <div class="architecture-content">
+                        <div class="diagram-container">
+                            <div id="architecture-diagram" class="mermaid-diagram">
+                                <div class="loading-message">
+                                    <p>🔄 Loading architecture diagram...</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="architecture-legend">
+                            <h4>💡 Interactive Features:</h4>
+                            <ul>
+                                <li><strong>Click on any class</strong> to view its detailed documentation</li>
+                                <li><strong>Hover over nodes</strong> to see metrics (LOC, Methods)</li>
+                                <li><strong>Zoom and pan</strong> using mouse wheel and drag</li>
+                                <li><strong>Refresh</strong> to reload the current diagram</li>
+                                <li><strong>Regenerate</strong> to analyze code and rebuild the diagram</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </section>
         </main>
 
         <footer class="footer">
@@ -252,6 +288,8 @@
         </footer>
     </div>
 
+    <!-- Mermaid.js for interactive diagrams -->
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10.6.1/dist/mermaid.min.js"></script>
     <script src="{{ url_for('static', path='/app.js') }}"></script>
 </body>
 </html>

@@ -18,6 +18,7 @@ class AutocodeDashboard {
     async loadInitialData() {
         await this.fetchAndUpdateStatus();
         await this.fetchAndUpdateConfig();
+        await this.loadArchitectureDiagram();
     }
     
     startAutoRefresh() {
@@ -385,6 +386,162 @@ class AutocodeDashboard {
         document.getElementById('uptime').textContent = 'Error';
         document.getElementById('total-checks').textContent = 'Error';
         document.getElementById('last-check').textContent = 'Error';
+    }
+    
+    async loadArchitectureDiagram() {
+        try {
+            console.log('Loading architecture diagram...');
+            
+            const response = await fetch('/api/architecture/diagram');
+            
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            
+            const data = await response.json();
+            this.renderArchitectureDiagram(data);
+            
+        } catch (error) {
+            console.error('Error loading architecture diagram:', error);
+            this.handleArchitectureError(error);
+        }
+    }
+    
+    renderArchitectureDiagram(data) {
+        const titleElement = document.getElementById('architecture-title');
+        const summaryElement = document.getElementById('architecture-summary');
+        const diagramElement = document.getElementById('architecture-diagram');
+        
+        // Update title and summary
+        titleElement.textContent = 'Autocode Architecture Overview';
+        summaryElement.textContent = data.project_summary;
+        
+        // Initialize Mermaid if not already done
+        if (typeof mermaid === 'undefined') {
+            console.error('Mermaid is not loaded');
+            this.handleArchitectureError(new Error('Mermaid library not loaded'));
+            return;
+        }
+        
+        // Configure Mermaid
+        mermaid.initialize({
+            startOnLoad: false,
+            theme: 'default',
+            themeVariables: {
+                primaryColor: '#fff',
+                primaryTextColor: '#333',
+                primaryBorderColor: '#333',
+                lineColor: '#6c757d',
+                secondaryColor: '#f8f9fa',
+                tertiaryColor: '#e9ecef'
+            },
+            flowchart: {
+                useMaxWidth: true,
+                htmlLabels: true
+            },
+            securityLevel: 'loose'
+        });
+        
+        // Clear previous diagram
+        diagramElement.innerHTML = '';
+        
+        // Generate unique ID for the diagram
+        const diagramId = `architecture-diagram-${Date.now()}`;
+        
+        // Create a div for the diagram
+        const diagramDiv = document.createElement('div');
+        diagramDiv.id = diagramId;
+        diagramDiv.className = 'mermaid';
+        diagramDiv.textContent = data.mermaid_content;
+        
+        diagramElement.appendChild(diagramDiv);
+        
+        // Render the diagram
+        mermaid.init(undefined, diagramDiv);
+        
+        console.log('Architecture diagram rendered successfully');
+    }
+    
+    handleArchitectureError(error) {
+        console.error('Architecture diagram error:', error);
+        
+        const titleElement = document.getElementById('architecture-title');
+        const summaryElement = document.getElementById('architecture-summary');
+        const diagramElement = document.getElementById('architecture-diagram');
+        
+        titleElement.textContent = 'Architecture Diagram Error';
+        summaryElement.textContent = error.message;
+        
+        diagramElement.innerHTML = `
+            <div class="loading-message">
+                <p>❌ Error loading architecture diagram</p>
+                <p style="color: #dc3545; font-size: 0.9rem; margin-top: 10px;">${error.message}</p>
+                <p style="color: #6c757d; font-size: 0.85rem; margin-top: 10px;">
+                    Try running <code>autocode code-to-design</code> first, then use the Regenerate button.
+                </p>
+            </div>
+        `;
+    }
+}
+
+// Global functions for architecture diagram
+async function refreshArchitecture() {
+    console.log('Refreshing architecture diagram...');
+    
+    // Disable button
+    const button = event.target;
+    button.disabled = true;
+    button.textContent = 'Loading...';
+    
+    try {
+        await dashboard.loadArchitectureDiagram();
+        console.log('Architecture diagram refreshed successfully');
+        
+    } catch (error) {
+        console.error('Error refreshing architecture diagram:', error);
+        
+    } finally {
+        // Re-enable button
+        button.disabled = false;
+        button.textContent = 'Refresh';
+    }
+}
+
+async function regenerateArchitecture() {
+    console.log('Regenerating architecture diagram...');
+    
+    // Disable button
+    const button = event.target;
+    button.disabled = true;
+    button.textContent = 'Regenerating...';
+    
+    try {
+        const response = await fetch('/api/architecture/regenerate', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+        });
+        
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        
+        const result = await response.json();
+        console.log('Architecture regeneration started:', result);
+        
+        // Wait a bit for regeneration to complete, then refresh
+        setTimeout(async () => {
+            await dashboard.loadArchitectureDiagram();
+        }, 3000);
+        
+    } catch (error) {
+        console.error('Error regenerating architecture diagram:', error);
+        
+    } finally {
+        // Re-enable button
+        button.disabled = false;
+        button.textContent = 'Regenerate';
     }
 }
 
