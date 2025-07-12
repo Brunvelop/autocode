@@ -18,18 +18,30 @@ class ComponentTreeGenerator(BaseGenerator):
         """
         return "mermaid"
 
-    def generate_class_diagram(self, class_info: Dict) -> str:
-        """Generate a class diagram for a single class.
-        
-        This method is not used for component tree generation.
+    def supports_diagram_type(self, diagram_type: str) -> bool:
+        """Check if generator supports a specific diagram type.
         
         Args:
-            class_info: Class information dictionary
+            diagram_type: Type of diagram to check
             
         Returns:
-            Empty string as this generator doesn't create class diagrams
+            True if supported, False otherwise
         """
-        return "graph TD\n    NotSupported[\"⚠️ Class diagrams not supported for UI components\"]"
+        return diagram_type in ["components", "component_tree"]
+
+    def generate_diagram(self, data: Dict[str, Any], diagram_type: str = "components") -> str:
+        """Generate a diagram from data.
+        
+        Args:
+            data: Analysis data from JavaScriptAnalyzer
+            diagram_type: Type of diagram to generate
+            
+        Returns:
+            Diagram string in Mermaid format
+        """
+        if diagram_type in ["components", "component_tree"]:
+            return self.generate_component_tree_diagram(data)
+        return super().generate_diagram(data, diagram_type)
 
     def generate_component_tree_diagram(self, analysis_data: Dict[str, Any]) -> str:
         """Generate Mermaid component tree diagram from analysis data.
@@ -124,16 +136,44 @@ class ComponentTreeGenerator(BaseGenerator):
                     diagram += f'    {comp_id}["{icon} {comp_name}"]:::component\n'
                     diagram += f'    {file_id} --> {comp_id}\n'
                     
-                    # Add props if available
-                    props = component.get("props", [])
-                    if props and len(props) > 0:
+                    # Add props (prioritize typed props, fallback to regular props)
+                    typed_props = component.get("typed_props", [])
+                    regular_props = component.get("props", [])
+                    
+                    if typed_props:
                         props_id = f"P{node_counter}"
                         node_counter += 1
-                        props_text = ", ".join(props[:3])  # Show first 3 props
-                        if len(props) > 3:
-                            props_text += f"... (+{len(props)-3})"
+                        # Show typed props with their types
+                        props_text = ", ".join([f"{tp['name']}: {tp['type']}" for tp in typed_props[:2]])
+                        if len(typed_props) > 2:
+                            props_text += f"... (+{len(typed_props)-2})"
                         diagram += f'    {props_id}["📝 Props: {props_text}"]:::default\n'
                         diagram += f'    {comp_id} --> {props_id}\n'
+                    elif regular_props and len(regular_props) > 0:
+                        props_id = f"P{node_counter}"
+                        node_counter += 1
+                        props_text = ", ".join(regular_props[:3])  # Show first 3 props
+                        if len(regular_props) > 3:
+                            props_text += f"... (+{len(regular_props)-3})"
+                        diagram += f'    {props_id}["📝 Props: {props_text}"]:::default\n'
+                        diagram += f'    {comp_id} --> {props_id}\n'
+                    
+                    # Add event handlers if available
+                    event_handlers = component.get("event_handlers", [])
+                    if event_handlers:
+                        events_id = f"E{node_counter}"
+                        node_counter += 1
+                        # Group by type and show summary
+                        event_types = {}
+                        for eh in event_handlers:
+                            eh_type = eh.get('type', 'other')
+                            event_types[eh_type] = event_types.get(eh_type, 0) + 1
+                        
+                        events_text = ", ".join([f"{etype}({count})" for etype, count in list(event_types.items())[:2]])
+                        if len(event_types) > 2:
+                            events_text += "..."
+                        diagram += f'    {events_id}["🎯 Events: {events_text}"]:::default\n'
+                        diagram += f'    {comp_id} --> {events_id}\n'
                 
                 # Add significant elements (with IDs or classes)
                 significant_elements = [

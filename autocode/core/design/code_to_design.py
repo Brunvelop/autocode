@@ -54,7 +54,7 @@ class CodeToDesign:
         if "classes" in diagrams:
             self.generators["classes"] = MermaidGenerator(config)
         if "components" in diagrams:
-            self.generators["components"] = ComponentTreeGenerator()
+            self.generators["components"] = ComponentTreeGenerator(config)
         
         # Fallback for backward compatibility
         if not self.analyzers:

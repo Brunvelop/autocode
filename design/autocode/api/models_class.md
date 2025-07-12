@@ -112,7 +112,7 @@ classDiagram
 
 ## CodeToDesignConfig
 
-**Metrics:** LOC: 7 | Methods: 0
+**Metrics:** LOC: 8 | Methods: 0
 
 ```mermaid
 classDiagram

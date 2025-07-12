@@ -35,6 +35,12 @@ class JavaScriptAnalyzer(BaseAnalyzer):
             'template_literals': re.compile(r'`([^`]*<[^>]+>[^`]*)`', re.MULTILINE | re.DOTALL),
             # DOM queries
             'dom_queries': re.compile(r'(?:document\.)?(?:querySelector|getElementById|getElementsBy\w+)\s*\(\s*[\'"]([^\'\"]+)[\'"]', re.MULTILINE),
+            # Event handlers - simple patterns for common events
+            'event_handlers': re.compile(r'(?:addEventListener|on(?:click|change|submit|load|focus|blur|keyup|keydown|mouseover|mouseout))\s*[\(\=]\s*[\'"]?([^\'\";\)]+)', re.MULTILINE),
+            # Props with types (JSDoc style or TypeScript-like)
+            'typed_props': re.compile(r'@param\s*\{([^}]+)\}\s*(\w+)', re.MULTILINE),
+            # Component relationships (parent-child in HTML/templates)
+            'html_hierarchy': re.compile(r'<(\w+(?:-\w+)?)([^>]*)>(.*?)</\1>', re.MULTILINE | re.DOTALL),
         }
 
     def get_supported_extensions(self) -> List[str]:
@@ -222,6 +228,22 @@ class JavaScriptAnalyzer(BaseAnalyzer):
         for template in templates:
             html_elements = self._extract_elements_from_template(template)
             elements.extend(html_elements)
+            # Extract relationships from templates
+            template_relationships = self._extract_relationships_from_template(template)
+            relationships.extend(template_relationships)
+        
+        # Find event handlers
+        event_handlers = self._extract_event_handlers(content)
+        
+        # Find typed props (JSDoc style)
+        typed_props = self._extract_typed_props(content)
+        
+        # Enhance components with additional information
+        for component in components:
+            # Add event handlers related to this component
+            component['event_handlers'] = [eh for eh in event_handlers if component['name'].lower() in eh.get('context', '').lower()]
+            # Add typed props if available
+            component['typed_props'] = [tp for tp in typed_props if component['name'].lower() in tp.get('context', '').lower()]
         
         return {
             'file_path': str(file_path) if file_path else 'inline',
@@ -229,11 +251,15 @@ class JavaScriptAnalyzer(BaseAnalyzer):
             'components': components,
             'elements': elements,
             'relationships': relationships,
+            'event_handlers': event_handlers,
+            'typed_props': typed_props,
             'metrics': {
                 'total_components': len(components),
                 'custom_elements': len([c for c in components if 'custom_element' in c['type']]),
                 'function_components': len([c for c in components if c['type'] == 'function_component']),
-                'class_components': len([c for c in components if c['type'] == 'class_component'])
+                'class_components': len([c for c in components if c['type'] == 'class_component']),
+                'event_handlers': len(event_handlers),
+                'typed_props': len(typed_props)
             }
         }
 
@@ -431,3 +457,139 @@ class JavaScriptAnalyzer(BaseAnalyzer):
                 "total_components": sum(len(m["components"]) for m in modules.values())
             }
         }
+
+    def _extract_event_handlers(self, content: str) -> List[Dict[str, Any]]:
+        """Extract event handlers from JavaScript content.
+        
+        Args:
+            content: JavaScript content
+            
+        Returns:
+            List of event handler information
+        """
+        event_handlers = []
+        
+        # Find event handlers using the regex pattern
+        handler_matches = self.component_patterns['event_handlers'].findall(content)
+        
+        for handler in handler_matches:
+            # Get surrounding context for better matching with components
+            line_num = self._get_line_number(content, handler)
+            context_lines = content.split('\n')[max(0, line_num-3):line_num+2]
+            context = ' '.join(context_lines).lower()
+            
+            event_handlers.append({
+                'handler': handler.strip(),
+                'line_number': line_num,
+                'context': context,
+                'type': self._classify_event_handler(handler)
+            })
+        
+        return event_handlers
+
+    def _extract_typed_props(self, content: str) -> List[Dict[str, Any]]:
+        """Extract typed props from JSDoc comments.
+        
+        Args:
+            content: JavaScript content
+            
+        Returns:
+            List of typed prop information
+        """
+        typed_props = []
+        
+        # Find typed props using the regex pattern
+        prop_matches = self.component_patterns['typed_props'].findall(content)
+        
+        for prop_type, prop_name in prop_matches:
+            # Get surrounding context for better matching with components
+            line_num = self._get_line_number(content, prop_name)
+            context_lines = content.split('\n')[max(0, line_num-5):line_num+2]
+            context = ' '.join(context_lines).lower()
+            
+            typed_props.append({
+                'name': prop_name.strip(),
+                'type': prop_type.strip(),
+                'line_number': line_num,
+                'context': context
+            })
+        
+        return typed_props
+
+    def _extract_relationships_from_template(self, template: str) -> List[Dict[str, Any]]:
+        """Extract parent-child relationships from HTML template.
+        
+        Args:
+            template: Template literal content
+            
+        Returns:
+            List of relationship information
+        """
+        relationships = []
+        
+        try:
+            # Parse HTML in template literal
+            soup = BeautifulSoup(template, 'html.parser')
+            
+            def traverse_element(element, parent_name=None):
+                if element.name:
+                    # Check for custom elements (components)
+                    if '-' in element.name or element.get('id') or element.get('class'):
+                        elem_id = element.get('id')
+                        elem_classes = element.get('class', [])
+                        
+                        # Create relationship if has parent
+                        if parent_name:
+                            relationships.append({
+                                'parent': parent_name,
+                                'child': element.name,
+                                'child_id': elem_id,
+                                'child_classes': elem_classes,
+                                'relationship_type': 'template_hierarchy'
+                            })
+                        
+                        # Process children
+                        current_name = elem_id if elem_id else (elem_classes[0] if elem_classes else element.name)
+                        for child in element.find_all(True, recursive=False):
+                            traverse_element(child, current_name)
+            
+            # Start traversal from root elements
+            for root_element in soup.find_all(True, recursive=False):
+                traverse_element(root_element)
+                
+        except Exception:
+            # If parsing fails, try simple regex approach
+            hierarchy_matches = self.component_patterns['html_hierarchy'].findall(template)
+            for tag, attributes, content in hierarchy_matches:
+                if '-' in tag:  # Custom element
+                    relationships.append({
+                        'parent': 'template',
+                        'child': tag,
+                        'relationship_type': 'template_component'
+                    })
+        
+        return relationships
+
+    def _classify_event_handler(self, handler: str) -> str:
+        """Classify the type of event handler.
+        
+        Args:
+            handler: Event handler name or function
+            
+        Returns:
+            Classification of the event handler
+        """
+        handler_lower = handler.lower()
+        
+        if any(event in handler_lower for event in ['click', 'tap']):
+            return 'interaction'
+        elif any(event in handler_lower for event in ['change', 'input', 'submit']):
+            return 'form'
+        elif any(event in handler_lower for event in ['load', 'ready']):
+            return 'lifecycle'
+        elif any(event in handler_lower for event in ['keyup', 'keydown', 'keypress']):
+            return 'keyboard'
+        elif any(event in handler_lower for event in ['mouseover', 'mouseout', 'hover']):
+            return 'mouse'
+        else:
+            return 'other'

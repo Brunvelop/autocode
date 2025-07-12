@@ -4,7 +4,7 @@ Source: `autocode\core\design\analyzers\javascript_analyzer.py`
 
 ## JavaScriptAnalyzer
 
-**Metrics:** LOC: 418 | Methods: 14
+**Metrics:** LOC: 580 | Methods: 18
 
 ```mermaid
 classDiagram
@@ -23,6 +23,10 @@ classDiagram
         -_create_empty_analysis(file_path: Path) -> Dict[str, Any]
         -_create_error_analysis(file_path: Path, error: Exception) -> Dict[str, Any]
         +analyze_directory(directory: str, pattern: str) -> Dict[str, Any]
+        -_extract_event_handlers(content: str) -> List
+        -_extract_typed_props(content: str) -> List
+        -_extract_relationships_from_template(template: str) -> List
+        -_classify_event_handler(handler: str) -> str
     }
     BaseAnalyzer <|-- JavaScriptAnalyzer
 

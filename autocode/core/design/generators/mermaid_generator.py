@@ -19,6 +19,17 @@ class MermaidGenerator(BaseGenerator):
         """
         return "mermaid"
 
+    def supports_diagram_type(self, diagram_type: str) -> bool:
+        """Check if generator supports a specific diagram type.
+        
+        Args:
+            diagram_type: Type of diagram to check
+            
+        Returns:
+            True if supported, False otherwise
+        """
+        return diagram_type == "class"
+
     def generate_class_diagram(self, class_info: Dict) -> str:
         """Generate Mermaid class diagram for a single class.
         
