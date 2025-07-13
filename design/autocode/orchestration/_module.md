@@ -1,11 +1,13 @@
-# Module: autocode\orchestration
+# Module: orchestration
 
-## Classes in this module
+**Summary:** 3 files, 0 items
 
-### daemon.py
-- [AutocodeDaemon](daemon_class.md#autocodedaemon)
+## Items in this module
 
-### scheduler.py
-- [ScheduledTask](scheduler_class.md#scheduledtask)
-- [Scheduler](scheduler_class.md#scheduler)
+### daemon - Classes
+- [AutocodeDaemon](daemon_items.md#autocodedaemon)
+
+### scheduler - Classes
+- [ScheduledTask](scheduler_items.md#scheduledtask)
+- [Scheduler](scheduler_items.md#scheduler)
 

@@ -1,9 +1,11 @@
-# Module: autocode\core\git
+# Module: core\git
 
-## Classes in this module
+**Summary:** 2 files, 0 items
 
-### git_analyzer.py
-- [FileChange](git_analyzer_class.md#filechange)
-- [GitStatus](git_analyzer_class.md#gitstatus)
-- [GitAnalyzer](git_analyzer_class.md#gitanalyzer)
+## Items in this module
+
+### git_analyzer - Classes
+- [FileChange](git_analyzer_items.md#filechange)
+- [GitStatus](git_analyzer_items.md#gitstatus)
+- [GitAnalyzer](git_analyzer_items.md#gitanalyzer)
 

@@ -6,14 +6,14 @@ modular Markdown files with diagrams using a modular architecture.
 
 import os
 from pathlib import Path
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional, Tuple
+import logging
 
-from .analyzers import PythonAnalyzer, JavaScriptAnalyzer
-from .generators import MermaidGenerator, ComponentTreeGenerator
-from .utils import (
-    build_module_tree, count_modules, generate_mermaid_subgraphs,
-    generate_click_declarations, generate_module_details
-)
+from .analyzers import AnalyzerFactory
+from .diagrams import GeneratorFactory, MarkdownExporter
+from .utils import GeneralUtils
+
+logger = logging.getLogger(__name__)
 
 
 class CodeToDesign:
@@ -27,318 +27,684 @@ class CodeToDesign:
             config: Configuration dictionary
         """
         self.project_root = project_root
-        self.config = config or {
-            "output_dir": "design",
-            "languages": ["python"],
-            "diagrams": ["classes"]
-        }
+        self.config = self._normalize_config(config)
         self.output_base = self.project_root / self.config["output_dir"]
         
-        # Initialize available analyzers and generators
-        self.analyzers = {}
-        self.generators = {}
+        # Initialize factories
+        self.analyzer_factory = AnalyzerFactory(project_root, config)
+        self.generator_factory = GeneratorFactory(config)
         
-        # Support for multiple languages
-        languages = self.config.get("languages", [self.config.get("language", "python")])
-        if isinstance(languages, str):
-            languages = [languages]
-            
-        # Initialize analyzers for supported languages
-        if "python" in languages:
-            self.analyzers["python"] = PythonAnalyzer(project_root, config)
-        if any(lang in languages for lang in ["javascript", "html", "css"]):
-            self.analyzers["web"] = JavaScriptAnalyzer(project_root, config)
+        # Initialize utilities
+        self.utils = GeneralUtils(config)
         
-        # Initialize generators for supported diagram types
-        diagrams = self.config.get("diagrams", ["classes"])
-        if "classes" in diagrams:
-            self.generators["classes"] = MermaidGenerator(config)
-        if "components" in diagrams:
-            self.generators["components"] = ComponentTreeGenerator(config)
-        
-        # Fallback for backward compatibility
-        if not self.analyzers:
-            self.analyzers["python"] = PythonAnalyzer(project_root, config)
-        if not self.generators:
-            self.generators["classes"] = MermaidGenerator(config)
-
-    def generate_visual_index(self, structures: Dict[str, Dict]) -> str:
-        """Generate a visual index using Mermaid diagram with hierarchical structure.
+        # Initialize analyzers and generators based on config
+        self.analyzers = self._initialize_analyzers()
+        self.generators = self._initialize_generators()
+    
+    def _normalize_config(self, config: Dict[str, Any] = None) -> Dict[str, Any]:
+        """Normalize configuration with defaults.
         
         Args:
-            structures: Extracted code structures organized by directory
+            config: Input configuration
+            
+        Returns:
+            Normalized configuration dictionary
+        """
+        default_config = {
+            "output_dir": "design",
+            "languages": ["python"],
+            "diagrams": ["classes"],
+            "auto_detect": True,
+            "include_metrics": True,
+            "generate_index": True,
+            "module_icons": {},  # User can provide custom icons
+            "file_patterns": {},  # User can provide custom patterns
+            "exclude_patterns": ["__pycache__", "*.pyc", ".git", "node_modules"],
+            "max_depth": 10,
+            "output_formats": ["markdown"]
+        }
+        
+        if config:
+            # Handle legacy 'language' parameter
+            if "language" in config and "languages" not in config:
+                config["languages"] = [config["language"]]
+            
+            # Ensure languages is a list
+            if "languages" in config and isinstance(config["languages"], str):
+                config["languages"] = [config["languages"]]
+            
+            # Merge with defaults
+            for key, value in config.items():
+                default_config[key] = value
+        
+        return default_config
+    
+    def _initialize_analyzers(self) -> Dict[str, Any]:
+        """Initialize analyzers based on configuration.
+        
+        Returns:
+            Dictionary of initialized analyzers
+        """
+        analyzers = {}
+        
+        if self.config.get("auto_detect", True):
+            # Auto-detect analyzers for the project
+            logger.info("Auto-detecting analyzers for project...")
+            # We'll auto-detect per directory when needed
+        else:
+            # Use specified languages
+            languages = self.config.get("languages", ["python"])
+            analyzers = self.analyzer_factory.get_analyzers_for_languages(languages)
+        
+        return analyzers
+    
+    def _initialize_generators(self) -> Dict[str, Any]:
+        """Initialize generators based on configuration.
+        
+        Returns:
+            Dictionary of initialized generators
+        """
+        diagram_types = self.config.get("diagrams", ["classes"])
+        return self.generator_factory.auto_detect_generators(diagram_types)
+
+    def generate_visual_index(self, analysis_results: Dict[str, Any], 
+                             project_name: Optional[str] = None) -> str:
+        """Generate a visual index using hierarchical structure.
+        
+        Args:
+            analysis_results: Combined analysis results from all analyzers
+            project_name: Name of the project (auto-detected if None)
             
         Returns:
             Markdown content with visual index
         """
-        # Build hierarchical tree
-        module_tree = build_module_tree(structures)
+        # Build hierarchical tree using the new utilities
+        module_tree = self.utils.build_hierarchical_tree(analysis_results)
         
-        # Calculate total metrics
-        total_classes = sum(node["metrics"]["classes"] for node in module_tree.values())
-        total_loc = sum(node["metrics"]["loc"] for node in module_tree.values())
-        total_modules = count_modules(module_tree)
+        # Generate summary statistics
+        summary_stats = self.utils.generate_summary_stats(module_tree)
+        
+        # Get project name from config or auto-detect
+        if not project_name:
+            project_name = self.config.get("project_name", self.project_root.name.title())
         
         # Generate visual index content
-        content = f"# 🏗️ Autocode Architecture Overview\n\n"
-        content += f"**Project Summary:** {total_classes} Classes | {total_loc:,} LOC | {total_modules} Modules\n\n"
+        content = f"# 🏗️ {project_name} Architecture Overview\n\n"
         
-        # Generate Mermaid diagram
-        content += "```mermaid\n"
-        content += "graph TD\n"
-        content += '    subgraph "🏗️ Autocode Project"\n'
+        # Add summary with generic metrics
+        metrics = summary_stats["metrics"]
+        content += f"**Project Summary:** "
+        content += f"{metrics['total_items']} Items | "
+        content += f"{metrics['total_loc']:,} LOC | "
+        content += f"{summary_stats['total_nodes']} Modules\n\n"
         
-        # Module icons mapping
-        module_icons = {
-            "autocode": "🏗️ Autocode",
-            "core": "⚙️ Core",
-            "api": "🌐 API",
-            "orchestration": "🔄 Orchestration", 
-            "web": "🖥️ Web",
-            "prompts": "📝 Prompts",
-            "ai": "🤖 AI",
-            "design": "🎨 Design",
-            "docs": "📚 Docs",
-            "git": "🔧 Git",
-            "test": "🧪 Test"
-        }
+        # Add breakdown by type
+        if metrics['classes'] > 0:
+            content += f"- **Classes:** {metrics['classes']}\n"
+        if metrics['functions'] > 0:
+            content += f"- **Functions:** {metrics['functions']}\n"
+        if metrics['components'] > 0:
+            content += f"- **Components:** {metrics['components']}\n"
+        content += "\n"
+        
+        # Generate Mermaid diagram using mermaid generator if available
+        if "mermaid" in self.generators:
+            content += "```mermaid\n"
+            content += self._generate_architecture_diagram(module_tree, project_name)
+            content += "\n```\n\n"
+        
+        # Add module details
+        content += "## Module Details\n\n"
+        content += self._generate_module_details_section(module_tree)
+        
+        return content
+    
+    def _generate_architecture_diagram(self, module_tree: Dict[str, Any], 
+                                     project_name: str) -> str:
+        """Generate Mermaid architecture diagram.
+        
+        Args:
+            module_tree: Hierarchical module tree
+            project_name: Name of the project
+            
+        Returns:
+            Mermaid diagram content
+        """
+        diagram = "graph TD\n"
+        diagram += f'    subgraph "{project_name}"\n'
+        
+        # Get module icons
+        module_icons = self.utils.get_module_icons()
         
         node_counter = 0
         
-        # Generate hierarchical subgraphs with node information
-        mermaid_content, node_counter, nodes_info = generate_mermaid_subgraphs(module_tree, module_icons, node_counter, 2)
-        content += mermaid_content
+        # Generate nodes for each module
+        for module_name, module_data in module_tree.items():
+            metrics = module_data.get("metrics", {})
+            if metrics.get("total_items", 0) == 0:
+                continue
+            
+            # Get icon for module
+            icon = module_icons.get(module_name.lower(), f"📁 {module_name.title()}")
+            
+            # Create node with metrics
+            node_id = f"M{node_counter}"
+            node_counter += 1
+            
+            diagram += f'        {node_id}["{icon}\\n{metrics["total_items"]} items"]\n'
+            
+            # Add children if any
+            if module_data.get("children"):
+                child_diagram, node_counter = self._generate_child_nodes(
+                    module_data["children"], node_id, node_counter, module_icons, 2
+                )
+                diagram += child_diagram
         
-        content += "    end\n\n"
+        diagram += "    end\n"
+        return diagram
+    
+    def _generate_child_nodes(self, children: Dict[str, Any], parent_id: str, 
+                            node_counter: int, module_icons: Dict[str, str], 
+                            indent_level: int) -> Tuple[str, int]:
+        """Generate child nodes recursively.
         
-        # Add module relationships
-        content += "    %% Module relationships\n"
-        content += "    API --> Core\n"
-        content += "    Core --> Orchestration\n"
-        content += "    Orchestration --> Web\n"
-        content += "\n"
+        Args:
+            children: Child modules
+            parent_id: Parent node ID
+            node_counter: Current node counter
+            module_icons: Module icon mapping
+            indent_level: Indentation level
+            
+        Returns:
+            Tuple of (diagram content, updated node counter)
+        """
+        diagram = ""
+        indent = "    " * indent_level
         
-        # Add interactive click declarations
-        click_content = generate_click_declarations(nodes_info)
-        content += click_content
-        content += "\n"
+        for child_name, child_data in children.items():
+            metrics = child_data.get("metrics", {})
+            if metrics.get("total_items", 0) == 0:
+                continue
+            
+            # Get icon for child
+            icon = module_icons.get(child_name.lower(), f"📁 {child_name.title()}")
+            
+            # Create child node
+            child_id = f"M{node_counter}"
+            node_counter += 1
+            
+            diagram += f'{indent}{child_id}["{icon}\\n{metrics["total_items"]} items"]\n'
+            diagram += f'{indent}{parent_id} --> {child_id}\n'
+            
+            # Add grandchildren if any
+            if child_data.get("children"):
+                grandchild_diagram, node_counter = self._generate_child_nodes(
+                    child_data["children"], child_id, node_counter, module_icons, indent_level + 1
+                )
+                diagram += grandchild_diagram
         
-        content += "```\n\n"
+        return diagram, node_counter
+    
+    def _generate_module_details_section(self, module_tree: Dict[str, Any]) -> str:
+        """Generate module details section.
         
-        # Add module details summary
-        content += "## Module Details\n\n"
-        details_content = generate_module_details(module_tree)
-        content += details_content
+        Args:
+            module_tree: Hierarchical module tree
+            
+        Returns:
+            Module details content
+        """
+        content = ""
         
+        def add_module_details(nodes: Dict[str, Any], prefix: str = "", level: int = 3):
+            nonlocal content
+            for node_name, node in nodes.items():
+                metrics = node.get("metrics", {})
+                
+                if metrics.get("total_items", 0) == 0:
+                    continue
+                
+                header_level = "#" * level
+                full_name = f"{prefix}{node_name.title()}" if prefix else node_name.title()
+                
+                content += f"{header_level} {full_name}\n"
+                content += f"- **Total Items:** {metrics['total_items']}\n"
+                content += f"- **Files:** {metrics['total_files']}\n"
+                content += f"- **Lines of Code:** {metrics['total_loc']:,}\n"
+                
+                if metrics['classes'] > 0:
+                    content += f"- **Classes:** {metrics['classes']}\n"
+                if metrics['functions'] > 0:
+                    content += f"- **Functions:** {metrics['functions']}\n"
+                if metrics['components'] > 0:
+                    content += f"- **Components:** {metrics['components']}\n"
+                
+                if not node.get("is_leaf") and node.get("children"):
+                    content += f"- **Submodules:** {len(node['children'])}\n"
+                
+                content += "\n"
+                
+                # Recursively add children
+                if node.get("children"):
+                    add_module_details(node["children"], f"{full_name} > ", level + 1)
+        
+        add_module_details(module_tree)
         return content
 
-    def generate_markdown_files(self, structures: Dict[str, Dict]) -> List[Path]:
+    def generate_markdown_files(self, analysis_results: Dict[str, Any], 
+                               output_dir: Optional[Path] = None) -> List[Path]:
         """Generate modular Markdown files maintaining directory structure.
         
         Args:
-            structures: Extracted code structures organized by directory
+            analysis_results: Combined analysis results from all analyzers
+            output_dir: Custom output directory (defaults to self.output_base)
             
         Returns:
             List of generated file paths
         """
-        generated_dir = self.output_base
+        generated_dir = output_dir if output_dir is not None else self.output_base
         generated_dir.mkdir(parents=True, exist_ok=True)
         
         generated_files = []
         
+        # Generate visual index if configured
+        if self.config.get("generate_index", True):
+            index_path = generated_dir / "_index.md"
+            index_content = self.generate_visual_index(analysis_results)
+            
+            with open(index_path, "w", encoding="utf-8") as f:
+                f.write(index_content)
+            generated_files.append(index_path)
+        
         # Generate files for each module
-        for module_dir, module_info in structures["modules"].items():
-            # Create module directory
+        modules = analysis_results.get("modules", {})
+        for module_dir, module_info in modules.items():
             if module_dir == ".":
                 target_dir = generated_dir
             else:
                 target_dir = generated_dir / module_dir
                 target_dir.mkdir(parents=True, exist_ok=True)
             
-            # Generate _module.md for each directory (except root)
-            if module_dir != ".":
-                module_md_path = target_dir / "_module.md"
-                module_content = f"# Module: {module_dir}\n\n"
-                module_content += f"## Classes in this module\n\n"
-                
-                for file_name, file_info in module_info["files"].items():
-                    if file_info["classes"]:
-                        module_content += f"### {file_name}.py\n"
-                        for cls in file_info["classes"]:
-                            module_content += f"- [{cls['name']}]({file_name}_class.md#{cls['name'].lower()})\n"
-                        module_content += "\n"
-                
-                with open(module_md_path, "w", encoding="utf-8") as f:
-                    f.write(module_content)
-                generated_files.append(module_md_path)
-            
-            # Generate individual class files per Python file
-            for file_name, file_info in module_info["files"].items():
-                if file_info["classes"]:  # Only generate if file has classes
-                    file_md_path = target_dir / f"{file_name}_class.md"
-                    
-                    file_content = f"# Classes from {file_name}.py\n\n"
-                    file_content += f"Source: `{file_info['path']}`\n\n"
-                    
-                    # Generate diagram for each class in the file
-                    for cls in file_info["classes"]:
-                        file_content += f"## {cls['name']}\n\n"
-                        file_content += f"**Metrics:** LOC: {cls['loc']} | Methods: {cls['num_methods']}\n\n"
-                        file_content += "```mermaid\n"
-                        # Use the appropriate generator for class diagrams
-                        if "classes" in self.generators:
-                            file_content += self.generators["classes"].generate_class_diagram(cls)
-                        else:
-                            file_content += "classDiagram\n    class " + cls['name'] + " {\n    }"
-                        file_content += "\n```\n\n"
-                    
-                    with open(file_md_path, "w", encoding="utf-8") as f:
-                        f.write(file_content)
-                    generated_files.append(file_md_path)
-        
-        # Generate visual index
-        index_path = generated_dir / "_index.md"
-        index_content = self.generate_visual_index(structures)
-        
-        with open(index_path, "w", encoding="utf-8") as f:
-            f.write(index_content)
-        generated_files.append(index_path)
+            # Generate module-level documentation
+            module_files = self._generate_module_files(module_dir, module_info, target_dir)
+            generated_files.extend(module_files)
         
         return generated_files
-
-    def generate_component_tree(self, directory: str = "autocode/web") -> Dict[str, Any]:
-        """Generate component tree diagram for UI components.
+    
+    def _generate_module_files(self, module_dir: str, module_info: Dict[str, Any], 
+                              target_dir: Path) -> List[Path]:
+        """Generate files for a specific module.
         
         Args:
-            directory: Directory to analyze for UI components
+            module_dir: Module directory path
+            module_info: Module information
+            target_dir: Target output directory
             
         Returns:
-            Result dictionary with diagram and analysis data
+            List of generated file paths
         """
-        # Initialize JavaScript analyzer and component tree generator
-        js_analyzer = JavaScriptAnalyzer(self.project_root)
-        tree_generator = ComponentTreeGenerator()
+        generated_files = []
         
-        # Analyze the directory for UI components
-        analysis_data = js_analyzer.analyze_directory(directory)
+        # Generate _module.md for directories (except root)
+        if module_dir != ".":
+            module_md_path = target_dir / "_module.md"
+            module_content = self._generate_module_overview(module_dir, module_info)
+            
+            with open(module_md_path, "w", encoding="utf-8") as f:
+                f.write(module_content)
+            generated_files.append(module_md_path)
         
-        if "error" in analysis_data:
-            return {
-                "status": "error",
-                "error": analysis_data["error"],
-                "diagram": None,
-                "summary": None
-            }
+        # Generate individual item files
+        if "analysis_data" in module_info:
+            for analysis_data in module_info["analysis_data"]:
+                item_files = self._generate_analysis_files(analysis_data, target_dir)
+                generated_files.extend(item_files)
         
-        # Generate the component tree diagram
-        diagram = tree_generator.generate_component_tree_diagram(analysis_data)
-        summary = tree_generator.generate_component_summary(analysis_data)
+        return generated_files
+    
+    def _generate_module_overview(self, module_dir: str, module_info: Dict[str, Any]) -> str:
+        """Generate module overview content.
         
-        return {
-            "status": "success",
-            "diagram": diagram,
-            "summary": summary,
-            "analysis_data": analysis_data,
-            "metrics": {
-                "total_components": analysis_data.get("summary", {}).get("total_components", 0),
-                "total_files": analysis_data.get("summary", {}).get("total_files", 0),
-                "total_modules": analysis_data.get("summary", {}).get("total_modules", 0)
-            }
-        }
+        Args:
+            module_dir: Module directory path
+            module_info: Module information
+            
+        Returns:
+            Module overview markdown content
+        """
+        content = f"# Module: {module_dir}\n\n"
+        
+        # Add summary
+        if "summary" in module_info:
+            summary = module_info["summary"]
+            content += f"**Summary:** {summary.get('total_files', 0)} files, "
+            content += f"{summary.get('total_items', 0)} items\n\n"
+        
+        # Add items by file
+        if "analysis_data" in module_info:
+            content += "## Items in this module\n\n"
+            
+            for analysis_data in module_info["analysis_data"]:
+                file_path = analysis_data.get("file_path", "")
+                file_name = Path(file_path).stem if file_path else "unknown"
+                
+                # Add classes
+                classes = analysis_data.get("classes", [])
+                if classes:
+                    content += f"### {file_name} - Classes\n"
+                    for cls in classes:
+                        content += f"- [{cls['name']}]({file_name}_items.md#{cls['name'].lower()})\n"
+                    content += "\n"
+                
+                # Add functions
+                functions = analysis_data.get("functions", [])
+                if functions:
+                    content += f"### {file_name} - Functions\n"
+                    for func in functions:
+                        content += f"- [{func['name']}]({file_name}_items.md#{func['name'].lower()})\n"
+                    content += "\n"
+                
+                # Add components
+                components = analysis_data.get("components", [])
+                if components:
+                    content += f"### {file_name} - Components\n"
+                    for comp in components:
+                        content += f"- [{comp['name']}]({file_name}_items.md#{comp['name'].lower()})\n"
+                    content += "\n"
+        
+        return content
+    
+    def _generate_analysis_files(self, analysis_data: Dict[str, Any], 
+                                target_dir: Path) -> List[Path]:
+        """Generate files for analysis data.
+        
+        Args:
+            analysis_data: Analysis data from an analyzer
+            target_dir: Target output directory
+            
+        Returns:
+            List of generated file paths
+        """
+        generated_files = []
+        
+        file_path = analysis_data.get("file_path", "")
+        file_name = Path(file_path).stem if file_path else "unknown"
+        
+        # Only generate if there are items to document
+        has_items = (analysis_data.get("classes") or 
+                    analysis_data.get("functions") or 
+                    analysis_data.get("components"))
+        
+        if has_items:
+            item_file_path = target_dir / f"{file_name}_items.md"
+            content = self._generate_items_content(analysis_data)
+            
+            with open(item_file_path, "w", encoding="utf-8") as f:
+                f.write(content)
+            generated_files.append(item_file_path)
+        
+        return generated_files
+    
+    def _generate_items_content(self, analysis_data: Dict[str, Any]) -> str:
+        """Generate content for items in a file.
+        
+        Args:
+            analysis_data: Analysis data from an analyzer
+            
+        Returns:
+            Items documentation content
+        """
+        file_path = analysis_data.get("file_path", "")
+        file_type = analysis_data.get("file_type", "unknown")
+        
+        content = f"# Items from {Path(file_path).name}\n\n"
+        content += f"**Source:** `{file_path}`  \n"
+        content += f"**Type:** {file_type}\n\n"
+        
+        # Add metrics if available
+        if "metrics" in analysis_data:
+            metrics = analysis_data["metrics"]
+            content += "**Metrics:**\n"
+            for key, value in metrics.items():
+                if isinstance(value, (int, float)):
+                    content += f"- {key.replace('_', ' ').title()}: {value:,}\n"
+            content += "\n"
+        
+        # Generate content for each item type
+        for item_type in ["classes", "functions", "components"]:
+            items = analysis_data.get(item_type, [])
+            if items:
+                content += f"## {item_type.title()}\n\n"
+                
+                for item in items:
+                    item_content = self._generate_item_content(item, item_type)
+                    content += item_content
+        
+        return content
+    
+    def _generate_item_content(self, item: Dict[str, Any], item_type: str) -> str:
+        """Generate content for a specific item.
+        
+        Args:
+            item: Item data
+            item_type: Type of item ('classes', 'functions', 'components')
+            
+        Returns:
+            Item documentation content
+        """
+        name = item.get("name", "Unknown")
+        content = f"### {name}\n\n"
+        
+        # Add basic info
+        if "line_number" in item:
+            content += f"**Line:** {item['line_number']}  \n"
+        
+        if "loc" in item:
+            content += f"**LOC:** {item['loc']}  \n"
+        
+        # Add type-specific content
+        if item_type == "classes" and "mermaid" in self.generators:
+            content += "\n```mermaid\n"
+            try:
+                content += self.generators["mermaid"].generate_class_diagram(item)
+            except Exception:
+                content += f"classDiagram\n    class {name} {{\n    }}"
+            content += "\n```\n\n"
+        
+        elif item_type == "functions":
+            params = item.get("parameters", [])
+            if params:
+                param_str = ", ".join(p.get("name", str(p)) for p in params)
+                content += f"**Parameters:** {param_str}  \n"
+            
+            if "return_type" in item:
+                content += f"**Returns:** {item['return_type']}  \n"
+            content += "\n"
+        
+        elif item_type == "components":
+            if "type" in item:
+                content += f"**Type:** {item['type']}  \n"
+            
+            methods = item.get("methods", [])
+            if methods:
+                content += f"**Methods:** {len(methods)}  \n"
+            content += "\n"
+        
+        return content
 
-    def generate_design(self, directory: str, pattern: str = None) -> Dict[str, Any]:
+    def generate_design(self, directory: str, 
+                       patterns: Optional[List[str]] = None) -> Dict[str, Any]:
         """Main method to generate design from code.
         
         Args:
             directory: Directory to analyze
-            pattern: File pattern (if None, auto-detects based on available files)
+            patterns: File patterns (if None, auto-detects based on available files)
             
         Returns:
             Result dictionary with generated files and status
         """
-        generated_files = []
-        all_structures = {"modules": {}}
-        total_structure_count = 0
-        
-        # Auto-detect what types of files exist in the directory
-        dir_path = self.project_root / directory
-        if not dir_path.exists():
+        try:
+            logger.info(f"Starting design generation for directory: {directory}")
+            
+            # Auto-detect analyzers for the directory
+            if self.config.get("auto_detect", True):
+                analyzers = self.analyzer_factory.auto_detect_analyzers(directory)
+            else:
+                analyzers = self.analyzers
+            
+            if not analyzers:
+                return {
+                    "status": "error",
+                    "error": f"No suitable analyzers found for directory: {directory}",
+                    "generated_files": [],
+                    "analysis_results": {}
+                }
+            
+            # Run analysis with all available analyzers
+            combined_results = {"modules": {}}
+            analyzer_results = {}
+            
+            for analyzer_name, analyzer in analyzers.items():
+                logger.info(f"Running {analyzer_name} analyzer...")
+                
+                try:
+                    result = analyzer.analyze_directory(directory, patterns)
+                    
+                    if result.is_successful():
+                        analyzer_results[analyzer_name] = result
+                        # Merge results
+                        self._merge_analysis_results(combined_results, result.data)
+                        logger.info(f"✅ {analyzer_name} analysis completed successfully")
+                    else:
+                        logger.warning(f"⚠️ {analyzer_name} analysis failed: {result.errors}")
+                
+                except Exception as e:
+                    logger.error(f"❌ {analyzer_name} analysis error: {str(e)}")
+            
+            if not analyzer_results:
+                return {
+                    "status": "error", 
+                    "error": "All analyzers failed",
+                    "generated_files": [],
+                    "analysis_results": {}
+                }
+            
+            # Generate markdown files
+            logger.info("Generating markdown files...")
+            
+            # Calculate output directory based on analyzed directory
+            # Remove trailing slash and get directory name
+            directory_name = directory.rstrip("/").rstrip("\\")
+            if directory_name and directory_name != ".":
+                output_dir = self.output_base / directory_name
+            else:
+                output_dir = self.output_base
+            
+            generated_files = self.generate_markdown_files(combined_results, output_dir)
+            
+            # Calculate metrics
+            total_items = sum(
+                sum(
+                    len(analysis.get("classes", [])) + 
+                    len(analysis.get("functions", [])) + 
+                    len(analysis.get("components", []))
+                    for analysis in module_info.get("analysis_data", [])
+                )
+                for module_info in combined_results["modules"].values()
+            )
+            
+            return {
+                "status": "success" if generated_files else "warning",
+                "generated_files": [str(f.relative_to(self.project_root)) for f in generated_files],
+                "analysis_results": combined_results,
+                "analyzer_results": {name: result.data for name, result in analyzer_results.items()},
+                "metrics": {
+                    "total_items": total_items,
+                    "total_files": len(generated_files),
+                    "analyzers_used": list(analyzer_results.keys())
+                },
+                "message": f"Generated {len(generated_files)} design files for {directory}"
+            }
+            
+        except Exception as e:
+            logger.error(f"Error generating design for {directory}: {str(e)}")
             return {
                 "status": "error",
-                "error": f"Directory not found: {directory}",
+                "error": str(e),
                 "generated_files": [],
-                "structure_count": 0
+                "analysis_results": {}
             }
+    
+    def _merge_analysis_results(self, combined_results: Dict[str, Any], 
+                               new_results: Dict[str, Any]) -> None:
+        """Merge analysis results from different analyzers.
         
-        # Check for Python files
-        python_files = list(dir_path.rglob("*.py"))
-        web_files = list(dir_path.rglob("*.html")) + list(dir_path.rglob("*.js")) + list(dir_path.rglob("*.css"))
+        Args:
+            combined_results: Combined results to merge into
+            new_results: New results to merge
+        """
+        new_modules = new_results.get("modules", {})
         
-        # Generate Python class diagrams if Python files exist and analyzer available
-        if python_files and "python" in self.analyzers and "classes" in self.generators:
-            print(f"🐍 Analyzing Python files in {directory}...")
-            try:
-                python_pattern = pattern if pattern and "*.py" in pattern else "*.py"
-                python_structures = self.analyzers["python"].analyze_directory(directory, python_pattern)
-                
-                # Generate markdown files for Python classes
-                python_generated = self.generate_markdown_files(python_structures)
-                generated_files.extend(python_generated)
-                
-                # Merge structures
-                for module_dir, module_info in python_structures["modules"].items():
-                    if module_dir not in all_structures["modules"]:
-                        all_structures["modules"][module_dir] = {"files": {}, "classes": []}
-                    all_structures["modules"][module_dir]["files"].update(module_info["files"])
-                    all_structures["modules"][module_dir]["classes"].extend(module_info["classes"])
-                
-                total_structure_count += sum(len(module_info["classes"]) for module_info in python_structures["modules"].values())
-                print(f"✅ Generated {len(python_generated)} Python design files")
-                
-            except Exception as e:
-                print(f"⚠️  Warning: Python analysis failed: {e}")
+        for module_path, module_info in new_modules.items():
+            if module_path not in combined_results["modules"]:
+                combined_results["modules"][module_path] = {
+                    "files": {},
+                    "analysis_data": [],
+                    "summary": {"total_files": 0, "total_items": 0}
+                }
+            
+            # Merge files info
+            combined_results["modules"][module_path]["files"].update(
+                module_info.get("files", {})
+            )
+            
+            # Add analysis data from the new analyzer
+            if "analysis_data" in module_info:
+                combined_results["modules"][module_path]["analysis_data"].extend(
+                    module_info["analysis_data"]
+                )
+            
+            # Update summary
+            combined_summary = combined_results["modules"][module_path]["summary"]
+            new_summary = module_info.get("summary", {})
+            
+            combined_summary["total_files"] = len(
+                combined_results["modules"][module_path]["files"]
+            )
+            combined_summary["total_items"] += new_summary.get("total_items", 0)
+    
+    def get_analyzer_info(self) -> Dict[str, Any]:
+        """Get information about available analyzers.
         
-        # Generate Web component diagrams if web files exist and analyzer available
-        if web_files and "web" in self.analyzers and "components" in self.generators:
-            print(f"🌐 Analyzing web files in {directory}...")
-            try:
-                # Generate component tree for web files
-                web_analysis = self.analyzers["web"].analyze_directory(directory)
-                
-                if "error" not in web_analysis:
-                    # Generate component tree diagram
-                    diagram = self.generators["components"].generate_component_tree_diagram(web_analysis)
-                    summary = self.generators["components"].generate_component_summary(web_analysis)
-                    
-                    # Create component tree markdown file
-                    component_dir = self.output_base / directory.replace("/", os.sep if os.sep != "/" else "/")
-                    component_dir.mkdir(parents=True, exist_ok=True)
-                    component_file = component_dir / "component_tree.md"
-                    
-                    component_content = f"# Web Components - {directory}\n\n"
-                    component_content += f"## Component Tree\n\n"
-                    component_content += f"```mermaid\n{diagram}\n```\n\n"
-                    component_content += f"## Summary\n\n{summary}\n"
-                    
-                    with open(component_file, "w", encoding="utf-8") as f:
-                        f.write(component_content)
-                    generated_files.append(component_file)
-                    
-                    total_structure_count += web_analysis.get("summary", {}).get("total_components", 0)
-                    print(f"✅ Generated component tree for web files")
-                else:
-                    print(f"⚠️  Warning: Web analysis failed: {web_analysis['error']}")
-                    
-            except Exception as e:
-                print(f"⚠️  Warning: Web analysis failed: {e}")
+        Returns:
+            Dictionary with analyzer information
+        """
+        return self.analyzer_factory.get_analyzer_info() if hasattr(self.analyzer_factory, 'get_analyzer_info') else {
+            "available_analyzers": self.analyzer_factory.get_available_analyzers(),
+            "supported_extensions": self.analyzer_factory.get_supported_extensions()
+        }
+    
+    def get_generator_info(self) -> Dict[str, Any]:
+        """Get information about available generators.
         
-        # If no files were found for any analyzer
-        if not python_files and not web_files:
-            print(f"⚠️  No supported files found in {directory}")
+        Returns:
+            Dictionary with generator information
+        """
+        return self.generator_factory.get_generator_info()
+    
+    def get_system_info(self) -> Dict[str, Any]:
+        """Get comprehensive system information.
         
+        Returns:
+            Dictionary with system information
+        """
         return {
-            "status": "success" if generated_files else "warning",
-            "generated_files": [str(f.relative_to(self.project_root)) for f in generated_files],
-            "structure_count": total_structure_count,
-            "message": f"Generated {len(generated_files)} design files for {directory}"
+            "project_root": str(self.project_root),
+            "config": self.config,
+            "analyzers": self.get_analyzer_info(),
+            "generators": self.get_generator_info(),
+            "utilities": {
+                "class": self.utils.__class__.__name__,
+                "methods": [method for method in dir(self.utils) if not method.startswith('_')]
+            }
         }

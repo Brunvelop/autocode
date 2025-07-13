@@ -1,11 +1,13 @@
-# Module: autocode\core\docs
+# Module: core\docs
 
-## Classes in this module
+**Summary:** 3 files, 0 items
 
-### doc_checker.py
-- [DocStatus](doc_checker_class.md#docstatus)
-- [DocChecker](doc_checker_class.md#docchecker)
+## Items in this module
 
-### doc_indexer.py
-- [DocIndexer](doc_indexer_class.md#docindexer)
+### doc_checker - Classes
+- [DocStatus](doc_checker_items.md#docstatus)
+- [DocChecker](doc_checker_items.md#docchecker)
+
+### doc_indexer - Classes
+- [DocIndexer](doc_indexer_items.md#docindexer)
 

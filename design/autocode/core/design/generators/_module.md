@@ -1,13 +1,23 @@
-# Module: autocode\core\design\generators
+# Module: core\design\generators
 
-## Classes in this module
+**Summary:** 5 files, 0 items
 
-### base_generator.py
-- [BaseGenerator](base_generator_class.md#basegenerator)
+## Items in this module
 
-### component_tree_generator.py
-- [ComponentTreeGenerator](component_tree_generator_class.md#componenttreegenerator)
+### base_generator - Classes
+- [BaseGenerator](base_generator_items.md#basegenerator)
 
-### mermaid_generator.py
-- [MermaidGenerator](mermaid_generator_class.md#mermaidgenerator)
+### component_tree_generator - Classes
+- [ComponentTreeGenerator](component_tree_generator_items.md#componenttreegenerator)
+
+### generator_factory - Classes
+- [GeneratorRegistry](generator_factory_items.md#generatorregistry)
+- [GeneratorFactory](generator_factory_items.md#generatorfactory)
+
+### generator_factory - Functions
+- [register_generator](generator_factory_items.md#register_generator)
+- [get_registry](generator_factory_items.md#get_registry)
+
+### mermaid_generator - Classes
+- [MermaidGenerator](mermaid_generator_items.md#mermaidgenerator)
 

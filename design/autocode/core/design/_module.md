@@ -1,7 +1,9 @@
-# Module: autocode\core\design
+# Module: core\design
 
-## Classes in this module
+**Summary:** 2 files, 0 items
 
-### code_to_design.py
-- [CodeToDesign](code_to_design_class.md#codetodesign)
+## Items in this module
+
+### code_to_design - Classes
+- [CodeToDesign](code_to_design_items.md#codetodesign)
 

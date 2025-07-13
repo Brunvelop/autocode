@@ -1,13 +1,18 @@
-# Module: autocode\core\design\analyzers
+# Module: core\design\analyzers
 
-## Classes in this module
+**Summary:** 3 files, 0 items
 
-### base_analyzer.py
-- [BaseAnalyzer](base_analyzer_class.md#baseanalyzer)
+## Items in this module
 
-### javascript_analyzer.py
-- [JavaScriptAnalyzer](javascript_analyzer_class.md#javascriptanalyzer)
+### analyzer_factory - Classes
+- [AnalyzerRegistry](analyzer_factory_items.md#analyzerregistry)
+- [AnalyzerFactory](analyzer_factory_items.md#analyzerfactory)
 
-### python_analyzer.py
-- [PythonAnalyzer](python_analyzer_class.md#pythonanalyzer)
+### analyzer_factory - Functions
+- [register_analyzer](analyzer_factory_items.md#register_analyzer)
+- [get_registry](analyzer_factory_items.md#get_registry)
+
+### base_analyzer - Classes
+- [AnalysisResult](base_analyzer_items.md#analysisresult)
+- [BaseAnalyzer](base_analyzer_items.md#baseanalyzer)
 

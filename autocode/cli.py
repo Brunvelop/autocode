@@ -6,6 +6,7 @@ import argparse
 import json
 import sys
 import yaml
+import warnings
 from pathlib import Path
 from typing import Optional
 
@@ -62,6 +63,11 @@ def load_config(working_dir: Path = None) -> AutocodeConfig:
         
         if not config_data:
             return AutocodeConfig()
+        
+        # Check for deprecated 'language' field (Mejora 5)
+        if config_data and 'code_to_design' in config_data and 'language' in config_data['code_to_design']:
+            warnings.warn("⚠️  Campo 'language' está deprecado en code_to_design. Usa 'languages' como lista en su lugar.", 
+                         DeprecationWarning, stacklevel=2)
         
         # Parse configuration with Pydantic
         return AutocodeConfig(**config_data)
@@ -355,26 +361,74 @@ def code_to_design_command(args) -> int:
                 "diagrams": ["classes"]
             }
         
+        # Mejora 1: CLI Overrides - Apply CLI arguments
+        if args.languages:
+            config_dict["languages"] = args.languages
+        if args.diagrams:
+            config_dict["diagrams"] = args.diagrams
+        if args.output_dir:
+            config_dict["output_dir"] = args.output_dir
+        
+        # Mejora 2: Validación Temprana
+        try:
+            from .core.design.analyzers.analyzer_factory import AnalyzerFactory
+            from .core.design.generators.generator_factory import GeneratorFactory
+            
+            temp_analyzer_factory = AnalyzerFactory(project_root)
+            temp_generator_factory = GeneratorFactory({})
+            
+            available_languages = temp_analyzer_factory.get_available_analyzers()
+            available_diagrams = temp_generator_factory.get_available_generators()
+            
+            # Validate languages
+            for lang in config_dict.get("languages", []):
+                if lang not in available_languages:
+                    warnings.warn(f"⚠️  Lenguaje '{lang}' no soportado. Disponibles: {available_languages}. Ignorando.")
+                    config_dict["languages"] = [l for l in config_dict["languages"] if l in available_languages]
+            
+            # Validate diagrams  
+            for diag in config_dict.get("diagrams", []):
+                if diag not in available_diagrams:
+                    warnings.warn(f"⚠️  Diagrama '{diag}' no soportado. Disponibles: {available_diagrams}. Ignorando.")
+                    config_dict["diagrams"] = [d for d in config_dict["diagrams"] if d in available_diagrams]
+            
+            # Ensure we have at least some valid options
+            if not config_dict["languages"]:
+                config_dict["languages"] = ["python"]  # Fallback
+            if not config_dict["diagrams"]:
+                config_dict["diagrams"] = ["classes"]  # Fallback
+                
+        except ImportError as e:
+            warnings.warn(f"⚠️  No se pudo validar configuración: {e}")
+        
+        # Mejora 4: Soporte Multi-Directorio - Determine directories to process  
+        if args.directories:
+            directories = args.directories
+        elif args.directory:
+            directories = [args.directory]
+        elif hasattr(config, 'code_to_design') and config.code_to_design.directories:
+            directories = config.code_to_design.directories
+        else:
+            directories = ["autocode/"]  # Default fallback
+        
+        # Mejora 3: Show Config - Display configuration if requested
+        if args.show_config:
+            print("📋 Configuración Cargada/Normalizada:")
+            config_display = {
+                "directories": directories,
+                "languages": config_dict["languages"],
+                "diagrams": config_dict["diagrams"],
+                "output_dir": config_dict["output_dir"],
+                "pattern": args.pattern if hasattr(args, 'pattern') else "*.py"
+            }
+            print(yaml.dump(config_display, default_flow_style=False, allow_unicode=True))
+            print("-" * 50)
+        
         # Initialize CodeToDesign
         transformer = CodeToDesign(
             project_root=project_root,
             config=config_dict
         )
-        
-        # Override config with CLI args if provided
-        if args.output_dir:
-            transformer.config['output_dir'] = args.output_dir
-        
-        # Determine directories to process
-        if args.directory:
-            # Use specified directory
-            directories = [args.directory]
-        else:
-            # Use directories from configuration
-            if hasattr(config, 'code_to_design') and config.code_to_design.directories:
-                directories = config.code_to_design.directories
-            else:
-                directories = ["autocode/"]  # Default fallback
         
         # Process each directory
         all_results = []
@@ -382,16 +436,18 @@ def code_to_design_command(args) -> int:
             print(f"🔍 Analyzing directory: {directory}")
             
             # Generate design for this directory
+            patterns = [args.pattern] if args.pattern else None
             result = transformer.generate_design(
                 directory=directory,
-                pattern=args.pattern
+                patterns=patterns
             )
             
             all_results.append(result)
             
             if result['status'] == 'success':
                 print(f"✅ Design generation successful for {directory}")
-                print(f"   Structures found: {result['structure_count']}")
+                if 'metrics' in result and 'total_items' in result['metrics']:
+                    print(f"   Items found: {result['metrics']['total_items']}")
                 if result.get('message'):
                     print(f"   {result['message']}")
                 print("   Generated files:")
@@ -674,6 +730,32 @@ def create_parser() -> argparse.ArgumentParser:
         "--output-dir", "-o",
         type=str,
         help="Output directory for generated designs (default: design/)"
+    )
+    # Mejora 1: Más Overrides CLI
+    code_to_design_parser.add_argument(
+        "--languages", "-l",
+        type=str,
+        nargs="+",
+        help="Lenguajes a analizar (e.g., python js). Sobrescribe config."
+    )
+    code_to_design_parser.add_argument(
+        "--diagrams", "-g",
+        type=str,
+        nargs="+",
+        help="Tipos de diagramas (e.g., classes components). Sobrescribe config."
+    )
+    # Mejora 3: Modo Verbose/Info
+    code_to_design_parser.add_argument(
+        "--show-config",
+        action="store_true",
+        help="Mostrar configuración cargada/normalizada antes de ejecutar."
+    )
+    # Mejora 4: Soporte Multi-Directorio
+    code_to_design_parser.add_argument(
+        "--directories",
+        type=str,
+        nargs="+",
+        help="Directorios a analizar (e.g., autocode/ src/). Sobrescribe config."
     )
 
     # count-tokens subcommand
