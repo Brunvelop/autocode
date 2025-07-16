@@ -1,0 +1,90 @@
+{% macro check_card(check_type, check_config) %}
+<div class="check-card" id="{{ check_type }}-check">
+    <div class="check-header">
+        <h3>{{ check_config.title }}</h3>
+        <div class="check-controls">
+            <button class="btn-run" onclick="runCheck('{{ check_type }}_check')">Run Now</button>
+            <div class="check-status" id="{{ check_type }}-check-status">
+                <span class="status-indicator unknown"></span>
+                <span class="status-text">Unknown</span>
+            </div>
+        </div>
+    </div>
+    <div class="check-details">
+        <div class="check-info">
+            <span class="check-message" id="{{ check_type }}-check-message">No data available</span>
+            <span class="check-timestamp" id="{{ check_type }}-check-timestamp"></span>
+        </div>
+        
+        <!-- Documentation Index Statistics -->
+        {% if check_type == 'doc' %}
+        <div class="doc-index-info" id="doc-index-info" style="display: none;">
+            <div class="index-stats">
+                <span class="index-label">📋 Documentation Index:</span>
+                <div class="index-stats-grid">
+                    <div class="index-stat">
+                        <span class="index-stat-value" id="doc-index-modules">--</span>
+                        <span class="index-stat-label">Modules</span>
+                    </div>
+                    <div class="index-stat">
+                        <span class="index-stat-value" id="doc-index-files">--</span>
+                        <span class="index-stat-label">Files</span>
+                    </div>
+                    <div class="index-stat">
+                        <span class="index-stat-value" id="doc-index-purposes">--</span>
+                        <span class="index-stat-label">Purposes</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Test Statistics -->
+        {% if check_type == 'test' %}
+        <div class="test-info" id="test-check-stats" style="display: none;">
+            <div class="test-breakdown">
+                <span class="test-label">🧪 Tests:</span>
+                <div class="test-stats-grid">
+                    <div class="test-stat">
+                        <span class="test-stat-value" id="test-missing-count">--</span>
+                        <span class="test-stat-label">Missing</span>
+                    </div>
+                    <div class="test-stat">
+                        <span class="test-stat-value" id="test-passing-count">--</span>
+                        <span class="test-stat-label">Passing</span>
+                    </div>
+                    <div class="test-stat">
+                        <span class="test-stat-value" id="test-failing-count">--</span>
+                        <span class="test-stat-label">Failing</span>
+                    </div>
+                    <div class="test-stat">
+                        <span class="test-stat-value" id="test-orphaned-count">--</span>
+                        <span class="test-stat-label">Orphaned</span>
+                    </div>
+                </div>
+                <div class="test-type-breakdown">
+                    <span class="test-type-label">Types:</span>
+                    <span class="test-type-count" id="test-unit-count">0 Unit</span>
+                    <span class="test-type-separator">|</span>
+                    <span class="test-type-count" id="test-integration-count">0 Integration</span>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Token Information -->
+        {% if check_type == 'git' %}
+        <div class="token-info" id="git-check-tokens" style="display: none;">
+            <div class="token-stats">
+                <span class="token-label">📊 Tokens:</span>
+                <span class="token-count" id="git-token-count">0</span>
+                <span class="token-threshold" id="git-token-threshold">/ 50,000</span>
+                <span class="token-warning" id="git-token-warning"></span>
+            </div>
+        </div>
+        {% endif %}
+        
+        <div class="check-details-content" id="{{ check_type }}-check-details"></div>
+    </div>
+</div>
+{% endmacro %}

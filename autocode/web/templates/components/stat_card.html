@@ -1,0 +1,6 @@
+{% macro stat_card(config) %}
+<div class="stat">
+    <span class="stat-label">{{ config.label }}</span>
+    <span class="stat-value" id="{{ config.id }}">{{ config.default_value | default("--") }}</span>
+</div>
+{% endmacro %}

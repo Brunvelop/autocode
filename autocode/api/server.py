@@ -81,8 +81,28 @@ async def shutdown_event():
 # API Routes
 
 @app.get("/", response_class=HTMLResponse)
+async def root(request: Request):
+    """Redirect to dashboard."""
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url="/dashboard", status_code=302)
+
+
+@app.get("/dashboard", response_class=HTMLResponse)
 async def dashboard(request: Request):
-    """Serve the main dashboard."""
+    """Serve the dashboard page."""
+    return templates.TemplateResponse("pages/dashboard.html", {"request": request})
+
+
+@app.get("/ui-designer", response_class=HTMLResponse)
+async def ui_designer(request: Request):
+    """Serve the UI designer page."""
+    return templates.TemplateResponse("pages/ui_designer.html", {"request": request})
+
+
+# Keep the old route for backward compatibility
+@app.get("/index", response_class=HTMLResponse)
+async def index(request: Request):
+    """Serve the old index page (backward compatibility)."""
     return templates.TemplateResponse("index.html", {"request": request})
 
 
@@ -412,6 +432,39 @@ async def disable_scheduler_task(task_name: str):
         return {"message": f"Task '{task_name}' disabled"}
     except Exception as e:
         logger.error(f"Error disabling task {task_name}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/design/files")
+async def get_design_files():
+    """Get list of all .md files in the design directory."""
+    if not daemon:
+        raise HTTPException(status_code=503, detail="Daemon not initialized")
+    
+    try:
+        design_path = daemon.project_root / "design"
+        
+        if not design_path.exists():
+            raise HTTPException(status_code=404, detail="Design directory not found")
+        
+        # Recursively find all .md files
+        md_files = []
+        for md_file in design_path.rglob("*.md"):
+            # Get relative path from design directory
+            relative_path = md_file.relative_to(design_path)
+            md_files.append(str(relative_path).replace("\\", "/"))
+        
+        # Sort files for consistent ordering
+        md_files.sort()
+        
+        return {
+            "status": "success",
+            "files": md_files,
+            "total_files": len(md_files)
+        }
+        
+    except Exception as e:
+        logger.error(f"Error listing design files: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

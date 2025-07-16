@@ -5,20 +5,40 @@ class AutocodeDashboard {
         this.refreshInterval = 5000; // 5 seconds
         this.refreshTimer = null;
         this.isLoading = false;
+        this.currentPage = this.getCurrentPage();
         
         this.init();
     }
     
     init() {
         console.log('Initializing Autocode Dashboard');
+        this.setupNavigation();
         this.startAutoRefresh();
         this.loadInitialData();
     }
     
+    getCurrentPage() {
+        const path = window.location.pathname;
+        if (path === '/ui-designer') return 'ui-designer';
+        return 'dashboard';
+    }
+    
+    setupNavigation() {
+        // Update active nav link
+        const navLinks = document.querySelectorAll('.nav-link');
+        navLinks.forEach(link => {
+            link.classList.remove('active');
+            if (link.getAttribute('href') === window.location.pathname) {
+                link.classList.add('active');
+            }
+        });
+    }
+    
     async loadInitialData() {
-        await this.fetchAndUpdateStatus();
-        await this.fetchAndUpdateConfig();
-        await this.loadArchitectureDiagram();
+        if (this.currentPage === 'dashboard') {
+            await this.fetchAndUpdateStatus();
+            await this.fetchAndUpdateConfig();
+        }
     }
     
     startAutoRefresh() {
