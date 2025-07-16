@@ -1,5 +1,5 @@
 {
-  "timestamp": "2025-07-10T11:48:59.667707",
+  "timestamp": "2025-07-16T18:37:59.656026",
   "project_name": "Autocode - Documentación Técnica",
   "config": {
     "output_path": ".clinerules\\docs_index.json",
@@ -7,10 +7,10 @@
     "version": "1.0.0"
   },
   "documentation_stats": {
-    "total_files": 15,
-    "total_modules": 9,
-    "total_directories": 8,
-    "total_purposes_found": 24
+    "total_files": 29,
+    "total_modules": 20,
+    "total_directories": 19,
+    "total_purposes_found": 49
   },
   "structure": {
     "docs/": {
@@ -23,75 +23,232 @@
         "docs\\autocode/": {
           "type": "module",
           "module_file": "docs\\autocode\\_module.md",
-          "purpose": "El módulo autocode es el núcleo central del sistema de automatización de calidad de código. Su responsabilidad principal es proporcionar una plataforma integrada que combina verificación de documentación, análisis de cambios git, validación de tests, y monitoreo en tiempo real, todo a través de una arquitectura modular y extensible que puede ser utilizada tanto programáticamente como mediante interfaz de línea de comandos y dashboard web.",
-          "last_modified": "2025-07-10T11:46:19.234905",
+          "purpose": "autocode es el módulo raíz que contiene toda la lógica de la aplicación. Su propósito es proporcionar una plataforma integrada que combina la verificación de documentación, el análisis de cambios en Git, la validación de tests y un sistema de monitoreo en tiempo real, todo a través de una arquitectura modular y extensible.",
+          "last_modified": "2025-07-16T17:18:42.037334",
           "subdirectories": {
             "docs\\autocode\\api/": {
               "type": "module",
               "module_file": "docs\\autocode\\api\\_module.md",
-              "purpose": "El módulo api proporciona la interfaz web y API RESTful para el sistema autocode. Su responsabilidad principal es ofrecer un dashboard web en tiempo real para monitorear el estado del sistema, gestionar la configuración, y proporcionar una API programática para integración con otros sistemas. Combina una interfaz amigable para humanos con endpoints RESTful para automatización.",
-              "last_modified": "2025-07-08T13:38:30.957838",
+              "purpose": "Este módulo proporciona la interfaz web y la API RESTful para el sistema autocode. Su responsabilidad principal es ofrecer un dashboard en tiempo real para monitorear el estado del sistema y una API programática para la integración con otras herramientas y flujos de trabajo.",
+              "last_modified": "2025-07-16T17:17:26.577221",
               "files": {
                 "docs\\autocode\\api\\models.md": {
                   "type": "file_doc",
-                  "purpose": "Los modelos de datos Pydantic proporcionan estructuras tipificadas y validadas para toda la comunicación de la API de autocode. Su responsabilidad principal es garantizar la integridad de los datos, validación automática de tipos, y serialización JSON consistente entre el servidor FastAPI y los clientes de la API.",
-                  "last_modified": "2025-07-08T13:38:30.957838"
+                  "purpose": "Este módulo define todos los modelos de datos utilizados por la API de autocode, tanto para la configuración del sistema como para las respuestas de los endpoints. Utiliza Pydantic para definir esquemas de datos tipados, lo que garantiza la validación automática, la serialización y deserialización de JSON, y una documentación clara de la API (a través de OpenAPI/Swagger).",
+                  "last_modified": "2025-07-16T17:13:05.342727"
                 },
                 "docs\\autocode\\api\\server.md": {
                   "type": "file_doc",
-                  "purpose": "El servidor FastAPI proporciona la interfaz web y API RESTful para el sistema autocode. Su responsabilidad principal es orquestar todas las operaciones de monitoreo, exponer endpoints para integración programática, y ofrecer un dashboard web en tiempo real para supervisión visual del estado del sistema.",
-                  "last_modified": "2025-07-08T13:38:30.958839"
+                  "purpose": "Este módulo implementa el servidor web y la API RESTful para el sistema de monitoreo en tiempo real de autocode. Utiliza FastAPI para proporcionar una interfaz web (dashboard) y una serie de endpoints programáticos para interactuar con el AutocodeDaemon.",
+                  "last_modified": "2025-07-16T17:13:39.640378"
                 }
               }
             },
             "docs\\autocode\\core/": {
               "type": "module",
               "module_file": "docs\\autocode\\core\\_module.md",
-              "purpose": "El módulo core contiene las herramientas fundamentales del sistema autocode. Su responsabilidad principal es proporcionar los componentes básicos para análisis y verificación de código, incluyendo verificación de documentación, análisis de cambios git, integración con OpenCode AI, conteo de tokens para LLM, y generación de índices de documentación.",
-              "last_modified": "2025-07-08T13:38:30.959839",
-              "files": {
-                "docs\\autocode\\core\\doc_checker.md": {
-                  "type": "file_doc",
-                  "purpose": "DocChecker es el componente central para verificar el estado de la documentación modular en el proyecto Vidi. Su responsabilidad es comparar fechas de modificación entre archivos de código fuente y su documentación correspondiente, siguiendo la estructura modular establecida (_index.md, _module.md, archivo.md).",
-                  "last_modified": "2025-07-08T13:38:30.959839"
+              "purpose": "El módulo core contiene la lógica de negocio y las funcionalidades fundamentales del sistema autocode. Su responsabilidad es proporcionar todos los componentes necesarios para el análisis y la verificación automatizada del código, la documentación y los tests de un proyecto.",
+              "last_modified": "2025-07-16T17:12:05.740151",
+              "subdirectories": {
+                "docs\\autocode\\core\\ai/": {
+                  "type": "module",
+                  "module_file": "docs\\autocode\\core\\ai\\_module.md",
+                  "purpose": "Este módulo agrupa las funcionalidades relacionadas con la interacción con modelos de lenguaje grandes (LLM) y herramientas de inteligencia artificial. Su propósito es abstraer la complejidad de estas interacciones, proporcionando una interfaz sencilla para tareas como la ejecución de análisis de código con IA y el conteo de tokens.",
+                  "last_modified": "2025-07-16T17:08:30.532067",
+                  "files": {
+                    "docs\\autocode\\core\\ai\\opencode_executor.md": {
+                      "type": "file_doc",
+                      "purpose": "Proporciona una interfaz para ejecutar análisis de OpenCode de forma programática y en modo \"headless\" (sin interfaz gráfica), gestionando la configuración, la ejecución de comandos y el formato de los resultados para su uso en flujos de trabajo automatizados.",
+                      "last_modified": "2025-07-16T16:56:24.170988"
+                    },
+                    "docs\\autocode\\core\\ai\\token_counter.md": {
+                      "type": "file_doc",
+                      "purpose": "Proporciona una herramienta para contar la cantidad de tokens en textos y archivos, utilizando las codificaciones de modelos de lenguaje grandes (LLM) a través de la biblioteca tiktoken. Es esencial para estimar costos de API, validar límites de contexto y analizar el uso de tokens en aplicaciones de IA.",
+                      "last_modified": "2025-07-16T16:56:49.130703"
+                    }
+                  }
                 },
-                "docs\\autocode\\core\\doc_indexer.md": {
-                  "type": "file_doc",
-                  "purpose": "Genera índices estructurados de documentación modular en formato JSON, aprovechando la estructura jerárquica de documentación del proyecto (\\_index.md, \\_module.md, archivo.md) para crear un mapa completo con propósitos extraídos automáticamente.",
-                  "last_modified": "2025-07-08T13:38:30.959839"
+                "docs\\autocode\\core\\design/": {
+                  "type": "module",
+                  "module_file": "docs\\autocode\\core\\design\\_module.md",
+                  "purpose": "El módulo design es un sistema completo para la generación automática de documentación de diseño a partir del código fuente. Su propósito es analizar un proyecto, entender su estructura y componentes, y producir una serie de documentos Markdown con diagramas que describen la arquitectura del software de manera visual y estructurada.",
+                  "last_modified": "2025-07-16T17:10:18.370979",
+                  "subdirectories": {
+                    "docs\\autocode\\core\\design\\analyzers/": {
+                      "type": "module",
+                      "module_file": "docs\\autocode\\core\\design\\analyzers\\_module.md",
+                      "purpose": "Este módulo es el corazón del sistema de análisis de código. Su propósito es proporcionar un framework extensible para analizar diferentes lenguajes de programación y extraer su estructura en un formato de datos estandarizado. Contiene la lógica para la creación dinámica de analizadores y las implementaciones concretas para cada lenguaje.",
+                      "last_modified": "2025-07-16T17:09:54.306837",
+                      "subdirectories": {
+                        "docs\\autocode\\core\\design\\analyzers\\javascript/": {
+                          "type": "module",
+                          "module_file": "docs\\autocode\\core\\design\\analyzers\\javascript\\_module.md",
+                          "purpose": "Este módulo contiene el analizador de código especializado para JavaScript y TypeScript. Su propósito es implementar la lógica para parsear archivos de frontend (.js, .ts, .jsx, .tsx) y extraer una representación estructurada de su contenido, como clases, funciones y módulos ES6.",
+                          "last_modified": "2025-07-16T17:09:07.416059",
+                          "files": {
+                            "docs\\autocode\\core\\design\\analyzers\\javascript\\analyzer.md": {
+                              "type": "file_doc",
+                              "purpose": "JavaScriptAnalyzer es una implementación de BaseAnalyzer diseñada para analizar código fuente de JavaScript y TypeScript. Su objetivo es extraer información estructural clave, como clases, funciones, imports y exports, para alimentar el sistema de generación de documentación de diseño.",
+                              "last_modified": "2025-07-16T17:05:43.431071"
+                            }
+                          }
+                        },
+                        "docs\\autocode\\core\\design\\analyzers\\python/": {
+                          "type": "module",
+                          "module_file": "docs\\autocode\\core\\design\\analyzers\\python\\_module.md",
+                          "purpose": "Este módulo contiene el analizador de código especializado para Python. Su único propósito es implementar la lógica necesaria para parsear archivos de código fuente de Python (.py y .pyi) y extraer una representación estructurada de su contenido.",
+                          "last_modified": "2025-07-16T17:08:48.509803",
+                          "files": {
+                            "docs\\autocode\\core\\design\\analyzers\\python\\analyzer.md": {
+                              "type": "file_doc",
+                              "purpose": "PythonAnalyzer es una implementación robusta de BaseAnalyzer para analizar código fuente de Python. A diferencia del analizador de JavaScript, este utiliza el módulo ast (Abstract Syntax Tree) de Python, lo que le permite realizar un análisis mucho más preciso y detallado de la estructura del código. Su objetivo es extraer información sobre clases, funciones, imports y atributos para la generación de documentación de diseño.",
+                              "last_modified": "2025-07-16T17:06:21.456620"
+                            }
+                          }
+                        },
+                        "docs\\autocode\\core\\design\\analyzers\\web/": {
+                          "type": "module",
+                          "module_file": "docs\\autocode\\core\\design\\analyzers\\web\\_module.md",
+                          "purpose": "Este módulo contiene los analizadores especializados en extraer información de tecnologías web estándar (HTML y CSS). Su propósito es proporcionar los datos necesarios para entender la estructura y el estilo de las interfaces de usuario.",
+                          "last_modified": "2025-07-16T17:08:10.023117",
+                          "files": {
+                            "docs\\autocode\\core\\design\\analyzers\\web\\css_analyzer.md": {
+                              "type": "file_doc",
+                              "purpose": "CSSAnalyzer es una implementación de BaseAnalyzer para analizar archivos de hojas de estilo (CSS, SCSS, etc.). Su objetivo es extraer información detallada sobre las reglas de estilo, selectores, propiedades, media queries y variables (custom properties) para proporcionar una visión completa del sistema de diseño de un proyecto.",
+                              "last_modified": "2025-07-16T17:06:50.290554"
+                            },
+                            "docs\\autocode\\core\\design\\analyzers\\web\\html_analyzer.md": {
+                              "type": "file_doc",
+                              "purpose": "HTMLAnalyzer es una implementación de BaseAnalyzer para analizar archivos HTML. Su objetivo es parsear la estructura del DOM (Document Object Model) para extraer información sobre los elementos, componentes personalizados (custom elements), formularios, scripts y enlaces. Esto es fundamental para entender la estructura de una interfaz de usuario.",
+                              "last_modified": "2025-07-16T17:07:18.265582"
+                            }
+                          }
+                        }
+                      },
+                      "files": {
+                        "docs\\autocode\\core\\design\\analyzers\\analyzer_factory.md": {
+                          "type": "file_doc",
+                          "purpose": "AnalyzerFactory es un componente central del sistema de diseño que se encarga de la creación dinámica de instancias de analizadores de código. Utiliza el patrón de diseño Factory y un Registro (Registry) para desacoplar el orquestador principal (CodeToDesign) de las implementaciones concretas de los analizadores (como PythonAnalyzer, JavaScriptAnalyzer, etc.). Esto hace que el sistema sea extensible y fácil de mantener.",
+                          "last_modified": "2025-07-16T16:59:36.677124"
+                        },
+                        "docs\\autocode\\core\\design\\analyzers\\base_analyzer.md": {
+                          "type": "file_doc",
+                          "purpose": "BaseAnalyzer es una clase base abstracta que define el contrato o la interfaz que todos los analizadores de código específicos (como PythonAnalyzer, JavaScriptAnalyzer, etc.) deben seguir. Su propósito es garantizar que todos los analizadores tengan una estructura y un comportamiento consistentes, permitiendo que el sistema de diseño los trate de manera uniforme.",
+                          "last_modified": "2025-07-16T17:00:01.674429"
+                        }
+                      }
+                    },
+                    "docs\\autocode\\core\\design\\diagrams/": {
+                      "type": "module",
+                      "module_file": "docs\\autocode\\core\\design\\diagrams\\_module.md",
+                      "purpose": "Este módulo es responsable de generar representaciones visuales del código analizado. Contiene un framework extensible para crear diferentes tipos de diagramas (como diagramas de clases o de componentes) en varios formatos (actualmente Mermaid).",
+                      "last_modified": "2025-07-16T17:11:41.626988",
+                      "files": {
+                        "docs\\autocode\\core\\design\\diagrams\\base_generator.md": {
+                          "type": "file_doc",
+                          "purpose": "BaseGenerator es una clase base abstracta que establece el contrato para todos los generadores de diagramas del sistema. Su función es asegurar que cualquier generador (ya sea para Mermaid, PlantUML, etc.) se integre de manera consistente en el flujo de trabajo de CodeToDesign, proporcionando una interfaz común para la creación de diagramas.",
+                          "last_modified": "2025-07-16T17:00:26.778716"
+                        },
+                        "docs\\autocode\\core\\design\\diagrams\\class_diagram_generator.md": {
+                          "type": "file_doc",
+                          "purpose": "ClassDiagramGenerator es una implementación concreta de BaseGenerator especializada en crear diagramas de clases utilizando la sintaxis de Mermaid. Su única responsabilidad es tomar una estructura de datos que representa una clase de Python y traducirla a un diagrama de texto que puede ser renderizado por Mermaid.",
+                          "last_modified": "2025-07-16T17:00:52.626514"
+                        },
+                        "docs\\autocode\\core\\design\\diagrams\\component_tree_generator.md": {
+                          "type": "file_doc",
+                          "purpose": "ComponentTreeGenerator es una implementación de BaseGenerator diseñada para visualizar la arquitectura de interfaces de usuario (UI). Su responsabilidad es tomar los datos de análisis de componentes de UI (provenientes de analizadores como JavaScriptAnalyzer o HTMLAnalyzer) y generar un diagrama de árbol de componentes en formato Mermaid.",
+                          "last_modified": "2025-07-16T17:01:18.078655"
+                        },
+                        "docs\\autocode\\core\\design\\diagrams\\generator_factory.md": {
+                          "type": "file_doc",
+                          "purpose": "GeneratorFactory es una factoría, análoga a AnalyzerFactory, responsable de crear dinámicamente instancias de generadores de diagramas. Su función es desacoplar el sistema de las implementaciones concretas de los generadores (como ClassDiagramGenerator), permitiendo una fácil extensión para soportar nuevos formatos de diagramas (ej. PlantUML, D2) en el futuro.",
+                          "last_modified": "2025-07-16T17:01:43.096488"
+                        },
+                        "docs\\autocode\\core\\design\\diagrams\\markdown_exporter.md": {
+                          "type": "file_doc",
+                          "purpose": "MarkdownExporter es el componente final en el pipeline de generación de diseño. Su responsabilidad es tomar los resultados estructurados del análisis de código y utilizar los generadores de diagramas para producir la documentación final en formato Markdown. Orquesta la creación de la estructura de directorios de salida y la escritura de cada archivo (_index.md, _module.md, *_items.md).",
+                          "last_modified": "2025-07-16T17:02:14.059876"
+                        }
+                      }
+                    },
+                    "docs\\autocode\\core\\design\\utils/": {
+                      "type": "module",
+                      "module_file": "docs\\autocode\\core\\design\\utils\\_module.md",
+                      "purpose": "Este módulo proporciona una colección de funciones de utilidad de propósito general para el sistema de generación de diseño. Su principal responsabilidad es manejar tareas de procesamiento de datos que son compartidas por otros componentes, como la transformación de estructuras de datos y el cálculo de métricas.",
+                      "last_modified": "2025-07-16T17:10:56.061126",
+                      "files": {
+                        "docs\\autocode\\core\\design\\utils\\general_utils.md": {
+                          "type": "file_doc",
+                          "purpose": "GeneralUtils es una clase de utilidad que contiene lógica compartida y agnóstica al proyecto para procesar los datos de análisis. Su responsabilidad principal es transformar la estructura de datos \"plana\" que producen los analizadores en una estructura de árbol jerárquico y calcular métricas agregadas sobre ella.",
+                          "last_modified": "2025-07-16T17:02:42.076023"
+                        }
+                      }
+                    }
+                  },
+                  "files": {
+                    "docs\\autocode\\core\\design\\code_to_design.md": {
+                      "type": "file_doc",
+                      "purpose": "Este módulo es el orquestador principal para transformar código fuente en documentación de diseño modular y visual. Su función es analizar un proyecto, extraer su estructura y componentes clave, y generar una serie de archivos Markdown que describen la arquitectura del software, incluyendo diagramas y métricas.",
+                      "last_modified": "2025-07-16T16:57:18.275156"
+                    }
+                  }
                 },
-                "docs\\autocode\\core\\git_analyzer.md": {
-                  "type": "file_doc",
-                  "purpose": "GitAnalyzer es el componente responsable de analizar cambios en el repositorio git para extraer información útil sobre modificaciones, estadísticas y diffs detallados. Su principal uso es generar datos estructurados que pueden ayudar en la creación de mensajes de commit descriptivos y análisis de cambios del proyecto.",
-                  "last_modified": "2025-07-08T13:38:30.960839"
+                "docs\\autocode\\core\\docs/": {
+                  "type": "module",
+                  "module_file": "docs\\autocode\\core\\docs\\_module.md",
+                  "purpose": "Este módulo se centra en la meta-documentación: herramientas para analizar y gestionar la propia documentación del proyecto. Su propósito es asegurar que la documentación se mantenga actualizada, completa y sea fácilmente navegable.",
+                  "last_modified": "2025-07-16T17:11:17.830261",
+                  "files": {
+                    "docs\\autocode\\core\\docs\\doc_checker.md": {
+                      "type": "file_doc",
+                      "purpose": "DocChecker es el componente central para verificar el estado de la documentación modular en un proyecto. Su responsabilidad principal es comparar las fechas de modificación entre los archivos de código fuente y sus correspondientes archivos de documentación, siguiendo una estructura jerárquica (_index.md, _module.md, archivo.md).",
+                      "last_modified": "2025-07-16T16:57:44.728431"
+                    },
+                    "docs\\autocode\\core\\docs\\doc_indexer.md": {
+                      "type": "file_doc",
+                      "purpose": "DocIndexer es responsable de escanear la estructura de la documentación modular (docs/) y generar un índice JSON estructurado. Este índice actúa como un \"mapa\" de toda la documentación, extrayendo el propósito de cada archivo y módulo para facilitar la búsqueda, la navegación y el análisis programático del contenido documental.",
+                      "last_modified": "2025-07-16T16:58:13.031611"
+                    }
+                  }
                 },
-                "docs\\autocode\\core\\opencode_executor.md": {
-                  "type": "file_doc",
-                  "purpose": "La clase OpenCodeExecutor proporciona integración con OpenCode AI para análisis inteligente de código en modo headless (sin interfaz gráfica). Su responsabilidad principal es ejecutar OpenCode de forma automatizada, gestionar configuración, y formatear resultados para procesamiento posterior en pipelines de automatización.",
-                  "last_modified": "2025-07-08T13:38:30.960839"
+                "docs\\autocode\\core\\git/": {
+                  "type": "module",
+                  "module_file": "docs\\autocode\\core\\git\\_module.md",
+                  "purpose": "Este módulo encapsula toda la lógica para interactuar con el sistema de control de versiones Git. Su propósito principal es analizar el estado de un repositorio, identificar los cambios en los archivos y estructurar esa información para que pueda ser utilizada por otras herramientas, como generadores automáticos de mensajes de commit.",
+                  "last_modified": "2025-07-16T17:09:29.533926",
+                  "files": {
+                    "docs\\autocode\\core\\git\\git_analyzer.md": {
+                      "type": "file_doc",
+                      "purpose": "GitAnalyzer es un componente diseñado para analizar el estado de un repositorio de Git. Su función principal es obtener una lista detallada de todos los cambios en los archivos (modificados, añadidos, eliminados, etc.), incluyendo los diffs específicos, y estructurar esta información en un formato JSON. Este resultado es ideal para alimentar herramientas automáticas, como generadores de mensajes de commit basados en IA.",
+                      "last_modified": "2025-07-16T16:58:39.943033"
+                    }
+                  }
                 },
-                "docs\\autocode\\core\\test_checker.md": {
-                  "type": "file_doc",
-                  "purpose": "TestChecker es el componente responsable de verificar el estado de los tests en el proyecto Vidi siguiendo una estructura modular. Su responsabilidad principal es detectar tests faltantes, validar tests existentes, y identificar tests huérfanos que ya no corresponden a código existente. Mapea automáticamente archivos de código a sus tests correspondientes pero no los crea, proporcionando información para que los desarrolladores mantengan una cobertura de tests adecuada.",
-                  "last_modified": "2025-07-08T13:38:30.961838"
-                },
-                "docs\\autocode\\core\\token_counter.md": {
-                  "type": "file_doc",
-                  "purpose": "El módulo token_counter.py proporciona funcionalidad para contar tokens en texto y archivos para varios modelos de LLM. Su responsabilidad principal es la medición precisa de tokens usando tiktoken, estimación de costos de API, y análisis de límites de contexto para operaciones de IA.",
-                  "last_modified": "2025-07-08T13:38:30.961838"
+                "docs\\autocode\\core\\test/": {
+                  "type": "module",
+                  "module_file": "docs\\autocode\\core\\test\\_module.md",
+                  "purpose": "Este módulo se encarga de la verificación del estado de los tests del proyecto. Su responsabilidad es analizar la cobertura de tests siguiendo una estructura modular, identificar tests faltantes o huérfanos, y ejecutar los tests existentes para validar su estado.",
+                  "last_modified": "2025-07-16T17:10:37.791250",
+                  "files": {
+                    "docs\\autocode\\core\\test\\test_checker.md": {
+                      "type": "file_doc",
+                      "purpose": "TestChecker es el componente responsable de verificar el estado de los tests en el proyecto, siguiendo una estructura modular. Su responsabilidad principal es detectar tests faltantes, validar tests existentes ejecutándolos, e identificar tests huérfanos que ya no corresponden a código fuente existente. Mapea automáticamente archivos de código a sus tests correspondientes pero no los crea, proporcionando información para que los desarrolladores mantengan una cobertura de tests adecuada.",
+                      "last_modified": "2025-07-16T16:59:07.011275"
+                    }
+                  }
                 }
               }
             },
             "docs\\autocode\\orchestration/": {
               "type": "module",
               "module_file": "docs\\autocode\\orchestration\\_module.md",
-              "purpose": "El módulo autocode/orchestration proporciona el sistema de automatización y programación para el sistema autocode. Su responsabilidad principal es orquestar la ejecución automática de verificaciones, gestionar tareas programadas, y proporcionar monitoreo continuo del sistema. Actúa como el cerebro que coordina todas las operaciones automatizadas del sistema, integrando los componentes core a través de un daemon robusto y un scheduler configurable.",
-              "last_modified": "2025-07-10T11:48:50.516512",
+              "purpose": "Este módulo proporciona el sistema de automatización y programación para autocode. Su responsabilidad principal es orquestar la ejecución automática de las verificaciones, gestionar tareas programadas y proporcionar la base para el monitoreo continuo del sistema. Actúa como el cerebro que coordina todas las operaciones automatizadas.",
+              "last_modified": "2025-07-16T17:18:15.708196",
               "files": {
                 "docs\\autocode\\orchestration\\daemon.md": {
                   "type": "file_doc",
-                  "purpose": "Daemon de monitoreo continuo que ejecuta verificaciones periódicas automatizadas usando DocChecker, GitAnalyzer y TestChecker. Coordina la ejecución programada de verificaciones, mantiene estado y resultados, y proporciona interfaz para el dashboard web.",
-                  "last_modified": "2025-07-09T13:58:40.473912"
+                  "purpose": "AutocodeDaemon es el orquestador central del sistema de monitoreo continuo. Su responsabilidad es ejecutar periódicamente las diferentes verificaciones (DocChecker, GitAnalyzer, TestChecker), mantener el estado de los resultados y proporcionar esta información a la API.",
+                  "last_modified": "2025-07-16T17:14:08.947078"
                 },
                 "docs\\autocode\\orchestration\\scheduler.md": {
                   "type": "file_doc",
@@ -103,37 +260,42 @@
             "docs\\autocode\\web/": {
               "type": "module",
               "module_file": "docs\\autocode\\web\\_module.md",
-              "purpose": "El módulo autocode/web proporciona una interfaz web moderna y dashboard interactivo para el monitoreo visual en tiempo real del sistema autocode. Su responsabilidad principal es ofrecer una experiencia de usuario amigable y responsiva para supervisar el estado de verificaciones, métricas del sistema y configuración de automatización, complementando la API REST con componentes frontend completos.",
-              "last_modified": "2025-07-10T11:42:51.767952",
+              "purpose": "Este módulo contiene todos los componentes necesarios para construir y servir el frontend del dashboard de monitoreo de autocode. Su responsabilidad es proporcionar una interfaz de usuario web moderna e interactiva para la visualización en tiempo real del estado del sistema.",
+              "last_modified": "2025-07-16T17:19:23.800323",
               "subdirectories": {
                 "docs\\autocode\\web\\static/": {
                   "type": "module",
                   "module_file": "docs\\autocode\\web\\static\\_module.md",
-                  "purpose": "Módulo que contiene los assets estáticos del dashboard web de autocode: JavaScript para interactividad, CSS para estilos visuales y cualquier recurso estático necesario para el funcionamiento de la interfaz web de monitoreo.",
-                  "last_modified": "2025-07-09T14:05:41.629653",
+                  "purpose": "Este módulo contiene todos los assets estáticos del frontend para el dashboard web de autocode. Su responsabilidad es proporcionar los archivos de JavaScript y CSS que son servidos directamente al navegador para construir la interfaz de usuario, definir su estilo y dotarla de interactividad.",
+                  "last_modified": "2025-07-16T17:19:03.024479",
                   "files": {
                     "docs\\autocode\\web\\static\\app.md": {
                       "type": "file_doc",
-                      "purpose": "JavaScript del dashboard de monitoreo que proporciona interfaz interactiva en tiempo real para el daemon de autocode. Maneja la actualización automática de estado, ejecución manual de verificaciones, configuración dinámica y interacción con la API REST.",
-                      "last_modified": "2025-07-09T14:01:29.499908"
+                      "purpose": "Este archivo JavaScript es el cerebro del frontend del dashboard de monitoreo de autocode. Su responsabilidad es hacer que la página index.html sea interactiva y dinámica, comunicándose con la API del backend para obtener y mostrar datos en tiempo real.",
+                      "last_modified": "2025-07-16T17:14:40.587790"
+                    },
+                    "docs\\autocode\\web\\static\\design-tokens.md": {
+                      "type": "file_doc",
+                      "purpose": "Este archivo CSS establece el sistema de diseño para la interfaz de usuario de Autocode. Centraliza todas las decisiones de diseño fundamentales (colores, tipografía, espaciado, etc.) en forma de CSS Custom Properties (variables CSS). Su propósito es garantizar una apariencia visual consistente, facilitar el mantenimiento y permitir la tematización (como el modo oscuro).",
+                      "last_modified": "2025-07-16T17:07:49.508725"
                     },
                     "docs\\autocode\\web\\static\\style.md": {
                       "type": "file_doc",
-                      "purpose": "Estilos CSS para el dashboard de monitoreo de autocode que define la apariencia visual, layout responsive, indicadores de estado, animaciones y temas visuales. Proporciona una interfaz profesional y moderna para el monitoreo en tiempo real del daemon.",
-                      "last_modified": "2025-07-09T14:04:24.502627"
+                      "purpose": "Este archivo CSS define la apariencia visual y el layout de todos los componentes del dashboard de monitoreo de autocode. Su responsabilidad es tomar los valores del sistema de diseño (definidos en design-tokens.css) y aplicarlos para construir una interfaz de usuario cohesiva, profesional y responsiva.",
+                      "last_modified": "2025-07-16T17:16:07.389043"
                     }
                   }
                 },
                 "docs\\autocode\\web\\templates/": {
                   "type": "module",
                   "module_file": "docs\\autocode\\web\\templates\\_module.md",
-                  "purpose": "El módulo autocode/web/templates contiene las plantillas HTML que definen la estructura y layout del dashboard web de autocode. Su responsabilidad principal es proporcionar templates Jinja2 bien estructurados, semánticos y optimizados que sirven como base para la interfaz web, integrándose perfectamente con FastAPI y los assets estáticos para crear una experiencia de usuario cohesiva.",
-                  "last_modified": "2025-07-10T11:41:58.650348",
+                  "purpose": "Este módulo contiene las plantillas HTML que definen la estructura y el layout del dashboard web de autocode. Su responsabilidad es proporcionar plantillas Jinja2 bien estructuradas y semánticas que sirven como base para la interfaz web, integrándose con FastAPI y los assets estáticos para crear una experiencia de usuario cohesiva.",
+                  "last_modified": "2025-07-16T17:17:03.730866",
                   "files": {
                     "docs\\autocode\\web\\templates\\index.md": {
                       "type": "file_doc",
-                      "purpose": "Template HTML principal del dashboard de monitoreo de autocode que proporciona interfaz web completa para visualizar estado del daemon, resultados de verificaciones, configuración dinámica y control manual. Utiliza FastAPI templates con Jinja2 para servir contenido dinámico.",
-                      "last_modified": "2025-07-09T14:02:56.044370"
+                      "purpose": "Este archivo es la plantilla HTML principal para el dashboard de monitoreo de autocode. Su propósito es definir la estructura y el layout de la interfaz de usuario que se muestra en el navegador. Actúa como el \"esqueleto\" de la página, que luego es poblado con datos dinámicos por el script app.js.",
+                      "last_modified": "2025-07-16T17:15:30.075706"
                     }
                   }
                 }
@@ -143,21 +305,21 @@
           "files": {
             "docs\\autocode\\cli.md": {
               "type": "file_doc",
-              "purpose": "Interfaz de línea de comandos unificada para autocode que proporciona acceso a todas las funcionalidades del proyecto a través de subcomandos especializados. Actúa como punto de entrada único para verificación de documentación, análisis de cambios git, monitoreo continuo, análisis de IA con OpenCode, verificación de tests, y conteo de tokens para análisis de LLM.",
-              "last_modified": "2025-07-09T13:56:29.840756"
+              "purpose": "Este módulo proporciona una interfaz de línea de comandos (CLI) unificada para acceder a todas las funcionalidades del sistema autocode. Actúa como el punto de entrada principal para que los usuarios y los sistemas de automatización (como CI/CD) interactúen con las herramientas de análisis y generación.",
+              "last_modified": "2025-07-16T17:12:36.444334"
             }
           }
         },
         "docs\\examples/": {
           "type": "module",
           "module_file": "docs\\examples\\_module.md",
-          "purpose": "El módulo examples contiene ejemplos prácticos y casos de uso que demuestran cómo utilizar autocode tanto programáticamente como desde la línea de comandos. Su responsabilidad principal es proporcionar código ejecutable que sirva como referencia, tutorial, y punto de partida para desarrolladores que quieran integrar autocode en sus proyectos o flujos de trabajo.",
-          "last_modified": "2025-07-10T11:44:34.136327",
+          "purpose": "Este módulo contiene ejemplos prácticos y casos de uso que demuestran cómo utilizar autocode tanto programáticamente como desde la línea de comandos. Su responsabilidad principal es proporcionar código ejecutable que sirva como referencia, tutorial y punto de partida para los desarrolladores que quieran integrar autocode en sus proyectos o flujos de trabajo.",
+          "last_modified": "2025-07-16T17:17:50.709219",
           "files": {
             "docs\\examples\\basic_usage.md": {
               "type": "file_doc",
-              "purpose": "Script de ejemplo que demuestra el uso programático de autocode, mostrando cómo utilizar las funcionalidades principales de DocChecker y GitAnalyzer desde código Python.",
-              "last_modified": "2025-07-09T13:55:32.188835"
+              "purpose": "Este script de ejemplo demuestra cómo utilizar las funcionalidades principales de autocode de forma programática, es decir, importando y utilizando sus clases directamente desde otro script de Python, en lugar de a través de la línea de comandos.",
+              "last_modified": "2025-07-16T17:16:31.763761"
             }
           }
         }

@@ -1,114 +1,36 @@
-# basic_usage.py
+# Ejemplo de Uso Básico
 
 ## 🎯 Propósito
-Script de ejemplo que demuestra el uso programático de autocode, mostrando cómo utilizar las funcionalidades principales de DocChecker y GitAnalyzer desde código Python.
+Este script de ejemplo demuestra cómo utilizar las funcionalidades principales de `autocode` de forma **programática**, es decir, importando y utilizando sus clases directamente desde otro script de Python, en lugar de a través de la línea de comandos.
 
 ## 🏗️ Arquitectura
-```mermaid
-graph TD
-    A[main()] --> B[DocChecker]
-    A --> C[GitAnalyzer]
-    B --> D[get_outdated_docs()]
-    C --> E[get_repository_status()]
-    C --> F[get_modified_files()]
-    
-    D --> G[Reporte de documentación]
-    E --> H[Estado del repositorio]
-    F --> I[Lista de archivos modificados]
-```
+El script es lineal y simple:
+1.  **Importa las clases necesarias**: Importa `DocChecker` y `GitAnalyzer` desde el `core` de `autocode`.
+2.  **Define una función `main`**: Encapsula la lógica de la demostración.
+3.  **Instancia los Componentes**: Crea instancias de `DocChecker` y `GitAnalyzer`, pasándoles el directorio raíz del proyecto.
+4.  **Ejecuta las Verificaciones**: Llama a los métodos de las instancias para realizar las verificaciones de documentación y de Git.
+5.  **Imprime los Resultados**: Muestra un resumen de los resultados en la consola.
 
 ## 📋 Responsabilidades
-- **Demostrar DocChecker**: Verificar el estado de la documentación del proyecto
-- **Demostrar GitAnalyzer**: Analizar cambios en el repositorio git
-- **Proporcionar ejemplo de uso**: Mostrar cómo integrar autocode en scripts personalizados
-- **Manejo de errores**: Demostrar manejo robusto de excepciones
+- **Demostrar el Uso de `DocChecker`**: Muestra cómo obtener una lista de la documentación desactualizada.
+- **Demostrar el Uso de `GitAnalyzer`**: Muestra cómo obtener un resumen del estado del repositorio y una lista de los archivos modificados.
+- **Servir como Punto de Partida**: Actúa como un ejemplo simple para los desarrolladores que quieran integrar `autocode` en sus propios flujos de trabajo automatizados.
 
 ## 🔗 Dependencias
 ### Internas
-- `autocode.core.doc_checker.DocChecker` - Verificación de documentación
-- `autocode.core.git_analyzer.GitAnalyzer` - Análisis de cambios git
+- `autocode.core.docs.DocChecker`
+- `autocode.core.git.GitAnalyzer`
 
 ### Externas
-- `pathlib.Path` - Manipulación de rutas de archivo
-
-## 📊 Interfaces Públicas
-### Función Principal
-```python
-def main() -> None
-```
-- **Propósito**: Ejecutar demostración completa de funcionalidades autocode
-- **Parámetros**: Ninguno
-- **Retorno**: None
-- **Efectos**: Imprime resultados en consola
-
-## 🔧 Configuración
-- **Directorio de trabajo**: Utiliza `Path.cwd()` para detectar automáticamente el directorio actual
-- **Sin configuración externa**: No requiere archivos de configuración adicionales
+- `pathlib`: Para la manipulación de rutas.
 
 ## 💡 Patrones de Uso
-### Ejecución como Script
+Para ejecutar este ejemplo, un usuario simplemente correría el script desde la raíz del proyecto:
 ```bash
-# Ejecutar directamente
 python examples/basic_usage.py
-
-# Ejecutar con uv
-uv run examples/basic_usage.py
 ```
-
-### Integración en Código
-```python
-from examples.basic_usage import main
-
-# Ejecutar demostración
-main()
-```
+El script analizará el estado actual del proyecto y mostrará los resultados directamente en la terminal.
 
 ## ⚠️ Consideraciones
-- **Manejo de errores**: Usa try/catch para manejar fallos graciosamente
-- **Limitación de salida**: Muestra solo los primeros 5 archivos modificados para evitar salida excesiva
-- **Dependencia de git**: Requiere repositorio git válido para funcionar completamente
-- **Directorio de trabajo**: Debe ejecutarse desde directorio con estructura de proyecto autocode
-
-## 🧪 Testing
-- **Prueba manual**: Ejecutar el script desde diferentes directorios
-- **Verificación de salida**: Confirmar que se muestran resultados apropiados
-- **Manejo de errores**: Probar en repositorios sin git o con problemas
-
-## 🔄 Flujo de Datos
-1. **Inicialización**: Obtiene directorio de trabajo actual
-2. **Verificación de documentación**: 
-   - Crea instancia DocChecker
-   - Obtiene lista de documentación desactualizada
-   - Muestra resultados o mensaje de éxito
-3. **Análisis de git**:
-   - Crea instancia GitAnalyzer
-   - Obtiene estado del repositorio
-   - Lista archivos modificados (limitado a 5)
-4. **Finalización**: Muestra consejos de uso adicional
-
-## 📈 Salida Esperada
-```
-🚀 Autocode Basic Usage Example
-========================================
-📁 Project root: /path/to/project
-
-📋 1. Checking documentation...
-✅ All documentation is up to date!
-
-🔍 2. Analyzing git changes...
-📊 Repository status:
-   Total files changed: 3
-   Modified: 2
-   Added: 1
-   Deleted: 0
-
-📄 Modified files:
-   - autocode/core/doc_checker.py
-   - examples/basic_usage.py
-
-✨ Example completed!
-
-💡 To run more examples:
-   autocode check-docs
-   autocode git-changes --verbose
-   autocode daemon
+- El script asume que se ejecuta desde el directorio raíz del proyecto `autocode`.
+- La salida es una versión simplificada de lo que las herramientas pueden hacer; el verdadero poder reside en los datos estructurados que devuelven los métodos.
