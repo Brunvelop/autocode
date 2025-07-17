@@ -115,7 +115,7 @@ class PythonAnalyzer(BaseAnalyzer):
                 method_info = self._extract_method_info(item)
                 methods.append(method_info)
         
-        # Extract class attributes
+        # Extract class attributes from assignments
         attributes = []
         for item in node.body:
             if isinstance(item, ast.Assign):
@@ -123,6 +123,12 @@ class PythonAnalyzer(BaseAnalyzer):
                     if isinstance(target, ast.Name):
                         attr_info = self._extract_attribute_info(target, item)
                         attributes.append(attr_info)
+        
+        # Extract type-annotated attributes (important for Pydantic models)
+        for item in node.body:
+            if isinstance(item, ast.AnnAssign) and isinstance(item.target, ast.Name):
+                attr_info = self._extract_annotated_attribute_info(item)
+                attributes.append(attr_info)
         
         # Extract base classes
         bases = []
@@ -291,6 +297,47 @@ class PythonAnalyzer(BaseAnalyzer):
             "name": target.id,
             "visibility": visibility,
             "type": attr_type
+        }
+
+    def _extract_annotated_attribute_info(self, ann_assign_node: ast.AnnAssign) -> Dict[str, Any]:
+        """Extract information from a type-annotated attribute (e.g., field: str = "default").
+        
+        Args:
+            ann_assign_node: AST AnnAssign node
+            
+        Returns:
+            Dictionary with attribute information
+        """
+        attr_name = ann_assign_node.target.id
+        
+        # Determine visibility
+        visibility = "+" if not attr_name.startswith("_") else "-"
+        
+        # Extract type annotation
+        attr_type = self._get_type_annotation(ann_assign_node.annotation)
+        
+        # Check if it has a default value
+        has_default = ann_assign_node.value is not None
+        default_value = None
+        
+        if has_default:
+            if isinstance(ann_assign_node.value, ast.Constant):
+                default_value = repr(ann_assign_node.value.value)
+            elif isinstance(ann_assign_node.value, ast.Name):
+                default_value = ann_assign_node.value.id
+            elif isinstance(ann_assign_node.value, ast.Call):
+                # Handle function calls like Field(default="value")
+                if isinstance(ann_assign_node.value.func, ast.Name):
+                    default_value = f"{ann_assign_node.value.func.id}(...)"
+                elif isinstance(ann_assign_node.value.func, ast.Attribute):
+                    default_value = f"{ann_assign_node.value.func.attr}(...)"
+        
+        return {
+            "name": attr_name,
+            "visibility": visibility,
+            "type": attr_type,
+            "has_default": has_default,
+            "default_value": default_value
         }
 
     def _get_type_annotation(self, annotation: ast.expr) -> str:

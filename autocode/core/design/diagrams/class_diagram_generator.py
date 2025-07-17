@@ -40,21 +40,28 @@ class ClassDiagramGenerator(BaseGenerator):
             Mermaid diagram string
         """
         diagram = "classDiagram\n"
-        diagram += f"    class {class_info['name']} {{\n"
+        class_name = class_info['name']
+        
+        # Start class definition
+        diagram += f"    class {class_name} {{\n"
+        
+        # Track if class has any members
+        has_members = False
         
         # Add attributes with visibility and types
-        for attr in class_info['attributes']:
+        for attr in class_info.get('attributes', []):
             attr_line = f"        {attr['visibility']}{attr['name']}"
-            if attr['type']:
+            if attr.get('type'):
                 attr_line += f": {attr['type']}"
             diagram += attr_line + "\n"
+            has_members = True
         
         # Add methods with visibility, parameters, and return types
-        for method in class_info['methods']:
+        for method in class_info.get('methods', []):
             method_line = f"        {method['visibility']}{method['name']}("
             
             # Add parameters (skip 'self' for readability)
-            params = [p for p in method['parameters'] if p['name'] != 'self']
+            params = [p for p in method.get('parameters', []) if p.get('name') != 'self']
             if params:
                 param_strs = []
                 for param in params:
@@ -67,24 +74,30 @@ class ClassDiagramGenerator(BaseGenerator):
             method_line += ")"
             
             # Add return type
-            if method['return_type']:
+            if method.get('return_type'):
                 method_line += f" -> {method['return_type']}"
             
             diagram += method_line + "\n"
+            has_members = True
         
+        # If class has no members, add a placeholder comment to ensure valid syntax
+        if not has_members:
+            diagram += "        %% No explicit members\n"
+        
+        # Close class definition
         diagram += "    }\n"
         
-        # Add inheritance relationships
-        for base in class_info['bases']:
-            diagram += f"    {base} <|-- {class_info['name']}\n"
+        # Add inheritance relationships (separate from class definition, with proper spacing)
+        for base in class_info.get('bases', []):
+            diagram += f"    {base} <|-- {class_name}\n"
         
-        # Add decorators as stereotypes
-        for method in class_info['methods']:
-            if method['is_property']:
-                diagram += f"    {class_info['name']} : <<property>> {method['name']}\n"
-            elif method['is_static']:
-                diagram += f"    {class_info['name']} : <<static>> {method['name']}\n"
-            elif method['is_class']:
-                diagram += f"    {class_info['name']} : <<class>> {method['name']}\n"
+        # Add decorators as stereotypes (with proper spacing)
+        for method in class_info.get('methods', []):
+            if method.get('is_property'):
+                diagram += f"    {class_name} : <<property>> {method['name']}\n"
+            elif method.get('is_static'):
+                diagram += f"    {class_name} : <<static>> {method['name']}\n"
+            elif method.get('is_class'):
+                diagram += f"    {class_name} : <<class>> {method['name']}\n"
         
         return diagram

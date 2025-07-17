@@ -449,8 +449,10 @@ class MarkdownExporter:
             content += "\n```mermaid\n"
             try:
                 content += generators["mermaid"].generate_class_diagram(item)
-            except Exception:
-                content += f"classDiagram\n    class {name} {{\n    }}"
+            except Exception as e:
+                logger.warning(f"Error generating diagram for {name}: {e}")
+                # Generate a valid fallback diagram
+                content += f"classDiagram\n    class {name} {{\n        %% Error generating diagram\n    }}"
             content += "\n```\n\n"
         
         elif item_type == "functions":

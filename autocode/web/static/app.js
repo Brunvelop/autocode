@@ -20,6 +20,7 @@ class AutocodeDashboard {
     getCurrentPage() {
         const path = window.location.pathname;
         if (path === '/ui-designer') return 'ui-designer';
+        if (path === '/design') return 'design';
         if (path === '/config') return 'config';
         return 'dashboard';
     }
@@ -703,33 +704,44 @@ class AutocodeDashboard {
     }
     
     updateConfigUI(config) {
+        // Only update config UI if we're on a page that has these elements
+        if (this.currentPage !== 'dashboard' && this.currentPage !== 'config') {
+            return;
+        }
+        
         // Update doc check config
         const docCheckEnabled = document.getElementById('doc-check-enabled');
         const docCheckInterval = document.getElementById('doc-check-interval');
         
-        docCheckEnabled.checked = config.daemon.doc_check.enabled;
-        docCheckInterval.value = config.daemon.doc_check.interval_minutes;
+        if (docCheckEnabled && docCheckInterval) {
+            docCheckEnabled.checked = config.daemon.doc_check.enabled;
+            docCheckInterval.value = config.daemon.doc_check.interval_minutes;
+        }
         
         // Update git check config
         const gitCheckEnabled = document.getElementById('git-check-enabled');
         const gitCheckInterval = document.getElementById('git-check-interval');
         
-        gitCheckEnabled.checked = config.daemon.git_check.enabled;
-        gitCheckInterval.value = config.daemon.git_check.interval_minutes;
+        if (gitCheckEnabled && gitCheckInterval) {
+            gitCheckEnabled.checked = config.daemon.git_check.enabled;
+            gitCheckInterval.value = config.daemon.git_check.interval_minutes;
+        }
         
         // Update test check config
         const testCheckEnabled = document.getElementById('test-check-enabled');
         const testCheckInterval = document.getElementById('test-check-interval');
         
-        testCheckEnabled.checked = config.daemon.test_check.enabled;
-        testCheckInterval.value = config.daemon.test_check.interval_minutes;
+        if (testCheckEnabled && testCheckInterval) {
+            testCheckEnabled.checked = config.daemon.test_check.enabled;
+            testCheckInterval.value = config.daemon.test_check.interval_minutes;
+        }
         
         // Update token alerts config
         const tokenAlertsEnabled = document.getElementById('token-alerts-enabled');
         const tokenThreshold = document.getElementById('token-threshold');
         const tokenModel = document.getElementById('token-model');
         
-        if (config.daemon.token_alerts) {
+        if (tokenAlertsEnabled && tokenThreshold && tokenModel && config.daemon.token_alerts) {
             tokenAlertsEnabled.checked = config.daemon.token_alerts.enabled;
             tokenThreshold.value = config.daemon.token_alerts.threshold;
             tokenModel.value = config.daemon.token_alerts.model;

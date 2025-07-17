@@ -294,7 +294,14 @@ class DesignViewer {
         let match;
         
         while ((match = mermaidRegex.exec(content)) !== null) {
-            diagrams.push(match[1].trim());
+            const diagramContent = match[1].trim();
+            
+            // Validate that the diagram content is not empty and seems valid
+            if (diagramContent && diagramContent.length > 0) {
+                // Log the extracted diagram for debugging
+                console.log('Extracted diagram:', diagramContent.substring(0, 100) + '...');
+                diagrams.push(diagramContent);
+            }
         }
         
         return diagrams;
@@ -328,24 +335,20 @@ class DesignViewer {
         }
         
         try {
-            // Configure Mermaid with more robust settings
+            // Configure Mermaid with simple, reliable settings
             mermaid.initialize({
                 startOnLoad: false,
                 theme: 'default',
-                themeVariables: {
-                    primaryColor: '#e1f5fe',
-                    primaryTextColor: '#0277bd',
-                    primaryBorderColor: '#0277bd',
-                    lineColor: '#757575',
-                    secondaryColor: '#f3e5f5',
-                    tertiaryColor: '#e8f5e8'
-                },
+                securityLevel: 'loose',
+                logLevel: 'error',
                 flowchart: {
                     useMaxWidth: true,
                     htmlLabels: true
                 },
-                securityLevel: 'loose',
-                logLevel: 'error'
+                classDiagram: {
+                    useMaxWidth: true,
+                    htmlLabels: true
+                }
             });
             
             // Find all mermaid elements that haven't been rendered yet
@@ -356,57 +359,99 @@ class DesignViewer {
                 return;
             }
             
-            // Process each element
-            mermaidElements.forEach(async (element, index) => {
+            console.log(`Found ${mermaidElements.length} diagrams to render`);
+            
+            // Process each element with a robust approach
+            mermaidElements.forEach((element, index) => {
                 try {
-                    // Mark as being processed
-                    element.setAttribute('data-processed', 'true');
-                    
-                    // Generate unique ID for mermaid
-                    const id = `mermaid-${Date.now()}-${index}`;
                     const diagramText = element.textContent.trim();
                     
                     if (!diagramText) {
-                        console.warn('Empty diagram text found, skipping');
+                        console.warn(`Empty diagram text found at index ${index}, skipping`);
                         return;
                     }
                     
-                    // Clear the element content
-                    element.innerHTML = '';
-                    
-                    // Use mermaid.run() for modern API
-                    if (mermaid.run && typeof mermaid.run === 'function') {
-                        element.innerHTML = diagramText;
-                        await mermaid.run({
-                            nodes: [element]
-                        });
-                    } else if (mermaid.render && typeof mermaid.render === 'function') {
-                        // Fallback to render API
-                        const { svg } = await mermaid.render(id, diagramText);
-                        element.innerHTML = svg;
-                    } else {
-                        // Last resort - use older API
-                        element.innerHTML = diagramText;
-                        mermaid.init(undefined, element);
+                    // Validate diagram text
+                    if (diagramText.length < 10 || !diagramText.includes('classDiagram')) {
+                        console.warn(`Invalid diagram text at index ${index}:`, diagramText);
+                        return;
                     }
                     
-                } catch (renderError) {
-                    console.error('Mermaid render error:', renderError);
-                    element.innerHTML = `
-                        <div style="color: #dc3545; padding: 20px; text-align: center; border: 1px solid #dc3545; border-radius: 4px; background: #f8d7da;">
-                            <p><strong>Error rendering diagram:</strong></p>
-                            <p style="font-size: 0.9em; margin-top: 10px;">${renderError.message}</p>
-                            <pre style="margin-top: 10px; font-size: 0.8em; text-align: left; background: #fff; padding: 10px; border-radius: 4px;">${element.textContent}</pre>
-                        </div>
-                    `;
+                    // Log the full diagram text for debugging
+                    console.log(`Processing diagram ${index + 1}:`);
+                    console.log('Full diagram text:', diagramText);
+                    
+                    // Mark as processed to avoid re-processing
+                    element.setAttribute('data-processed', 'true');
+                    
+                    // Generate unique ID
+                    const uniqueId = `mermaid-diagram-${Date.now()}-${index}`;
+                    element.id = uniqueId;
+                    
+                    // Create a clean container for the diagram
+                    const container = document.createElement('div');
+                    container.id = uniqueId + '-container';
+                    container.style.width = '100%';
+                    container.style.textAlign = 'center';
+                    
+                    // Try the new API first, fallback to old API
+                    if (mermaid.render && typeof mermaid.render === 'function') {
+                        // Use modern async API
+                        mermaid.render(uniqueId + '-svg', diagramText)
+                            .then(result => {
+                                console.log(`Successfully rendered diagram ${index + 1} with new API`);
+                                container.innerHTML = result.svg;
+                                element.innerHTML = '';
+                                element.appendChild(container);
+                            })
+                            .catch(renderError => {
+                                console.error(`Mermaid render error for diagram ${index + 1}:`, renderError);
+                                this.renderDiagramError(element, index + 1, renderError, diagramText);
+                            });
+                    } else {
+                        // Fallback to old API
+                        try {
+                            const tempDiv = document.createElement('div');
+                            tempDiv.innerHTML = diagramText;
+                            tempDiv.id = uniqueId + '-temp';
+                            tempDiv.className = 'mermaid';
+                            
+                            container.appendChild(tempDiv);
+                            element.innerHTML = '';
+                            element.appendChild(container);
+                            
+                            mermaid.init(undefined, tempDiv);
+                            console.log(`Successfully rendered diagram ${index + 1} with old API`);
+                        } catch (fallbackError) {
+                            console.error(`Fallback render error for diagram ${index + 1}:`, fallbackError);
+                            this.renderDiagramError(element, index + 1, fallbackError, diagramText);
+                        }
+                    }
+                    
+                } catch (processingError) {
+                    console.error(`Error processing diagram element ${index + 1}:`, processingError);
+                    this.renderDiagramError(element, index + 1, processingError, null);
                 }
             });
-            
-            console.log(`Rendered ${mermaidElements.length} Mermaid diagrams`);
             
         } catch (error) {
             console.error('Error initializing Mermaid:', error);
         }
+    }
+    
+    renderDiagramError(element, diagramNumber, error, diagramText) {
+        element.innerHTML = `
+            <div style="color: #dc3545; padding: 20px; text-align: center; border: 1px solid #dc3545; border-radius: 4px; background: #f8d7da; margin: 10px 0;">
+                <p><strong>⚠️ Error rendering diagram ${diagramNumber}</strong></p>
+                <p style="font-size: 0.9em; margin-top: 10px;">${error.message}</p>
+                ${diagramText ? `
+                    <details style="margin-top: 15px; text-align: left;">
+                        <summary style="cursor: pointer; font-weight: bold;">Show diagram source</summary>
+                        <pre style="margin-top: 10px; font-size: 0.8em; background: #fff; padding: 10px; border-radius: 4px; overflow-x: auto;">${diagramText}</pre>
+                    </details>
+                ` : ''}
+            </div>
+        `;
     }
     
     showLoadingState() {
