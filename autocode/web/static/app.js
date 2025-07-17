@@ -511,22 +511,28 @@ class AutocodeDashboard {
     updateSystemStats(daemon) {
         // Update uptime
         const uptimeElement = document.getElementById('uptime');
-        if (daemon.uptime_seconds) {
-            uptimeElement.textContent = this.formatDuration(daemon.uptime_seconds);
-        } else {
-            uptimeElement.textContent = '--';
+        if (uptimeElement) {
+            if (daemon.uptime_seconds) {
+                uptimeElement.textContent = this.formatDuration(daemon.uptime_seconds);
+            } else {
+                uptimeElement.textContent = '--';
+            }
         }
         
         // Update total checks
         const totalChecksElement = document.getElementById('total-checks');
-        totalChecksElement.textContent = daemon.total_checks_run || 0;
+        if (totalChecksElement) {
+            totalChecksElement.textContent = daemon.total_checks_run || 0;
+        }
         
         // Update last check
         const lastCheckElement = document.getElementById('last-check');
-        if (daemon.last_check_run) {
-            lastCheckElement.textContent = this.formatTimestamp(daemon.last_check_run);
-        } else {
-            lastCheckElement.textContent = '--';
+        if (lastCheckElement) {
+            if (daemon.last_check_run) {
+                lastCheckElement.textContent = this.formatTimestamp(daemon.last_check_run);
+            } else {
+                lastCheckElement.textContent = '--';
+            }
         }
     }
     
@@ -772,12 +778,16 @@ class AutocodeDashboard {
     
     updateLastUpdated() {
         const lastUpdatedElement = document.getElementById('last-updated');
-        lastUpdatedElement.textContent = new Date().toLocaleTimeString();
+        if (lastUpdatedElement) {
+            lastUpdatedElement.textContent = new Date().toLocaleTimeString();
+        }
     }
     
     updateRefreshStatus(status) {
         const refreshStatusElement = document.getElementById('auto-refresh-status');
-        refreshStatusElement.textContent = status;
+        if (refreshStatusElement) {
+            refreshStatusElement.textContent = status;
+        }
     }
     
     handleError(error) {
@@ -787,13 +797,19 @@ class AutocodeDashboard {
         const indicator = document.getElementById('daemon-indicator');
         const text = document.getElementById('daemon-text');
         
-        indicator.className = 'status-indicator error';
-        text.textContent = 'Connection Error';
+        if (indicator && text) {
+            indicator.className = 'status-indicator error';
+            text.textContent = 'Connection Error';
+        }
         
-        // Show error in system stats
-        document.getElementById('uptime').textContent = 'Error';
-        document.getElementById('total-checks').textContent = 'Error';
-        document.getElementById('last-check').textContent = 'Error';
+        // Show error in system stats with null checks
+        const uptimeElement = document.getElementById('uptime');
+        const totalChecksElement = document.getElementById('total-checks');
+        const lastCheckElement = document.getElementById('last-check');
+        
+        if (uptimeElement) uptimeElement.textContent = 'Error';
+        if (totalChecksElement) totalChecksElement.textContent = 'Error';
+        if (lastCheckElement) lastCheckElement.textContent = 'Error';
     }
     
     async loadArchitectureDiagram() {

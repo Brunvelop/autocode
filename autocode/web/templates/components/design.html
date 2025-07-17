@@ -1,0 +1,42 @@
+<div class="design-container">
+    <aside class="design-sidebar">
+        <div class="design-sidebar-header">
+            <h3>📁 Design Files</h3>
+            <button class="btn-run" onclick="loadDesign()">Load</button>
+            <button class="btn-run" onclick="refreshDesign()">Refresh</button>
+        </div>
+        <div class="design-search-container">
+            <input type="text" id="design-search" placeholder="Search files..." class="design-search-input">
+        </div>
+        <div id="design-tree" class="design-tree">
+            <div class="loading-message">
+                <p>📄 Ready to load design documentation</p>
+                <p>Click "Load" to view available design files</p>
+            </div>
+        </div>
+    </aside>
+    <main class="design-viewer">
+        <div class="design-header">
+            <h2 id="design-title">Design Viewer</h2>
+            <p id="design-summary">Select a file to view</p>
+        </div>
+        <div id="design-breadcrumbs" class="design-breadcrumbs"></div>
+        <div id="design-content" class="design-content">
+            <div class="design-welcome">
+                <h3>Welcome to Design Viewer</h3>
+                <p>Select a file from the sidebar to view its design documentation and diagrams.</p>
+                <div class="design-features">
+                    <h4>📋 Features:</h4>
+                    <ul>
+                        <li>Browse all design documentation files in the project</li>
+                        <li>View Mermaid diagrams embedded in Markdown files</li>
+                        <li>Organized by module and component hierarchy</li>
+                        <li>Interactive diagram rendering with zoom and pan</li>
+                        <li>Quick navigation between related documentation</li>
+                        <li>Real-time updates when documentation changes</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </main>
+</div>

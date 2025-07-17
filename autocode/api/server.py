@@ -93,10 +93,10 @@ async def dashboard(request: Request):
     return templates.TemplateResponse("pages/dashboard.html", {"request": request})
 
 
-@app.get("/ui-designer", response_class=HTMLResponse)
-async def ui_designer(request: Request):
-    """Serve the UI designer page."""
-    return templates.TemplateResponse("pages/ui_designer.html", {"request": request})
+@app.get("/design", response_class=HTMLResponse)
+async def design(request: Request):
+    """Serve the design page."""
+    return templates.TemplateResponse("pages/design.html", {"request": request})
 
 
 @app.get("/config", response_class=HTMLResponse)

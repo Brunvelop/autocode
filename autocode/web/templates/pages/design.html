@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+
+{% block title %}Design{% endblock %}
+
+{% block content %}
+<!-- Design Section -->
+<section class="design">
+    <h2>🎨 Design</h2>
+    {% include 'components/design.html' %}
+</section>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', path='/js/components/design.js') }}" defer></script>
+{% endblock %}
