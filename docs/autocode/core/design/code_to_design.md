@@ -37,6 +37,7 @@ El flujo de trabajo es el siguiente:
 - `generate_design(self, directory: str, patterns: Optional[List[str]] = None) -> Dict[str, Any]`: Método principal que ejecuta todo el proceso de análisis y generación para un directorio.
 - `generate_markdown_files(...) -> List[Path]`: Genera los archivos Markdown a partir de resultados de análisis.
 - `generate_visual_index(...) -> str`: Genera el contenido para el archivo `_index.md`.
+- `generate_component_tree(self, directory: str) -> Dict[str, Any]`: Genera un diagrama del árbol de componentes de UI para un directorio específico.
 - `get_analyzer_info() -> Dict[str, Any]`: Devuelve información sobre los analizadores disponibles.
 - `get_generator_info() -> Dict[str, Any]`: Devuelve información sobre los generadores disponibles.
 - `get_system_info() -> Dict[str, Any]`: Proporciona una vista completa de la configuración del sistema.

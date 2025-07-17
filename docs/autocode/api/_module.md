@@ -36,3 +36,5 @@ graph TD
 
 ## 💡 Flujo de Trabajo Típico
 El servidor se inicia a través del comando `autocode daemon`. Una vez en ejecución, los usuarios pueden abrir el dashboard en un navegador, que a su vez consume los endpoints de la API para mostrar datos en tiempo real. Otros servicios o scripts pueden llamar directamente a los endpoints `/api/...` para automatizar tareas.
+
+<!-- Last updated: 2025-07-17 07:59:00 -->

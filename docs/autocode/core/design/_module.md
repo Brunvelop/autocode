@@ -50,3 +50,5 @@ graph TD
 
 ## 💡 Flujo de Trabajo Típico
 Un desarrollador o un proceso de CI/CD invocaría a `CodeToDesign` apuntando a un directorio del proyecto. El sistema analizaría automáticamente el código, generaría los diagramas y produciría una carpeta `design/` con toda la documentación de la arquitectura, lista para ser consultada o publicada.
+
+<!-- Last updated: 2025-07-17 07:59:20 -->

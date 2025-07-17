@@ -36,11 +36,40 @@ Este módulo implementa el servidor web y la API RESTful para el sistema de moni
 - `asyncio`: Para la gestión de tareas en segundo plano.
 
 ## 📊 Interfaces Públicas (Endpoints Principales)
--   **`GET /`**: Sirve el dashboard web.
--   **`GET /api/status`**: Devuelve un estado completo del sistema, incluyendo el estado del daemon, los resultados de todas las verificaciones y la configuración actual.
--   **`POST /api/checks/{check_name}/run`**: Dispara la ejecución de una verificación específica en segundo plano.
+
+### Endpoints de la Interfaz Web
+-   **`GET /`**: Redirige a `/dashboard`.
+-   **`GET /dashboard`**: Sirve la página principal del dashboard.
+-   **`GET /ui-designer`**: Sirve la página del visor de documentación de diseño.
+
+### Endpoints de Estado y Verificaciones
+-   **`GET /api/status`**: Devuelve un estado completo del sistema (daemon, checks, config).
+-   **`GET /api/daemon/status`**: Devuelve solo el estado del daemon.
+-   **`GET /api/checks`**: Devuelve los resultados de todas las verificaciones.
+-   **`GET /api/checks/{check_name}`**: Devuelve el resultado de una verificación específica.
+-   **`POST /api/checks/{check_name}/run`**: Dispara la ejecución de una verificación en segundo plano.
+
+### Endpoints de Configuración
 -   **`GET /api/config`**: Devuelve la configuración actual del sistema.
 -   **`PUT /api/config`**: Permite actualizar la configuración del daemon en caliente.
+
+### Endpoints del Scheduler
+-   **`GET /api/scheduler/tasks`**: Devuelve el estado de todas las tareas programadas.
+-   **`POST /api/scheduler/tasks/{task_name}/enable`**: Activa una tarea programada.
+-   **`POST /api/scheduler/tasks/{task_name}/disable`**: Desactiva una tarea programada.
+
+### Endpoints de Diseño y Arquitectura
+-   **`GET /api/design/files`**: Devuelve una lista de todos los archivos `.md` en el directorio de diseño.
+-   **`GET /api/architecture/diagram`**: Extrae y devuelve el diagrama Mermaid del archivo `design/_index.md`.
+-   **`POST /api/architecture/regenerate`**: Inicia la regeneración de toda la documentación de diseño en segundo plano.
+-   **`GET /api/ui-designer/component-tree`**: Genera y devuelve un diagrama del árbol de componentes de la UI.
+
+### Endpoints de Utilidad (Tokens)
+-   **`GET /api/tokens/count`**: Cuenta los tokens en un único archivo.
+-   **`POST /api/tokens/count-multiple`**: Cuenta los tokens en múltiples archivos y devuelve un agregado.
+
+### Endpoint de Salud
+-   **`GET /health`**: Un endpoint simple para verificar que el servidor está en funcionamiento.
 
 ## 💡 Patrones de Uso
 Este servidor se inicia a través del comando `autocode daemon` de la CLI. Una vez en ejecución, los usuarios pueden acceder al dashboard en su navegador, y otros sistemas pueden interactuar con la API RESTful para la automatización.

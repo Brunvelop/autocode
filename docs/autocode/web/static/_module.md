@@ -1,16 +1,26 @@
-# Módulo: Static
+# Módulo: Assets Estáticos (Static)
 
 ## 🎯 Propósito del Módulo
-Este módulo contiene todos los assets estáticos del frontend para el dashboard web de `autocode`. Su responsabilidad es proporcionar los archivos de JavaScript y CSS que son servidos directamente al navegador para construir la interfaz de usuario, definir su estilo y dotarla de interactividad.
+Este módulo contiene todos los assets estáticos del frontend para la aplicación web `autocode`. Su responsabilidad es proporcionar los archivos (CSS y JavaScript) que son servidos directamente al navegador para definir la apariencia visual de la interfaz de usuario y dotarla de interactividad.
 
 ## 🏗️ Arquitectura del Módulo
-El módulo se compone de archivos CSS y JS que trabajan en conjunto, enlazados desde la plantilla `index.html`.
+La arquitectura de los assets estáticos separa claramente los estilos (CSS) de la lógica (JavaScript) en diferentes directorios y archivos.
 
 ```mermaid
 graph TD
-    A[index.html] -- Loads --> B[app.js];
-    A -- Loads --> C[style.css];
-    C -- Imports --> D[design-tokens.css];
+    A[Plantillas HTML] -- Enlazan a --> B{Assets Estáticos};
+    
+    subgraph "Estructura de Assets"
+        C[design-tokens.css];
+        D[style.css];
+        E[app.js - Lógica Principal];
+        F[js/ - Lógica de Componentes y Utils];
+    end
+
+    B -- Contiene --> C;
+    B -- Contiene --> D;
+    B -- Contiene --> E;
+    B -- Contiene --> F;
 ```
 
 ## 📁 Componentes del Módulo
@@ -22,9 +32,17 @@ graph TD
 **Propósito**: Aplica los design tokens para estilizar todos los componentes del dashboard, definiendo el layout y la apariencia visual.
 **Documentación**: [style.md](style.md)
 
-### `app.js` - Lógica del Frontend
-**Propósito**: Contiene toda la lógica del lado del cliente para hacer la página interactiva, comunicarse con la API y actualizar el DOM en tiempo real.
+### `app.js` - Lógica Principal del Frontend
+**Propósito**: Contiene la lógica de inicialización y orquestación principal del lado del cliente, comunicándose con la API y actualizando el DOM en tiempo real.
 **Documentación**: [app.md](app.md)
 
+### `/js` - Módulos de JavaScript
+**Propósito**: Contiene scripts más específicos, organizados por funcionalidad (componentes, utilidades).
+**Documentación**: [js/_module.md](js/_module.md)
+
 ## 💡 Flujo de Trabajo Típico
-Cuando un usuario carga el dashboard, el servidor FastAPI sirve la plantilla `index.html`, que a su vez contiene etiquetas `<link>` y `<script>` que le piden al navegador que descargue y aplique estos tres archivos. `design-tokens.css` y `style.css` definen la apariencia, mientras que `app.js` se encarga de toda la funcionalidad dinámica.
+1.  El servidor renderiza una plantilla HTML.
+2.  La plantilla contiene etiquetas `<link>` y `<script>` que apuntan a los archivos de este directorio.
+3.  El navegador solicita, descarga y procesa estos archivos.
+4.  Los CSS definen la apariencia visual.
+5.  Los JavaScripts se ejecutan para añadir interactividad y cargar datos dinámicos.

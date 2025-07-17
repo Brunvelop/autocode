@@ -8,16 +8,17 @@ La arquitectura de la hoja de estilos sigue un enfoque de **componentes**, donde
 
 1.  **Importación de Design Tokens**: La primera línea, `@import url('./design-tokens.css');`, importa todas las variables CSS, asegurando que estén disponibles para ser usadas en este archivo.
 2.  **Reset y Estilos Base**: Se aplica un reseteo básico y se definen los estilos globales para el `<body>`, como la fuente y el color de fondo, utilizando las variables de los design tokens.
-3.  **Estilos de Componentes**: El resto del archivo está dividido en secciones que estilizan componentes específicos de la UI:
-    -   `.container`, `.header`, `.footer`: Estilos para el layout principal.
-    -   `.card`, `.check-card`: Estilos para los contenedores de contenido.
-    -   `.status-indicator`: Estilos para los indicadores de estado (éxito, error, etc.).
-    -   `.btn-run`: Estilos para los botones.
-    -   `.config-card`: Estilos para el formulario de configuración.
-    -   `.ui-designer`: Estilos para la sección del diseñador de UI.
-4.  **Diseño Responsivo**: Utiliza una **media query** (`@media (max-width: 768px)`) para aplicar estilos específicos en pantallas más pequeñas, asegurando que la interfaz sea usable en dispositivos móviles.
-5.  **Estilos de Utilidad**: Incluye clases auxiliares como `.text-success` o `.hidden` para aplicar estilos comunes de forma rápida.
-6.  **Estilos Mejorados para Mermaid**: Proporciona estilos personalizados para los diagramas generados por Mermaid.js, asegurando que su apariencia se integre con el resto del diseño del dashboard.
+3.  **Estilos de Layout**: Define las clases principales para la estructura de la página (`.app-layout`, `.sidebar`, `.main-content`, `.container`).
+4.  **Estilos de Componentes**: El resto del archivo está dividido en secciones que estilizan componentes específicos de la UI:
+    -   **Layout**: `.header`, `.footer`, `.sidebar`.
+    -   **Tarjetas**: `.card`, `.check-card`, `.config-card`, `.stat`.
+    -   **Indicadores**: `.status-indicator`, `.daemon-status`.
+    -   **Controles**: `.btn-run`, `input`, `select`.
+    -   **Secciones de Información**: `.doc-index-info`, `.test-info`, `.token-info`.
+    -   **Visor de Diseño**: Clases específicas como `.design-file-group`, `.design-file`, `.diagram-content`.
+5.  **Diseño Responsivo**: Utiliza una **media query** (`@media (max-width: 768px)`) para adaptar el layout a pantallas más pequeñas.
+6.  **Estilos de Utilidad y Estados**: Incluye clases auxiliares (`.text-success`, `.hidden`) y de estado (`.loading`).
+7.  **Estilos Mejorados para Mermaid**: Proporciona estilos personalizados para los diagramas generados por Mermaid.js, asegurando que su apariencia se integre con el resto del diseño.
 
 ## 📋 Responsabilidades
 - **Aplicar el Sistema de Diseño**: Utiliza las variables de `design-tokens.css` (ej. `var(--color-primary)`) para estilizar los elementos.
