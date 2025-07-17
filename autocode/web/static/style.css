@@ -640,6 +640,312 @@ body {
     box-shadow: 0 0 0 3px var(--color-primary-light);
 }
 
+/* Configuration Page Specific Styles */
+.config-container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: var(--spacing-6);
+}
+
+.config-header {
+    text-align: center;
+    margin-bottom: var(--spacing-8);
+}
+
+.config-header h1 {
+    color: var(--color-neutral-800);
+    font-size: var(--font-size-3xl);
+    font-weight: var(--font-weight-bold);
+    margin-bottom: var(--spacing-2);
+}
+
+.config-header p {
+    color: var(--color-neutral-600);
+    font-size: var(--font-size-lg);
+    margin: 0;
+}
+
+.config-actions {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: var(--spacing-4);
+    margin-bottom: var(--spacing-8);
+    padding: var(--spacing-4);
+    background: var(--color-white);
+    border-radius: var(--card-radius);
+    box-shadow: var(--card-shadow);
+    border: 1px solid var(--color-neutral-200);
+}
+
+.config-actions .btn {
+    padding: var(--spacing-3) var(--spacing-6);
+    border-radius: var(--radius-md);
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-medium);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--spacing-2);
+    border: none;
+    line-height: 1;
+}
+
+.config-actions .btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.config-actions .btn-primary {
+    background: var(--color-primary);
+    color: var(--color-white);
+}
+
+.config-actions .btn-primary:hover:not(:disabled) {
+    background: var(--color-primary-hover);
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-sm);
+}
+
+.config-actions .btn-secondary {
+    background: var(--color-neutral-200);
+    color: var(--color-neutral-700);
+}
+
+.config-actions .btn-secondary:hover:not(:disabled) {
+    background: var(--color-neutral-300);
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-sm);
+}
+
+.save-status {
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-medium);
+    padding: var(--spacing-2) var(--spacing-4);
+    border-radius: var(--radius-md);
+    transition: all var(--transition-fast);
+}
+
+.save-status.success {
+    background: var(--color-success-light);
+    color: var(--color-success);
+    border: 1px solid var(--color-success);
+}
+
+.save-status.error {
+    background: var(--color-error-light);
+    color: var(--color-error);
+    border: 1px solid var(--color-error);
+}
+
+.config-form {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-8);
+}
+
+.config-section {
+    background: var(--color-white);
+    border-radius: var(--card-radius);
+    padding: var(--spacing-6);
+    box-shadow: var(--card-shadow);
+    border: 1px solid var(--color-neutral-200);
+    transition: all var(--transition-normal);
+}
+
+.config-section:hover {
+    box-shadow: var(--shadow-md);
+}
+
+.config-section legend {
+    color: var(--color-neutral-800);
+    font-size: var(--font-size-xl);
+    font-weight: var(--font-weight-bold);
+    padding: 0 var(--spacing-3);
+    margin-bottom: var(--spacing-4);
+    border-bottom: 3px solid var(--color-primary);
+    padding-bottom: var(--spacing-2);
+}
+
+.config-section .config-group {
+    margin-bottom: var(--spacing-6);
+}
+
+.config-section .config-group:last-child {
+    margin-bottom: 0;
+}
+
+.config-section .config-group h3 {
+    color: var(--color-neutral-700);
+    font-size: var(--font-size-lg);
+    font-weight: var(--font-weight-semibold);
+    margin-bottom: var(--spacing-4);
+    padding-bottom: var(--spacing-2);
+    border-bottom: 1px solid var(--color-neutral-200);
+}
+
+.config-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: var(--spacing-4);
+    margin-bottom: var(--spacing-4);
+}
+
+.config-row:last-child {
+    margin-bottom: 0;
+}
+
+.config-item {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-2);
+}
+
+.config-item label {
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-medium);
+    color: var(--color-neutral-700);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-2);
+}
+
+.config-item label[for*="enabled"] {
+    flex-direction: row;
+    align-items: center;
+}
+
+.config-item input[type="text"],
+.config-item input[type="number"],
+.config-item select {
+    padding: var(--spacing-2) var(--spacing-3);
+    border: 1px solid var(--color-neutral-300);
+    border-radius: var(--radius-md);
+    font-size: var(--font-size-sm);
+    font-family: inherit;
+    transition: all var(--transition-fast);
+    background: var(--color-white);
+    color: var(--color-neutral-800);
+}
+
+.config-item input[type="text"]:focus,
+.config-item input[type="number"]:focus,
+.config-item select:focus {
+    border-color: var(--color-primary);
+    outline: none;
+    box-shadow: 0 0 0 3px var(--color-primary-light);
+}
+
+.config-item input[type="checkbox"] {
+    width: 20px;
+    height: 20px;
+    accent-color: var(--color-primary);
+    cursor: pointer;
+    margin-right: var(--spacing-2);
+}
+
+.config-item textarea {
+    padding: var(--spacing-3);
+    border: 1px solid var(--color-neutral-300);
+    border-radius: var(--radius-md);
+    font-size: var(--font-size-sm);
+    font-family: var(--font-family-mono);
+    resize: vertical;
+    min-height: 80px;
+    transition: all var(--transition-fast);
+    background: var(--color-white);
+    color: var(--color-neutral-800);
+    line-height: 1.4;
+}
+
+.config-item textarea:focus {
+    border-color: var(--color-primary);
+    outline: none;
+    box-shadow: 0 0 0 3px var(--color-primary-light);
+}
+
+.config-item textarea::placeholder {
+    color: var(--color-neutral-400);
+    font-style: italic;
+}
+
+.config-item input::placeholder {
+    color: var(--color-neutral-400);
+}
+
+/* Configuration Form Validation */
+.config-item input:invalid,
+.config-item select:invalid,
+.config-item textarea:invalid {
+    border-color: var(--color-error);
+    box-shadow: 0 0 0 3px var(--color-error-light);
+}
+
+.config-item input:valid,
+.config-item select:valid,
+.config-item textarea:valid {
+    border-color: var(--color-success);
+}
+
+/* Configuration Form Responsive Design */
+@media (max-width: 1024px) {
+    .config-container {
+        padding: var(--spacing-4);
+    }
+    
+    .config-row {
+        grid-template-columns: 1fr;
+        gap: var(--spacing-3);
+    }
+    
+    .config-actions {
+        flex-direction: column;
+        gap: var(--spacing-3);
+    }
+    
+    .config-actions .btn {
+        width: 100%;
+        justify-content: center;
+    }
+}
+
+@media (max-width: 768px) {
+    .config-container {
+        padding: var(--spacing-3);
+    }
+    
+    .config-header h1 {
+        font-size: var(--font-size-2xl);
+    }
+    
+    .config-header p {
+        font-size: var(--font-size-base);
+    }
+    
+    .config-section {
+        padding: var(--spacing-4);
+    }
+    
+    .config-section legend {
+        font-size: var(--font-size-lg);
+    }
+    
+    .config-row {
+        gap: var(--spacing-2);
+    }
+    
+    .config-item {
+        gap: var(--spacing-1);
+    }
+    
+    .config-item textarea {
+        min-height: 60px;
+    }
+}
+
 /* UI Designer Section */
 .ui-designer {
     margin-bottom: var(--spacing-8);

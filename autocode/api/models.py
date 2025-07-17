@@ -77,6 +77,17 @@ class TestConfig(BaseModel):
     auto_execute: bool = True
 
 
+class OpenCodeConfig(BaseModel):
+    """Configuration for OpenCode integration."""
+    enabled: bool = True
+    model: str = "claude-4-sonnet"
+    max_tokens: int = 64000
+    debug: bool = True
+    config_path: str = ".opencode.json"
+    quiet_mode: bool = True
+    json_output: bool = True
+
+
 class CodeToDesignConfig(BaseModel):
     """Configuration for code-to-design transformation."""
     enabled: bool = True
@@ -91,6 +102,7 @@ class AutocodeConfig(BaseModel):
     """Complete configuration for autocode daemon."""
     daemon: DaemonConfig = DaemonConfig()
     api: ApiConfig = ApiConfig()
+    opencode: OpenCodeConfig = OpenCodeConfig()
     doc_index: DocIndexConfig = DocIndexConfig()
     docs: DocsConfig = DocsConfig()
     tests: TestConfig = TestConfig()

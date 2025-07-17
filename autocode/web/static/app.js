@@ -20,6 +20,7 @@ class AutocodeDashboard {
     getCurrentPage() {
         const path = window.location.pathname;
         if (path === '/ui-designer') return 'ui-designer';
+        if (path === '/config') return 'config';
         return 'dashboard';
     }
     
@@ -38,6 +39,393 @@ class AutocodeDashboard {
         if (this.currentPage === 'dashboard') {
             await this.fetchAndUpdateStatus();
             await this.fetchAndUpdateConfig();
+        } else if (this.currentPage === 'config') {
+            await this.loadConfigPage();
+        }
+    }
+    
+    async loadConfigPage() {
+        try {
+            const response = await fetch('/api/config');
+            
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            
+            const config = await response.json();
+            this.populateConfigForm(config);
+            this.setupConfigFormHandlers();
+            
+        } catch (error) {
+            console.error('Error loading config page:', error);
+            this.showConfigMessage('Error loading configuration', 'error');
+        }
+    }
+    
+    populateConfigForm(config) {
+        // Daemon settings
+        this.setCheckboxValue('daemon.doc_check.enabled', config.daemon.doc_check.enabled);
+        this.setInputValue('daemon.doc_check.interval_minutes', config.daemon.doc_check.interval_minutes);
+        
+        this.setCheckboxValue('daemon.git_check.enabled', config.daemon.git_check.enabled);
+        this.setInputValue('daemon.git_check.interval_minutes', config.daemon.git_check.interval_minutes);
+        
+        this.setCheckboxValue('daemon.test_check.enabled', config.daemon.test_check.enabled);
+        this.setInputValue('daemon.test_check.interval_minutes', config.daemon.test_check.interval_minutes);
+        
+        this.setCheckboxValue('daemon.token_alerts.enabled', config.daemon.token_alerts.enabled);
+        this.setInputValue('daemon.token_alerts.threshold', config.daemon.token_alerts.threshold);
+        this.setInputValue('daemon.token_alerts.model', config.daemon.token_alerts.model);
+        
+        // API settings
+        this.setInputValue('api.host', config.api.host);
+        this.setInputValue('api.port', config.api.port);
+        
+        // OpenCode settings
+        this.setCheckboxValue('opencode.enabled', config.opencode.enabled);
+        this.setInputValue('opencode.model', config.opencode.model);
+        this.setInputValue('opencode.max_tokens', config.opencode.max_tokens);
+        this.setCheckboxValue('opencode.debug', config.opencode.debug);
+        this.setCheckboxValue('opencode.quiet_mode', config.opencode.quiet_mode);
+        this.setCheckboxValue('opencode.json_output', config.opencode.json_output);
+        this.setInputValue('opencode.config_path', config.opencode.config_path);
+        
+        // Doc index settings
+        this.setCheckboxValue('doc_index.enabled', config.doc_index.enabled);
+        this.setCheckboxValue('doc_index.auto_generate', config.doc_index.auto_generate);
+        this.setCheckboxValue('doc_index.update_on_docs_change', config.doc_index.update_on_docs_change);
+        this.setInputValue('doc_index.output_path', config.doc_index.output_path);
+        
+        // Documentation settings
+        this.setCheckboxValue('docs.enabled', config.docs.enabled);
+        this.setTextareaValue('docs.directories', config.docs.directories);
+        this.setTextareaValue('docs.file_extensions', config.docs.file_extensions);
+        this.setTextareaValue('docs.exclude', config.docs.exclude);
+        
+        // Test settings
+        this.setCheckboxValue('tests.enabled', config.tests.enabled);
+        this.setCheckboxValue('tests.auto_execute', config.tests.auto_execute);
+        this.setTextareaValue('tests.directories', config.tests.directories);
+        this.setTextareaValue('tests.exclude', config.tests.exclude);
+        this.setTextareaValue('tests.test_frameworks', config.tests.test_frameworks);
+        
+        // Code to design settings
+        this.setCheckboxValue('code_to_design.enabled', config.code_to_design.enabled);
+        this.setInputValue('code_to_design.output_dir', config.code_to_design.output_dir);
+        this.setTextareaValue('code_to_design.languages', config.code_to_design.languages);
+        this.setTextareaValue('code_to_design.diagrams', config.code_to_design.diagrams);
+        this.setTextareaValue('code_to_design.directories', config.code_to_design.directories);
+    }
+    
+    setCheckboxValue(id, value) {
+        const element = document.getElementById(id);
+        if (element) {
+            element.checked = value;
+        }
+    }
+    
+    setInputValue(id, value) {
+        const element = document.getElementById(id);
+        if (element) {
+            element.value = value;
+        }
+    }
+    
+    setTextareaValue(id, value) {
+        const element = document.getElementById(id);
+        if (element && Array.isArray(value)) {
+            element.value = value.join('\n');
+        }
+    }
+    
+    setupConfigFormHandlers() {
+        const saveButton = document.getElementById('save-config');
+        const resetButton = document.getElementById('reset-config');
+        const form = document.getElementById('config-form');
+        
+        if (saveButton) {
+            saveButton.addEventListener('click', async (e) => {
+                e.preventDefault();
+                await this.saveConfiguration();
+            });
+        }
+        
+        if (resetButton) {
+            resetButton.addEventListener('click', async (e) => {
+                e.preventDefault();
+                await this.resetConfiguration();
+            });
+        }
+        
+        // Add form change handler for validation
+        if (form) {
+            form.addEventListener('change', () => {
+                this.validateConfigForm();
+            });
+        }
+    }
+    
+    async saveConfiguration() {
+        try {
+            const saveButton = document.getElementById('save-config');
+            const originalText = saveButton.textContent;
+            
+            saveButton.disabled = true;
+            saveButton.textContent = 'Saving...';
+            
+            const config = this.getConfigFromForm();
+            
+            const response = await fetch('/api/config', {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(config)
+            });
+            
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            
+            const result = await response.json();
+            console.log('Configuration saved:', result);
+            
+            this.showConfigMessage('Configuration saved successfully! Changes will take effect immediately.', 'success');
+            
+        } catch (error) {
+            console.error('Error saving configuration:', error);
+            this.showConfigMessage(`Error saving configuration: ${error.message}`, 'error');
+            
+        } finally {
+            const saveButton = document.getElementById('save-config');
+            saveButton.disabled = false;
+            saveButton.textContent = 'Save Configuration';
+        }
+    }
+    
+    async resetConfiguration() {
+        if (!confirm('Are you sure you want to reset to default configuration? This will overwrite all current settings.')) {
+            return;
+        }
+        
+        try {
+            const resetButton = document.getElementById('reset-config');
+            const originalText = resetButton.textContent;
+            
+            resetButton.disabled = true;
+            resetButton.textContent = 'Resetting...';
+            
+            // Create default config (matches the defaults in models.py)
+            const defaultConfig = {
+                daemon: {
+                    doc_check: { enabled: true, interval_minutes: 10 },
+                    git_check: { enabled: true, interval_minutes: 5 },
+                    test_check: { enabled: true, interval_minutes: 5 },
+                    token_alerts: { enabled: true, threshold: 50000, model: "gpt-4" }
+                },
+                api: { port: 8080, host: "127.0.0.1" },
+                opencode: {
+                    enabled: true,
+                    model: "claude-4-sonnet",
+                    max_tokens: 64000,
+                    debug: true,
+                    config_path: ".opencode.json",
+                    quiet_mode: true,
+                    json_output: true
+                },
+                doc_index: {
+                    enabled: true,
+                    output_path: ".clinerules/docs_index.json",
+                    auto_generate: true,
+                    update_on_docs_change: true
+                },
+                docs: {
+                    enabled: true,
+                    directories: ["vidi/", "autocode/"],
+                    file_extensions: [".py", ".js", ".html", ".css", ".ts", ".jsx", ".tsx"],
+                    exclude: ["__pycache__/", "*.pyc", "__init__.py"]
+                },
+                tests: {
+                    enabled: true,
+                    directories: ["vidi/", "autocode/", "tools/"],
+                    exclude: ["__pycache__/", "*.pyc", "__init__.py"],
+                    test_frameworks: ["pytest"],
+                    auto_execute: true
+                },
+                code_to_design: {
+                    enabled: true,
+                    output_dir: "design",
+                    language: "python",
+                    languages: ["python", "javascript", "html", "css"],
+                    diagrams: ["classes", "components"],
+                    directories: ["autocode/"]
+                }
+            };
+            
+            // Save default config
+            const response = await fetch('/api/config', {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(defaultConfig)
+            });
+            
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            
+            // Reload the form with defaults
+            this.populateConfigForm(defaultConfig);
+            this.showConfigMessage('Configuration reset to defaults successfully!', 'success');
+            
+        } catch (error) {
+            console.error('Error resetting configuration:', error);
+            this.showConfigMessage(`Error resetting configuration: ${error.message}`, 'error');
+            
+        } finally {
+            const resetButton = document.getElementById('reset-config');
+            resetButton.disabled = false;
+            resetButton.textContent = 'Reset to Defaults';
+        }
+    }
+    
+    getConfigFromForm() {
+        return {
+            daemon: {
+                doc_check: {
+                    enabled: this.getCheckboxValue('daemon.doc_check.enabled'),
+                    interval_minutes: this.getNumberValue('daemon.doc_check.interval_minutes')
+                },
+                git_check: {
+                    enabled: this.getCheckboxValue('daemon.git_check.enabled'),
+                    interval_minutes: this.getNumberValue('daemon.git_check.interval_minutes')
+                },
+                test_check: {
+                    enabled: this.getCheckboxValue('daemon.test_check.enabled'),
+                    interval_minutes: this.getNumberValue('daemon.test_check.interval_minutes')
+                },
+                token_alerts: {
+                    enabled: this.getCheckboxValue('daemon.token_alerts.enabled'),
+                    threshold: this.getNumberValue('daemon.token_alerts.threshold'),
+                    model: this.getInputValue('daemon.token_alerts.model')
+                }
+            },
+            api: {
+                host: this.getInputValue('api.host'),
+                port: this.getNumberValue('api.port')
+            },
+            opencode: {
+                enabled: this.getCheckboxValue('opencode.enabled'),
+                model: this.getInputValue('opencode.model'),
+                max_tokens: this.getNumberValue('opencode.max_tokens'),
+                debug: this.getCheckboxValue('opencode.debug'),
+                config_path: this.getInputValue('opencode.config_path'),
+                quiet_mode: this.getCheckboxValue('opencode.quiet_mode'),
+                json_output: this.getCheckboxValue('opencode.json_output')
+            },
+            doc_index: {
+                enabled: this.getCheckboxValue('doc_index.enabled'),
+                output_path: this.getInputValue('doc_index.output_path'),
+                auto_generate: this.getCheckboxValue('doc_index.auto_generate'),
+                update_on_docs_change: this.getCheckboxValue('doc_index.update_on_docs_change')
+            },
+            docs: {
+                enabled: this.getCheckboxValue('docs.enabled'),
+                directories: this.getTextareaArrayValue('docs.directories'),
+                file_extensions: this.getTextareaArrayValue('docs.file_extensions'),
+                exclude: this.getTextareaArrayValue('docs.exclude')
+            },
+            tests: {
+                enabled: this.getCheckboxValue('tests.enabled'),
+                directories: this.getTextareaArrayValue('tests.directories'),
+                exclude: this.getTextareaArrayValue('tests.exclude'),
+                test_frameworks: this.getTextareaArrayValue('tests.test_frameworks'),
+                auto_execute: this.getCheckboxValue('tests.auto_execute')
+            },
+            code_to_design: {
+                enabled: this.getCheckboxValue('code_to_design.enabled'),
+                output_dir: this.getInputValue('code_to_design.output_dir'),
+                language: "python", // Keep for backward compatibility
+                languages: this.getTextareaArrayValue('code_to_design.languages'),
+                diagrams: this.getTextareaArrayValue('code_to_design.diagrams'),
+                directories: this.getTextareaArrayValue('code_to_design.directories')
+            }
+        };
+    }
+    
+    getCheckboxValue(id) {
+        const element = document.getElementById(id);
+        return element ? element.checked : false;
+    }
+    
+    getInputValue(id) {
+        const element = document.getElementById(id);
+        return element ? element.value : '';
+    }
+    
+    getNumberValue(id) {
+        const element = document.getElementById(id);
+        return element ? parseInt(element.value) || 0 : 0;
+    }
+    
+    getTextareaArrayValue(id) {
+        const element = document.getElementById(id);
+        if (!element) return [];
+        return element.value.split('\n').filter(line => line.trim() !== '');
+    }
+    
+    validateConfigForm() {
+        // Add basic validation
+        const errors = [];
+        
+        // Validate intervals
+        const intervals = ['daemon.doc_check.interval_minutes', 'daemon.git_check.interval_minutes', 'daemon.test_check.interval_minutes'];
+        intervals.forEach(id => {
+            const value = this.getNumberValue(id);
+            if (value < 1 || value > 1440) {
+                errors.push(`${id.replace(/\./g, ' ')} must be between 1 and 1440 minutes`);
+            }
+        });
+        
+        // Validate token threshold
+        const threshold = this.getNumberValue('daemon.token_alerts.threshold');
+        if (threshold < 1000 || threshold > 1000000) {
+            errors.push('Token threshold must be between 1,000 and 1,000,000');
+        }
+        
+        // Validate port
+        const port = this.getNumberValue('api.port');
+        if (port < 1 || port > 65535) {
+            errors.push('API port must be between 1 and 65535');
+        }
+        
+        // Validate max tokens
+        const maxTokens = this.getNumberValue('opencode.max_tokens');
+        if (maxTokens < 1000 || maxTokens > 200000) {
+            errors.push('OpenCode max tokens must be between 1,000 and 200,000');
+        }
+        
+        // Show validation errors
+        if (errors.length > 0) {
+            this.showConfigMessage(`Validation errors: ${errors.join(', ')}`, 'error');
+            return false;
+        }
+        
+        return true;
+    }
+    
+    showConfigMessage(message, type) {
+        const statusElement = document.getElementById('save-status');
+        if (statusElement) {
+            statusElement.textContent = message;
+            statusElement.className = `save-status ${type}`;
+            
+            // Clear message after 5 seconds
+            setTimeout(() => {
+                statusElement.textContent = '';
+                statusElement.className = 'save-status';
+            }, 5000);
         }
     }
     

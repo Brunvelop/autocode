@@ -5,6 +5,7 @@ Autocode daemon for continuous monitoring.
 import asyncio
 import logging
 import time
+import yaml
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, Optional
@@ -14,7 +15,7 @@ from ..core.git import GitAnalyzer
 from ..core.test import TestChecker
 from .scheduler import Scheduler
 from ..api.models import CheckResult, DaemonStatus, AutocodeConfig
-from ..cli import load_config
+from ..cli import load_config, find_config_file
 
 
 class AutocodeDaemon:
@@ -420,7 +421,7 @@ class AutocodeDaemon:
         return self.results.copy()
     
     def update_config(self, config: AutocodeConfig):
-        """Update daemon configuration."""
+        """Update daemon configuration and persist to YML."""
         self.config = config
         
         # Update scheduler tasks
@@ -453,6 +454,19 @@ class AutocodeDaemon:
                 self.scheduler.enable_task("test_check")
             else:
                 self.scheduler.disable_task("test_check")
+        
+        # Persist to YML file
+        config_path = find_config_file(self.project_root)
+        if config_path is None:
+            config_path = self.project_root / "autocode_config.yml"  # Create if missing
+        
+        try:
+            with open(config_path, 'w', encoding='utf-8') as f:
+                yaml.safe_dump(config.dict(exclude_unset=True), f, default_flow_style=False, allow_unicode=True)
+            self.logger.info(f"Configuration persisted to {config_path}")
+        except Exception as e:
+            self.logger.error(f"Failed to persist config: {e}")
+            raise
     
     async def start(self):
         """Start the daemon."""

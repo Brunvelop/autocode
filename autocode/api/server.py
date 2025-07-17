@@ -99,6 +99,12 @@ async def ui_designer(request: Request):
     return templates.TemplateResponse("pages/ui_designer.html", {"request": request})
 
 
+@app.get("/config", response_class=HTMLResponse)
+async def config_page(request: Request):
+    """Serve the configuration page."""
+    return templates.TemplateResponse("pages/config.html", {"request": request})
+
+
 # Keep the old route for backward compatibility
 @app.get("/index", response_class=HTMLResponse)
 async def index(request: Request):

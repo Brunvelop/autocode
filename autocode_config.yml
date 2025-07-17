@@ -1,6 +1,20 @@
-# Autocode Daemon Configuration
-# This file shows example configuration options
-
+api:
+  host: 127.0.0.1
+  port: 8080
+code_to_design:
+  diagrams:
+  - classes
+  - components
+  directories:
+  - autocode/
+  enabled: true
+  language: python
+  languages:
+  - python
+  - javascript
+  - html
+  - css
+  output_dir: design
 daemon:
   doc_check:
     enabled: true
@@ -10,69 +24,50 @@ daemon:
     interval_minutes: 1
   test_check:
     enabled: true
-    interval_minutes: 5
-  auto_update:
-    enabled: false  # Starts disabled - user must enable explicitly
-    trigger_on_docs: true
-    trigger_on_git: true
-    interval_minutes: 15
-
-api:
-  port: 8080
-  host: "127.0.0.1"
-
-opencode:
-  enabled: true
-  model: "claude-4-sonnet"
-  max_tokens: 64000
-  debug: true
-  config_path: ".opencode.json"
-  quiet_mode: true
-  json_output: true
-
+    interval_minutes: 10
+  token_alerts:
+    enabled: true
+    model: gpt-4
+    threshold: 50000
 doc_index:
-  enabled: true
-  output_path: ".clinerules/docs_index.json"
   auto_generate: true
+  enabled: true
+  output_path: .clinerules/docs_index.json
   update_on_docs_change: true
-
 docs:
-  enabled: true
   directories:
-    - "autocode/"
-    - "examples/"
-    - "docs/"
+  - autocode/
+  - examples/
+  - docs/
+  enabled: true
+  exclude:
+  - __pycache__/
+  - '*.pyc'
+  - __init__.py
   file_extensions:
-    - ".py"
-    - ".js"
-    - ".html"
-    - ".css"
-    - ".ts"
-    - ".jsx"
-    - ".tsx"
-  exclude:
-    - "__pycache__/"
-    - "*.pyc"
-    - "__init__.py"
-
+  - .py
+  - .js
+  - .html
+  - .css
+  - .ts
+  - .jsx
+  - .tsx
+opencode:
+  config_path: .opencode.json
+  debug: true
+  enabled: true
+  json_output: true
+  max_tokens: 64000
+  model: claude-4-sonnet
+  quiet_mode: true
 tests:
-  enabled: true
-  directories:
-    - "tests/"
-  exclude:
-    - "__pycache__/"
-    - "*.pyc"
-    - "__init__.py"
-  test_frameworks:
-    - "pytest"
   auto_execute: true
-
-code_to_design:
-  enabled: true
-  output_dir: "design"
-  languages: ["python", "javascript", "html", "css"]
-  diagrams:
-    - "classes"      # Para archivos Python
-    - "components"   # Para archivos Web (HTML/JS/CSS)
   directories:
-    - "autocode/"
+  - tests/
+  enabled: true
+  exclude:
+  - __pycache__/
+  - '*.pyc'
+  - __init__.py
+  test_frameworks:
+  - pytest
