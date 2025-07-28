@@ -20,6 +20,12 @@
 ```mermaid
 classDiagram
     class ScheduledTask {
+        +name: str
+        +func: Callable
+        +interval_seconds: int
+        +last_run: Optional[datetime]
+        +next_run: Optional[datetime]
+        +enabled: bool
         -__post_init__()
     }
 

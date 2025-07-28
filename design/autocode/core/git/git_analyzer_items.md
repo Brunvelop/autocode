@@ -20,6 +20,12 @@
 ```mermaid
 classDiagram
     class FileChange {
+        +file: str
+        +status: str
+        +staged: bool
+        +additions: int
+        +deletions: int
+        +diff: str
     }
     NamedTuple <|-- FileChange
 
@@ -33,6 +39,12 @@ classDiagram
 ```mermaid
 classDiagram
     class GitStatus {
+        +total_files: int
+        +modified: int
+        +added: int
+        +deleted: int
+        +untracked: int
+        +renamed: int
     }
     NamedTuple <|-- GitStatus
 

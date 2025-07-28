@@ -7,7 +7,7 @@
 - Total Classes: 1
 - Total Functions: 0
 - Total Imports: 3
-- Total Loc: 475
+- Total Loc: 477
 - Average Methods Per Class: 12.0
 
 ## Classes
@@ -15,7 +15,7 @@
 ### MarkdownExporter
 
 **Line:** 14  
-**LOC:** 462  
+**LOC:** 464  
 
 ```mermaid
 classDiagram

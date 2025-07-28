@@ -20,6 +20,10 @@
 ```mermaid
 classDiagram
     class DocStatus {
+        +code_file: Path
+        +doc_file: Path
+        +status: str
+        +doc_type: str
     }
     NamedTuple <|-- DocStatus
 

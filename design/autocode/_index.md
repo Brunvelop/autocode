@@ -1,14 +1,14 @@
 # 🏗️ Autocode Architecture Overview
 
-**Project Summary:** 47 Items | 6,182 LOC | 16 Modules
+**Project Summary:** 48 Items | 6,329 LOC | 16 Modules
 
-- **Classes:** 38
+- **Classes:** 39
 - **Functions:** 9
 
 ```mermaid
 graph TD
     subgraph "Autocode"
-        M0["🌐 API\n15 items"]
+        M0["🌐 API\n16 items"]
         M1["⚙️ Core\n25 items"]
         M2["📁 Ai\n4 items"]
         M1 --> M2
@@ -41,16 +41,16 @@ graph TD
 ## Module Details
 
 ### Api
-- **Total Items:** 15
+- **Total Items:** 16
 - **Files:** 3
-- **Lines of Code:** 634
-- **Classes:** 14
+- **Lines of Code:** 705
+- **Classes:** 15
 - **Functions:** 1
 
 ### Core
 - **Total Items:** 25
 - **Files:** 24
-- **Lines of Code:** 4,814
+- **Lines of Code:** 4,876
 - **Classes:** 21
 - **Functions:** 4
 - **Submodules:** 5
@@ -65,7 +65,7 @@ graph TD
 #### Core > Design
 - **Total Items:** 13
 - **Files:** 14
-- **Lines of Code:** 2,936
+- **Lines of Code:** 2,998
 - **Classes:** 11
 - **Functions:** 2
 - **Submodules:** 3
@@ -73,7 +73,7 @@ graph TD
 ##### Core > Design > Analyzers
 - **Total Items:** 4
 - **Files:** 6
-- **Lines of Code:** 1,356
+- **Lines of Code:** 1,403
 - **Classes:** 4
 - **Submodules:** 3
 
@@ -86,7 +86,7 @@ graph TD
 ###### Core > Design > Analyzers > Python
 - **Total Items:** 1
 - **Files:** 1
-- **Lines of Code:** 323
+- **Lines of Code:** 370
 - **Classes:** 1
 
 ###### Core > Design > Analyzers > Web
@@ -98,7 +98,7 @@ graph TD
 ##### Core > Design > Diagrams
 - **Total Items:** 8
 - **Files:** 6
-- **Lines of Code:** 1,183
+- **Lines of Code:** 1,198
 - **Classes:** 6
 - **Functions:** 2
 
@@ -129,7 +129,7 @@ graph TD
 ### Orchestration
 - **Total Items:** 3
 - **Files:** 3
-- **Lines of Code:** 668
+- **Lines of Code:** 682
 - **Classes:** 3
 
 ### Prompts

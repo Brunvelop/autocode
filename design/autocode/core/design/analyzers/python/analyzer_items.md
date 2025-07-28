@@ -7,15 +7,15 @@
 - Total Classes: 1
 - Total Functions: 0
 - Total Imports: 4
-- Total Loc: 323
-- Average Methods Per Class: 8.0
+- Total Loc: 370
+- Average Methods Per Class: 9.0
 
 ## Classes
 
 ### PythonAnalyzer
 
 **Line:** 13  
-**LOC:** 311  
+**LOC:** 358  
 
 ```mermaid
 classDiagram
@@ -27,6 +27,7 @@ classDiagram
         -_extract_import_info(node: ast.stmt) -> Dict[str, Any]
         -_extract_method_info(node: ast.FunctionDef) -> Dict[str, Any]
         -_extract_attribute_info(target: ast.Name, assign_node: ast.Assign) -> Dict[str, Any]
+        -_extract_annotated_attribute_info(ann_assign_node: ast.AnnAssign) -> Dict[str, Any]
         -_get_type_annotation(annotation: ast.expr) -> str
     }
     BaseAnalyzer <|-- PythonAnalyzer

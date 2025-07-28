@@ -5,85 +5,78 @@
 
 **Metrics:**
 - Total Classes: 0
-- Total Functions: 11
+- Total Functions: 10
 - Total Imports: 18
-- Total Loc: 839
+- Total Loc: 592
 - Average Methods Per Class: 0
 
 ## Functions
 
 ### find_config_file
 
-**Line:** 21  
+**Line:** 24  
 **LOC:** 16  
 **Parameters:** start_path  
 **Returns:** Optional[Path]  
 
 ### load_config
 
-**Line:** 39  
+**Line:** 42  
 **LOC:** 40  
 **Parameters:** working_dir  
 **Returns:** AutocodeConfig  
 
-### check_docs_command
+### check_docs
 
-**Line:** 81  
-**LOC:** 44  
-**Parameters:** args  
+**Line:** 85  
+**LOC:** 39  
+**Parameters:** doc_index_output  
 **Returns:** int  
 
-### git_changes_command
+### check_tests
 
 **Line:** 127  
-**LOC:** 59  
-**Parameters:** args  
+**LOC:** 20  
 **Returns:** int  
 
-### daemon_command
+### git_changes
 
-**Line:** 188  
-**LOC:** 42  
-**Parameters:** args  
+**Line:** 150  
+**LOC:** 55  
+**Parameters:** output, verbose  
 **Returns:** int  
 
-### opencode_command
+### daemon
 
-**Line:** 232  
-**LOC:** 73  
-**Parameters:** args  
+**Line:** 208  
+**LOC:** 39  
+**Parameters:** host, port, verbose  
 **Returns:** int  
 
-### check_tests_command
+### opencode
 
-**Line:** 307  
-**LOC:** 27  
-**Parameters:** args  
+**Line:** 250  
+**LOC:** 81  
+**Parameters:** prompt, prompt_file, list_prompts, validate, debug, json_output, quiet, verbose, cwd  
 **Returns:** int  
 
-### code_to_design_command
+### code_to_design
 
-**Line:** 336  
-**LOC:** 146  
-**Parameters:** args  
+**Line:** 334  
+**LOC:** 147  
+**Parameters:** directory, pattern, output_dir, languages, diagrams, show_config, directories  
 **Returns:** int  
 
-### count_tokens_command
+### count_tokens
 
 **Line:** 484  
-**LOC:** 96  
-**Parameters:** args  
+**LOC:** 100  
+**Parameters:** file, directory, pattern, model, threshold, verbose  
 **Returns:** int  
-
-### create_parser
-
-**Line:** 582  
-**LOC:** 223  
-**Returns:** argparse.ArgumentParser  
 
 ### main
 
-**Line:** 807  
-**LOC:** 29  
+**Line:** 586  
+**LOC:** 3  
 **Returns:** None  
 

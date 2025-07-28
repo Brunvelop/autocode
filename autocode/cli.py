@@ -2,13 +2,13 @@
 CLI interface for autocode tools.
 """
 
-import argparse
 import json
 import sys
 import yaml
 import warnings
+import typer
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List
 
 from .core.docs import DocChecker, DocIndexer
 from .core.test import TestChecker
@@ -16,6 +16,9 @@ from .core.git import GitAnalyzer
 from .core.ai import OpenCodeExecutor, validate_opencode_setup
 from .core.design import CodeToDesign
 from .api.models import AutocodeConfig
+
+# Create Typer app
+app = typer.Typer(help="Automated code quality and development tools")
 
 
 def find_config_file(start_path: Path) -> Optional[Path]:
@@ -78,15 +81,11 @@ def load_config(working_dir: Path = None) -> AutocodeConfig:
         return AutocodeConfig()
 
 
-def check_docs_command(args) -> int:
-    """Handle check-docs command.
-    
-    Args:
-        args: Parsed command line arguments
-        
-    Returns:
-        Exit code (0 for success, 1 for issues found)
-    """
+@app.command("check-docs")
+def check_docs(
+    doc_index_output: Optional[str] = typer.Option(None, "--doc-index-output", help="Override output path for documentation index")
+) -> int:
+    """Check if documentation is up to date"""
     # Get project root (current working directory)
     project_root = Path.cwd()
     
@@ -107,7 +106,7 @@ def check_docs_command(args) -> int:
     if not outdated_results and config.doc_index.enabled and config.doc_index.auto_generate:
         try:
             # Initialize doc indexer with CLI override if provided
-            indexer = DocIndexer(project_root, config.doc_index, args.doc_index_output)
+            indexer = DocIndexer(project_root, config.doc_index, doc_index_output)
             
             # Generate the index
             index_path = indexer.generate_index()
@@ -124,15 +123,35 @@ def check_docs_command(args) -> int:
     return 1 if outdated_results else 0
 
 
-def git_changes_command(args) -> int:
-    """Handle git-changes command.
+@app.command("check-tests")
+def check_tests() -> int:
+    """Check if tests exist and are passing"""
+    # Get project root (current working directory)
+    project_root = Path.cwd()
     
-    Args:
-        args: Parsed command line arguments
-        
-    Returns:
-        Exit code (0 for success, 1 for issues found)
-    """
+    # Load configuration (searches up directory tree)
+    config = load_config()
+    
+    # Initialize test checker with configuration
+    checker = TestChecker(project_root, config.tests)
+    
+    # Check for missing/failing tests
+    test_issues = checker.get_missing_and_failing_tests()
+    
+    # Format and display results
+    output = checker.format_results(test_issues)
+    print(output)
+    
+    # Return appropriate exit code
+    return 1 if test_issues else 0
+
+
+@app.command("git-changes")
+def git_changes(
+    output: Optional[str] = typer.Option(None, "-o", "--output", help="Output JSON file path (default: git_changes.json)"),
+    verbose: bool = typer.Option(False, "-v", "--verbose", help="Show detailed diff information")
+) -> int:
+    """Analyze git changes for commit message generation"""
     # Get project root (current working directory)
     project_root = Path.cwd()
     
@@ -141,8 +160,8 @@ def git_changes_command(args) -> int:
     
     try:
         # Determine output file
-        if args.output:
-            output_file = Path(args.output)
+        if output:
+            output_file = Path(output)
         else:
             output_file = project_root / "git_changes.json"
         
@@ -169,7 +188,7 @@ def git_changes_command(args) -> int:
         print(f"\n💾 Detailed changes saved to: {output_file}")
         
         # Show verbose output if requested
-        if args.verbose:
+        if verbose:
             print(f"\n📋 Detailed Changes:")
             for change in changes_data["changes"]:
                 status_indicator = "🟢" if change["staged"] else "🔴"
@@ -185,22 +204,20 @@ def git_changes_command(args) -> int:
         return 1
 
 
-def daemon_command(args) -> int:
-    """Handle daemon command.
-    
-    Args:
-        args: Parsed command line arguments
-        
-    Returns:
-        Exit code (0 for success, 1 for errors)
-    """
+@app.command("daemon")
+def daemon(
+    host: str = typer.Option("127.0.0.1", "--host", help="Host to bind to (default: 127.0.0.1)"),
+    port: int = typer.Option(8080, "--port", help="Port to bind to (default: 8080)"),
+    verbose: bool = typer.Option(False, "-v", "--verbose", help="Enable verbose logging")
+) -> int:
+    """Start the autocode monitoring daemon with web interface"""
     try:
         import uvicorn
         from .api.server import app
         
         print("🚀 Starting Autocode Monitoring Daemon")
-        print(f"   📡 API Server: http://{args.host}:{args.port}")
-        print(f"   🌐 Web Interface: http://{args.host}:{args.port}")
+        print(f"   📡 API Server: http://{host}:{port}")
+        print(f"   🌐 Web Interface: http://{host}:{port}")
         print("   📊 Dashboard will auto-refresh every 5 seconds")
         print("   🔄 Checks run automatically per configuration")
         print("\n   Press Ctrl+C to stop the daemon")
@@ -209,10 +226,10 @@ def daemon_command(args) -> int:
         # Run the FastAPI application with uvicorn
         uvicorn.run(
             app,
-            host=args.host,
-            port=args.port,
-            log_level="info" if args.verbose else "warning",
-            access_log=args.verbose
+            host=host,
+            port=port,
+            log_level="info" if verbose else "warning",
+            access_log=verbose
         )
         
         return 0
@@ -229,15 +246,24 @@ def daemon_command(args) -> int:
         return 1
 
 
-def opencode_command(args) -> int:
-    """Handle opencode command.
+@app.command("opencode")
+def opencode(
+    prompt: Optional[str] = typer.Option(None, "-p", "--prompt", help="Direct prompt to send to OpenCode"),
+    prompt_file: Optional[str] = typer.Option(None, "-f", "--prompt-file", help="Load prompt from internal file (e.g., 'code-review')"),
+    list_prompts: bool = typer.Option(False, "--list-prompts", help="List all available internal prompts"),
+    validate: bool = typer.Option(False, "--validate", help="Validate OpenCode setup and configuration"),
+    debug: bool = typer.Option(False, "--debug", help="Enable debug mode (overrides config)"),
+    json_output: bool = typer.Option(False, "--json", help="Output results in JSON format"),
+    quiet: bool = typer.Option(False, "--quiet", help="Enable quiet mode (overrides config)"),
+    verbose: bool = typer.Option(False, "-v", "--verbose", help="Show detailed output including debug info"),
+    cwd: Optional[str] = typer.Option(None, "--cwd", help="Working directory for OpenCode execution (default: current directory)")
+) -> int:
+    """Execute OpenCode AI analysis with prompts"""
+    # Validate mutually exclusive arguments
+    if prompt and prompt_file:
+        typer.echo("Error: --prompt and --prompt-file are mutually exclusive", err=True)
+        raise typer.Exit(1)
     
-    Args:
-        args: Parsed command line arguments
-        
-    Returns:
-        Exit code (0 for success, 1 for errors)
-    """
     # Get project root (current working directory)
     project_root = Path.cwd()
     
@@ -246,7 +272,7 @@ def opencode_command(args) -> int:
         executor = OpenCodeExecutor(project_root)
         
         # Validate OpenCode setup if requested
-        if args.validate:
+        if validate:
             is_valid, message = validate_opencode_setup(project_root)
             if is_valid:
                 print(f"✅ {message}")
@@ -256,7 +282,7 @@ def opencode_command(args) -> int:
                 return 1
         
         # List available prompts if requested
-        if args.list_prompts:
+        if list_prompts:
             prompts_info = executor.get_prompts_info()
             if prompts_info:
                 print("📋 Available Prompts:")
@@ -267,23 +293,23 @@ def opencode_command(args) -> int:
             return 0
         
         # Execute OpenCode
-        if args.prompt_file:
+        if prompt_file:
             # Load prompt from file
             exit_code, stdout, stderr = executor.execute_with_prompt_file(
-                args.prompt_file,
-                debug=args.debug,
-                json_output=args.json,
-                quiet=args.quiet,
-                cwd=Path(args.cwd) if args.cwd else None
+                prompt_file,
+                debug=debug,
+                json_output=json_output,
+                quiet=quiet,
+                cwd=Path(cwd) if cwd else None
             )
-        elif args.prompt:
+        elif prompt:
             # Use direct prompt
             exit_code, stdout, stderr = executor.execute_opencode(
-                args.prompt,
-                debug=args.debug,
-                json_output=args.json,
-                quiet=args.quiet,
-                cwd=Path(args.cwd) if args.cwd else None
+                prompt,
+                debug=debug,
+                json_output=json_output,
+                quiet=quiet,
+                cwd=Path(cwd) if cwd else None
             )
         else:
             print("❌ Error: Either --prompt or --prompt-file must be specified")
@@ -292,8 +318,8 @@ def opencode_command(args) -> int:
         # Format and display output
         formatted_output = executor.format_output(
             exit_code, stdout, stderr, 
-            json_output=args.json, 
-            verbose=args.verbose
+            json_output=json_output, 
+            verbose=verbose
         )
         print(formatted_output)
         
@@ -304,44 +330,17 @@ def opencode_command(args) -> int:
         return 1
 
 
-def check_tests_command(args) -> int:
-    """Handle check-tests command.
-    
-    Args:
-        args: Parsed command line arguments
-        
-    Returns:
-        Exit code (0 for success, 1 for issues found)
-    """
-    # Get project root (current working directory)
-    project_root = Path.cwd()
-    
-    # Load configuration (searches up directory tree)
-    config = load_config()
-    
-    # Initialize test checker with configuration
-    checker = TestChecker(project_root, config.tests)
-    
-    # Check for missing/failing tests
-    test_issues = checker.get_missing_and_failing_tests()
-    
-    # Format and display results
-    output = checker.format_results(test_issues)
-    print(output)
-    
-    # Return appropriate exit code
-    return 1 if test_issues else 0
-
-
-def code_to_design_command(args) -> int:
-    """Handle code-to-design command.
-    
-    Args:
-        args: Parsed command line arguments
-        
-    Returns:
-        Exit code (0 for success, 1 for errors)
-    """
+@app.command("code-to-design")
+def code_to_design(
+    directory: Optional[str] = typer.Option(None, "-d", "--directory", help="Directory to analyze (defaults to directories in config)"),
+    pattern: str = typer.Option("*.py", "-p", "--pattern", help="File pattern to match (default: *.py)"),
+    output_dir: Optional[str] = typer.Option(None, "-o", "--output-dir", help="Output directory for generated designs (default: design/)"),
+    languages: Optional[List[str]] = typer.Option(None, "-l", "--languages", help="Languages to analyze (e.g., python js). Overrides config."),
+    diagrams: Optional[List[str]] = typer.Option(None, "-g", "--diagrams", help="Diagram types (e.g., classes components). Overrides config."),
+    show_config: bool = typer.Option(False, "--show-config", help="Show loaded/normalized configuration before executing."),
+    directories: Optional[List[str]] = typer.Option(None, "--directories", help="Directories to analyze (e.g., autocode/ src/). Overrides config.")
+) -> int:
+    """Generate design diagrams from code"""
     try:
         project_root = Path.cwd()
         config = load_config()  # Use existing load_config
@@ -362,17 +361,17 @@ def code_to_design_command(args) -> int:
             }
         
         # Mejora 1: CLI Overrides - Apply CLI arguments
-        if args.languages:
-            config_dict["languages"] = args.languages
-        if args.diagrams:
-            config_dict["diagrams"] = args.diagrams
-        if args.output_dir:
-            config_dict["output_dir"] = args.output_dir
+        if languages:
+            config_dict["languages"] = languages
+        if diagrams:
+            config_dict["diagrams"] = diagrams
+        if output_dir:
+            config_dict["output_dir"] = output_dir
         
         # Mejora 2: Validación Temprana
         try:
             from .core.design.analyzers.analyzer_factory import AnalyzerFactory
-            from .core.design.generators.generator_factory import GeneratorFactory
+            from .core.design.diagrams.generator_factory import GeneratorFactory
             
             temp_analyzer_factory = AnalyzerFactory(project_root)
             temp_generator_factory = GeneratorFactory({})
@@ -402,24 +401,24 @@ def code_to_design_command(args) -> int:
             warnings.warn(f"⚠️  No se pudo validar configuración: {e}")
         
         # Mejora 4: Soporte Multi-Directorio - Determine directories to process  
-        if args.directories:
-            directories = args.directories
-        elif args.directory:
-            directories = [args.directory]
+        if directories:
+            dirs_to_process = directories
+        elif directory:
+            dirs_to_process = [directory]
         elif hasattr(config, 'code_to_design') and config.code_to_design.directories:
-            directories = config.code_to_design.directories
+            dirs_to_process = config.code_to_design.directories
         else:
-            directories = ["autocode/"]  # Default fallback
+            dirs_to_process = ["autocode/"]  # Default fallback
         
         # Mejora 3: Show Config - Display configuration if requested
-        if args.show_config:
+        if show_config:
             print("📋 Configuración Cargada/Normalizada:")
             config_display = {
-                "directories": directories,
+                "directories": dirs_to_process,
                 "languages": config_dict["languages"],
                 "diagrams": config_dict["diagrams"],
                 "output_dir": config_dict["output_dir"],
-                "pattern": args.pattern if hasattr(args, 'pattern') else "*.py"
+                "pattern": pattern
             }
             print(yaml.dump(config_display, default_flow_style=False, allow_unicode=True))
             print("-" * 50)
@@ -432,20 +431,20 @@ def code_to_design_command(args) -> int:
         
         # Process each directory
         all_results = []
-        for directory in directories:
-            print(f"🔍 Analyzing directory: {directory}")
+        for dir_path in dirs_to_process:
+            print(f"🔍 Analyzing directory: {dir_path}")
             
             # Generate design for this directory
-            patterns = [args.pattern] if args.pattern else None
+            patterns = [pattern] if pattern else None
             result = transformer.generate_design(
-                directory=directory,
+                directory=dir_path,
                 patterns=patterns
             )
             
             all_results.append(result)
             
             if result['status'] == 'success':
-                print(f"✅ Design generation successful for {directory}")
+                print(f"✅ Design generation successful for {dir_path}")
                 if 'metrics' in result and 'total_items' in result['metrics']:
                     print(f"   Items found: {result['metrics']['total_items']}")
                 if result.get('message'):
@@ -454,14 +453,14 @@ def code_to_design_command(args) -> int:
                 for file_path in result['generated_files']:
                     print(f"     - {file_path}")
             elif result['status'] == 'warning':
-                print(f"⚠️  Design generation completed with warnings for {directory}")
+                print(f"⚠️  Design generation completed with warnings for {dir_path}")
                 if result.get('message'):
                     print(f"   {result['message']}")
                 print("   Generated files:")
                 for file_path in result['generated_files']:
                     print(f"     - {file_path}")
             else:
-                print(f"❌ Design generation failed for {directory}")
+                print(f"❌ Design generation failed for {dir_path}")
                 if result.get('error'):
                     print(f"   Error: {result['error']}")
         
@@ -481,74 +480,83 @@ def code_to_design_command(args) -> int:
         return 1
 
 
-def count_tokens_command(args) -> int:
-    """Handle count-tokens command.
+@app.command("count-tokens")
+def count_tokens(
+    file: Optional[str] = typer.Option(None, "-f", "--file", help="Count tokens in a specific file"),
+    directory: Optional[str] = typer.Option(None, "-d", "--directory", help="Count tokens in all files in a directory"),
+    pattern: str = typer.Option("*", "-p", "--pattern", help="File pattern to match when using --directory (default: *)"),
+    model: str = typer.Option("gpt-4", "-m", "--model", help="LLM model for token encoding (default: gpt-4)"),
+    threshold: Optional[int] = typer.Option(None, "-t", "--threshold", help="Token threshold for warnings"),
+    verbose: bool = typer.Option(False, "-v", "--verbose", help="Show detailed per-file information")
+) -> int:
+    """Count tokens in files for LLM analysis"""
+    # Validate mutually exclusive arguments
+    if not file and not directory:
+        typer.echo("Error: Either --file or --directory must be specified", err=True)
+        raise typer.Exit(1)
     
-    Args:
-        args: Parsed command line arguments
-        
-    Returns:
-        Exit code (0 for success, 1 for errors)
-    """
+    if file and directory:
+        typer.echo("Error: --file and --directory are mutually exclusive", err=True)
+        raise typer.Exit(1)
+    
     try:
         from .core.ai import TokenCounter, count_tokens_in_multiple_files
         
         project_root = Path.cwd()
         
         # Initialize token counter with specified model
-        token_counter = TokenCounter(args.model)
+        token_counter = TokenCounter(model)
         
-        if args.file:
+        if file:
             # Count tokens in a single file
-            file_path = project_root / args.file
+            file_path = project_root / file
             if not file_path.exists():
-                print(f"❌ File not found: {args.file}")
+                print(f"❌ File not found: {file}")
                 return 1
             
             stats = token_counter.get_token_statistics(file_path)
             
-            print(f"📊 Token Analysis for {args.file}:")
+            print(f"📊 Token Analysis for {file}:")
             print(f"   Tokens: {stats['token_count']:,}")
             print(f"   Model: {stats['model']}")
             print(f"   File size: {stats['file_size_mb']:.2f} MB")
             print(f"   Tokens per KB: {stats['tokens_per_kb']:.1f}")
             
             # Check threshold if provided
-            if args.threshold:
-                threshold_check = token_counter.check_threshold(stats['token_count'], args.threshold)
+            if threshold:
+                threshold_check = token_counter.check_threshold(stats['token_count'], threshold)
                 if threshold_check['exceeds_threshold']:
-                    print(f"⚠️  WARNING: Exceeds threshold of {args.threshold:,} tokens")
+                    print(f"⚠️  WARNING: Exceeds threshold of {threshold:,} tokens")
                     print(f"   Over by: {threshold_check['tokens_over']:,} tokens")
                 else:
-                    print(f"✅ Within threshold of {args.threshold:,} tokens")
+                    print(f"✅ Within threshold of {threshold:,} tokens")
                     print(f"   Remaining: {threshold_check['tokens_remaining']:,} tokens")
             
-        elif args.directory:
+        elif directory:
             # Count tokens in multiple files
-            directory_path = project_root / args.directory
+            directory_path = project_root / directory
             if not directory_path.exists():
-                print(f"❌ Directory not found: {args.directory}")
+                print(f"❌ Directory not found: {directory}")
                 return 1
             
             # Find files matching pattern
-            pattern = args.pattern or "*"
             file_paths = list(directory_path.rglob(pattern))
             
             if not file_paths:
-                print(f"❌ No files found matching pattern '{pattern}' in {args.directory}")
+                print(f"❌ No files found matching pattern '{pattern}' in {directory}")
                 return 1
             
             # Count tokens in all files
-            results = count_tokens_in_multiple_files(file_paths, args.model)
+            results = count_tokens_in_multiple_files(file_paths, model)
             
-            print(f"📊 Token Analysis for {args.directory} (pattern: {pattern}):")
+            print(f"📊 Token Analysis for {directory} (pattern: {pattern}):")
             print(f"   Total files: {results['file_count']}")
             print(f"   Total tokens: {results['total_tokens']:,}")
             print(f"   Average per file: {results['average_tokens_per_file']:.0f}")
             print(f"   Model: {results['model']}")
             
             # Show individual files if verbose
-            if args.verbose:
+            if verbose:
                 print(f"\n📋 Individual Files:")
                 for file_stat in results['file_statistics']:
                     if file_stat['token_count'] > 0:
@@ -556,18 +564,14 @@ def count_tokens_command(args) -> int:
                         print(f"   {rel_path}: {file_stat['token_count']:,} tokens")
             
             # Check threshold if provided
-            if args.threshold:
-                threshold_check = token_counter.check_threshold(results['total_tokens'], args.threshold)
+            if threshold:
+                threshold_check = token_counter.check_threshold(results['total_tokens'], threshold)
                 if threshold_check['exceeds_threshold']:
-                    print(f"⚠️  WARNING: Total exceeds threshold of {args.threshold:,} tokens")
+                    print(f"⚠️  WARNING: Total exceeds threshold of {threshold:,} tokens")
                     print(f"   Over by: {threshold_check['tokens_over']:,} tokens")
                 else:
-                    print(f"✅ Total within threshold of {args.threshold:,} tokens")
+                    print(f"✅ Total within threshold of {threshold:,} tokens")
                     print(f"   Remaining: {threshold_check['tokens_remaining']:,} tokens")
-        
-        else:
-            print("❌ Error: Either --file or --directory must be specified")
-            return 1
         
         return 0
         
@@ -579,260 +583,9 @@ def count_tokens_command(args) -> int:
         return 1
 
 
-def create_parser() -> argparse.ArgumentParser:
-    """Create command line argument parser.
-    
-    Returns:
-        Configured ArgumentParser
-    """
-    parser = argparse.ArgumentParser(
-        prog="autocode",
-        description="Automated code quality and development tools"
-    )
-    
-    # Add subcommands
-    subparsers = parser.add_subparsers(
-        dest="command",
-        help="Available commands"
-    )
-    
-    # check-docs subcommand
-    check_docs_parser = subparsers.add_parser(
-        "check-docs",
-        help="Check if documentation is up to date"
-    )
-    check_docs_parser.add_argument(
-        "--doc-index-output",
-        type=str,
-        help="Override output path for documentation index"
-    )
-    
-    # check-tests subcommand
-    check_tests_parser = subparsers.add_parser(
-        "check-tests",
-        help="Check if tests exist and are passing"
-    )
-    
-    # git-changes subcommand
-    git_changes_parser = subparsers.add_parser(
-        "git-changes", 
-        help="Analyze git changes for commit message generation"
-    )
-    git_changes_parser.add_argument(
-        "--output", "-o",
-        type=str,
-        help="Output JSON file path (default: git_changes.json)"
-    )
-    git_changes_parser.add_argument(
-        "--verbose", "-v",
-        action="store_true",
-        help="Show detailed diff information"
-    )
-    
-    # daemon subcommand
-    daemon_parser = subparsers.add_parser(
-        "daemon",
-        help="Start the autocode monitoring daemon with web interface"
-    )
-    daemon_parser.add_argument(
-        "--host",
-        type=str,
-        default="127.0.0.1",
-        help="Host to bind to (default: 127.0.0.1)"
-    )
-    daemon_parser.add_argument(
-        "--port",
-        type=int,
-        default=8080,
-        help="Port to bind to (default: 8080)"
-    )
-    daemon_parser.add_argument(
-        "--verbose", "-v",
-        action="store_true",
-        help="Enable verbose logging"
-    )
-    
-    # opencode subcommand
-    opencode_parser = subparsers.add_parser(
-        "opencode",
-        help="Execute OpenCode AI analysis with prompts"
-    )
-    
-    # Main options - either prompt or prompt-file is required
-    prompt_group = opencode_parser.add_mutually_exclusive_group()
-    prompt_group.add_argument(
-        "--prompt", "-p",
-        type=str,
-        help="Direct prompt to send to OpenCode"
-    )
-    prompt_group.add_argument(
-        "--prompt-file", "-f",
-        type=str,
-        help="Load prompt from internal file (e.g., 'code-review')"
-    )
-    
-    # Utility options
-    opencode_parser.add_argument(
-        "--list-prompts",
-        action="store_true",
-        help="List all available internal prompts"
-    )
-    opencode_parser.add_argument(
-        "--validate",
-        action="store_true",
-        help="Validate OpenCode setup and configuration"
-    )
-    
-    # Execution options
-    opencode_parser.add_argument(
-        "--debug",
-        action="store_true",
-        help="Enable debug mode (overrides config)"
-    )
-    opencode_parser.add_argument(
-        "--json",
-        action="store_true",
-        help="Output results in JSON format"
-    )
-    opencode_parser.add_argument(
-        "--quiet",
-        action="store_true",
-        help="Enable quiet mode (overrides config)"
-    )
-    opencode_parser.add_argument(
-        "--verbose", "-v",
-        action="store_true",
-        help="Show detailed output including debug info"
-    )
-    opencode_parser.add_argument(
-        "--cwd",
-        type=str,
-        help="Working directory for OpenCode execution (default: current directory)"
-    )
-    
-    # code-to-design subcommand
-    code_to_design_parser = subparsers.add_parser(
-        "code-to-design",
-        help="Generate design diagrams from code"
-    )
-    code_to_design_parser.add_argument(
-        "--directory", "-d",
-        type=str,
-        help="Directory to analyze (defaults to directories in config)"
-    )
-    code_to_design_parser.add_argument(
-        "--pattern", "-p",
-        type=str,
-        default="*.py",
-        help="File pattern to match (default: *.py)"
-    )
-    code_to_design_parser.add_argument(
-        "--output-dir", "-o",
-        type=str,
-        help="Output directory for generated designs (default: design/)"
-    )
-    # Mejora 1: Más Overrides CLI
-    code_to_design_parser.add_argument(
-        "--languages", "-l",
-        type=str,
-        nargs="+",
-        help="Lenguajes a analizar (e.g., python js). Sobrescribe config."
-    )
-    code_to_design_parser.add_argument(
-        "--diagrams", "-g",
-        type=str,
-        nargs="+",
-        help="Tipos de diagramas (e.g., classes components). Sobrescribe config."
-    )
-    # Mejora 3: Modo Verbose/Info
-    code_to_design_parser.add_argument(
-        "--show-config",
-        action="store_true",
-        help="Mostrar configuración cargada/normalizada antes de ejecutar."
-    )
-    # Mejora 4: Soporte Multi-Directorio
-    code_to_design_parser.add_argument(
-        "--directories",
-        type=str,
-        nargs="+",
-        help="Directorios a analizar (e.g., autocode/ src/). Sobrescribe config."
-    )
-
-    # count-tokens subcommand
-    count_tokens_parser = subparsers.add_parser(
-        "count-tokens",
-        help="Count tokens in files for LLM analysis"
-    )
-    
-    # File or directory options (mutually exclusive)
-    file_group = count_tokens_parser.add_mutually_exclusive_group(required=True)
-    file_group.add_argument(
-        "--file", "-f",
-        type=str,
-        help="Count tokens in a specific file"
-    )
-    file_group.add_argument(
-        "--directory", "-d",
-        type=str,
-        help="Count tokens in all files in a directory"
-    )
-    
-    # Additional options
-    count_tokens_parser.add_argument(
-        "--pattern", "-p",
-        type=str,
-        default="*",
-        help="File pattern to match when using --directory (default: *)"
-    )
-    count_tokens_parser.add_argument(
-        "--model", "-m",
-        type=str,
-        default="gpt-4",
-        help="LLM model for token encoding (default: gpt-4)"
-    )
-    count_tokens_parser.add_argument(
-        "--threshold", "-t",
-        type=int,
-        help="Token threshold for warnings"
-    )
-    count_tokens_parser.add_argument(
-        "--verbose", "-v",
-        action="store_true",
-        help="Show detailed per-file information"
-    )
-    
-    return parser
-
-
 def main():
     """Main CLI entry point."""
-    parser = create_parser()
-    args = parser.parse_args()
-    
-    # If no command specified, default to check-docs for backwards compatibility
-    if not args.command:
-        args.command = "check-docs"
-    
-    # Route to appropriate command handler
-    if args.command == "check-docs":
-        exit_code = check_docs_command(args)
-    elif args.command == "check-tests":
-        exit_code = check_tests_command(args)
-    elif args.command == "git-changes":
-        exit_code = git_changes_command(args)
-    elif args.command == "daemon":
-        exit_code = daemon_command(args)
-    elif args.command == "opencode":
-        exit_code = opencode_command(args)
-    elif args.command == "code-to-design":
-        exit_code = code_to_design_command(args)
-    elif args.command == "count-tokens":
-        exit_code = count_tokens_command(args)
-    else:
-        parser.print_help()
-        exit_code = 1
-    
-    sys.exit(exit_code)
+    app()
 
 
 if __name__ == "__main__":

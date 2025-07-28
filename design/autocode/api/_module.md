@@ -14,6 +14,7 @@
 - [DocIndexConfig](models_items.md#docindexconfig)
 - [DocsConfig](models_items.md#docsconfig)
 - [TestConfig](models_items.md#testconfig)
+- [OpenCodeConfig](models_items.md#opencodeconfig)
 - [CodeToDesignConfig](models_items.md#codetodesignconfig)
 - [AutocodeConfig](models_items.md#autocodeconfig)
 - [StatusResponse](models_items.md#statusresponse)
