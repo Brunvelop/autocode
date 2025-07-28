@@ -15,7 +15,7 @@ from fastapi import Request
 
 from .models import CheckExecutionResponse, AutocodeConfig
 # Import CLI functions for thin wrapper implementation
-from ..cli import check_docs, check_tests, git_changes, code_to_design, load_config
+from ..cli import check_docs, check_tests, git_changes, code_to_design, load_config, opencode, count_tokens
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -160,6 +160,99 @@ async def load_configuration():
     except Exception as e:
         logger.error(f"Error loading config: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/check-tests", response_model=CheckExecutionResponse)
+async def check_tests_wrapper(background_tasks: BackgroundTasks):
+    """Check if tests exist and are passing using CLI function."""
+    try:
+        def run_tests_task():
+            """Background task to run the CLI function."""
+            return check_tests()
+        
+        background_tasks.add_task(run_tests_task)
+        
+        return CheckExecutionResponse(
+            success=True,
+            result=None,
+            error=None
+        )
+    except Exception as e:
+        return handle_cli_error("check_tests", e)
+
+
+@app.post("/api/opencode", response_model=CheckExecutionResponse)
+async def opencode_wrapper(
+    background_tasks: BackgroundTasks,
+    prompt: str = None,
+    prompt_file: str = None,
+    list_prompts: bool = False,
+    validate: bool = False,
+    debug: bool = False,
+    json_output: bool = False,
+    quiet: bool = False,
+    verbose: bool = False,
+    cwd: str = None
+):
+    """Execute OpenCode AI analysis with prompts using CLI function."""
+    try:
+        def run_opencode_task():
+            """Background task to run the CLI function."""
+            return opencode(
+                prompt=prompt,
+                prompt_file=prompt_file,
+                list_prompts=list_prompts,
+                validate=validate,
+                debug=debug,
+                json_output=json_output,
+                quiet=quiet,
+                verbose=verbose,
+                cwd=cwd
+            )
+        
+        background_tasks.add_task(run_opencode_task)
+        
+        return CheckExecutionResponse(
+            success=True,
+            result=None,
+            error=None
+        )
+    except Exception as e:
+        return handle_cli_error("opencode", e)
+
+
+@app.post("/api/count-tokens", response_model=CheckExecutionResponse)
+async def count_tokens_wrapper(
+    background_tasks: BackgroundTasks,
+    file: str = None,
+    directory: str = None,
+    pattern: str = "*",
+    model: str = "gpt-4",
+    threshold: int = None,
+    verbose: bool = False
+):
+    """Count tokens in files for LLM analysis using CLI function."""
+    try:
+        def run_count_tokens_task():
+            """Background task to run the CLI function."""
+            return count_tokens(
+                file=file,
+                directory=directory,
+                pattern=pattern,
+                model=model,
+                threshold=threshold,
+                verbose=verbose
+            )
+        
+        background_tasks.add_task(run_count_tokens_task)
+        
+        return CheckExecutionResponse(
+            success=True,
+            result=None,
+            error=None
+        )
+    except Exception as e:
+        return handle_cli_error("count_tokens", e)
 
 
 @app.post("/api/docs/check-sync")
