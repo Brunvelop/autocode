@@ -2,17 +2,212 @@
 
 class AutocodeDashboard {
     constructor() {
-        this.refreshInterval = 5000; // 5 seconds
-        this.refreshTimer = null;
-        this.isLoading = false;
+        // Configuración de intervalos diferenciados
+        this.refreshConfig = {
+            daemon_status: { interval: 3000, timer: null, enabled: true },    // 3s - crítico
+            check_results: { interval: 10000, timer: null, enabled: true },   // 10s - normal
+            config_data: { interval: 30000, timer: null, enabled: true },     // 30s - lento
+            design_data: { interval: 60000, timer: null, enabled: false }     // 60s - bajo demanda
+        };
+        
+        this.isLoading = {};
+        this.lastUpdate = {};
+        this.updatePaused = false;
         this.currentPage = this.getCurrentPage();
         
+        // Activity detection
+        this.userActivityTimer = null;
+        this.inactivityTimeout = 60000; // 1 minuto de inactividad
+        this.wasActiveRefresh = true;
+        
         this.init();
+    }
+    
+    // === API METHODS (consolidated from APIClient) ===
+    async apiGet(endpoint) {
+        try {
+            const response = await fetch(endpoint);
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            return await response.json();
+        } catch (error) {
+            console.error(`API GET error for ${endpoint}:`, error);
+            throw error;
+        }
+    }
+    
+    async apiPost(endpoint, data = null) {
+        try {
+            const options = {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            };
+            
+            if (data) {
+                options.body = JSON.stringify(data);
+            }
+            
+            const response = await fetch(endpoint, options);
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            return await response.json();
+        } catch (error) {
+            console.error(`API POST error for ${endpoint}:`, error);
+            throw error;
+        }
+    }
+    
+    async apiPut(endpoint, data) {
+        try {
+            const response = await fetch(endpoint, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(data)
+            });
+            
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            return await response.json();
+        } catch (error) {
+            console.error(`API PUT error for ${endpoint}:`, error);
+            throw error;
+        }
+    }
+    
+    async apiDelete(endpoint) {
+        try {
+            const response = await fetch(endpoint, { method: 'DELETE' });
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            return await response.json();
+        } catch (error) {
+            console.error(`API DELETE error for ${endpoint}:`, error);
+            throw error;
+        }
+    }
+    
+    // === NEW WRAPPER ENDPOINTS ===
+    
+    // Método para generar documentación usando nuevo wrapper
+    async generateDocumentation() {
+        try {
+            console.log('Generating documentation...');
+            
+            const response = await this.apiPost('/api/generate-docs');
+            
+            if (response.success) {
+                this.showNotification('Documentation generation started', 'success');
+                
+                // Auto-refresh después de un delay para capturar el resultado
+                setTimeout(() => {
+                    this.refreshSpecificData('check_results');
+                }, 2000);
+            } else {
+                this.showNotification(`Documentation error: ${response.error}`, 'error');
+            }
+            
+            return response;
+            
+        } catch (error) {
+            console.error('Error generating documentation:', error);
+            this.showNotification('Failed to start documentation generation', 'error');
+            throw error;
+        }
+    }
+    
+    // Método para generar diseño usando nuevo wrapper
+    async generateDesign(options = {}) {
+        try {
+            console.log('Generating design diagrams...');
+            
+            const params = new URLSearchParams();
+            if (options.directory) params.append('directory', options.directory);
+            if (options.output_dir) params.append('output_dir', options.output_dir);
+            
+            const endpoint = `/api/generate-design${params.toString() ? '?' + params.toString() : ''}`;
+            const response = await this.apiPost(endpoint);
+            
+            if (response.success) {
+                this.showNotification('Design generation started', 'success');
+                
+                // Refresh design-related UI after delay
+                setTimeout(() => {
+                    this.refreshSpecificData('design_data');
+                }, 3000);
+            } else {
+                this.showNotification(`Design error: ${response.error}`, 'error');
+            }
+            
+            return response;
+            
+        } catch (error) {
+            console.error('Error generating design:', error);
+            this.showNotification('Failed to start design generation', 'error');
+            throw error;
+        }
+    }
+    
+    // Método para analizar git usando nuevo wrapper
+    async analyzeGitChanges(options = {}) {
+        try {
+            console.log('Analyzing git changes...');
+            
+            const params = new URLSearchParams();
+            if (options.output) params.append('output', options.output);
+            if (options.verbose) params.append('verbose', options.verbose);
+            
+            const endpoint = `/api/analyze-git${params.toString() ? '?' + params.toString() : ''}`;
+            const response = await this.apiPost(endpoint);
+            
+            if (response.success) {
+                this.showNotification('Git analysis started', 'success');
+                
+                // Refresh git-related data
+                setTimeout(() => {
+                    this.refreshSpecificData('check_results');
+                }, 1500);
+            } else {
+                this.showNotification(`Git analysis error: ${response.error}`, 'error');
+            }
+            
+            return response;
+            
+        } catch (error) {
+            console.error('Error analyzing git changes:', error);
+            this.showNotification('Failed to start git analysis', 'error');
+            throw error;
+        }
+    }
+    
+    // Método para cargar configuración usando nuevo wrapper
+    async loadConfigurationData() {
+        try {
+            const response = await this.apiGet('/api/config/load');
+            
+            if (response.success) {
+                return response.config;
+            } else {
+                throw new Error(response.error || 'Failed to load configuration');
+            }
+            
+        } catch (error) {
+            console.error('Error loading configuration:', error);
+            throw error;
+        }
     }
     
     init() {
         console.log('Initializing Autocode Dashboard');
         this.setupNavigation();
+        this.setupActivityDetection();
         this.startAutoRefresh();
         this.loadInitialData();
     }
@@ -47,13 +242,7 @@ class AutocodeDashboard {
     
     async loadConfigPage() {
         try {
-            const response = await fetch('/api/config');
-            
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-            }
-            
-            const config = await response.json();
+            const config = await this.apiGet('/api/config');
             this.populateConfigForm(config);
             this.setupConfigFormHandlers();
             
@@ -176,19 +365,7 @@ class AutocodeDashboard {
             
             const config = this.getConfigFromForm();
             
-            const response = await fetch('/api/config', {
-                method: 'PUT',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify(config)
-            });
-            
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-            }
-            
-            const result = await response.json();
+            const result = await this.apiPut('/api/config', config);
             console.log('Configuration saved:', result);
             
             this.showConfigMessage('Configuration saved successfully! Changes will take effect immediately.', 'success');
@@ -264,17 +441,7 @@ class AutocodeDashboard {
             };
             
             // Save default config
-            const response = await fetch('/api/config', {
-                method: 'PUT',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify(defaultConfig)
-            });
-            
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-            }
+            await this.apiPut('/api/config', defaultConfig);
             
             // Reload the form with defaults
             this.populateConfigForm(defaultConfig);
@@ -430,54 +597,208 @@ class AutocodeDashboard {
         }
     }
     
+    // === INTELLIGENT AUTO-REFRESH SYSTEM ===
+    
+    // Iniciar múltiples timers diferenciados
     startAutoRefresh() {
-        this.refreshTimer = setInterval(() => {
-            if (!this.isLoading) {
-                this.fetchAndUpdateStatus();
-            }
-        }, this.refreshInterval);
+        Object.keys(this.refreshConfig).forEach(dataType => {
+            this.startSpecificRefresh(dataType);
+        });
         
-        this.updateRefreshStatus('ON');
+        this.updateRefreshStatus('MULTI-ON');
+    }
+    
+    startSpecificRefresh(dataType) {
+        const config = this.refreshConfig[dataType];
+        
+        if (!config.enabled || config.timer || this.updatePaused) {
+            return;
+        }
+        
+        config.timer = setInterval(async () => {
+            if (this.isLoading[dataType]) {
+                return;
+            }
+            
+            try {
+                await this.refreshSpecificData(dataType);
+            } catch (error) {
+                console.error(`Error refreshing ${dataType}:`, error);
+            }
+        }, config.interval);
+        
+        console.log(`Started auto-refresh for ${dataType} (${config.interval}ms)`);
+    }
+    
+    // Método para refrescar tipos específicos de datos
+    async refreshSpecificData(dataType) {
+        this.isLoading[dataType] = true;
+        
+        try {
+            switch (dataType) {
+                case 'daemon_status':
+                    await this.refreshDaemonStatus();
+                    break;
+                case 'check_results':
+                    await this.refreshCheckResults();
+                    break;
+                case 'config_data':
+                    await this.refreshConfigData();
+                    break;
+                case 'design_data':
+                    await this.refreshDesignContent();
+                    break;
+            }
+            
+            this.lastUpdate[dataType] = new Date();
+            
+        } finally {
+            this.isLoading[dataType] = false;
+        }
+    }
+    
+    // Métodos específicos de refresh
+    async refreshDaemonStatus() {
+        const statusData = await this.apiGet('/api/status');
+        this.updateDaemonStatus(statusData.daemon);
+        this.updateSystemStats(statusData.daemon);
+    }
+    
+    async refreshCheckResults() {
+        const checks = ['doc_check', 'git_check', 'test_check'];
+        const checkPromises = checks.map(checkName => this.getCheckResult(checkName));
+        
+        try {
+            const results = await Promise.allSettled(checkPromises);
+            
+            results.forEach((result, index) => {
+                const checkName = checks[index];
+                if (result.status === 'fulfilled') {
+                    this.updateCheckCard(checkName, result.value);
+                } else {
+                    console.error(`Failed to update ${checkName}:`, result.reason);
+                }
+            });
+            
+        } catch (error) {
+            console.error('Error refreshing check results:', error);
+        }
+    }
+    
+    async refreshConfigData() {
+        if (this.currentPage === 'config') {
+            const configData = await this.loadConfigurationData();
+            this.updateConfigUI(configData);
+        }
+    }
+    
+    async refreshDesignContent() {
+        if (this.currentPage === 'design' || this.currentPage === 'ui-designer') {
+            // Refresh design-related content
+            await this.loadArchitectureDiagram();
+        }
+    }
+    
+    // Método para obtener resultado de check individual
+    async getCheckResult(checkName) {
+        // Para algunos checks, usar endpoints síncronos nuevos
+        if (checkName === 'doc_check') {
+            return await this.apiPost('/api/docs/check-sync');
+        }
+        
+        // Para otros, seguir usando el endpoint de status general
+        const statusData = await this.apiGet('/api/status');
+        return statusData.checks[checkName];
+    }
+    
+    // Pausar/reanudar refresh basado en actividad
+    pauseAutoRefresh() {
+        this.updatePaused = true;
+        Object.keys(this.refreshConfig).forEach(dataType => {
+            this.stopSpecificRefresh(dataType);
+        });
+        this.updateRefreshStatus('PAUSED');
+    }
+    
+    resumeAutoRefresh() {
+        this.updatePaused = false;
+        this.startAutoRefresh();
     }
     
     stopAutoRefresh() {
-        if (this.refreshTimer) {
-            clearInterval(this.refreshTimer);
-            this.refreshTimer = null;
-        }
+        Object.keys(this.refreshConfig).forEach(dataType => {
+            this.stopSpecificRefresh(dataType);
+        });
         this.updateRefreshStatus('OFF');
     }
     
+    stopSpecificRefresh(dataType) {
+        const config = this.refreshConfig[dataType];
+        if (config.timer) {
+            clearInterval(config.timer);
+            config.timer = null;
+        }
+    }
+    
+    // Toggle específico por tipo de datos
+    toggleRefreshForDataType(dataType, enabled = null) {
+        const config = this.refreshConfig[dataType];
+        config.enabled = enabled !== null ? enabled : !config.enabled;
+        
+        if (config.enabled) {
+            this.startSpecificRefresh(dataType);
+        } else {
+            this.stopSpecificRefresh(dataType);
+        }
+        
+        this.updateRefreshControls();
+    }
+    
+    // Cambiar intervalo dinámicamente
+    setRefreshInterval(dataType, newInterval) {
+        const config = this.refreshConfig[dataType];
+        const wasRunning = config.timer !== null;
+        
+        // Stop current timer
+        this.stopSpecificRefresh(dataType);
+        
+        // Update interval
+        config.interval = newInterval;
+        
+        // Restart if was running
+        if (wasRunning && config.enabled) {
+            this.startSpecificRefresh(dataType);
+        }
+        
+        console.log(`Updated refresh interval for ${dataType}: ${newInterval}ms`);
+    }
+    
+    // Backward compatibility
     async fetchAndUpdateStatus() {
         try {
-            this.isLoading = true;
-            const response = await fetch('/api/status');
+            this.setLoadingState(true);
             
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-            }
+            // Usar endpoint de status existente para daemon info
+            const statusData = await this.apiGet('/api/status');
+            this.updateDaemonStatus(statusData.daemon);
+            this.updateSystemStats(statusData.daemon);
             
-            const data = await response.json();
-            this.updateUI(data);
+            // Para checks individuales, usar nuevos endpoints wrapper cuando sea apropiado
+            await this.refreshCheckResults();
+            
             this.updateLastUpdated();
             
         } catch (error) {
             console.error('Error fetching status:', error);
             this.handleError(error);
         } finally {
-            this.isLoading = false;
+            this.setLoadingState(false);
         }
     }
     
     async fetchAndUpdateConfig() {
         try {
-            const response = await fetch('/api/config');
-            
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-            }
-            
-            const config = await response.json();
+            const config = await this.apiGet('/api/config');
             this.updateConfigUI(config);
             
         } catch (error) {
@@ -501,11 +822,13 @@ class AutocodeDashboard {
         const text = document.getElementById('daemon-text');
         
         if (daemon.is_running) {
-            indicator.className = 'status-indicator success';
+            indicator.className = 'w-3 h-3 rounded-full bg-green-500 shadow-lg transition-all';
             text.textContent = 'Running';
+            text.className = 'text-gray-700';
         } else {
-            indicator.className = 'status-indicator error';
+            indicator.className = 'w-3 h-3 rounded-full bg-red-500 shadow-lg transition-all';
             text.textContent = 'Stopped';
+            text.className = 'text-gray-700';
         }
     }
     
@@ -548,22 +871,46 @@ class AutocodeDashboard {
         if (!card) return;
         
         // Update status indicator
-        const statusElement = card.querySelector('.check-status');
-        const indicator = statusElement.querySelector('.status-indicator');
-        const statusText = statusElement.querySelector('.status-text');
+        const statusElement = card.querySelector('[id$="-check-status"]');
+        const indicator = statusElement.querySelector('div');
+        const statusText = statusElement.querySelector('span');
         
-        indicator.className = `status-indicator ${result.status}`;
+        // Update indicator with Tailwind classes
+        let indicatorClasses = 'w-3 h-3 rounded-full shadow-lg transition-all';
+        let textClasses = 'text-sm font-medium capitalize';
+        let borderClasses = 'bg-white rounded-lg shadow-sm border border-l-4 p-6 mb-4 transition-all hover:shadow-md hover:-translate-y-0.5 relative overflow-hidden';
+        
+        if (result.status === 'success') {
+            indicatorClasses += ' bg-green-500';
+            textClasses += ' text-green-700';
+            borderClasses += ' border-l-green-500';
+        } else if (result.status === 'error') {
+            indicatorClasses += ' bg-red-500';
+            textClasses += ' text-red-700';
+            borderClasses += ' border-l-red-500';
+        } else if (result.status === 'warning') {
+            indicatorClasses += ' bg-yellow-500';
+            textClasses += ' text-yellow-700';
+            borderClasses += ' border-l-yellow-500';
+        } else {
+            indicatorClasses += ' bg-gray-500';
+            textClasses += ' text-gray-600';
+            borderClasses += ' border-l-gray-300';
+        }
+        
+        indicator.className = indicatorClasses;
+        statusText.className = textClasses;
         statusText.textContent = result.status;
         
         // Update card border
-        card.className = `check-card ${result.status}`;
+        card.className = borderClasses;
         
         // Update message
-        const messageElement = card.querySelector('.check-message');
+        const messageElement = card.querySelector('[id$="-check-message"]');
         messageElement.textContent = result.message;
         
         // Update timestamp
-        const timestampElement = card.querySelector('.check-timestamp');
+        const timestampElement = card.querySelector('[id$="-check-timestamp"]');
         timestampElement.textContent = `Last run: ${this.formatTimestamp(result.timestamp)}`;
         
         // Update documentation index information for doc_check
@@ -611,14 +958,14 @@ class AutocodeDashboard {
         const purposesElement = document.getElementById('doc-index-purposes');
         
         if (details.doc_index_stats && details.doc_index_status === 'generated') {
-            indexInfo.style.display = 'block';
+            indexInfo.classList.remove('hidden');
             
             const stats = details.doc_index_stats;
             modulesElement.textContent = stats.total_modules || 0;
             filesElement.textContent = stats.total_files || 0;
             purposesElement.textContent = stats.total_purposes_found || 0;
         } else {
-            indexInfo.style.display = 'none';
+            indexInfo.classList.add('hidden');
         }
     }
     
@@ -629,7 +976,7 @@ class AutocodeDashboard {
         const tokenWarning = document.getElementById('git-token-warning');
         
         if (details.token_info) {
-            tokenInfo.style.display = 'block';
+            tokenInfo.classList.remove('hidden');
             tokenCount.textContent = details.token_info.token_count.toLocaleString();
             
             // Set threshold display
@@ -639,17 +986,13 @@ class AutocodeDashboard {
             // Set warning status
             if (details.token_warning) {
                 tokenWarning.textContent = '⚠️ Exceeds threshold!';
-                tokenWarning.className = 'token-warning error';
-                tokenWarning.style.color = '#dc3545';
-                tokenWarning.style.fontWeight = 'bold';
+                tokenWarning.className = 'font-bold text-red-600 ml-2';
             } else {
                 tokenWarning.textContent = '✅ Within limits';
-                tokenWarning.className = 'token-warning success';
-                tokenWarning.style.color = '#28a745';
-                tokenWarning.style.fontWeight = 'normal';
+                tokenWarning.className = 'font-medium text-green-600 ml-2';
             }
         } else {
-            tokenInfo.style.display = 'none';
+            tokenInfo.classList.add('hidden');
         }
     }
     
@@ -663,7 +1006,7 @@ class AutocodeDashboard {
         const integrationCount = document.getElementById('test-integration-count');
         
         if (details && typeof details.missing_count !== 'undefined') {
-            testInfo.style.display = 'block';
+            testInfo.classList.remove('hidden');
             
             missingCount.textContent = details.missing_count || 0;
             passingCount.textContent = details.passing_count || 0;
@@ -672,7 +1015,7 @@ class AutocodeDashboard {
             unitCount.textContent = `${details.unit_tests || 0} Unit`;
             integrationCount.textContent = `${details.integration_tests || 0} Integration`;
         } else {
-            testInfo.style.display = 'none';
+            testInfo.classList.add('hidden');
         }
     }
     
@@ -810,8 +1153,9 @@ class AutocodeDashboard {
         const text = document.getElementById('daemon-text');
         
         if (indicator && text) {
-            indicator.className = 'status-indicator error';
+            indicator.className = 'w-3 h-3 rounded-full bg-red-500 shadow-lg transition-all';
             text.textContent = 'Connection Error';
+            text.className = 'text-gray-700';
         }
         
         // Show error in system stats with null checks
@@ -824,17 +1168,152 @@ class AutocodeDashboard {
         if (lastCheckElement) lastCheckElement.textContent = 'Error';
     }
     
+    // === NOTIFICATION SYSTEM ===
+    
+    // Método para mostrar notificaciones temporales
+    showNotification(message, type = 'info', duration = 5000) {
+        const notificationContainer = this.getOrCreateNotificationContainer();
+        
+        const notification = document.createElement('div');
+        notification.className = `notification ${type} animate-slide-in`;
+        
+        const bgColor = {
+            'success': 'bg-green-50 border-green-200 text-green-800',
+            'error': 'bg-red-50 border-red-200 text-red-800',
+            'warning': 'bg-yellow-50 border-yellow-200 text-yellow-800',
+            'info': 'bg-blue-50 border-blue-200 text-blue-800'
+        }[type] || 'bg-gray-50 border-gray-200 text-gray-800';
+        
+        notification.innerHTML = `
+            <div class="flex items-center justify-between p-4 border rounded-lg ${bgColor}">
+                <span>${message}</span>
+                <button onclick="this.parentElement.parentElement.remove()" 
+                        class="ml-4 text-sm opacity-70 hover:opacity-100">×</button>
+            </div>
+        `;
+        
+        notificationContainer.appendChild(notification);
+        
+        // Auto-remove after duration
+        setTimeout(() => {
+            if (notification.parentElement) {
+                notification.classList.add('animate-slide-out');
+                setTimeout(() => notification.remove(), 300);
+            }
+        }, duration);
+    }
+    
+    getOrCreateNotificationContainer() {
+        let container = document.getElementById('notification-container');
+        if (!container) {
+            container = document.createElement('div');
+            container.id = 'notification-container';
+            container.className = 'fixed top-4 right-4 z-50 space-y-2';
+            document.body.appendChild(container);
+        }
+        return container;
+    }
+    
+    // Estados de loading mejorados
+    setLoadingState(isLoading, target = null) {
+        if (target) {
+            const element = typeof target === 'string' ? document.getElementById(target) : target;
+            if (element) {
+                if (isLoading) {
+                    element.classList.add('loading');
+                    element.style.opacity = '0.6';
+                } else {
+                    element.classList.remove('loading');
+                    element.style.opacity = '1';
+                }
+            }
+        } else {
+            // Global loading state
+            this.isLoading.global = isLoading;
+            this.updateLoadingIndicators();
+        }
+    }
+    
+    updateLoadingIndicators() {
+        const indicator = document.getElementById('global-loading-indicator');
+        if (indicator) {
+            indicator.style.display = this.isLoading.global ? 'block' : 'none';
+        }
+    }
+    
+    // === ACTIVITY DETECTION SYSTEM ===
+    
+    setupActivityDetection() {
+        // Eventos que indican actividad del usuario
+        const activityEvents = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart'];
+        
+        activityEvents.forEach(event => {
+            document.addEventListener(event, () => {
+                this.handleUserActivity();
+            }, true);
+        });
+        
+        // Detección de visibilidad de página
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) {
+                this.handlePageHidden();
+            } else {
+                this.handlePageVisible();
+            }
+        });
+    }
+    
+    handleUserActivity() {
+        // Reset inactivity timer
+        clearTimeout(this.userActivityTimer);
+        
+        // Resume refresh if was paused due to inactivity
+        if (this.updatePaused && !this.wasActiveRefresh) {
+            this.resumeAutoRefresh();
+            this.wasActiveRefresh = true;
+        }
+        
+        // Set new inactivity timer
+        this.userActivityTimer = setTimeout(() => {
+            this.handleUserInactivity();
+        }, this.inactivityTimeout);
+    }
+    
+    handleUserInactivity() {
+        console.log('User inactive, slowing down refresh...');
+        
+        // Slow down refresh instead of stopping completely
+        this.setRefreshInterval('daemon_status', 10000); // 10s instead of 3s
+        this.setRefreshInterval('check_results', 30000);  // 30s instead of 10s
+        
+        this.showNotification('Slowed refresh due to inactivity', 'info', 3000);
+    }
+    
+    handlePageHidden() {
+        console.log('Page hidden, pausing refresh...');
+        this.pauseAutoRefresh();
+        this.wasActiveRefresh = false;
+    }
+    
+    handlePageVisible() {
+        console.log('Page visible, resuming refresh...');
+        this.resumeAutoRefresh();
+        this.wasActiveRefresh = true;
+        
+        // Immediately refresh to get latest data
+        this.fetchAndUpdateStatus();
+    }
+    
+    updateRefreshControls() {
+        // Placeholder for updating UI refresh controls
+        console.log('Refresh controls updated');
+    }
+    
     async loadArchitectureDiagram() {
         try {
             console.log('Loading architecture diagram...');
             
-            const response = await fetch('/api/architecture/diagram');
-            
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-            }
-            
-            const data = await response.json();
+            const data = await this.apiGet('/api/architecture/diagram');
             this.renderArchitectureDiagram(data);
             
         } catch (error) {
@@ -1020,6 +1499,11 @@ async function refreshArchitecture() {
 }
 
 async function regenerateArchitecture() {
+    if (!dashboard) {
+        console.error('Dashboard not initialized');
+        return;
+    }
+    
     console.log('Regenerating architecture diagram...');
     
     // Disable button
@@ -1028,18 +1512,7 @@ async function regenerateArchitecture() {
     button.textContent = 'Regenerating...';
     
     try {
-        const response = await fetch('/api/architecture/regenerate', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-        });
-        
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
-        
-        const result = await response.json();
+        const result = await dashboard.apiPost('/api/architecture/regenerate');
         console.log('Architecture regeneration started:', result);
         
         // Wait a bit for regeneration to complete, then refresh
@@ -1059,6 +1532,11 @@ async function regenerateArchitecture() {
 
 // Global functions for UI Designer
 async function generateComponentTree() {
+    if (!dashboard) {
+        console.error('Dashboard not initialized');
+        return;
+    }
+    
     console.log('Generating component tree...');
     
     // Disable button
@@ -1067,13 +1545,7 @@ async function generateComponentTree() {
     button.textContent = 'Generating...';
     
     try {
-        const response = await fetch('/api/ui-designer/component-tree');
-        
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
-        
-        const result = await response.json();
+        const result = await dashboard.apiGet('/api/ui-designer/component-tree');
         
         if (result.status === 'success') {
             dashboard.renderComponentTree(result);
@@ -1094,6 +1566,11 @@ async function generateComponentTree() {
 }
 
 async function refreshComponentTree() {
+    if (!dashboard) {
+        console.error('Dashboard not initialized');
+        return;
+    }
+    
     console.log('Refreshing component tree...');
     
     // Disable button
@@ -1102,13 +1579,7 @@ async function refreshComponentTree() {
     button.textContent = 'Refreshing...';
     
     try {
-        const response = await fetch('/api/ui-designer/component-tree');
-        
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
-        
-        const result = await response.json();
+        const result = await dashboard.apiGet('/api/ui-designer/component-tree');
         
         if (result.status === 'success') {
             dashboard.renderComponentTree(result);
@@ -1128,50 +1599,130 @@ async function refreshComponentTree() {
     }
 }
 
-// Global functions for button clicks
+// Global functions for button clicks - Updated to use new wrapper endpoints
 async function runCheck(checkName) {
+    if (!dashboard) {
+        console.error('Dashboard not initialized');
+        return;
+    }
+    
     console.log(`Running check: ${checkName}`);
     
-    // Disable button
     const button = event.target;
+    const originalText = button.textContent;
     button.disabled = true;
     button.textContent = 'Running...';
     
     try {
-        const response = await fetch(`/api/checks/${checkName}/run`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-        });
+        let result;
         
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        // Usar endpoint wrapper apropiado basado en el tipo de check
+        switch (checkName) {
+            case 'doc_check':
+                result = await dashboard.generateDocumentation();
+                break;
+            case 'git_check':
+                result = await dashboard.analyzeGitChanges();
+                break;
+            case 'test_check':
+                // Usar endpoint refactorizado existente
+                result = await dashboard.apiPost(`/api/checks/${checkName}/run`);
+                break;
+            default:
+                result = await dashboard.apiPost(`/api/checks/${checkName}/run`);
         }
-        
-        const result = await response.json();
         
         if (result.success) {
             console.log(`Check ${checkName} executed successfully`);
-            // Status will be updated on next refresh
+            dashboard.showNotification(`${checkName} started successfully`, 'success');
         } else {
             console.error(`Check ${checkName} failed:`, result.error);
+            dashboard.showNotification(`${checkName} failed: ${result.error}`, 'error');
         }
         
     } catch (error) {
         console.error(`Error running check ${checkName}:`, error);
+        dashboard.showNotification(`Error running ${checkName}`, 'error');
         
     } finally {
-        // Re-enable button
         button.disabled = false;
-        button.textContent = 'Run Now';
+        button.textContent = originalText;
+    }
+}
+
+// Nueva función para generar diseño
+async function generateDesign() {
+    if (!dashboard) {
+        console.error('Dashboard not initialized');
+        return;
+    }
+    
+    const button = event.target;
+    const originalText = button.textContent;
+    button.disabled = true;
+    button.textContent = 'Generating...';
+    
+    try {
+        await dashboard.generateDesign({
+            directory: 'autocode/',
+            output_dir: 'design/'
+        });
         
-        // Refresh status immediately
-        dashboard.fetchAndUpdateStatus();
+    } catch (error) {
+        console.error('Error generating design:', error);
+        
+    } finally {
+        button.disabled = false;
+        button.textContent = originalText;
+    }
+}
+
+// Controles para auto-refresh
+function toggleAutoRefresh() {
+    if (!dashboard) {
+        console.error('Dashboard not initialized');
+        return;
+    }
+    
+    const button = document.getElementById('pause-refresh-btn');
+    
+    if (dashboard.updatePaused) {
+        dashboard.resumeAutoRefresh();
+        if (button) button.textContent = 'Pause';
+    } else {
+        dashboard.pauseAutoRefresh();
+        if (button) button.textContent = 'Resume';
+    }
+}
+
+function changeRefreshSpeed(speed) {
+    if (!dashboard) {
+        console.error('Dashboard not initialized');
+        return;
+    }
+    
+    const intervals = {
+        'fast': { daemon_status: 2000, check_results: 5000 },
+        'normal': { daemon_status: 3000, check_results: 10000 },
+        'slow': { daemon_status: 5000, check_results: 20000 }
+    };
+    
+    const config = intervals[speed];
+    if (config) {
+        Object.keys(config).forEach(dataType => {
+            dashboard.setRefreshInterval(dataType, config[dataType]);
+        });
+        
+        dashboard.showNotification(`Refresh speed changed to ${speed}`, 'info', 2000);
     }
 }
 
 async function updateConfig() {
+    if (!dashboard) {
+        console.error('Dashboard not initialized');
+        return;
+    }
+    
     console.log('Updating configuration');
     
     // Get current config values
@@ -1202,19 +1753,7 @@ async function updateConfig() {
     };
     
     try {
-        const response = await fetch('/api/config', {
-            method: 'PUT',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(config)
-        });
-        
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
-        
-        const result = await response.json();
+        const result = await dashboard.apiPut('/api/config', config);
         console.log('Configuration updated:', result);
         
     } catch (error) {
