@@ -22,6 +22,8 @@ from .models import (
     CheckResult,
     DaemonStatus
 )
+# Import CLI functions for thin wrapper implementation
+from ..cli import check_docs, check_tests, git_changes, code_to_design, load_config
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -43,6 +45,16 @@ app.mount("/design", StaticFiles(directory=Path(__file__).parent.parent.parent /
 # Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+
+def handle_cli_error(func_name: str, error: Exception) -> CheckExecutionResponse:
+    """Standard error handling for CLI function calls."""
+    logger.error(f"Error in CLI function '{func_name}': {error}")
+    return CheckExecutionResponse(
+        success=False,
+        result=None,
+        error=f"CLI function '{func_name}' failed: {str(error)}"
+    )
 
 
 @app.on_event("startup")
@@ -161,33 +173,36 @@ async def get_check_result(check_name: str):
 
 @app.post("/api/checks/{check_name}/run", response_model=CheckExecutionResponse)
 async def run_check(check_name: str, background_tasks: BackgroundTasks):
-    """Run a specific check manually."""
+    """Run a specific check manually using CLI functions."""
     if not daemon:
         raise HTTPException(status_code=503, detail="Daemon not initialized")
     
-    if check_name not in ["doc_check", "git_check", "test_check"]:
+    # Map check names to CLI functions
+    cli_function_map = {
+        "doc_check": check_docs,
+        "test_check": check_tests,
+        "git_check": lambda: git_changes()
+    }
+    
+    if check_name not in cli_function_map:
         raise HTTPException(status_code=400, detail=f"Unknown check: {check_name}")
     
     try:
-        # Run check in background
         def run_check_task():
-            daemon.run_check_manually(check_name)
+            """Background task to run the CLI function."""
+            cli_function = cli_function_map[check_name]
+            exit_code = cli_function()
+            return exit_code
         
         background_tasks.add_task(run_check_task)
         
         return CheckExecutionResponse(
             success=True,
-            result=None,  # Will be available after background task completes
+            result=None,
             error=None
         )
-    
     except Exception as e:
-        logger.error(f"Error running check {check_name}: {e}")
-        return CheckExecutionResponse(
-            success=False,
-            result=None,
-            error=str(e)
-        )
+        return handle_cli_error(check_name, e)
 
 
 @app.get("/api/config", response_model=AutocodeConfig)
@@ -387,22 +402,17 @@ async def get_architecture_diagram():
 
 @app.post("/api/architecture/regenerate")
 async def regenerate_architecture_diagram(background_tasks: BackgroundTasks):
-    """Regenerate the architecture diagram."""
+    """Regenerate the architecture diagram using CLI function."""
     if not daemon:
         raise HTTPException(status_code=503, detail="Daemon not initialized")
     
     try:
         def regenerate_task():
-            """Background task to regenerate the diagram."""
-            from ..core.design.code_to_design import CodeToDesign
-            
-            # Initialize CodeToDesign
-            code_to_design = CodeToDesign(daemon.project_root)
-            
-            # Generate design for autocode directory
-            result = code_to_design.generate_design("autocode")
-            
-            logger.info(f"Architecture diagram regenerated: {result}")
+            """Background task to regenerate the diagram using CLI."""
+            # Use CLI function for design generation
+            exit_code = code_to_design(directory="autocode")
+            logger.info(f"Architecture diagram regenerated with exit code: {exit_code}")
+            return exit_code
         
         background_tasks.add_task(regenerate_task)
         
@@ -524,6 +534,106 @@ async def regenerate_component_tree(background_tasks: BackgroundTasks, directory
         
     except Exception as e:
         logger.error(f"Error regenerating component tree: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# New CLI Wrapper Endpoints
+
+@app.post("/api/generate-docs", response_model=CheckExecutionResponse)
+async def generate_docs(background_tasks: BackgroundTasks):
+    """Generate/check documentation using CLI function."""
+    try:
+        def run_docs_task():
+            """Background task to run docs check."""
+            return check_docs()
+        
+        background_tasks.add_task(run_docs_task)
+        
+        return CheckExecutionResponse(
+            success=True,
+            result=None,
+            error=None
+        )
+    except Exception as e:
+        return handle_cli_error("check_docs", e)
+
+
+@app.post("/api/generate-design", response_model=CheckExecutionResponse)
+async def generate_design(
+    directory: str = None,
+    output_dir: str = None,
+    background_tasks: BackgroundTasks = None
+):
+    """Generate design diagrams using CLI function."""
+    try:
+        def run_design_task():
+            """Background task to run design generation."""
+            return code_to_design(
+                directory=directory,
+                output_dir=output_dir
+            )
+        
+        background_tasks.add_task(run_design_task)
+        
+        return CheckExecutionResponse(
+            success=True,
+            result=None,
+            error=None
+        )
+    except Exception as e:
+        return handle_cli_error("code_to_design", e)
+
+
+@app.post("/api/analyze-git", response_model=CheckExecutionResponse)
+async def analyze_git(
+    output: str = None,
+    verbose: bool = False,
+    background_tasks: BackgroundTasks = None
+):
+    """Analyze git changes using CLI function."""
+    try:
+        def run_git_task():
+            """Background task to run git analysis."""
+            return git_changes(output=output, verbose=verbose)
+        
+        background_tasks.add_task(run_git_task)
+        
+        return CheckExecutionResponse(
+            success=True,
+            result=None,
+            error=None
+        )
+    except Exception as e:
+        return handle_cli_error("git_changes", e)
+
+
+@app.get("/api/config/load", response_model=Dict[str, Any])
+async def load_configuration():
+    """Load configuration using CLI function."""
+    try:
+        config = load_config()
+        return {
+            "success": True,
+            "config": config.dict(),
+            "error": None
+        }
+    except Exception as e:
+        logger.error(f"Error loading config: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/docs/check-sync")
+async def check_docs_sync():
+    """Synchronously check documentation status."""
+    try:
+        exit_code = check_docs()
+        return {
+            "success": exit_code == 0,
+            "exit_code": exit_code,
+            "message": "Documentation is up to date" if exit_code == 0 else "Documentation issues found"
+        }
+    except Exception as e:
+        logger.error(f"Error checking docs: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
