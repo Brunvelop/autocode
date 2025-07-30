@@ -6,6 +6,9 @@ from datetime import datetime
 from typing import List, Optional, Dict, Any
 from pydantic import BaseModel
 
+# Import DocsConfig from core configuration
+from ..core.config.types import DocsConfig
+
 
 class CheckResult(BaseModel):
     """Result of a check execution."""
@@ -58,14 +61,6 @@ class DocIndexConfig(BaseModel):
     output_path: str = ".clinerules/docs_index.json"
     auto_generate: bool = True
     update_on_docs_change: bool = True
-
-
-class DocsConfig(BaseModel):
-    """Configuration for documentation checking."""
-    enabled: bool = True
-    directories: List[str] = ["vidi/", "autocode/"]
-    file_extensions: List[str] = [".py", ".js", ".html", ".css", ".ts", ".jsx", ".tsx"]
-    exclude: List[str] = ["__pycache__/", "*.pyc", "__init__.py"]
 
 
 class TestConfig(BaseModel):

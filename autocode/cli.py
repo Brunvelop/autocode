@@ -10,75 +10,15 @@ import typer
 from pathlib import Path
 from typing import Optional, List
 
-from .core.docs import DocChecker, DocIndexer
+from .core.docs import DocIndexer, check_documentation, format_cli_output, has_documentation_issues
 from .core.test import TestChecker
 from .core.git import GitAnalyzer
 from .core.ai import OpenCodeExecutor, validate_opencode_setup
 from .core.design import CodeToDesign
-from .api.models import AutocodeConfig
+from .core.config import load_config, AutocodeConfig
 
 # Create Typer app
 app = typer.Typer(help="Automated code quality and development tools")
-
-
-def find_config_file(start_path: Path) -> Optional[Path]:
-    """Find autocode_config.yml by searching up the directory tree.
-    
-    Args:
-        start_path: Starting directory to search from
-        
-    Returns:
-        Path to autocode_config.yml if found, None otherwise
-    """
-    current = start_path.resolve()
-    while current != current.parent:  # Until we reach filesystem root
-        config_file = current / "autocode_config.yml"
-        if config_file.exists():
-            return config_file
-        current = current.parent
-    return None
-
-
-def load_config(working_dir: Path = None) -> AutocodeConfig:
-    """Load configuration from autocode_config.yml.
-    
-    Searches up the directory tree starting from working_dir (or cwd) 
-    until it finds autocode_config.yml.
-    
-    Args:
-        working_dir: Directory to start search from (defaults to cwd)
-        
-    Returns:
-        Loaded configuration with defaults
-    """
-    if working_dir is None:
-        working_dir = Path.cwd()
-    
-    config_file = find_config_file(working_dir)
-    
-    if config_file is None:
-        # Return default configuration if file doesn't exist
-        return AutocodeConfig()
-    
-    try:
-        with open(config_file, 'r', encoding='utf-8') as f:
-            config_data = yaml.safe_load(f)
-        
-        if not config_data:
-            return AutocodeConfig()
-        
-        # Check for deprecated 'language' field (Mejora 5)
-        if config_data and 'code_to_design' in config_data and 'language' in config_data['code_to_design']:
-            warnings.warn("⚠️  Campo 'language' está deprecado en code_to_design. Usa 'languages' como lista en su lugar.", 
-                         DeprecationWarning, stacklevel=2)
-        
-        # Parse configuration with Pydantic
-        return AutocodeConfig(**config_data)
-        
-    except Exception as e:
-        print(f"⚠️  Warning: Error loading config from {config_file}: {e}")
-        print("   Using default configuration")
-        return AutocodeConfig()
 
 
 @app.command("check-docs")
@@ -89,21 +29,21 @@ def check_docs(
     # Get project root (current working directory)
     project_root = Path.cwd()
     
-    # Load configuration (searches up directory tree)
+    # Load configuration using the unified config system
     config = load_config()
     
-    # Initialize checker with configuration
-    checker = DocChecker(project_root, config.docs)
+    # Check documentation using new functional API
+    result = check_documentation(project_root, config.docs)
     
-    # Check for outdated documentation
-    outdated_results = checker.get_outdated_docs()
-    
-    # Format and display results
-    output = checker.format_results(outdated_results)
+    # Format and display results using new formatter
+    output = format_cli_output(result)
     print(output)
     
+    # Check if there are documentation issues
+    has_issues = has_documentation_issues(result)
+    
     # Generate documentation index if docs are up to date and config allows it
-    if not outdated_results and config.doc_index.enabled and config.doc_index.auto_generate:
+    if not has_issues and config.doc_index.enabled and config.doc_index.auto_generate:
         try:
             # Initialize doc indexer with CLI override if provided
             indexer = DocIndexer(project_root, config.doc_index, doc_index_output)
@@ -120,7 +60,7 @@ def check_docs(
             # Don't fail the command for index generation issues
     
     # Return appropriate exit code
-    return 1 if outdated_results else 0
+    return 1 if has_issues else 0
 
 
 @app.command("check-tests")

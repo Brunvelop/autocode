@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+
+{% block title %}Inicio{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto">
+    <!-- Hero Section -->
+    <div class="text-center py-12">
+        <h1 class="text-4xl font-bold text-gray-900 mb-4">
+            Bienvenido a Autocode
+        </h1>
+        <p class="text-xl text-gray-600 mb-8">
+            Herramientas automatizadas para la calidad del código y el desarrollo
+        </p>
+    </div>
+    
+    <!-- Features Grid -->
+    <div class="grid md:grid-cols-2 gap-8 mb-12">
+        <div class="bg-white p-6 rounded-lg shadow-md">
+            <h3 class="text-xl font-semibold text-gray-800 mb-3">
+                📋 Verificación de Documentación
+            </h3>
+            <p class="text-gray-600">
+                Analiza y verifica el estado de la documentación de tu proyecto, 
+                identificando archivos desactualizados o faltantes.
+            </p>
+        </div>
+        
+        <div class="bg-white p-6 rounded-lg shadow-md">
+            <h3 class="text-xl font-semibold text-gray-800 mb-3">
+                🧪 Análisis de Tests
+            </h3>
+            <p class="text-gray-600">
+                Verifica la cobertura de tests y detecta archivos de código 
+                sin tests correspondientes.
+            </p>
+        </div>
+        
+        <div class="bg-white p-6 rounded-lg shadow-md">
+            <h3 class="text-xl font-semibold text-gray-800 mb-3">
+                🔍 Análisis de Git
+            </h3>
+            <p class="text-gray-600">
+                Examina los cambios en tu repositorio Git y genera resúmenes 
+                detallados para commits.
+            </p>
+        </div>
+        
+        <div class="bg-white p-6 rounded-lg shadow-md">
+            <h3 class="text-xl font-semibold text-gray-800 mb-3">
+                🎨 Generación de Diseño
+            </h3>
+            <p class="text-gray-600">
+                Crea diagramas y documentación de diseño automáticamente 
+                a partir de tu código fuente.
+            </p>
+        </div>
+    </div>
+    
+    <!-- CTA -->
+    <div class="text-center">
+        <a href="/docs-check" class="inline-block px-8 py-4 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors">
+            Comenzar con Docs Check
+        </a>
+    </div>
+</div>
+{% endblock %}

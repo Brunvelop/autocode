@@ -10,7 +10,7 @@ This module is organized into thematic submodules for better maintainability:
 """
 
 # Documentation tools
-from .docs import DocChecker, DocIndexer
+from .docs import check_documentation, DocIndexer
 
 # Git analysis tools
 from .git import GitAnalyzer
@@ -25,7 +25,7 @@ from .ai import OpenCodeExecutor, validate_opencode_setup, TokenCounter
 from .design import CodeToDesign
 
 __all__ = [
-    "DocChecker",
+    "check_documentation",
     "GitAnalyzer", 
     "OpenCodeExecutor",
     "validate_opencode_setup",

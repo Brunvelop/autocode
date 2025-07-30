@@ -1,161 +1,27 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="es">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Autocode - {% block title %}Dashboard{% endblock %}</title>
+    <title>Autocode - {% block title %}{% endblock %}</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-      tailwind.config = {
-        theme: {
-          extend: {
-            colors: {
-              'primary': '#007bff',
-              'primary-hover': '#0056b3', 
-              'success': '#28a745',
-              'warning': '#ffc107',
-              'error': '#dc3545',
-              'neutral': {
-                100: '#f8f9fa',
-                200: '#e9ecef', 
-                300: '#dee2e6',
-                400: '#ced4da',
-                500: '#6c757d',
-                600: '#495057',
-                700: '#343a40',
-                800: '#2c3e50',
-                900: '#1a1a1a'
-              }
-            },
-            fontFamily: {
-              'sans': ['-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],
-              'mono': ['SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'monospace']
-            }
-          }
-        }
-      }
-    </script>
-    
-    <!-- Responsive Design -->
-    <style>
-    @media (max-width: 1024px) {
-        .sidebar {
-            width: 100%;
-            height: auto;
-            position: relative;
-            border-right: none;
-            border-bottom: 1px solid #e5e7eb;
-            padding: 0.5rem;
-        }
-        
-        .main-content {
-            margin-left: 0;
-        }
-        
-        header {
-            margin-left: 0 !important;
-        }
-        
-        footer {
-            margin-left: 0 !important;
-        }
-        
-        .nav-menu {
-            display: flex;
-            flex-direction: row;
-            gap: 0.5rem;
-            overflow-x: auto;
-            padding: 0.5rem 0;
-        }
-        
-        .nav-item {
-            margin-bottom: 0;
-            flex-shrink: 0;
-        }
-        
-        .nav-link {
-            margin: 0;
-            padding: 0.5rem 0.75rem;
-            min-width: 120px;
-            justify-content: center;
-        }
-        
-        .nav-text {
-            font-size: 0.75rem;
-        }
-    }
-
-    @media (max-width: 768px) {
-        .container {
-            padding: 0.75rem;
-        }
-        
-        .check-header {
-            flex-direction: column;
-            gap: 0.75rem;
-            align-items: stretch;
-        }
-        
-        .check-controls {
-            width: 100%;
-            justify-content: space-between;
-        }
-        
-        .config-card {
-            grid-template-columns: 1fr;
-            gap: 1.5rem;
-        }
-        
-        .status-grid {
-            grid-template-columns: 1fr;
-        }
-    }
-    </style>
-    
-    {% block extra_css %}{% endblock %}
 </head>
-<body class="bg-gray-50 font-sans">
-    {% include 'components/header.html' %}
+<body class="bg-gray-50 min-h-screen flex flex-col">
+    <!-- Navigation -->
+    {% include 'components/nav.html' %}
     
-    <div class="flex min-h-screen">
-        <!-- Sidebar -->
-        <nav class="w-64 bg-white border-r border-gray-200 shadow-sm fixed h-full z-40 overflow-y-auto pt-4">
-            <ul class="space-y-1 px-2">
-                <li>
-                    <a href="/dashboard" class="flex items-center px-3 py-2 text-gray-600 rounded-md hover:bg-gray-100 hover:text-gray-800 transition-colors {% if request.url.path == '/dashboard' %}bg-blue-50 text-blue-600 font-medium{% endif %}">
-                        <span class="mr-3 text-lg">📊</span>
-                        <span class="text-sm font-medium">Dashboard</span>
-                    </a>
-                </li>
-                <li>
-                    <a href="/design" class="flex items-center px-3 py-2 text-gray-600 rounded-md hover:bg-gray-100 hover:text-gray-800 transition-colors {% if request.url.path == '/design' %}bg-blue-50 text-blue-600 font-medium{% endif %}">
-                        <span class="mr-3 text-lg">🎨</span>
-                        <span class="text-sm font-medium">Design</span>
-                    </a>
-                </li>
-                <li>
-                    <a href="/config" class="flex items-center px-3 py-2 text-gray-600 rounded-md hover:bg-gray-100 hover:text-gray-800 transition-colors {% if request.url.path == '/config' %}bg-blue-50 text-blue-600 font-medium{% endif %}">
-                        <span class="mr-3 text-lg">⚙️</span>
-                        <span class="text-sm font-medium">Configuration</span>
-                    </a>
-                </li>
-            </ul>
-        </nav>
-        
-        <!-- Main Content -->
-        <main class="flex-1 ml-64 flex flex-col">
-            <div class="max-w-full px-5 py-3 w-full">
-                {% block content %}{% endblock %}
-            </div>
-        </main>
-    </div>
+    <!-- Main Content -->
+    <main class="flex-1 container mx-auto px-4 py-8">
+        {% block content %}{% endblock %}
+    </main>
     
-    {% include 'components/footer.html' %}
+    <!-- Footer -->
+    <footer class="bg-gray-100 py-4 mt-auto">
+        <div class="container mx-auto px-4 text-center text-gray-600">
+            <p>Autocode &copy; 2025</p>
+        </div>
+    </footer>
     
-    <!-- Mermaid.js for interactive diagrams -->
-    <script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.0/dist/mermaid.min.js"></script>
-    <!-- Main app (modular ES6) -->
-    <script type="module" src="/static/app.js"></script>
-    {% block extra_js %}{% endblock %}
+    {% block scripts %}{% endblock %}
 </body>
 </html>

@@ -13,9 +13,13 @@ from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi import Request
 
-from .models import CheckExecutionResponse, AutocodeConfig
+from .models import CheckExecutionResponse
 # Import CLI functions for thin wrapper implementation
-from ..cli import check_docs, check_tests, git_changes, code_to_design, load_config, opencode, count_tokens
+from ..cli import check_tests, git_changes, code_to_design, opencode, count_tokens
+# Import core functionality for docs check
+from ..core.config import load_config
+from ..core.docs import check_documentation
+from ..core.docs.formatters import format_json_output, format_summary_only
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -48,55 +52,18 @@ def handle_cli_error(func_name: str, error: Exception) -> CheckExecutionResponse
 # Page Routes
 
 @app.get("/", response_class=HTMLResponse)
-async def root(request: Request):
-    """Redirect to dashboard."""
-    return RedirectResponse(url="/dashboard", status_code=302)
+async def home(request: Request):
+    """Serve the home page."""
+    return templates.TemplateResponse("pages/home.html", {"request": request})
 
 
-@app.get("/dashboard", response_class=HTMLResponse)
-async def dashboard(request: Request):
-    """Serve the dashboard page."""
-    return templates.TemplateResponse("pages/dashboard.html", {"request": request})
-
-
-@app.get("/design", response_class=HTMLResponse)
-async def design(request: Request):
-    """Serve the design page."""
-    return templates.TemplateResponse("pages/design.html", {"request": request})
-
-
-@app.get("/config", response_class=HTMLResponse)
-async def config_page(request: Request):
-    """Serve the configuration page."""
-    return templates.TemplateResponse("pages/config.html", {"request": request})
-
-
-@app.get("/index", response_class=HTMLResponse)
-async def index(request: Request):
-    """Serve the old index page (backward compatibility)."""
-    return templates.TemplateResponse("index.html", {"request": request})
+@app.get("/docs-check", response_class=HTMLResponse)
+async def docs_check_page(request: Request):
+    """Serve the docs check page."""
+    return templates.TemplateResponse("pages/docs-check.html", {"request": request})
 
 
 # CLI Wrapper Endpoints
-
-@app.post("/api/generate-docs", response_model=CheckExecutionResponse)
-async def generate_docs(background_tasks: BackgroundTasks):
-    """Generate/check documentation using CLI function."""
-    try:
-        def run_docs_task():
-            """Background task to run docs check."""
-            return check_docs()
-        
-        background_tasks.add_task(run_docs_task)
-        
-        return CheckExecutionResponse(
-            success=True,
-            result=None,
-            error=None
-        )
-    except Exception as e:
-        return handle_cli_error("check_docs", e)
-
 
 @app.post("/api/generate-design", response_model=CheckExecutionResponse)
 async def generate_design(
@@ -255,15 +222,17 @@ async def count_tokens_wrapper(
         return handle_cli_error("count_tokens", e)
 
 
-@app.post("/api/docs/check-sync")
-async def check_docs_sync():
-    """Synchronously check documentation status."""
+@app.post("/api/docs/check")
+async def check_docs():
+    """Check documentation status and return detailed results."""
     try:
-        exit_code = check_docs()
+        config = load_config()
+        result = check_documentation(Path.cwd(), config.docs)
+        
         return {
-            "success": exit_code == 0,
-            "exit_code": exit_code,
-            "message": "Documentation is up to date" if exit_code == 0 else "Documentation issues found"
+            "success": not result.has_issues,
+            "data": format_json_output(result),
+            "summary": format_summary_only(result)
         }
     except Exception as e:
         logger.error(f"Error checking docs: {e}")
