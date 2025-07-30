@@ -33,6 +33,8 @@ templates = Jinja2Templates(directory=Path(__file__).parent.parent / "web" / "te
 app.mount("/static", StaticFiles(directory=Path(__file__).parent.parent / "web" / "static"), name="static")
 # Mount design directory to serve documentation files
 app.mount("/design", StaticFiles(directory=Path(__file__).parent.parent.parent / "design"), name="design")
+# Mount docs directory to serve markdown files
+app.mount("/documentation", StaticFiles(directory=Path(__file__).parent.parent.parent / "docs"), name="documentation")
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -57,10 +59,10 @@ async def home(request: Request):
     return templates.TemplateResponse("pages/home.html", {"request": request})
 
 
-@app.get("/docs-check", response_class=HTMLResponse)
-async def docs_check_page(request: Request):
-    """Serve the docs check page."""
-    return templates.TemplateResponse("pages/docs-check.html", {"request": request})
+@app.get("/documentation", response_class=HTMLResponse)
+async def documentation_page(request: Request):
+    """Serve the documentation page."""
+    return templates.TemplateResponse("pages/docs.html", {"request": request})
 
 
 # CLI Wrapper Endpoints

@@ -1,0 +1,49 @@
+<!-- Docs Checker Component -->
+<div id="docs-checker" class="bg-white rounded-lg shadow-md">
+    <div class="p-6 border-b border-gray-200">
+        <h3 class="text-lg font-semibold text-gray-800 mb-2">Verificación de Documentación</h3>
+        <p class="text-gray-600 mb-4">Verifica el estado de la documentación de tu proyecto.</p>
+        <button id="check-docs-btn" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
+            Verificar Documentación
+        </button>
+    </div>
+    
+    <!-- Results Section -->
+    <div id="checker-results" class="hidden p-6">
+        <!-- Loading State -->
+        <div id="loading" class="text-center py-4">
+            <div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mb-2"></div>
+            <p class="text-blue-600">Analizando documentación...</p>
+        </div>
+        
+        <!-- Success/Error States -->
+        <div id="success" class="hidden bg-green-50 border border-green-200 rounded-lg p-4 mb-4">
+            <h4 class="text-green-800 font-semibold">✅ Verificación Completada</h4>
+            <div id="success-content"></div>
+        </div>
+        
+        <div id="error" class="hidden bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
+            <h4 class="text-red-800 font-semibold">❌ Error</h4>
+            <p id="error-message" class="text-red-600"></p>
+        </div>
+        
+        <!-- Results Content -->
+        <div id="results-content" class="hidden space-y-4">
+            <!-- Summary -->
+            <div class="bg-gray-50 p-4 rounded-lg">
+                <h4 class="font-semibold text-gray-800 mb-3">Resumen</h4>
+                <div id="summary-content" class="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
+                    <!-- Summary stats will be inserted here -->
+                </div>
+            </div>
+            
+            <!-- Issues -->
+            <div id="issues-section" class="bg-gray-50 p-4 rounded-lg">
+                <h4 class="font-semibold text-gray-800 mb-3">Problemas Encontrados</h4>
+                <div id="issues-content">
+                    <!-- Issues will be inserted here -->
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

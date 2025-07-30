@@ -1,0 +1,30 @@
+<!-- Docs Viewer Component -->
+<div id="docs-viewer" class="bg-white rounded-lg shadow-md">
+    <div class="p-6 border-b border-gray-200">
+        <h3 class="text-lg font-semibold text-gray-800">Documentación del Proyecto</h3>
+        <p class="text-gray-600">Explora y visualiza los archivos de documentación.</p>
+    </div>
+    
+    <div class="flex h-96">
+        <!-- File Tree -->
+        <div class="w-1/3 border-r border-gray-200 overflow-y-auto">
+            <div class="p-4">
+                <h4 class="font-medium text-gray-800 mb-3">📁 Archivos</h4>
+                <div id="file-tree" class="space-y-1">
+                    <div class="text-gray-500 text-sm">Cargando archivos...</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Content Area -->
+        <div class="flex-1 overflow-y-auto">
+            <div class="p-6">
+                <div id="content-area" class="prose prose-sm max-w-none">
+                    <div class="text-gray-500 text-center py-8">
+                        <p>Selecciona un archivo del árbol para ver su contenido</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

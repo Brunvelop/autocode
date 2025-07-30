@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+
+{% block title %}Docs{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto">
+    <h1 class="text-3xl font-bold text-gray-900 mb-8 text-center">
+        Documentación
+    </h1>
+    
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <!-- Docs Checker Component -->
+        <div>
+            {% include 'components/docs_checker.html' %}
+        </div>
+        
+        <!-- Docs Viewer Component -->
+        <div>
+            {% include 'components/docs_viewer.html' %}
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="/static/js/components/docs-checker.js"></script>
+<script src="/static/js/components/docs-viewer.js"></script>
+{% endblock %}
