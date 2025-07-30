@@ -28,6 +28,7 @@ dependencies = [
     "httpx>=0.24.0",
     "beautifulsoup4>=4.13.4",
     "typer>=0.16.0",
+    "fastapi-mcp>=0.4.0",
 ]
 
 [project.optional-dependencies]

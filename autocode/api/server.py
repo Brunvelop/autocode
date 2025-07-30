@@ -12,6 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi import Request
+from fastapi_mcp import FastApiMCP
 
 from .models import CheckExecutionResponse
 # Import CLI functions for thin wrapper implementation
@@ -26,6 +27,13 @@ app = FastAPI(
     title="Autocode Thin Layer API",
     description="Simplified API that provides CLI wrappers and web interface",
     version="1.0.0"
+)
+
+# Initialize MCP server
+mcp = FastApiMCP(
+    app,
+    name="Autocode MCP Server",
+    description="MCP server for autocode CLI tools and API endpoints"
 )
 
 # Setup templates and static files
@@ -67,7 +75,7 @@ async def documentation_page(request: Request):
 
 # CLI Wrapper Endpoints
 
-@app.post("/api/generate-design", response_model=CheckExecutionResponse)
+@app.post("/api/generate-design", response_model=CheckExecutionResponse, operation_id="generate_design")
 async def generate_design(
     directory: str = None,
     output_dir: str = None,
@@ -93,7 +101,7 @@ async def generate_design(
         return handle_cli_error("code_to_design", e)
 
 
-@app.post("/api/analyze-git", response_model=CheckExecutionResponse)
+@app.post("/api/analyze-git", response_model=CheckExecutionResponse, operation_id="analyze_git")
 async def analyze_git(
     output: str = None,
     verbose: bool = False,
@@ -116,7 +124,7 @@ async def analyze_git(
         return handle_cli_error("git_changes", e)
 
 
-@app.get("/api/config/load", response_model=Dict[str, Any])
+@app.get("/api/config/load", response_model=Dict[str, Any], operation_id="load_configuration")
 async def load_configuration():
     """Load configuration using CLI function."""
     try:
@@ -131,7 +139,7 @@ async def load_configuration():
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/api/check-tests", response_model=CheckExecutionResponse)
+@app.post("/api/check-tests", response_model=CheckExecutionResponse, operation_id="check_tests")
 async def check_tests_wrapper(background_tasks: BackgroundTasks):
     """Check if tests exist and are passing using CLI function."""
     try:
@@ -150,7 +158,7 @@ async def check_tests_wrapper(background_tasks: BackgroundTasks):
         return handle_cli_error("check_tests", e)
 
 
-@app.post("/api/opencode", response_model=CheckExecutionResponse)
+@app.post("/api/opencode", response_model=CheckExecutionResponse, operation_id="opencode_analysis")
 async def opencode_wrapper(
     background_tasks: BackgroundTasks,
     prompt: str = None,
@@ -190,7 +198,7 @@ async def opencode_wrapper(
         return handle_cli_error("opencode", e)
 
 
-@app.post("/api/count-tokens", response_model=CheckExecutionResponse)
+@app.post("/api/count-tokens", response_model=CheckExecutionResponse, operation_id="count_tokens")
 async def count_tokens_wrapper(
     background_tasks: BackgroundTasks,
     file: str = None,
@@ -224,7 +232,7 @@ async def count_tokens_wrapper(
         return handle_cli_error("count_tokens", e)
 
 
-@app.post("/api/docs/check")
+@app.post("/api/docs/check", operation_id="check_documentation")
 async def check_docs():
     """Check documentation status and return detailed results."""
     try:
@@ -246,6 +254,12 @@ async def check_docs():
 async def health_check():
     """Simple health check."""
     return {"status": "healthy"}
+
+
+# Mount MCP server with both HTTP and SSE transports
+mcp.mount_http()
+mcp.mount_sse()
+mcp.setup_server()
 
 
 def create_app() -> FastAPI:
