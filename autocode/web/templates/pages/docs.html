@@ -1,20 +1,27 @@
 {% extends "base.html" %}
 
-{% block title %}Docs{% endblock %}
+{% block title %}Documentación{% endblock %}
 
 {% block content %}
-<div class="max-w-7xl mx-auto">
-    <h1 class="text-3xl font-bold text-gray-900 mb-8 text-center">
-        Documentación
-    </h1>
+<div class="max-w-7xl mx-auto px-6 lg:px-8 py-16">
+    <!-- Header -->
+    <div class="text-center mb-16">
+        <h1 class="text-4xl font-light text-gray-900 mb-4 tracking-tight">
+            Documentación
+        </h1>
+        <p class="text-lg text-gray-500 max-w-2xl mx-auto leading-relaxed">
+            Verifica el estado de la documentación y explora los archivos de tu proyecto
+        </p>
+    </div>
     
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        <!-- Docs Checker Component -->
+    <!-- Components -->
+    <div class="space-y-12">
+        <!-- Docs Checker -->
         <div>
             {% include 'components/docs_checker.html' %}
         </div>
         
-        <!-- Docs Viewer Component -->
+        <!-- Docs Viewer -->
         <div>
             {% include 'components/docs_viewer.html' %}
         </div>

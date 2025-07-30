@@ -1,49 +1,225 @@
 <!-- Docs Checker Component -->
-<div id="docs-checker" class="bg-white rounded-lg shadow-md">
-    <div class="p-6 border-b border-gray-200">
-        <h3 class="text-lg font-semibold text-gray-800 mb-2">Verificación de Documentación</h3>
-        <p class="text-gray-600 mb-4">Verifica el estado de la documentación de tu proyecto.</p>
-        <button id="check-docs-btn" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
+<div id="docs-checker" class="border border-gray-100 rounded-lg">
+    <div class="p-8 border-b border-gray-100">
+        <h3 class="text-xl font-medium text-gray-900 mb-2">Verificación de Documentación</h3>
+        <p class="text-gray-500 mb-6">Verifica el estado de la documentación de tu proyecto.</p>
+        <button id="check-docs-btn" class="inline-flex items-center px-6 py-3 border border-gray-300 rounded-lg text-gray-700 hover:border-gray-400 transition-colors duration-200">
             Verificar Documentación
+            <svg class="ml-2 w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+            </svg>
         </button>
     </div>
     
     <!-- Results Section -->
-    <div id="checker-results" class="hidden p-6">
+    <div id="checker-results" class="hidden">
         <!-- Loading State -->
-        <div id="loading" class="text-center py-4">
-            <div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mb-2"></div>
-            <p class="text-blue-600">Analizando documentación...</p>
+        <div id="loading" class="p-8 text-center">
+            <div class="inline-block">
+                <div class="w-6 h-6 border-2 border-gray-300 border-t-gray-600 rounded-full animate-spin mb-3"></div>
+                <p class="text-gray-500 text-sm">Analizando documentación...</p>
+            </div>
         </div>
         
         <!-- Success/Error States -->
-        <div id="success" class="hidden bg-green-50 border border-green-200 rounded-lg p-4 mb-4">
-            <h4 class="text-green-800 font-semibold">✅ Verificación Completada</h4>
-            <div id="success-content"></div>
+        <div id="success" class="hidden border-t border-gray-100 p-8">
+            <div class="flex items-start">
+                <div class="flex-shrink-0">
+                    <svg class="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                    </svg>
+                </div>
+                <div class="ml-3">
+                    <h4 class="text-sm font-medium text-gray-900">Verificación Completada</h4>
+                    <div id="success-content" class="mt-2 text-sm text-gray-500"></div>
+                </div>
+            </div>
         </div>
         
-        <div id="error" class="hidden bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
-            <h4 class="text-red-800 font-semibold">❌ Error</h4>
-            <p id="error-message" class="text-red-600"></p>
+        <div id="error" class="hidden border-t border-gray-100 p-8">
+            <div class="flex items-start">
+                <div class="flex-shrink-0">
+                    <svg class="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                    </svg>
+                </div>
+                <div class="ml-3">
+                    <h4 class="text-sm font-medium text-gray-900">Error</h4>
+                    <p id="error-message" class="mt-2 text-sm text-gray-500"></p>
+                </div>
+            </div>
         </div>
         
         <!-- Results Content -->
-        <div id="results-content" class="hidden space-y-4">
+        <div id="results-content" class="hidden border-t border-gray-100 p-8">
             <!-- Summary -->
-            <div class="bg-gray-50 p-4 rounded-lg">
-                <h4 class="font-semibold text-gray-800 mb-3">Resumen</h4>
-                <div id="summary-content" class="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
+            <div class="mb-8">
+                <h4 class="text-sm font-medium text-gray-900 mb-4">Resumen</h4>
+                <div id="summary-content" class="grid grid-cols-2 md:grid-cols-4 gap-4">
                     <!-- Summary stats will be inserted here -->
                 </div>
             </div>
             
             <!-- Issues -->
-            <div id="issues-section" class="bg-gray-50 p-4 rounded-lg">
-                <h4 class="font-semibold text-gray-800 mb-3">Problemas Encontrados</h4>
-                <div id="issues-content">
+            <div id="issues-section">
+                <h4 class="text-sm font-medium text-gray-900 mb-4">Problemas Encontrados</h4>
+                <div id="issues-content" class="space-y-3">
                     <!-- Issues will be inserted here -->
                 </div>
             </div>
         </div>
     </div>
 </div>
+
+<!-- Hidden elements to ensure Tailwind compiles all necessary classes -->
+<div class="hidden">
+    <!-- Summary stat classes -->
+    <div class="text-center text-2xl font-medium text-gray-900 text-green-600 text-yellow-600 text-red-600 text-xs text-gray-500 mt-1"></div>
+    
+    <!-- Issue card classes -->
+    <div class="border-l-4 rounded p-3 border-red-400 bg-red-50 border-yellow-400 bg-yellow-50"></div>
+    <div class="flex justify-between items-start flex-1 font-medium text-gray-800 text-sm mb-1 text-xs text-gray-500"></div>
+    <div class="px-2 py-1 text-xs font-medium rounded-full bg-red-100 text-red-800 bg-yellow-100 text-yellow-800"></div>
+    
+    <!-- Message classes -->
+    <div class="text-green-600 text-gray-500 text-sm"></div>
+</div>
+
+<script>
+// Map semantic classes to Tailwind classes when elements are created
+document.addEventListener('DOMContentLoaded', function() {
+    const observer = new MutationObserver(function(mutations) {
+        mutations.forEach(function(mutation) {
+            mutation.addedNodes.forEach(function(node) {
+                if (node.nodeType === 1) { // Element node
+                    // Map summary stat classes
+                    if (node.classList && node.classList.contains('summary-stat')) {
+                        node.classList.add('text-center');
+                    }
+                    if (node.classList && node.classList.contains('summary-stat-number')) {
+                        node.classList.add('text-2xl', 'font-medium', 'text-gray-900');
+                        if (node.classList.contains('summary-stat-success')) {
+                            node.classList.add('text-green-600');
+                        }
+                        if (node.classList.contains('summary-stat-warning')) {
+                            node.classList.add('text-yellow-600');
+                        }
+                        if (node.classList.contains('summary-stat-error')) {
+                            node.classList.add('text-red-600');
+                        }
+                    }
+                    if (node.classList && node.classList.contains('summary-stat-label')) {
+                        node.classList.add('text-xs', 'text-gray-500', 'mt-1');
+                    }
+                    
+                    // Map issue card classes
+                    if (node.classList && node.classList.contains('issue-card')) {
+                        node.classList.add('border-l-4', 'rounded', 'p-3');
+                        if (node.classList.contains('issue-status-missing')) {
+                            node.classList.add('border-red-400', 'bg-red-50');
+                        }
+                        if (node.classList.contains('issue-status-outdated')) {
+                            node.classList.add('border-yellow-400', 'bg-yellow-50');
+                        }
+                    }
+                    if (node.classList && node.classList.contains('issue-content')) {
+                        node.classList.add('flex', 'justify-between', 'items-start');
+                    }
+                    if (node.classList && node.classList.contains('issue-info')) {
+                        node.classList.add('flex-1');
+                    }
+                    if (node.classList && node.classList.contains('issue-path')) {
+                        node.classList.add('font-medium', 'text-gray-800', 'text-sm', 'mb-1');
+                    }
+                    if (node.classList && node.classList.contains('issue-type')) {
+                        node.classList.add('text-xs', 'text-gray-500');
+                    }
+                    if (node.classList && node.classList.contains('issue-badge')) {
+                        node.classList.add('px-2', 'py-1', 'text-xs', 'font-medium', 'rounded-full');
+                        if (node.classList.contains('issue-badge-missing')) {
+                            node.classList.add('bg-red-100', 'text-red-800');
+                        }
+                        if (node.classList.contains('issue-badge-outdated')) {
+                            node.classList.add('bg-yellow-100', 'text-yellow-800');
+                        }
+                    }
+                    
+                    // Map message classes
+                    if (node.classList && node.classList.contains('success-message')) {
+                        node.classList.add('text-green-600');
+                    }
+                    if (node.classList && node.classList.contains('no-issues-message')) {
+                        node.classList.add('text-gray-500', 'text-sm');
+                    }
+                    
+                    // Recursively check child nodes
+                    node.querySelectorAll('*').forEach(function(child) {
+                        if (child.classList) {
+                            // Apply the same mappings to child elements
+                            if (child.classList.contains('summary-stat')) {
+                                child.classList.add('text-center');
+                            }
+                            if (child.classList.contains('summary-stat-number')) {
+                                child.classList.add('text-2xl', 'font-medium', 'text-gray-900');
+                                if (child.classList.contains('summary-stat-success')) {
+                                    child.classList.add('text-green-600');
+                                }
+                                if (child.classList.contains('summary-stat-warning')) {
+                                    child.classList.add('text-yellow-600');
+                                }
+                                if (child.classList.contains('summary-stat-error')) {
+                                    child.classList.add('text-red-600');
+                                }
+                            }
+                            if (child.classList.contains('summary-stat-label')) {
+                                child.classList.add('text-xs', 'text-gray-500', 'mt-1');
+                            }
+                            if (child.classList.contains('issue-card')) {
+                                child.classList.add('border-l-4', 'rounded', 'p-3');
+                                if (child.classList.contains('issue-status-missing')) {
+                                    child.classList.add('border-red-400', 'bg-red-50');
+                                }
+                                if (child.classList.contains('issue-status-outdated')) {
+                                    child.classList.add('border-yellow-400', 'bg-yellow-50');
+                                }
+                            }
+                            if (child.classList.contains('issue-content')) {
+                                child.classList.add('flex', 'justify-between', 'items-start');
+                            }
+                            if (child.classList.contains('issue-info')) {
+                                child.classList.add('flex-1');
+                            }
+                            if (child.classList.contains('issue-path')) {
+                                child.classList.add('font-medium', 'text-gray-800', 'text-sm', 'mb-1');
+                            }
+                            if (child.classList.contains('issue-type')) {
+                                child.classList.add('text-xs', 'text-gray-500');
+                            }
+                            if (child.classList.contains('issue-badge')) {
+                                child.classList.add('px-2', 'py-1', 'text-xs', 'font-medium', 'rounded-full');
+                                if (child.classList.contains('issue-badge-missing')) {
+                                    child.classList.add('bg-red-100', 'text-red-800');
+                                }
+                                if (child.classList.contains('issue-badge-outdated')) {
+                                    child.classList.add('bg-yellow-100', 'text-yellow-800');
+                                }
+                            }
+                            if (child.classList.contains('success-message')) {
+                                child.classList.add('text-green-600');
+                            }
+                            if (child.classList.contains('no-issues-message')) {
+                                child.classList.add('text-gray-500', 'text-sm');
+                            }
+                        }
+                    });
+                }
+            });
+        });
+    });
+    
+    observer.observe(document.body, {
+        childList: true,
+        subtree: true
+    });
+});
+</script>

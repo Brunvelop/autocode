@@ -47,7 +47,7 @@ class DocsChecker {
             } else {
                 success.classList.remove('hidden');
                 document.getElementById('success-content').innerHTML = 
-                    '<p class="text-green-600">La verificación se completó pero se encontraron problemas.</p>';
+                    '<p class="success-message">La verificación se completó pero se encontraron problemas.</p>';
                 this.displayResults(data);
             }
             
@@ -71,21 +71,21 @@ class DocsChecker {
         if (data.data && data.data.summary) {
             const summary = data.data.summary;
             summaryContent.innerHTML = `
-                <div>
-                    <p class="text-2xl font-bold text-gray-800">${summary.total_files}</p>
-                    <p class="text-xs text-gray-600">Total</p>
+                <div class="summary-stat">
+                    <p class="summary-stat-number">${summary.total_files}</p>
+                    <p class="summary-stat-label">Total</p>
                 </div>
-                <div>
-                    <p class="text-2xl font-bold text-green-600">${summary.up_to_date_count}</p>
-                    <p class="text-xs text-gray-600">Actualizados</p>
+                <div class="summary-stat">
+                    <p class="summary-stat-number summary-stat-success">${summary.up_to_date_count}</p>
+                    <p class="summary-stat-label">Actualizados</p>
                 </div>
-                <div>
-                    <p class="text-2xl font-bold text-yellow-600">${summary.outdated_count}</p>
-                    <p class="text-xs text-gray-600">Desactualizados</p>
+                <div class="summary-stat">
+                    <p class="summary-stat-number summary-stat-warning">${summary.outdated_count}</p>
+                    <p class="summary-stat-label">Desactualizados</p>
                 </div>
-                <div>
-                    <p class="text-2xl font-bold text-red-600">${summary.missing_count}</p>
-                    <p class="text-xs text-gray-600">Faltantes</p>
+                <div class="summary-stat">
+                    <p class="summary-stat-number summary-stat-error">${summary.missing_count}</p>
+                    <p class="summary-stat-label">Faltantes</p>
                 </div>
             `;
         }
@@ -95,19 +95,18 @@ class DocsChecker {
             issuesSection.classList.remove('hidden');
             
             const issuesHTML = data.data.issues.map(issue => {
-                const statusColor = issue.status === 'missing' ? 'red' : 
-                                   issue.status === 'outdated' ? 'yellow' : 'gray';
+                const statusClass = `issue-status-${issue.status}`;
                 const statusText = issue.status === 'missing' ? 'Faltante' : 
                                   issue.status === 'outdated' ? 'Desactualizado' : issue.status;
                 
                 return `
-                    <div class="border-l-4 border-${statusColor}-400 pl-3 py-2">
-                        <div class="flex justify-between items-start">
-                            <div>
-                                <p class="font-medium text-gray-800 text-sm">${issue.code_path}</p>
-                                <p class="text-xs text-gray-600">${issue.doc_type}</p>
+                    <div class="issue-card ${statusClass}">
+                        <div class="issue-content">
+                            <div class="issue-info">
+                                <p class="issue-path">${issue.code_path}</p>
+                                <p class="issue-type">${issue.doc_type}</p>
                             </div>
-                            <span class="px-2 py-1 text-xs font-semibold rounded-full bg-${statusColor}-100 text-${statusColor}-800">
+                            <span class="issue-badge issue-badge-${issue.status}">
                                 ${statusText}
                             </span>
                         </div>
@@ -115,7 +114,7 @@ class DocsChecker {
                 `;
             }).join('');
             
-            issuesContent.innerHTML = issuesHTML || '<p class="text-gray-600 text-sm">No se encontraron problemas.</p>';
+            issuesContent.innerHTML = issuesHTML || '<p class="no-issues-message">No se encontraron problemas.</p>';
         } else {
             issuesSection.classList.add('hidden');
         }

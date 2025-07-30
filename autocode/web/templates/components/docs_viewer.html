@@ -1,17 +1,24 @@
 <!-- Docs Viewer Component -->
-<div id="docs-viewer" class="bg-white rounded-lg shadow-md">
-    <div class="p-6 border-b border-gray-200">
-        <h3 class="text-lg font-semibold text-gray-800">Documentación del Proyecto</h3>
-        <p class="text-gray-600">Explora y visualiza los archivos de documentación.</p>
+<div id="docs-viewer" class="border border-gray-100 rounded-lg">
+    <div class="p-8 border-b border-gray-100">
+        <h3 class="text-xl font-medium text-gray-900 mb-2">Explorador de Documentación</h3>
+        <p class="text-gray-500">Navega y visualiza los archivos de documentación de tu proyecto.</p>
     </div>
     
     <div class="flex h-96">
         <!-- File Tree -->
-        <div class="w-1/3 border-r border-gray-200 overflow-y-auto">
+        <div class="w-1/3 border-r border-gray-100 overflow-y-auto">
             <div class="p-4">
-                <h4 class="font-medium text-gray-800 mb-3">📁 Archivos</h4>
+                <div class="flex items-center justify-between mb-4">
+                    <h4 class="text-sm font-medium text-gray-900">Archivos</h4>
+                    <button id="refresh-tree" class="text-gray-400 hover:text-gray-600">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                        </svg>
+                    </button>
+                </div>
                 <div id="file-tree" class="space-y-1">
-                    <div class="text-gray-500 text-sm">Cargando archivos...</div>
+                    <div class="text-gray-400 text-sm py-8 text-center">Cargando archivos...</div>
                 </div>
             </div>
         </div>
@@ -20,11 +27,219 @@
         <div class="flex-1 overflow-y-auto">
             <div class="p-6">
                 <div id="content-area" class="prose prose-sm max-w-none">
-                    <div class="text-gray-500 text-center py-8">
-                        <p>Selecciona un archivo del árbol para ver su contenido</p>
+                    <div class="text-center py-16">
+                        <div class="text-gray-400 mb-4">
+                            <svg class="w-12 h-12 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                            </svg>
+                        </div>
+                        <p class="text-gray-500">Selecciona un archivo del árbol para ver su contenido</p>
                     </div>
                 </div>
             </div>
         </div>
     </div>
 </div>
+
+<!-- Hidden elements to ensure Tailwind compiles all necessary classes -->
+<div class="hidden">
+    <!-- File tree classes -->
+    <div class="text-gray-400 text-sm py-8 text-center text-red-500 cursor-pointer hover:bg-gray-100 py-1 px-2 rounded text-sm flex items-center mr-2 font-medium text-gray-700"></div>
+    
+    <!-- Content area classes -->
+    <div class="text-center py-4 inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mb-2 text-blue-600 mb-4 pb-4 border-b border-gray-200 text-xl font-semibold text-gray-800 prose prose-sm max-w-none text-red-500 font-semibold text-sm"></div>
+    
+    <!-- Tree indentation classes (for different levels) -->
+    <div class="pl-0 pl-4 pl-8 pl-12 pl-16 pl-20"></div>
+</div>
+
+<script>
+// Map semantic classes to Tailwind classes when elements are created
+document.addEventListener('DOMContentLoaded', function() {
+    const observer = new MutationObserver(function(mutations) {
+        mutations.forEach(function(mutation) {
+            mutation.addedNodes.forEach(function(node) {
+                if (node.nodeType === 1) { // Element node
+                    // Map file tree classes
+                    if (node.classList && node.classList.contains('file-tree-loading')) {
+                        node.classList.add('text-gray-400', 'text-sm', 'py-8', 'text-center');
+                    }
+                    if (node.classList && node.classList.contains('file-tree-error')) {
+                        node.classList.add('text-red-500', 'text-sm');
+                    }
+                    if (node.classList && node.classList.contains('file-tree-empty')) {
+                        node.classList.add('text-gray-500', 'text-sm');
+                    }
+                    if (node.classList && node.classList.contains('tree-file')) {
+                        node.classList.add('cursor-pointer', 'hover:bg-gray-100', 'py-1', 'px-2', 'rounded', 'text-sm', 'flex', 'items-center');
+                        // Handle indentation
+                        if (node.classList.contains('tree-indent-0')) {
+                            node.classList.add('pl-0');
+                        } else if (node.classList.contains('tree-indent-1')) {
+                            node.classList.add('pl-4');
+                        } else if (node.classList.contains('tree-indent-2')) {
+                            node.classList.add('pl-8');
+                        } else if (node.classList.contains('tree-indent-3')) {
+                            node.classList.add('pl-12');
+                        } else if (node.classList.contains('tree-indent-4')) {
+                            node.classList.add('pl-16');
+                        } else if (node.classList.contains('tree-indent-5')) {
+                            node.classList.add('pl-20');
+                        }
+                    }
+                    if (node.classList && node.classList.contains('tree-folder')) {
+                        node.classList.add('py-1', 'px-2', 'text-sm', 'font-medium', 'text-gray-700', 'flex', 'items-center');
+                        // Handle indentation
+                        if (node.classList.contains('tree-indent-0')) {
+                            node.classList.add('pl-0');
+                        } else if (node.classList.contains('tree-indent-1')) {
+                            node.classList.add('pl-4');
+                        } else if (node.classList.contains('tree-indent-2')) {
+                            node.classList.add('pl-8');
+                        } else if (node.classList.contains('tree-indent-3')) {
+                            node.classList.add('pl-12');
+                        } else if (node.classList.contains('tree-indent-4')) {
+                            node.classList.add('pl-16');
+                        } else if (node.classList.contains('tree-indent-5')) {
+                            node.classList.add('pl-20');
+                        }
+                    }
+                    if (node.classList && node.classList.contains('tree-file-icon')) {
+                        node.classList.add('mr-2');
+                    }
+                    if (node.classList && node.classList.contains('tree-file-name')) {
+                        // No additional classes needed
+                    }
+                    if (node.classList && node.classList.contains('tree-folder-icon')) {
+                        node.classList.add('mr-2');
+                    }
+                    if (node.classList && node.classList.contains('tree-folder-name')) {
+                        // No additional classes needed
+                    }
+                    
+                    // Map content area classes
+                    if (node.classList && node.classList.contains('content-loading')) {
+                        node.classList.add('text-center', 'py-8');
+                    }
+                    if (node.classList && node.classList.contains('content-loading-spinner')) {
+                        node.classList.add('inline-block', 'animate-spin', 'rounded-full', 'h-8', 'w-8', 'border-b-2', 'border-blue-600', 'mb-2');
+                    }
+                    if (node.classList && node.classList.contains('content-loading-text')) {
+                        node.classList.add('text-gray-500');
+                    }
+                    if (node.classList && node.classList.contains('content-header')) {
+                        node.classList.add('mb-4', 'pb-4', 'border-b', 'border-gray-200');
+                    }
+                    if (node.classList && node.classList.contains('content-title')) {
+                        node.classList.add('text-xl', 'font-semibold', 'text-gray-800');
+                    }
+                    if (node.classList && node.classList.contains('content-body')) {
+                        node.classList.add('prose', 'prose-sm', 'max-w-none');
+                    }
+                    if (node.classList && node.classList.contains('content-error')) {
+                        node.classList.add('text-center', 'py-8');
+                    }
+                    if (node.classList && node.classList.contains('content-error-icon')) {
+                        node.classList.add('text-red-500');
+                    }
+                    if (node.classList && node.classList.contains('content-error-title')) {
+                        node.classList.add('font-semibold');
+                    }
+                    if (node.classList && node.classList.contains('content-error-message')) {
+                        node.classList.add('text-sm');
+                    }
+                    
+                    // Recursively check child nodes
+                    node.querySelectorAll('*').forEach(function(child) {
+                        if (child.classList) {
+                            // Apply the same mappings to child elements
+                            if (child.classList.contains('file-tree-loading')) {
+                                child.classList.add('text-gray-400', 'text-sm', 'py-8', 'text-center');
+                            }
+                            if (child.classList.contains('file-tree-error')) {
+                                child.classList.add('text-red-500', 'text-sm');
+                            }
+                            if (child.classList.contains('file-tree-empty')) {
+                                child.classList.add('text-gray-500', 'text-sm');
+                            }
+                            if (child.classList.contains('tree-file')) {
+                                child.classList.add('cursor-pointer', 'hover:bg-gray-100', 'py-1', 'px-2', 'rounded', 'text-sm', 'flex', 'items-center');
+                                if (child.classList.contains('tree-indent-0')) {
+                                    child.classList.add('pl-0');
+                                } else if (child.classList.contains('tree-indent-1')) {
+                                    child.classList.add('pl-4');
+                                } else if (child.classList.contains('tree-indent-2')) {
+                                    child.classList.add('pl-8');
+                                } else if (child.classList.contains('tree-indent-3')) {
+                                    child.classList.add('pl-12');
+                                } else if (child.classList.contains('tree-indent-4')) {
+                                    child.classList.add('pl-16');
+                                } else if (child.classList.contains('tree-indent-5')) {
+                                    child.classList.add('pl-20');
+                                }
+                            }
+                            if (child.classList.contains('tree-folder')) {
+                                child.classList.add('py-1', 'px-2', 'text-sm', 'font-medium', 'text-gray-700', 'flex', 'items-center');
+                                if (child.classList.contains('tree-indent-0')) {
+                                    child.classList.add('pl-0');
+                                } else if (child.classList.contains('tree-indent-1')) {
+                                    child.classList.add('pl-4');
+                                } else if (child.classList.contains('tree-indent-2')) {
+                                    child.classList.add('pl-8');
+                                } else if (child.classList.contains('tree-indent-3')) {
+                                    child.classList.add('pl-12');
+                                } else if (child.classList.contains('tree-indent-4')) {
+                                    child.classList.add('pl-16');
+                                } else if (child.classList.contains('tree-indent-5')) {
+                                    child.classList.add('pl-20');
+                                }
+                            }
+                            if (child.classList.contains('tree-file-icon')) {
+                                child.classList.add('mr-2');
+                            }
+                            if (child.classList.contains('tree-folder-icon')) {
+                                child.classList.add('mr-2');
+                            }
+                            if (child.classList.contains('content-loading')) {
+                                child.classList.add('text-center', 'py-8');
+                            }
+                            if (child.classList.contains('content-loading-spinner')) {
+                                child.classList.add('inline-block', 'animate-spin', 'rounded-full', 'h-8', 'w-8', 'border-b-2', 'border-blue-600', 'mb-2');
+                            }
+                            if (child.classList.contains('content-loading-text')) {
+                                child.classList.add('text-gray-500');
+                            }
+                            if (child.classList.contains('content-header')) {
+                                child.classList.add('mb-4', 'pb-4', 'border-b', 'border-gray-200');
+                            }
+                            if (child.classList.contains('content-title')) {
+                                child.classList.add('text-xl', 'font-semibold', 'text-gray-800');
+                            }
+                            if (child.classList.contains('content-body')) {
+                                child.classList.add('prose', 'prose-sm', 'max-w-none');
+                            }
+                            if (child.classList.contains('content-error')) {
+                                child.classList.add('text-center', 'py-8');
+                            }
+                            if (child.classList.contains('content-error-icon')) {
+                                child.classList.add('text-red-500');
+                            }
+                            if (child.classList.contains('content-error-title')) {
+                                child.classList.add('font-semibold');
+                            }
+                            if (child.classList.contains('content-error-message')) {
+                                child.classList.add('text-sm');
+                            }
+                        }
+                    });
+                }
+            });
+        });
+    });
+    
+    observer.observe(document.body, {
+        childList: true,
+        subtree: true
+    });
+});
+</script>

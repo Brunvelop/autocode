@@ -3,64 +3,98 @@
 {% block title %}Inicio{% endblock %}
 
 {% block content %}
-<div class="max-w-4xl mx-auto">
+<div class="max-w-7xl mx-auto px-6 lg:px-8">
     <!-- Hero Section -->
-    <div class="text-center py-12">
-        <h1 class="text-4xl font-bold text-gray-900 mb-4">
-            Bienvenido a Autocode
+    <div class="py-24 text-center">
+        <h1 class="text-5xl font-light text-gray-900 mb-6 tracking-tight">
+            Herramientas para código<br>
+            <span class="text-gray-400">de calidad superior</span>
         </h1>
-        <p class="text-xl text-gray-600 mb-8">
-            Herramientas automatizadas para la calidad del código y el desarrollo
+        <p class="text-xl text-gray-500 max-w-2xl mx-auto leading-relaxed">
+            Automatiza la verificación de documentación, análisis de tests y generación de diseño 
+            para mantener tu proyecto siempre en su mejor versión.
         </p>
     </div>
     
     <!-- Features Grid -->
-    <div class="grid md:grid-cols-2 gap-8 mb-12">
-        <div class="bg-white p-6 rounded-lg shadow-md">
-            <h3 class="text-xl font-semibold text-gray-800 mb-3">
-                📋 Verificación de Documentación
-            </h3>
-            <p class="text-gray-600">
-                Analiza y verifica el estado de la documentación de tu proyecto, 
-                identificando archivos desactualizados o faltantes.
-            </p>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-8 mb-24">
+        <div class="group">
+            <div class="border border-gray-100 rounded-lg p-8 hover:border-gray-200 transition-all duration-300">
+                <div class="text-gray-400 mb-4">
+                    <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                    </svg>
+                </div>
+                <h3 class="text-lg font-medium text-gray-900 mb-2">
+                    Verificación de Documentación
+                </h3>
+                <p class="text-gray-500 leading-relaxed">
+                    Analiza y verifica el estado de la documentación de tu proyecto, 
+                    identificando archivos desactualizados o faltantes.
+                </p>
+            </div>
         </div>
         
-        <div class="bg-white p-6 rounded-lg shadow-md">
-            <h3 class="text-xl font-semibold text-gray-800 mb-3">
-                🧪 Análisis de Tests
-            </h3>
-            <p class="text-gray-600">
-                Verifica la cobertura de tests y detecta archivos de código 
-                sin tests correspondientes.
-            </p>
+        <div class="group">
+            <div class="border border-gray-100 rounded-lg p-8 hover:border-gray-200 transition-all duration-300">
+                <div class="text-gray-400 mb-4">
+                    <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"></path>
+                    </svg>
+                </div>
+                <h3 class="text-lg font-medium text-gray-900 mb-2">
+                    Análisis de Tests
+                </h3>
+                <p class="text-gray-500 leading-relaxed">
+                    Verifica la cobertura de tests y detecta archivos de código 
+                    sin tests correspondientes.
+                </p>
+            </div>
         </div>
         
-        <div class="bg-white p-6 rounded-lg shadow-md">
-            <h3 class="text-xl font-semibold text-gray-800 mb-3">
-                🔍 Análisis de Git
-            </h3>
-            <p class="text-gray-600">
-                Examina los cambios en tu repositorio Git y genera resúmenes 
-                detallados para commits.
-            </p>
+        <div class="group">
+            <div class="border border-gray-100 rounded-lg p-8 hover:border-gray-200 transition-all duration-300">
+                <div class="text-gray-400 mb-4">
+                    <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                    </svg>
+                </div>
+                <h3 class="text-lg font-medium text-gray-900 mb-2">
+                    Análisis de Git
+                </h3>
+                <p class="text-gray-500 leading-relaxed">
+                    Examina los cambios en tu repositorio Git y genera resúmenes 
+                    detallados para commits.
+                </p>
+            </div>
         </div>
         
-        <div class="bg-white p-6 rounded-lg shadow-md">
-            <h3 class="text-xl font-semibold text-gray-800 mb-3">
-                🎨 Generación de Diseño
-            </h3>
-            <p class="text-gray-600">
-                Crea diagramas y documentación de diseño automáticamente 
-                a partir de tu código fuente.
-            </p>
+        <div class="group">
+            <div class="border border-gray-100 rounded-lg p-8 hover:border-gray-200 transition-all duration-300">
+                <div class="text-gray-400 mb-4">
+                    <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"></path>
+                    </svg>
+                </div>
+                <h3 class="text-lg font-medium text-gray-900 mb-2">
+                    Generación de Diseño
+                </h3>
+                <p class="text-gray-500 leading-relaxed">
+                    Crea diagramas y documentación de diseño automáticamente 
+                    a partir de tu código fuente.
+                </p>
+            </div>
         </div>
     </div>
     
-    <!-- CTA -->
-    <div class="text-center">
-        <a href="/documentation" class="inline-block px-8 py-4 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors">
-            Comenzar con la Documentación
+    <!-- CTA Section -->
+    <div class="text-center py-12">
+        <a href="/documentation" class="inline-flex items-center px-8 py-4 border border-gray-300 rounded-lg text-gray-700 hover:border-gray-400 transition-colors duration-200">
+            Explorar la documentación
+            <svg class="ml-2 w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+            </svg>
         </a>
     </div>
 </div>
