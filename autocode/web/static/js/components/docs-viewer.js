@@ -19,7 +19,7 @@ class DocsViewer {
         
         try {
             // Show loading state
-            fileTree.innerHTML = '<div class="file-tree-loading">Cargando archivos...</div>';
+            fileTree.innerHTML = '<div class="text-gray-400 text-sm py-8 text-center">Cargando archivos...</div>';
             
             // Get docs structure from the docs check endpoint
             const response = await fetch('/api/docs/check', {
@@ -56,7 +56,7 @@ class DocsViewer {
         } catch (err) {
             console.error('Error loading file tree:', err);
             fileTree.innerHTML = `
-                <div class="file-tree-error">
+                <div class="text-red-500 text-sm">
                     Error cargando archivos: ${err.message}
                 </div>
             `;
@@ -67,7 +67,7 @@ class DocsViewer {
         const fileTree = document.getElementById('file-tree');
         
         if (!files || files.length === 0) {
-            fileTree.innerHTML = '<div class="file-tree-empty">No se encontraron archivos</div>';
+            fileTree.innerHTML = '<div class="text-gray-500 text-sm">No se encontraron archivos</div>';
             return;
         }
 
@@ -101,24 +101,30 @@ class DocsViewer {
     renderTree(tree, level = 0) {
         let html = '';
         
+        // Map indentation level to Tailwind padding class
+        const indentClass = level === 0 ? 'pl-0' : 
+                           level === 1 ? 'pl-4' :
+                           level === 2 ? 'pl-8' :
+                           level === 3 ? 'pl-12' :
+                           level === 4 ? 'pl-16' : 'pl-20';
+        
         Object.keys(tree).forEach(key => {
             const item = tree[key];
-            const indentClass = `tree-indent-${level}`;
             
             if (item.isFile) {
                 const fileName = key.endsWith('.md') ? key.slice(0, -3) : key;
                 html += `
-                    <div class="tree-file ${indentClass}"
+                    <div class="cursor-pointer hover:bg-gray-100 py-1 px-2 rounded text-sm flex items-center ${indentClass}"
                          onclick="docsViewer.loadFile('${item.path}')">
-                        <span class="tree-file-icon">📄</span>
-                        <span class="tree-file-name">${fileName}</span>
+                        <span class="mr-2">📄</span>
+                        <span>${fileName}</span>
                     </div>
                 `;
             } else {
                 html += `
-                    <div class="tree-folder ${indentClass}">
-                        <span class="tree-folder-icon">📁</span>
-                        <span class="tree-folder-name">${key}</span>
+                    <div class="py-1 px-2 text-sm font-medium text-gray-700 flex items-center ${indentClass}">
+                        <span class="mr-2">📁</span>
+                        <span>${key}</span>
                     </div>
                 `;
                 html += this.renderTree(item.children, level + 1);
@@ -133,9 +139,9 @@ class DocsViewer {
         
         // Show loading
         contentArea.innerHTML = `
-            <div class="content-loading">
-                <div class="content-loading-spinner"></div>
-                <p class="content-loading-text">Cargando archivo...</p>
+            <div class="text-center py-8">
+                <div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mb-2"></div>
+                <p class="text-gray-500">Cargando archivo...</p>
             </div>
         `;
         
@@ -152,10 +158,10 @@ class DocsViewer {
             const htmlContent = marked.parse(markdownContent);
             
             contentArea.innerHTML = `
-                <div class="content-header">
-                    <h2 class="content-title">${filePath}</h2>
+                <div class="mb-4 pb-4 border-b border-gray-200">
+                    <h2 class="text-xl font-semibold text-gray-800">${filePath}</h2>
                 </div>
-                <div class="content-body">
+                <div class="prose prose-sm max-w-none">
                     ${htmlContent}
                 </div>
             `;
@@ -163,10 +169,10 @@ class DocsViewer {
         } catch (err) {
             console.error('Error loading file:', err);
             contentArea.innerHTML = `
-                <div class="content-error">
-                    <div class="content-error-icon">⚠️</div>
-                    <p class="content-error-title">Error cargando archivo</p>
-                    <p class="content-error-message">${err.message}</p>
+                <div class="text-center py-8">
+                    <div class="text-red-500">⚠️</div>
+                    <p class="font-semibold">Error cargando archivo</p>
+                    <p class="text-sm">${err.message}</p>
                 </div>
             `;
         }

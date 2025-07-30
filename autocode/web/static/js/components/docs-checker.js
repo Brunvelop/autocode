@@ -61,52 +61,41 @@ class DocsChecker {
 
     displayResults(data) {
         const resultsContent = document.getElementById('results-content');
-        const summaryContent = document.getElementById('summary-content');
-        const issuesContent = document.getElementById('issues-content');
         const issuesSection = document.getElementById('issues-section');
+        const issuesContent = document.getElementById('issues-content');
+        const noIssues = document.getElementById('no-issues');
         
         resultsContent.classList.remove('hidden');
         
-        // Show summary
+        // Update summary using existing HTML elements
         if (data.data && data.data.summary) {
             const summary = data.data.summary;
-            summaryContent.innerHTML = `
-                <div class="summary-stat">
-                    <p class="summary-stat-number">${summary.total_files}</p>
-                    <p class="summary-stat-label">Total</p>
-                </div>
-                <div class="summary-stat">
-                    <p class="summary-stat-number summary-stat-success">${summary.up_to_date_count}</p>
-                    <p class="summary-stat-label">Actualizados</p>
-                </div>
-                <div class="summary-stat">
-                    <p class="summary-stat-number summary-stat-warning">${summary.outdated_count}</p>
-                    <p class="summary-stat-label">Desactualizados</p>
-                </div>
-                <div class="summary-stat">
-                    <p class="summary-stat-number summary-stat-error">${summary.missing_count}</p>
-                    <p class="summary-stat-label">Faltantes</p>
-                </div>
-            `;
+            document.getElementById('summary-total').textContent = summary.total_files;
+            document.getElementById('summary-updated').textContent = summary.up_to_date_count;
+            document.getElementById('summary-outdated').textContent = summary.outdated_count;
+            document.getElementById('summary-missing').textContent = summary.missing_count;
         }
         
         // Show issues
         if (data.data && data.data.issues && data.data.issues.length > 0) {
             issuesSection.classList.remove('hidden');
+            noIssues.classList.add('hidden');
             
             const issuesHTML = data.data.issues.map(issue => {
-                const statusClass = `issue-status-${issue.status}`;
                 const statusText = issue.status === 'missing' ? 'Faltante' : 
                                   issue.status === 'outdated' ? 'Desactualizado' : issue.status;
                 
+                const borderClass = issue.status === 'missing' ? 'border-red-400 bg-red-50' : 'border-yellow-400 bg-yellow-50';
+                const badgeClass = issue.status === 'missing' ? 'bg-red-100 text-red-800' : 'bg-yellow-100 text-yellow-800';
+                
                 return `
-                    <div class="issue-card ${statusClass}">
-                        <div class="issue-content">
-                            <div class="issue-info">
-                                <p class="issue-path">${issue.code_path}</p>
-                                <p class="issue-type">${issue.doc_type}</p>
+                    <div class="border-l-4 rounded p-1.5 ${borderClass}">
+                        <div class="flex justify-between items-center gap-1.5">
+                            <div class="flex-1 min-w-0">
+                                <p class="font-medium text-gray-800 text-[11px] leading-tight truncate mb-0.5">${issue.code_path}</p>
+                                <p class="text-[10px] leading-none text-gray-500">${issue.doc_type}</p>
                             </div>
-                            <span class="issue-badge issue-badge-${issue.status}">
+                            <span class="px-1 py-0.5 text-[10px] leading-none font-medium rounded flex-shrink-0 ${badgeClass}">
                                 ${statusText}
                             </span>
                         </div>
@@ -114,9 +103,11 @@ class DocsChecker {
                 `;
             }).join('');
             
-            issuesContent.innerHTML = issuesHTML || '<p class="no-issues-message">No se encontraron problemas.</p>';
+            issuesContent.innerHTML = issuesHTML;
         } else {
-            issuesSection.classList.add('hidden');
+            issuesSection.classList.remove('hidden');
+            issuesContent.innerHTML = '';
+            noIssues.classList.remove('hidden');
         }
     }
 }
