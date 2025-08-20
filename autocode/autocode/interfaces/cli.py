@@ -21,74 +21,74 @@ def app():
     pass
 
 
-# Create specific commands from registry using Click dynamic approach
+def add_command_options(command_func, params):
+    """Helper to add Click options from explicit params."""
+    # Add options in reverse order (Click requirement)
+    for param in reversed(params):
+        # Map Python types to Click types
+        click_type = str  # default
+        if param.type == int:
+            click_type = int
+        elif param.type == float:
+            click_type = float
+        elif param.type == bool:
+            click_type = bool
+        
+        # Create click option
+        option_name = f"--{param.name.replace('_', '-')}"
+        
+        # Add the option to the command function
+        command_func = click.option(
+            option_name,
+            type=click_type,
+            default=param.default if not param.required else None,
+            required=param.required,
+            help=param.description
+        )(command_func)
+    
+    return command_func
+
+
+def create_handler(func_name, func_info):
+    """Create a command handler for a specific function."""
+    def command_func(**kwargs):
+        """Execute the registered function with provided arguments."""
+        try:
+            # Filter kwargs to only include expected parameters
+            func_params = {}
+            for param in func_info.params:
+                if param.name in kwargs:
+                    value = kwargs[param.name]
+                    # Use default if value is None and default exists
+                    if value is None and not param.required and param.default is not None:
+                        value = param.default
+                    func_params[param.name] = value
+            
+            # Execute function with parameters
+            result = func_info.func(**func_params)
+            click.echo(result)
+            
+        except Exception as e:
+            click.echo(f"Error executing {func_name}: {str(e)}", err=True)
+            raise click.Abort()
+    
+    # Set function attributes for Click
+    command_func.__name__ = f"{func_name}_command"
+    command_func.__doc__ = func_info.description
+    
+    return command_func
+
+
 def register_commands():
-    """Register all commands from the function registry using Click."""
+    """Register all commands from the function registry using explicit params."""
     for func_name, func_info in FUNCTION_REGISTRY.items():
-        # Get function signature to create click options
-        sig = inspect.signature(func_info.func)
+        # Create the command handler
+        command_func = create_handler(func_name, func_info)
         
-        # Create base command function with closure to capture values
-        def make_command_func(name=func_name, info=func_info, signature=sig):
-            def command_func(**kwargs):
-                """Dynamic command that executes the registered function."""
-                try:
-                    # Filter kwargs to match function parameters
-                    func_params = {}
-                    for param_name in signature.parameters.keys():
-                        if param_name in kwargs:
-                            func_params[param_name] = kwargs[param_name]
-                    
-                    # Execute function with parameters
-                    result = info.func(**func_params)
-                    click.echo(result)
-                    
-                except Exception as e:
-                    click.echo(f"Error executing {name}: {str(e)}", err=True)
-                    raise click.Abort()
-            
-            # Set function attributes for Click
-            command_func.__name__ = f"{name}_command"
-            command_func.__doc__ = info.description
-            
-            return command_func
+        # Add Click options from explicit params
+        command_func = add_command_options(command_func, func_info.params)
         
-        # Create the command function
-        command_func = make_command_func()
-        
-        # Add Click options dynamically based on function signature (in reverse order)
-        params_list = list(sig.parameters.items())
-        for param_name, param_info in reversed(params_list):
-            # Map Python types to Click types
-            click_type = str  # default
-            if param_info.annotation != inspect.Parameter.empty:
-                if param_info.annotation == int:
-                    click_type = int
-                elif param_info.annotation == float:
-                    click_type = float
-                elif param_info.annotation == bool:
-                    click_type = bool
-            
-            # Determine if parameter is required
-            required = param_info.default == inspect.Parameter.empty
-            default_value = None if required else param_info.default
-            
-            # Create click option
-            option_name = f"--{param_name.replace('_', '-')}"
-            help_text = f"Parameter {param_name}"
-            if not required:
-                help_text += f" (default: {default_value})"
-            
-            # Add the option to the command function
-            command_func = click.option(
-                option_name,
-                type=click_type,
-                default=default_value,
-                required=required,
-                help=help_text
-            )(command_func)
-        
-        # Register the decorated command directly with the app
+        # Register the command with the app
         app.command(name=func_name, help=func_info.description)(command_func)
 
 # Register all commands

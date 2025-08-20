@@ -67,10 +67,11 @@ autocode/                           # Proyecto root
   - Funciones puras: Toman/retornan datos inmutables (e.g., def hello_world(name: str) -> str).
   - No dependencias externas (solo stdlib).
 - **Registry (autocode/interfaces/registry.py)**:
-  - Dict FUNCTION_REGISTRY que describe cada func: nombre, ref, metadata (desc, params para CLI/API/MCP).
-  - Permite loops en layers para generar comandos/endpoints/tools automáticamente.
+  - Dict FUNCTION_REGISTRY que describe cada func: nombre, ref, descripción y parámetros explícitos (sin inferencia).
+  - Parámetros definidos explícitamente como ExplicitParam con name, type, default, required, description.
+  - Permite loops en layers para generar comandos/endpoints/tools automáticamente usando datos explícitos.
 - **CLI (autocode/interfaces/cli.py)**: 
-  - Usa Typer. Genera comandos dinámicos del registry.
+  - Usa Click. Genera comandos dinámicos del registry usando parámetros explícitos.
   - Comandos de servidor: `serve` (unificado), `serve-api` (solo API), `serve-mcp` (solo MCP).
   - Entry point: `uv run autocode [comando]`.
 - **API (autocode/interfaces/api.py)**: 

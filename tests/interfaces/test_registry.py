@@ -7,12 +7,9 @@ from autocode.autocode.interfaces.registry import (
     get_function,
     get_function_info,
     get_parameters,
-    get_input_model,
-    get_output_model,
-    list_functions,
-    clear_cache
+    list_functions
 )
-from autocode.autocode.interfaces.models import FunctionInfo, BaseFunctionInput, BaseFunctionOutput
+from autocode.autocode.interfaces.models import FunctionInfo, ExplicitParam
 from autocode.autocode.core.hello.hello_world import hello_world
 from autocode.autocode.core.math.calculator import add, multiply
 
@@ -69,10 +66,7 @@ class TestRegistry:
             get_function_info("nonexistent")
     
     def test_get_parameters(self):
-        """Test parameter inference via registry."""
-        # Clear cache first
-        clear_cache()
-        
+        """Test explicit parameters via registry."""
         # Test hello function parameters
         hello_params = get_parameters("hello")
         assert len(hello_params) == 1
@@ -111,50 +105,18 @@ class TestRegistry:
         assert param_y["required"] == False
         assert param_y["default"] == 1
     
-    def test_get_input_model(self):
-        """Test input model inference via registry."""
-        clear_cache()
+    def test_explicit_params_structure(self):
+        """Test explicit parameter structure in registry."""
+        hello_info = get_function_info("hello")
+        assert len(hello_info.params) == 1
         
-        # Test hello input model
-        hello_input = get_input_model("hello")
-        assert issubclass(hello_input, BaseFunctionInput)
-        
-        # Create instance
-        instance = hello_input(name="Alice")
-        assert instance.name == "Alice"
-        
-        # Test with default
-        default_instance = hello_input()
-        assert default_instance.name == "World"
-        
-        # Test add input model
-        add_input = get_input_model("add")
-        assert issubclass(add_input, BaseFunctionInput)
-        
-        # Create instance
-        add_instance = add_input(a=5, b=10)
-        assert add_instance.a == 5
-        assert add_instance.b == 10
-    
-    def test_get_output_model(self):
-        """Test output model inference via registry."""
-        clear_cache()
-        
-        # Test hello output model
-        hello_output = get_output_model("hello")
-        assert issubclass(hello_output, BaseFunctionOutput)
-        
-        # Create instance
-        instance = hello_output(message="Hello, test!")
-        assert instance.message == "Hello, test!"
-        
-        # Test add output model
-        add_output = get_output_model("add")
-        assert issubclass(add_output, BaseFunctionOutput)
-        
-        # Create instance
-        add_instance = add_output(result=15)
-        assert add_instance.result == 15
+        param = hello_info.params[0]
+        assert isinstance(param, ExplicitParam)
+        assert param.name == "name"
+        assert param.type == str
+        assert param.default == "World"
+        assert param.required == False
+        assert "name to greet" in param.description.lower()
     
     def test_list_functions(self):
         """Test listing all functions."""
@@ -165,42 +127,16 @@ class TestRegistry:
         assert "multiply" in functions
         assert len(functions) >= 3
     
-    def test_cache_functionality(self):
-        """Test that caching works correctly."""
-        clear_cache()
-        
-        # First call should populate cache
-        params1 = get_parameters("hello")
-        input_model1 = get_input_model("hello")
-        output_model1 = get_output_model("hello")
-        
-        # Second call should use cache (same objects)
-        params2 = get_parameters("hello")
-        input_model2 = get_input_model("hello")
-        output_model2 = get_output_model("hello")
-        
-        # Verify caching worked (same results)
-        assert params1 == params2
-        assert input_model1 == input_model2
-        assert output_model1 == output_model2
-        
-        # Clear cache and verify it's cleared
-        clear_cache()
-        
-        # After clearing, new calls should work
-        params3 = get_parameters("hello")
-        assert params3 == params1  # Same content but potentially new objects
-    
-    def test_invalid_function_inference(self):
+    def test_invalid_function_access(self):
         """Test error handling for invalid functions."""
         with pytest.raises(KeyError):
             get_parameters("nonexistent")
         
         with pytest.raises(KeyError):
-            get_input_model("nonexistent")
+            get_function("nonexistent")
         
         with pytest.raises(KeyError):
-            get_output_model("nonexistent")
+            get_function_info("nonexistent")
 
 
 class TestRegistryIntegration:
@@ -245,25 +181,29 @@ class TestEndToEndIntegration:
         func_info = get_function_info("hello")
         assert func_info.name == "hello"
         
-        # Get inferred parameters
+        # Get explicit parameters
         params = get_parameters("hello")
         assert len(params) == 1
+        assert params[0]["name"] == "name"
+        assert params[0]["default"] == "World"
         
-        # Get inferred models
-        input_model = get_input_model("hello")
-        output_model = get_output_model("hello")
-        
-        # Create input instance
-        input_instance = input_model(name="Integration Test")
-        assert input_instance.name == "Integration Test"
-        
-        # Execute function
+        # Execute function with explicit parameters
         func = get_function("hello")
-        result = func(input_instance.name)
-        
-        # Create output instance
-        output_instance = output_model(message=result)
-        assert output_instance.message == "Hello, Integration Test!"
+        result = func("Integration Test")
         
         # Verify the entire pipeline works
         assert result == "Hello, Integration Test!"
+        
+    def test_explicit_param_workflow(self):
+        """Test workflow using explicit params from registry."""
+        # Get add function info and params
+        add_info = get_function_info("add")
+        add_params = get_parameters("add")
+        
+        assert len(add_params) == 2
+        assert all(param["required"] for param in add_params)
+        
+        # Execute with explicit values
+        add_func = get_function("add")
+        result = add_func(10, 5)
+        assert result == 15

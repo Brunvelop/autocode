@@ -132,7 +132,7 @@
                 }
                 
                 const data = await response.json();
-                return data.message;
+                return data.result;
             } catch (error) {
                 console.error('Error calling API:', error);
                 throw error;

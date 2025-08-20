@@ -30,6 +30,7 @@ dependencies = [
     "typer>=0.16.0",
     "fastapi-mcp>=0.4.0",
     "pytest>=8.4.1",
+    "docstring-parser>=0.17.0",
 ]
 
 [project.optional-dependencies]
