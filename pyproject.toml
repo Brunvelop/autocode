@@ -29,6 +29,7 @@ dependencies = [
     "beautifulsoup4>=4.13.4",
     "typer>=0.16.0",
     "fastapi-mcp>=0.4.0",
+    "pytest>=8.4.1",
 ]
 
 [project.optional-dependencies]
@@ -38,7 +39,7 @@ dev = [
 ]
 
 [project.scripts]
-autocode = "autocode.cli:main"
+autocode = "autocode.autocode.interfaces.cli:app"
 
 [project.urls]
 "Homepage" = "https://github.com/yourusername/autocode"

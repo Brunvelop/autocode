@@ -30,38 +30,61 @@ graph TD
 ```
 
 - **Sincronicidad**: Todo síncrono. Tareas largas usan threading si necesario.
-- **Servidores**: Combinados en un FastAPI app (API + MCP + UI estática) para simplicidad, lanzados vía CLI `autocode serve`.
+- **Servidores**: Flexibles - pueden ejecutarse por separado (`autocode serve-api`, `autocode serve-mcp`) o unificados (`autocode serve`).
 
 ## Estructura de Directorios
 ```
-autocode/
-├── core/                # Lógica pura
-│   ├── hello/           # Ejemplo: hello_world.py
-│   ├── config/          # Opcional: Configuración central
+autocode/                           # Proyecto root
+├── autocode/                       # Paquete Python principal  
+│   ├── autocode/                   # Módulo interno
+│   │   ├── core/                   # Lógica pura
+│   │   │   ├── hello/              # Ejemplo: hello_world.py
+│   │   │   │   ├── __init__.py
+│   │   │   │   └── hello_world.py
+│   │   │   └── __init__.py
+│   │   ├── interfaces/             # Exposición layers + registry
+│   │   │   ├── __init__.py
+│   │   │   ├── registry.py         # Dict FUNCTION_REGISTRY para automatización
+│   │   │   ├── cli.py              # CLI con comandos dinámicos + serve-*
+│   │   │   ├── api.py              # API server independiente
+│   │   │   └── mcp.py              # MCP server independiente
+│   │   ├── web/                    # UI estática dentro del paquete
+│   │   │   ├── __init__.py
+│   │   │   └── index.html          # HTML/JS simple que llama API
+│   │   └── __init__.py
 │   └── __init__.py
-├── interfaces/          # Exposición layers + registry
-│   ├── registry.py      # Dict INTERFACES para semi-automatización
-│   ├── cli.py           # CLI con comandos incl. 'serve'
-│   ├── api.py           # API server (sirve UI, monta MCP)
-│   └── mcp.py           # MCP setup (montado en api.app)
-├── web/                 # UI estática (consumo)
-│   └── index.html       # HTML/JS simple que llama API
-├── docs/                # Documentación (e.g., este .md)
-├── tests/               # Tests unitarios
-└── __init__.py
+├── docs/                           # Documentación
+├── tests/                          # Tests unitarios
+│   └── core/
+│       └── test_hello.py
+├── pyproject.toml                  # Configuración del paquete
+├── README_USAGE.md                 # Guía de uso
+└── uv.lock                        # Lock file de dependencias
 ```
 
 ## Diseño Detallado
 - **Core**:
   - Funciones puras: Toman/retornan datos inmutables (e.g., def hello_world(name: str) -> str).
   - No dependencias externas (solo stdlib).
-- **Registry (interfaces/registry.py)**:
-  - Dict que describe cada func: nombre, ref, metadata (desc, params para CLI/API/MCP).
+- **Registry (autocode/interfaces/registry.py)**:
+  - Dict FUNCTION_REGISTRY que describe cada func: nombre, ref, metadata (desc, params para CLI/API/MCP).
   - Permite loops en layers para generar comandos/endpoints/tools automáticamente.
-- **CLI (interfaces/cli.py)**: Usa Typer. Genera comandos dinámicos del registry + `serve` para lanzar server.
-- **API (interfaces/api.py)**: FastAPI app. Genera endpoints del registry, sirve web/ como static, monta MCP.
-- **MCP (interfaces/mcp.py)**: Usa fastapi_mcp montado en API app. Registra tools del registry.
-- **Web UI (web/)**: Static HTML/JS que consume API (e.g., fetch a /hello). Minimalista, sin frameworks pesados.
+- **CLI (autocode/interfaces/cli.py)**: 
+  - Usa Typer. Genera comandos dinámicos del registry.
+  - Comandos de servidor: `serve` (unificado), `serve-api` (solo API), `serve-mcp` (solo MCP).
+  - Entry point: `uv run autocode [comando]`.
+- **API (autocode/interfaces/api.py)**: 
+  - FastAPI app independiente. Genera endpoints del registry.
+  - Sirve archivos estáticos desde autocode/web/.
+  - Función `create_api_app()` para instanciación independiente.
+- **MCP (autocode/interfaces/mcp.py)**: 
+  - FastAPI app independiente con fastapi_mcp.
+  - Función `create_mcp_app()` para instanciación independiente.
+  - Se integra vía `setup_mcp()` en modo unificado.
+- **Web UI (autocode/web/)**: 
+  - Static HTML/JS que consume API (e.g., fetch a /hello).
+  - Incluido dentro del paquete Python para distribución.
+  - Minimalista, sin frameworks pesados.
 - **Configuración**: Central en core/config/. Inyectada como params en funcs.
 
 ## Prácticas de Desarrollo
