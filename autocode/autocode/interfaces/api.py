@@ -3,8 +3,7 @@ FastAPI server with dynamic endpoints from registry and static file serving.
 """
 import os
 import logging
-from typing import Optional
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 
@@ -41,17 +40,29 @@ def extract_function_params(func_info, request_params):
     return func_params
 
 
+def execute_function_with_params(func_info, request_params, method, extra_debug_info=""):
+    """
+    Execute registered function with extracted parameters and handle common logic.
+    
+    Handles parameter extraction, logging, function execution, and error management.
+    """
+    try:
+        func_params = extract_function_params(func_info, request_params)
+        debug_msg = f"{method} {func_info.name}: params={func_params}"
+        if extra_debug_info:
+            debug_msg += f", {extra_debug_info}"
+        logger.debug(debug_msg)
+        result = func_info.func(**func_params)
+        return create_result_response(result)
+    except Exception as e:
+        logger.error(f"{method} {func_info.name} error: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 def create_post_handler(func_info):
     """Create POST endpoint handler for registered function."""
     async def handler(request: ExplicitInput):
-        try:
-            func_params = extract_function_params(func_info, request.params)
-            logger.debug(f"POST {func_info.name}: params={func_params}")
-            result = func_info.func(**func_params)
-            return create_result_response(result)
-        except Exception as e:
-            logger.error(f"POST {func_info.name} error: {str(e)}")
-            raise HTTPException(status_code=500, detail=str(e))
+        return execute_function_with_params(func_info, request.params, "POST")
     return handler
 
 
@@ -60,16 +71,10 @@ def create_get_handler(func_info):
     from fastapi import Request
     
     async def handler(request: Request):
-        try:
-            # Extract query parameters from request
-            query_params = dict(request.query_params)
-            func_params = extract_function_params(func_info, query_params)
-            logger.debug(f"GET {func_info.name}: query={query_params}, params={func_params}")
-            result = func_info.func(**func_params)
-            return create_result_response(result)
-        except Exception as e:
-            logger.error(f"GET {func_info.name} error: {str(e)}")
-            raise HTTPException(status_code=500, detail=str(e))
+        query_params = dict(request.query_params)
+        return execute_function_with_params(
+            func_info, query_params, "GET", f"query={query_params}"
+        )
     
     return handler
 
