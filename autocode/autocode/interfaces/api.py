@@ -127,7 +127,9 @@ def create_api_app() -> FastAPI:
     @app.get("/")
     async def root():
         """Root endpoint - serve the web UI."""
-        return FileResponse("autocode/autocode/web/index.html")
+        current_dir = os.path.dirname(__file__)
+        index_path = os.path.join(current_dir, "..", "web", "index.html")
+        return FileResponse(index_path)
 
     @app.get("/functions")
     async def list_functions():
@@ -140,7 +142,9 @@ def create_api_app() -> FastAPI:
         return {"status": "healthy", "functions": len(FUNCTION_REGISTRY)}
 
     # Mount static files for web UI
-    if os.path.exists("autocode/autocode/web"):
-        app.mount("/static", StaticFiles(directory="autocode/autocode/web"), name="static")
+    current_dir = os.path.dirname(__file__)
+    web_dir = os.path.join(current_dir, "..", "web")
+    if os.path.exists(web_dir):
+        app.mount("/static", StaticFiles(directory=web_dir), name="static")
 
     return app

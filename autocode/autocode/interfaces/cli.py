@@ -3,17 +3,15 @@ CLI interface using Click with dynamic commands from registry.
 """
 import click
 import uvicorn
-from typing import Optional, List
-import inspect
+from typing import Dict, Any, Callable
 
 from autocode.autocode.interfaces.registry import (
     FUNCTION_REGISTRY, 
-    get_function, 
-    get_function_info,
     get_parameters
 )
 from autocode.autocode.interfaces.api import create_api_app
 from autocode.autocode.interfaces.mcp import create_mcp_app
+
 
 @click.group(help="Autocode CLI - Minimalistic framework for code quality tools")
 def app():
@@ -21,18 +19,21 @@ def app():
     pass
 
 
-def add_command_options(command_func, params):
+# Type mapping for Click options
+TYPE_MAP: Dict[type, Any] = {
+    int: click.INT,
+    float: click.FLOAT,
+    bool: click.BOOL,
+    str: click.STRING,
+}
+
+
+def add_command_options(command_func: Callable, params) -> Callable:
     """Helper to add Click options from explicit params."""
     # Add options in reverse order (Click requirement)
     for param in reversed(params):
         # Map Python types to Click types
-        click_type = str  # default
-        if param.type == int:
-            click_type = int
-        elif param.type == float:
-            click_type = float
-        elif param.type == bool:
-            click_type = bool
+        click_type = TYPE_MAP.get(param.type, click.STRING)
         
         # Create click option
         option_name = f"--{param.name.replace('_', '-')}"
@@ -49,20 +50,20 @@ def add_command_options(command_func, params):
     return command_func
 
 
-def create_handler(func_name, func_info):
+def create_handler(func_name: str, func_info) -> Callable:
     """Create a command handler for a specific function."""
     def command_func(**kwargs):
         """Execute the registered function with provided arguments."""
         try:
-            # Filter kwargs to only include expected parameters
-            func_params = {}
-            for param in func_info.params:
-                if param.name in kwargs:
-                    value = kwargs[param.name]
-                    # Use default if value is None and default exists
-                    if value is None and not param.required and param.default is not None:
-                        value = param.default
-                    func_params[param.name] = value
+            # Filter and prepare function parameters
+            func_params = {
+                param.name: kwargs.get(
+                    param.name, 
+                    param.default if not param.required and param.default is not None else None
+                )
+                for param in func_info.params
+                if param.name in kwargs
+            }
             
             # Execute function with parameters
             result = func_info.func(**func_params)
@@ -79,7 +80,7 @@ def create_handler(func_name, func_info):
     return command_func
 
 
-def register_commands():
+def register_commands() -> None:
     """Register all commands from the function registry using explicit params."""
     for func_name, func_info in FUNCTION_REGISTRY.items():
         # Create the command handler
@@ -90,6 +91,7 @@ def register_commands():
         
         # Register the command with the app
         app.command(name=func_name, help=func_info.description)(command_func)
+
 
 # Register all commands
 register_commands()
@@ -125,7 +127,7 @@ def list_functions():
 @click.option("--host", default="127.0.0.1", help="Host to bind to")
 @click.option("--port", default=8000, type=int, help="Port to bind to")
 @click.option("--reload", is_flag=True, help="Enable auto-reload")
-def serve_api(host, port, reload):
+def serve_api(host: str, port: int, reload: bool):
     """Start only the API server."""
     click.echo(f"Starting Autocode API server on {host}:{port}")
     api_app = create_api_app()
@@ -136,7 +138,7 @@ def serve_api(host, port, reload):
 @click.option("--host", default="127.0.0.1", help="Host to bind to")
 @click.option("--port", default=8001, type=int, help="Port to bind to")
 @click.option("--reload", is_flag=True, help="Enable auto-reload")
-def serve_mcp(host, port, reload):
+def serve_mcp(host: str, port: int, reload: bool):
     """Start server with API endpoints and MCP integration."""
     click.echo(f"Starting Autocode server (API + MCP) on {host}:{port}")
     mcp_app = create_mcp_app()
@@ -147,7 +149,7 @@ def serve_mcp(host, port, reload):
 @click.option("--host", default="127.0.0.1", help="Host to bind to")
 @click.option("--port", default=8000, type=int, help="Port to bind to")
 @click.option("--reload", is_flag=True, help="Enable auto-reload")
-def serve(host, port, reload):
+def serve(host: str, port: int, reload: bool):
     """Start the unified server with both API and MCP in a single process."""
     click.echo(f"Starting Autocode unified server (API + MCP) on {host}:{port}")
     
@@ -156,10 +158,6 @@ def serve(host, port, reload):
     
     # Start the unified server
     uvicorn.run(unified_app, host=host, port=port, reload=reload)
-
-
-# Note: Individual commands removed in favor of the universal 'run' command
-# This eliminates hardcoding and makes the CLI truly dynamic
 
 
 if __name__ == "__main__":
