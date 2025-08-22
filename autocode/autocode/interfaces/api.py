@@ -255,6 +255,28 @@ def create_api_app() -> FastAPI:
         """List all available registered functions."""
         return {"functions": list(FUNCTION_REGISTRY.keys())}
 
+    @app.get("/functions/details")
+    async def list_functions_details():
+        """Get detailed information about all registered functions."""
+        functions_details = {}
+        for func_name, func_info in FUNCTION_REGISTRY.items():
+            functions_details[func_name] = {
+                "name": func_info.name,
+                "description": func_info.description,
+                "http_methods": func_info.http_methods,
+                "parameters": [
+                    {
+                        "name": param.name,
+                        "type": param.type.__name__ if hasattr(param.type, '__name__') else str(param.type),
+                        "default": param.default,
+                        "required": param.required,
+                        "description": param.description
+                    }
+                    for param in func_info.params
+                ]
+            }
+        return {"functions": functions_details}
+
     @app.get("/health")
     async def health_check():
         """Health check endpoint with function count."""
