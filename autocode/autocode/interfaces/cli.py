@@ -7,7 +7,8 @@ from typing import Dict, Any, Callable
 
 from autocode.autocode.interfaces.registry import (
     FUNCTION_REGISTRY, 
-    get_parameters
+    get_parameters,
+    load_core_functions
 )
 from autocode.autocode.interfaces.api import create_api_app
 from autocode.autocode.interfaces.mcp import create_mcp_app
@@ -93,7 +94,8 @@ def register_commands() -> None:
         app.command(name=func_name, help=func_info.description)(command_func)
 
 
-# Register all commands
+# Load core functions first, then register all commands
+load_core_functions()
 register_commands()
 
 
