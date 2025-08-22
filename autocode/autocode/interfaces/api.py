@@ -3,33 +3,95 @@ FastAPI server with dynamic endpoints from registry and static file serving.
 """
 import os
 import logging
-from fastapi import FastAPI, HTTPException
+from typing import Type, Dict, Any
+from pydantic import BaseModel, create_model, Field
+from fastapi import FastAPI, HTTPException, Depends
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 
 from autocode.autocode.interfaces.registry import FUNCTION_REGISTRY
-from autocode.autocode.interfaces.models import ExplicitInput, GenericOutput
+from autocode.autocode.interfaces.models import GenericOutput, FunctionInfo
 
 # Setup logging
 logger = logging.getLogger(__name__)
 
 
-def create_result_response(result):
+def create_result_response(result: Any) -> Dict[str, Any]:
     """
     Format function results into consistent API response format.
     
-    Returns dict as-is, wraps other types in GenericOutput model.
+    Args:
+        result: Function result to format (any type)
+        
+    Returns:
+        Dict containing formatted response - returns dict as-is, 
+        wraps other types in GenericOutput model
+        
+    Example:
+        >>> create_result_response({"key": "value"})
+        {"key": "value"}
+        >>> create_result_response("hello")
+        {"result": "hello"}
     """
     if isinstance(result, dict):
         return result
-    return GenericOutput(result=result)
+    return GenericOutput(result=result).dict()
 
 
-def extract_function_params(func_info, request_params):
+def create_dynamic_model(func_info: FunctionInfo, for_post: bool = True) -> Type[BaseModel]:
+    """
+    Create a dynamic Pydantic model based on function parameters.
+    
+    Args:
+        func_info: Function information with parameters
+        for_post: If True, creates model for POST body; if False, for GET query params
+        
+    Returns:
+        Dynamically created Pydantic model class
+    """
+    fields = {}
+    
+    for param in func_info.params:
+        # Convert type annotation
+        field_type = param.type
+        
+        # Handle default values and required fields
+        if param.required:
+            # Required field without default
+            fields[param.name] = (field_type, Field(description=param.description))
+        else:
+            # Optional field with default
+            default_value = param.default if param.default is not None else None
+            fields[param.name] = (field_type, Field(default=default_value, description=param.description))
+    
+    # Create model name
+    suffix = "Input" if for_post else "QueryParams"
+    model_name = f"{func_info.name.title()}{suffix}"
+    
+    # Create the dynamic model
+    return create_model(model_name, **fields)
+
+
+def extract_function_params(func_info: FunctionInfo, request_params: Dict[str, Any]) -> Dict[str, Any]:
     """
     Extract and prepare function parameters from request data.
     
+    Args:
+        func_info: Function information containing parameter definitions
+        request_params: Dictionary with request parameters from API call
+        
+    Returns:
+        Dict with extracted parameters ready for function execution
+        
     Handles both explicit parameters and default values.
+    For required parameters missing from request, they are omitted 
+    (validation should happen at Pydantic model level).
+    
+    Example:
+        >>> func_info = FunctionInfo(params=[Param(name="x", required=True), 
+        ...                                 Param(name="y", required=False, default=1)])
+        >>> extract_function_params(func_info, {"x": 5})
+        {"x": 5, "y": 1}
     """
     func_params = {}
     for param in func_info.params:
@@ -40,11 +102,33 @@ def extract_function_params(func_info, request_params):
     return func_params
 
 
-def execute_function_with_params(func_info, request_params, method, extra_debug_info=""):
+def execute_function_with_params(
+    func_info: FunctionInfo, 
+    request_params: Dict[str, Any], 
+    method: str, 
+    extra_debug_info: str = ""
+) -> Dict[str, Any]:
     """
     Execute registered function with extracted parameters and handle common logic.
     
+    Args:
+        func_info: Function metadata and callable to execute
+        request_params: Dictionary with parameters from API request
+        method: HTTP method name for logging purposes
+        extra_debug_info: Additional debug information to log
+        
+    Returns:
+        Dict containing formatted function result
+        
+    Raises:
+        HTTPException: 400 for parameter validation errors, 500 for runtime errors
+        
     Handles parameter extraction, logging, function execution, and error management.
+    Provides specific error codes for different types of failures.
+    
+    Example:
+        >>> result = execute_function_with_params(func_info, {"x": 5}, "POST")
+        {"result": 25}
     """
     try:
         func_params = extract_function_params(func_info, request_params)
@@ -54,57 +138,78 @@ def execute_function_with_params(func_info, request_params, method, extra_debug_
         logger.debug(debug_msg)
         result = func_info.func(**func_params)
         return create_result_response(result)
+    except (ValueError, TypeError) as e:
+        # Parameter validation or type errors
+        logger.warning(f"{method} {func_info.name} parameter error: {str(e)}")
+        raise HTTPException(status_code=400, detail=f"Parameter error: {str(e)}")
     except Exception as e:
-        logger.error(f"{method} {func_info.name} error: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        # Runtime errors during function execution
+        logger.error(f"{method} {func_info.name} runtime error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
 
 
-def create_post_handler(func_info):
-    """Create POST endpoint handler for registered function."""
-    async def handler(request: ExplicitInput):
-        return execute_function_with_params(func_info, request.params, "POST")
-    return handler
-
-
-def create_get_handler(func_info):
-    """Create GET endpoint handler with dynamic query parameters."""
-    from fastapi import Request
+def create_handler(func_info: FunctionInfo, method: str):
+    """
+    Create endpoint handler for registered function with dynamic model.
     
-    async def handler(request: Request):
-        query_params = dict(request.query_params)
-        return execute_function_with_params(
-            func_info, query_params, "GET", f"query={query_params}"
-        )
+    Args:
+        func_info: Function information with parameters and metadata
+        method: HTTP method ("GET" or "POST")
+        
+    Returns:
+        Tuple of (handler_function, pydantic_model) ready for FastAPI registration
+        
+    Handles both GET (query parameters) and POST (request body) methods
+    by creating appropriate Pydantic models and handler functions.
     
-    return handler
+    Example:
+        >>> handler, model = create_handler(func_info, "POST")
+        >>> app.add_api_route("/endpoint", handler, methods=["POST"])
+    """
+    is_post = method.upper() == "POST"
+    DynamicModel = create_dynamic_model(func_info, for_post=is_post)
+    
+    if is_post:
+        async def handler(request: DynamicModel):
+            # Convert Pydantic model to dict for processing
+            request_params = request.dict()
+            return execute_function_with_params(func_info, request_params, method)
+    else:
+        async def handler(query_params: DynamicModel = Depends()):
+            # Convert Pydantic model to dict for processing
+            request_params = query_params.dict()
+            return execute_function_with_params(
+                func_info, request_params, method, f"query={request_params}"
+            )
+    
+    return handler, DynamicModel
 
 
 def register_dynamic_endpoints(app: FastAPI):
     """
     Register all functions from registry as API endpoints.
     
-    Creates both GET and POST handlers based on function metadata.
+    Creates both GET and POST handlers based on function metadata with dynamic models.
+    Uses the unified create_handler function to avoid code duplication.
+    
+    Args:
+        app: FastAPI application instance to register routes on
+        
+    Example:
+        >>> app = FastAPI()
+        >>> register_dynamic_endpoints(app)  # Registers all functions from FUNCTION_REGISTRY
     """
     for func_name, func_info in FUNCTION_REGISTRY.items():
         for method in func_info.http_methods:
-            if method.upper() == "POST":
-                app.add_api_route(
-                    f"/{func_name}",
-                    create_post_handler(func_info),
-                    methods=["POST"],
-                    response_model=GenericOutput,
-                    operation_id=f"{func_name}_post",
-                    summary=func_info.description
-                )
-            elif method.upper() == "GET":
-                app.add_api_route(
-                    f"/{func_name}",
-                    create_get_handler(func_info),
-                    methods=["GET"],
-                    response_model=GenericOutput,
-                    operation_id=f"{func_name}_get",
-                    summary=func_info.description
-                )
+            handler, input_model = create_handler(func_info, method)
+            app.add_api_route(
+                f"/{func_name}",
+                handler,
+                methods=[method.upper()],
+                response_model=GenericOutput,
+                operation_id=f"{func_name}_{method.lower()}",
+                summary=func_info.description
+            )
 
 
 def create_api_app() -> FastAPI:
