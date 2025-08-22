@@ -120,7 +120,7 @@
     <script>
         async function callHelloAPI(name) {
             try {
-                const response = await fetch(`/hello?name=${encodeURIComponent(name)}`, {
+                const response = await fetch(`/hello_world?name=${encodeURIComponent(name)}`, {
                     method: 'GET',
                     headers: {
                         'Content-Type': 'application/json',
@@ -128,11 +128,25 @@
                 });
                 
                 if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
+                    let errorMsg = `HTTP ${response.status}`;
+                    if (response.status === 404) {
+                        errorMsg = 'Endpoint not found - check API configuration';
+                    } else if (response.status >= 500) {
+                        errorMsg = 'Server error - please try again later';
+                    }
+                    throw new Error(errorMsg);
                 }
                 
                 const data = await response.json();
-                return data.result;
+                console.log('API Response:', data); // Debug log
+                
+                // Handle the new API response format {result: "Hello, World!", success: true}
+                if (data.result !== undefined) {
+                    return data.result;
+                } else {
+                    // Fallback for direct string response
+                    return data;
+                }
             } catch (error) {
                 console.error('Error calling API:', error);
                 throw error;

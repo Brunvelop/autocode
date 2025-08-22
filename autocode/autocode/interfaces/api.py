@@ -9,7 +9,7 @@ from fastapi import FastAPI, HTTPException, Depends
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 
-from autocode.autocode.interfaces.registry import FUNCTION_REGISTRY
+from autocode.autocode.interfaces.registry import FUNCTION_REGISTRY, load_core_functions
 from autocode.autocode.interfaces.models import GenericOutput, FunctionInfo
 
 # Setup logging
@@ -225,8 +225,22 @@ def create_api_app() -> FastAPI:
         version="1.0.0"
     )
 
+    # Load core functions before registering endpoints
+    logger.info("Loading core functions for API...")
+    try:
+        load_core_functions()
+        logger.info(f"Successfully loaded {len(FUNCTION_REGISTRY)} functions: {list(FUNCTION_REGISTRY.keys())}")
+    except Exception as e:
+        logger.error(f"Failed to load core functions: {e}")
+        raise
+
     # Register dynamic endpoints from function registry
+    logger.info("Registering dynamic endpoints...")
     register_dynamic_endpoints(app)
+    
+    # Count registered endpoints for debugging
+    endpoint_count = len([route for route in app.routes if hasattr(route, 'path') and route.path.startswith('/') and route.path not in ['/', '/functions', '/health']])
+    logger.info(f"Registered {endpoint_count} dynamic endpoints")
 
     # Standard API endpoints
     @app.get("/")

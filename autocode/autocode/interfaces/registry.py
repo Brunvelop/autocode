@@ -5,15 +5,25 @@ Uses automatic parameter inference from function signatures and docstrings.
 """
 from typing import Dict, Any, List, Callable
 import inspect
+import logging
 from docstring_parser import parse
-from autocode.autocode.core.hello.hello_world import hello_world
-from autocode.autocode.core.math.calculator import add, multiply
-from autocode.autocode.interfaces.models import FunctionInfo, ExplicitParam, ExplicitInput, GenericOutput
+
+from autocode.autocode.interfaces.models import FunctionInfo, ExplicitParam
+
+# Configure logging
+logger = logging.getLogger(__name__)
+
+# Global registry - populated dynamically by decorator
+FUNCTION_REGISTRY: Dict[str, FunctionInfo] = {}
 
 
-def generate_function_info(func: Callable, http_methods: List[str] = None) -> FunctionInfo:
-    """
-    Generate FunctionInfo automatically from function signature and docstring.
+class RegistryError(Exception):
+    """Custom exception for registry-related errors."""
+    pass
+
+
+def _generate_function_info(func: Callable, http_methods: List[str] = None) -> FunctionInfo:
+    """Generate FunctionInfo from function signature and docstring.
     
     Args:
         func: The function to analyze
@@ -21,33 +31,29 @@ def generate_function_info(func: Callable, http_methods: List[str] = None) -> Fu
         
     Returns:
         FunctionInfo instance with inferred parameters and description
+        
+    Raises:
+        ValueError: If http_methods contains invalid values
     """
     if http_methods is None:
         http_methods = ["GET", "POST"]
     
-    # Get function signature
-    sig = inspect.signature(func)
+    # Validate http_methods
+    valid_methods = {"GET", "POST", "PUT", "DELETE", "PATCH"}
+    if not all(method.upper() in valid_methods for method in http_methods):
+        raise ValueError(f"Invalid HTTP methods. Must be one of: {valid_methods}")
     
-    # Parse docstring
+    sig = inspect.signature(func)
     doc = parse(inspect.getdoc(func) or "")
     param_docs = {p.arg_name: p.description for p in doc.params}
     
-    # Generate parameters
     params = []
     for name, param in sig.parameters.items():
-        # Get parameter type from annotation, default to Any if not specified
         param_type = param.annotation if param.annotation != inspect.Parameter.empty else Any
-        
-        # Get default value
         default = param.default if param.default != inspect.Parameter.empty else None
-        
-        # Determine if required (no default and not VAR_POSITIONAL/VAR_KEYWORD)
-        required = (
-            default is None and 
-            param.kind not in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD)
+        required = default is None and param.kind not in (
+            inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD
         )
-        
-        # Get description from docstring or use default
         description = param_docs.get(name, f"Parameter {name}")
         
         params.append(ExplicitParam(
@@ -61,36 +67,121 @@ def generate_function_info(func: Callable, http_methods: List[str] = None) -> Fu
     return FunctionInfo(
         name=func.__name__,
         func=func,
-        description=doc.short_description or f"Execute {func.__name__} function",
+        description=doc.short_description or f"Execute {func.__name__}",
         params=params,
         http_methods=http_methods
     )
 
 
-# Registry using automatic function inference
-FUNCTION_REGISTRY: Dict[str, FunctionInfo] = {
-    "hello": generate_function_info(hello_world),
-    "add": generate_function_info(add),
-    "multiply": generate_function_info(multiply),
-}
+def register_function(http_methods: List[str] = None):
+    """Decorator to automatically register a function in the global registry.
+    
+    Args:
+        http_methods: List of HTTP methods to support for this function
+        
+    Returns:
+        Decorator function
+        
+    Example:
+        @register_function(http_methods=["GET", "POST"])
+        def my_function(param1: str) -> str:
+            '''My function description.'''
+            return f"Result: {param1}"
+    """
+    def decorator(func: Callable) -> Callable:
+        try:
+            info = _generate_function_info(func, http_methods)
+            FUNCTION_REGISTRY[info.name] = info
+            logger.debug(f"Registered function '{info.name}' with methods {info.http_methods}")
+        except Exception as e:
+            logger.error(f"Failed to register function '{func.__name__}': {e}")
+            raise RegistryError(f"Failed to register function '{func.__name__}': {e}") from e
+        return func
+    return decorator
 
 
+_functions_loaded = False
+
+def load_core_functions():
+    """Load all core functions into the registry.
+    
+    This function imports all modules containing registered functions,
+    which triggers the decorator registration process.
+    """
+    global _functions_loaded
+    if _functions_loaded:
+        return
+        
+    try:
+        # Import modules to trigger decorator registration
+        # The decorators will automatically register the functions
+        import autocode.autocode.core.hello.hello_world
+        import autocode.autocode.core.math.calculator
+        
+        _functions_loaded = True
+        logger.info(f"Loaded {len(FUNCTION_REGISTRY)} functions into registry")
+        
+    except ImportError as e:
+        logger.error(f"Failed to load core functions: {e}")
+        raise RegistryError(f"Failed to load core functions: {e}") from e
+
+def _ensure_functions_loaded():
+    """Ensure functions are loaded before accessing the registry."""
+    if not _functions_loaded:
+        load_core_functions()
+
+
+# Public API functions
 def get_function(name: str) -> Callable:
-    """Get a function from the registry by name."""
+    """Get a function from the registry by name.
+    
+    Args:
+        name: The name of the function to retrieve
+        
+    Returns:
+        The function object
+        
+    Raises:
+        RegistryError: If the function is not found
+    """
+    _ensure_functions_loaded()
     if name not in FUNCTION_REGISTRY:
-        raise KeyError(f"Function '{name}' not found in registry")
+        available = ", ".join(list_functions())
+        raise RegistryError(f"Function '{name}' not found. Available functions: {available}")
     return FUNCTION_REGISTRY[name].func
 
 
 def get_function_info(name: str) -> FunctionInfo:
-    """Get complete function information from the registry."""
+    """Get complete function information from the registry.
+    
+    Args:
+        name: The name of the function
+        
+    Returns:
+        FunctionInfo instance with complete metadata
+        
+    Raises:
+        RegistryError: If the function is not found
+    """
+    _ensure_functions_loaded()
     if name not in FUNCTION_REGISTRY:
-        raise KeyError(f"Function '{name}' not found in registry")
+        available = ", ".join(list_functions())
+        raise RegistryError(f"Function '{name}' not found. Available functions: {available}")
     return FUNCTION_REGISTRY[name]
 
 
 def get_parameters(name: str) -> List[Dict[str, Any]]:
-    """Get explicit parameters for a function."""
+    """Get explicit parameters for a function.
+    
+    Args:
+        name: The name of the function
+        
+    Returns:
+        List of parameter dictionaries with metadata
+        
+    Raises:
+        RegistryError: If the function is not found
+    """
     func_info = get_function_info(name)
     return [
         {
@@ -105,5 +196,35 @@ def get_parameters(name: str) -> List[Dict[str, Any]]:
 
 
 def list_functions() -> List[str]:
-    """Get list of all registered function names."""
-    return list(FUNCTION_REGISTRY.keys())
+    """Get list of all registered function names.
+    
+    Returns:
+        Sorted list of function names
+    """
+    _ensure_functions_loaded()
+    return sorted(FUNCTION_REGISTRY.keys())
+
+
+def clear_registry():
+    """Clear all functions from the registry. Useful for testing."""
+    global FUNCTION_REGISTRY
+    FUNCTION_REGISTRY.clear()
+    logger.debug("Registry cleared")
+
+
+def get_registry_stats() -> Dict[str, Any]:
+    """Get statistics about the current registry state.
+    
+    Returns:
+        Dictionary with registry statistics
+    """
+    _ensure_functions_loaded()
+    return {
+        "total_functions": len(FUNCTION_REGISTRY),
+        "function_names": list_functions(),
+        "http_methods_distribution": {
+            method: sum(1 for info in FUNCTION_REGISTRY.values() 
+                       if method in info.http_methods)
+            for method in ["GET", "POST", "PUT", "DELETE", "PATCH"]
+        }
+    }

@@ -1,8 +1,10 @@
 """
 Simple calculator functions for mathematical operations.
 """
+from autocode.autocode.interfaces.registry import register_function
 
 
+@register_function(http_methods=["GET", "POST"])
 def add(a: int, b: int) -> int:
     """Add two numbers.
     
@@ -16,6 +18,7 @@ def add(a: int, b: int) -> int:
     return a + b
 
 
+@register_function(http_methods=["GET", "POST"])
 def multiply(x: int, y: int = 1) -> int:
     """Multiply two numbers.
     
