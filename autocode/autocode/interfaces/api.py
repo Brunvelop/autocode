@@ -35,7 +35,7 @@ def create_result_response(result: Any) -> Dict[str, Any]:
     """
     if isinstance(result, dict):
         return result
-    return GenericOutput(result=result).dict()
+    return GenericOutput(result=result).model_dump()
 
 
 def create_dynamic_model(func_info: FunctionInfo, for_post: bool = True) -> Type[BaseModel]:
@@ -172,12 +172,12 @@ def create_handler(func_info: FunctionInfo, method: str):
     if is_post:
         async def handler(request: DynamicModel):
             # Convert Pydantic model to dict for processing
-            request_params = request.dict()
+            request_params = request.model_dump()
             return execute_function_with_params(func_info, request_params, method)
     else:
         async def handler(query_params: DynamicModel = Depends()):
             # Convert Pydantic model to dict for processing
-            request_params = query_params.dict()
+            request_params = query_params.model_dump()
             return execute_function_with_params(
                 func_info, request_params, method, f"query={request_params}"
             )

@@ -57,14 +57,17 @@ def create_handler(func_name: str, func_info) -> Callable:
         """Execute the registered function with provided arguments."""
         try:
             # Filter and prepare function parameters
-            func_params = {
-                param.name: kwargs.get(
-                    param.name, 
-                    param.default if not param.required and param.default is not None else None
-                )
-                for param in func_info.params
-                if param.name in kwargs
-            }
+            func_params = {}
+            for param in func_info.params:
+                if param.name in kwargs and kwargs[param.name] is not None:
+                    # Parameter was provided and is not None
+                    func_params[param.name] = kwargs[param.name]
+                elif not param.required and param.default is not None:
+                    # Parameter not provided or is None, use default if available
+                    func_params[param.name] = param.default
+                elif param.required:
+                    # Required parameter - let Click handle the error if missing
+                    func_params[param.name] = kwargs.get(param.name)
             
             # Execute function with parameters
             result = func_info.func(**func_params)

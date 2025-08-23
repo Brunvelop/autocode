@@ -49,11 +49,13 @@ def _generate_function_info(func: Callable, http_methods: List[str] = None) -> F
     
     params = []
     for name, param in sig.parameters.items():
+        # Skip *args and **kwargs parameters
+        if param.kind in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD):
+            continue
+            
         param_type = param.annotation if param.annotation != inspect.Parameter.empty else Any
         default = param.default if param.default != inspect.Parameter.empty else None
-        required = default is None and param.kind not in (
-            inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD
-        )
+        required = default is None
         description = param_docs.get(name, f"Parameter {name}")
         
         params.append(ExplicitParam(

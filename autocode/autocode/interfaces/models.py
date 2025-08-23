@@ -7,34 +7,32 @@ Example usage:
     func_info = FunctionInfo(name="add", func=my_func, description="Adds two numbers")
 """
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from typing import Any, Callable, Dict, List, Optional, Type
 
 
 # Base models (atomic components)
 class ExplicitParam(BaseModel):
     """Model for explicit parameter definitions in the registry."""
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+    
     name: str = Field(description="Parameter name")
-    type: Type = Field(description="Parameter type")
+    type: Any = Field(description="Parameter type (accepts types and generic types)")
     default: Optional[Any] = Field(default=None, description="Default value")
     required: bool = Field(description="Whether the parameter is required")
     description: str = Field(description="Parameter description")
-
-    class Config:
-        arbitrary_types_allowed = True  # Allow Type type
 
 
 # Composite models (depend on base models)
 class FunctionInfo(BaseModel):
     """Function information for the registry with explicit parameters."""
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+    
     name: str
     func: Callable
     description: str
     params: List[ExplicitParam] = Field(default_factory=list, description="Explicit parameter definitions")
     http_methods: List[str] = Field(default_factory=lambda: ["GET", "POST"])
-
-    class Config:
-        arbitrary_types_allowed = True  # Allow Callable type
 
 
 # Generic models (fallback for functions without specific models)
