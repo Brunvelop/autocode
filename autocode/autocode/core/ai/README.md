@@ -1,8 +1,12 @@
-# AI Module - Text to Code Generation
+# AI Module - Code ↔ Design Generation
 
-Este módulo proporciona funcionalidades de generación de código Python usando DSPy (Declarative Self-improving Python).
+Este módulo proporciona funcionalidades bidireccionales de generación usando DSPy (Declarative Self-improving Python):
+- **Text to Code**: Genera código Python a partir de documentos de diseño
+- **Code to Design**: Genera documentos de diseño Markdown a partir de código Python
 
 ## Funciones Disponibles
+
+### Generación de Código (Text to Code)
 
 ### 1. `generate_python_code(design_text: str) -> str`
 
@@ -73,7 +77,83 @@ curl -X POST http://localhost:8000/text_to_code \
   -d '{"input_path": "design.md", "output_path": "generated.py"}'
 ```
 
-### 3. Funciones de I/O (Módulo separado)
+### Generación de Documentación (Code to Design)
+
+### 3. `generate_design_document(python_code: str, include_diagrams: bool = True) -> str`
+
+Genera un documento de diseño Markdown a partir de código Python.
+
+**Características:**
+- Usa DSPy con ChainOfThought para análisis profundo del código
+- Genera documentación estructurada siguiendo el formato de los ejemplos proporcionados
+- Incluye secciones como: Resumen Ejecutivo, Componentes, Flujos, Dependencias, Diagramas Mermaid, Ejemplos, Testing, etc.
+- Extensible con few-shot learning
+- Registrada en el registry (accesible vía API/CLI/MCP)
+
+**Uso:**
+```python
+from autocode.autocode.core.ai.ai_functions import generate_design_document
+
+python_code = """
+def calculate_factorial(n: int) -> int:
+    '''Calcula el factorial de un número.'''
+    if n <= 1:
+        return 1
+    return n * calculate_factorial(n - 1)
+"""
+
+design_doc = generate_design_document(python_code, include_diagrams=True)
+print(design_doc)
+```
+
+**Vía CLI:**
+```bash
+autocode generate-design-document --python-code "def suma(a, b): return a + b" --include-diagrams true
+```
+
+**Vía API:**
+```bash
+curl -X POST http://localhost:8000/generate_design_document \
+  -H "Content-Type: application/json" \
+  -d '{"python_code": "def suma(a, b): return a + b", "include_diagrams": true}'
+```
+
+### 4. `code_to_design(input_path: str, output_path: str, include_diagrams: bool = True) -> str`
+
+Convierte un archivo .py en un documento de diseño .md.
+
+**Características:**
+- Lee archivos de código Python
+- Genera documentación Markdown estructurada automáticamente
+- Control opcional sobre inclusión de diagramas Mermaid
+- Manejo de errores integrado
+- Registrada en el registry (accesible vía API/CLI/MCP)
+
+**Uso:**
+```python
+from autocode.autocode.core.ai.ai_functions import code_to_design
+
+result = code_to_design(
+    input_path="my_module.py",
+    output_path="my_module_design.md",
+    include_diagrams=True
+)
+print(result)
+```
+
+**Vía CLI:**
+```bash
+autocode code-to-design --input-path my_module.py --output-path design.md --include-diagrams true
+```
+
+**Vía API:**
+```bash
+curl -X POST http://localhost:8000/code_to_design \
+  -H "Content-Type: application/json" \
+  -d '{"input_path": "my_module.py", "output_path": "design.md", "include_diagrams": true}'
+```
+
+### 5. Funciones de I/O (Módulo separado)
 
 Las funciones de lectura/escritura de archivos ahora están en `autocode.autocode.core.utils.file_utils`:
 
@@ -146,6 +226,46 @@ def fibonacci(n):
 ```
 
 **Solución DSPy**: La signature refinada instruye explícitamente al modelo para generar solo código puro. DSPy traduce estas instrucciones en prompts optimizados que guían el comportamiento del LM sin necesidad de regex o post-procesamiento.
+
+### Signature Refinada para Documentación Limpia
+
+De manera similar, el módulo incluye una **class-based signature** para la generación inversa (código a diseño):
+
+```python
+class DesignDocumentSignature(dspy.Signature):
+    """
+    Genera un documento de diseño completo en formato Markdown a partir de código Python.
+    
+    IMPORTANTE: El documento generado debe ser Markdown puro y bien estructurado,
+    sin bloques de código extra, sin comillas triple adicionales alrededor del documento,
+    y sin texto explicativo adicional fuera del documento. Solo el Markdown válido.
+    
+    El documento debe seguir una estructura similar a:
+    - Resumen Ejecutivo
+    - Componentes Principales por Archivo/Directorio
+    - Flujos y Procesos Clave
+    - Dependencias y Relaciones
+    - Diagramas Mermaid (flowcharts, secuencias, estados, etc.)
+    - Ejemplos de Uso
+    - Manejo de Errores y Casos Límite
+    - Consideraciones de Rendimiento y Escalabilidad
+    - Suposiciones y Limitaciones
+    - Estrategia de Testing
+    - Inventario de Tests
+    """
+    
+    python_code: str = dspy.InputField(desc="Código Python fuente a analizar")
+    include_diagrams: bool = dspy.InputField(desc="Si incluir diagramas Mermaid")
+    design_document: str = dspy.OutputField(
+        desc="Documento de diseño completo en Markdown puro. Sin bloques ```markdown."
+    )
+```
+
+**Ventajas del enfoque bidireccional:**
+- ✅ **Consistencia**: Ambas direcciones usan el mismo patrón de DSPy signatures
+- ✅ **Documentación automática**: Genera docs estructuradas siguiendo convenciones establecidas
+- ✅ **Extensible**: Preparado para few-shot learning con ejemplos de código ↔ diseño
+- ✅ **Control granular**: Parámetro `include_diagrams` para ajustar nivel de detalle
 
 ### Context Manager (Thread-safe y Async-safe)
 Las funciones usan `dspy.context(lm=lm)` en lugar de `dspy.settings.configure()` para garantizar compatibilidad con FastAPI (async) y evitar conflictos entre múltiples requests concurrentes:
@@ -279,23 +399,45 @@ python test_text_to_code.py
 
 ## Single Responsibility Principle
 
-El módulo sigue SRP:
-- `generate_python_code`: Solo genera código (lógica DSPy)
-- `read_design_document`: Solo lee archivos
-- `write_python_file`: Solo escribe archivos
-- `text_to_code`: Orquesta las operaciones (wrapper)
+El módulo sigue SRP con funciones especializadas:
 
-Esto permite reutilizar las funciones individuales en otros contextos.
+**Generación de Código:**
+- `generate_python_code`: Solo genera código (lógica DSPy)
+- `text_to_code`: Orquesta lectura, generación y escritura de código
+
+**Generación de Documentación:**
+- `generate_design_document`: Solo genera documentación (lógica DSPy)
+- `code_to_design`: Orquesta lectura, generación y escritura de documentos
+
+**I/O (en file_utils):**
+- `read_file` / `read_design_document`: Solo lectura de archivos
+- `write_file` / `write_python_file`: Solo escritura de archivos
+
+Esta separación permite reutilizar las funciones individuales en otros contextos y facilita el testing unitario.
 
 ## Roadmap
 
+**Mejoras Generales:**
 - [ ] Agregar soporte para múltiples modelos LM
 - [ ] Implementar cache de generaciones
-- [ ] Agregar validación de código generado
-- [ ] Implementar few-shot learning con ejemplos
-- [ ] Agregar métricas de calidad
-- [ ] Soporte para lenguajes adicionales
-- [ ] Integración con linters (ruff, black)
+- [ ] Implementar few-shot learning con ejemplos de código ↔ diseño
+- [ ] Agregar métricas de calidad para ambas direcciones
+
+**Code to Design:**
+- [ ] Validación automática de diagramas Mermaid generados
+- [ ] Soporte para análisis multi-archivo (proyectos completos)
+- [ ] Generación de diagramas de arquitectura automáticos
+- [ ] Detección automática de patrones de diseño en código
+
+**Text to Code:**
+- [ ] Validación de código generado con linters (ruff, black)
+- [ ] Soporte para lenguajes adicionales (JavaScript, TypeScript, Go, etc.)
+- [ ] Generación de tests automáticos a partir del diseño
+
+**Optimización:**
+- [ ] Compilar modelos con ejemplos de design_examples/
+- [ ] Implementar métricas de similitud para documentación
+- [ ] A/B testing de diferentes estrategias de prompting
 
 ## Referencias
 
