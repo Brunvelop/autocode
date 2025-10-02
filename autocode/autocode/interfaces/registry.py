@@ -3,7 +3,7 @@ Central registry for all functions exposed via interfaces.
 This registry enables automatic generation of CLI commands, API endpoints, and MCP tools.
 Uses automatic parameter inference from function signatures and docstrings.
 """
-from typing import Dict, Any, List, Callable
+from typing import Dict, Any, List, Callable, get_origin, get_args
 import inspect
 import logging
 from docstring_parser import parse
@@ -58,12 +58,25 @@ def _generate_function_info(func: Callable, http_methods: List[str] = None) -> F
         required = default is None
         description = param_docs.get(name, f"Parameter {name}")
         
+        # Extract choices from Literal type
+        choices = None
+        origin = get_origin(param_type)
+        if origin is not None:
+            # Check if it's a Literal type
+            try:
+                from typing import Literal
+                if origin is Literal:
+                    choices = list(get_args(param_type))
+            except ImportError:
+                pass
+        
         params.append(ExplicitParam(
             name=name,
             type=param_type,
             default=default,
             required=required,
-            description=description
+            description=description,
+            choices=choices
         ))
     
     return FunctionInfo(

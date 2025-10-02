@@ -21,6 +21,7 @@ class ExplicitParam(BaseModel):
     default: Optional[Any] = Field(default=None, description="Default value")
     required: bool = Field(description="Whether the parameter is required")
     description: str = Field(description="Parameter description")
+    choices: Optional[List[Any]] = Field(default=None, description="Available choices for Literal types")
 
 
 # Composite models (depend on base models)

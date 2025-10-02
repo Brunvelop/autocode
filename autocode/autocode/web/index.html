@@ -103,20 +103,42 @@
             createParameterInputs(parameters) {
                 if (parameters.length === 0) return '<p class="text-gray-500 italic mb-4">Esta función no requiere parámetros.</p>';
                 return parameters.map(param => {
-                    const inputType = param.type === 'int' || param.type === 'float' ? 'number' : 'text';
                     const requiredMark = param.required ? '<span class="text-red-500">*</span>' : '';
                     const defaultValue = param.default !== null ? param.default : '';
-                    return `
-                        <div class="mb-4">
-                            <label for="param-${param.name}" class="block mb-1 font-bold text-gray-700 text-sm">
-                                ${param.name} ${requiredMark}
-                                <span class="text-xs text-gray-500 font-normal ml-1">(${param.type}${param.default !== null ? `, default: ${param.default}` : ''}) - ${param.description}</span>
-                            </label>
-                            <input type="${inputType}" id="param-${param.name}" name="${param.name}" value="${defaultValue}" 
-                                   ${param.required ? 'required' : ''} placeholder="${param.description}"
-                                   class="w-full p-2 border-2 border-gray-300 rounded focus:border-green-500 focus:outline-none">
-                        </div>
-                    `;
+                    
+                    // Check if parameter has choices (e.g., Literal type)
+                    if (param.choices && Array.isArray(param.choices) && param.choices.length > 0) {
+                        // Render as dropdown
+                        const options = param.choices.map(choice => 
+                            `<option value="${choice}" ${choice === defaultValue ? 'selected' : ''}>${choice}</option>`
+                        ).join('');
+                        return `
+                            <div class="mb-4">
+                                <label for="param-${param.name}" class="block mb-1 font-bold text-gray-700 text-sm">
+                                    ${param.name} ${requiredMark}
+                                    <span class="text-xs text-gray-500 font-normal ml-1">(${param.type}${param.default !== null ? `, default: ${param.default}` : ''}) - ${param.description}</span>
+                                </label>
+                                <select id="param-${param.name}" name="${param.name}" ${param.required ? 'required' : ''}
+                                        class="w-full p-2 border-2 border-gray-300 rounded focus:border-green-500 focus:outline-none">
+                                    ${options}
+                                </select>
+                            </div>
+                        `;
+                    } else {
+                        // Render as input
+                        const inputType = param.type === 'int' || param.type === 'float' ? 'number' : 'text';
+                        return `
+                            <div class="mb-4">
+                                <label for="param-${param.name}" class="block mb-1 font-bold text-gray-700 text-sm">
+                                    ${param.name} ${requiredMark}
+                                    <span class="text-xs text-gray-500 font-normal ml-1">(${param.type}${param.default !== null ? `, default: ${param.default}` : ''}) - ${param.description}</span>
+                                </label>
+                                <input type="${inputType}" id="param-${param.name}" name="${param.name}" value="${defaultValue}" 
+                                       ${param.required ? 'required' : ''} placeholder="${param.description}"
+                                       class="w-full p-2 border-2 border-gray-300 rounded focus:border-green-500 focus:outline-none">
+                            </div>
+                        `;
+                    }
                 }).join('');
             }
 

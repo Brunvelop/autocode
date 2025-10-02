@@ -2,9 +2,19 @@
 AI functions using DSPy for intelligent operations.
 """
 import dspy
+from typing import Literal
 from autocode.autocode.interfaces.registry import register_function
 from autocode.autocode.core.utils.file_utils import read_design_document, write_python_file, read_file, write_file
 import os
+
+# Available models for inference
+ModelType = Literal[
+    'openrouter/openai/gpt-4o',
+    'openrouter/x-ai/grok-4',
+    'openrouter/anthropic/claude-sonnet-4.5',
+    'openrouter/openai/gpt-5',
+    'openrouter/openai/gpt-5-codex'
+]
 
 
 class CodeGenerationSignature(dspy.Signature):
@@ -25,12 +35,13 @@ class CodeGenerationSignature(dspy.Signature):
 
 
 @register_function(http_methods=["GET", "POST"])
-def simple_qa(question: str) -> str:
+def simple_qa(question: str, model: ModelType = 'openrouter/openai/gpt-4o') -> str:
     """
     Responde una pregunta simple usando DSPy ChainOfThought.
     
     Args:
         question: La pregunta a responder
+        model: Modelo de inferencia a utilizar
         
     Returns:
         La respuesta a la pregunta
@@ -40,7 +51,7 @@ def simple_qa(question: str) -> str:
     if not api_key:
         return "Error: OPENROUTER_API_KEY no está configurada en las variables de entorno"
     
-    lm = dspy.LM('openrouter/openai/gpt-4o', api_key=api_key)
+    lm = dspy.LM(model, api_key=api_key)
     
     # Usar context en lugar de configure para evitar conflictos en async tasks
     with dspy.context(lm=lm):
@@ -52,7 +63,7 @@ def simple_qa(question: str) -> str:
 
 
 @register_function(http_methods=["GET", "POST"])
-def generate_python_code(design_text: str) -> str:
+def generate_python_code(design_text: str, model: ModelType = 'openrouter/openai/gpt-4o') -> str:
     """
     Genera código Python a partir de un documento de diseño usando DSPy.
     
@@ -62,6 +73,7 @@ def generate_python_code(design_text: str) -> str:
     
     Args:
         design_text: El texto del documento de diseño que describe el código a generar
+        model: Modelo de inferencia a utilizar
         
     Returns:
         El código Python generado como string limpio (sin markdown)
@@ -71,7 +83,7 @@ def generate_python_code(design_text: str) -> str:
     if not api_key:
         return "Error: OPENROUTER_API_KEY no está configurada en las variables de entorno"
     
-    lm = dspy.LM('openrouter/openai/gpt-4o', api_key=api_key)
+    lm = dspy.LM(model, api_key=api_key)
     
     # Usar context en lugar de configure para evitar conflictos en async tasks
     with dspy.context(lm=lm):
@@ -86,7 +98,7 @@ def generate_python_code(design_text: str) -> str:
 
 
 @register_function(http_methods=["GET", "POST"])
-def text_to_code(input_path: str, output_path: str) -> str:
+def text_to_code(input_path: str, output_path: str, model: ModelType = 'openrouter/openai/gpt-4o') -> str:
     """
     Convierte un documento de diseño en código Python.
     
@@ -96,6 +108,7 @@ def text_to_code(input_path: str, output_path: str) -> str:
     Args:
         input_path: Ruta al archivo de documento de diseño
         output_path: Ruta donde guardar el archivo .py generado
+        model: Modelo de inferencia a utilizar
         
     Returns:
         Mensaje de éxito con las rutas procesadas
@@ -109,7 +122,7 @@ def text_to_code(input_path: str, output_path: str) -> str:
         design_text = read_design_document(input_path)
         
         # Generar el código Python
-        python_code = generate_python_code(design_text)
+        python_code = generate_python_code(design_text, model)
         
         # Verificar que se generó código válido
         if python_code.startswith("Error:"):
@@ -165,7 +178,7 @@ class DesignDocumentSignature(dspy.Signature):
 
 
 @register_function(http_methods=["GET", "POST"])
-def generate_design_document(python_code: str, include_diagrams: bool = True) -> str:
+def generate_design_document(python_code: str, include_diagrams: bool = True, model: ModelType = 'openrouter/openai/gpt-4o') -> str:
     """
     Genera un documento de diseño en Markdown a partir de código Python usando DSPy.
     
@@ -176,6 +189,7 @@ def generate_design_document(python_code: str, include_diagrams: bool = True) ->
     Args:
         python_code: El código Python fuente a analizar y documentar
         include_diagrams: Si se deben incluir diagramas Mermaid (default: True)
+        model: Modelo de inferencia a utilizar
         
     Returns:
         El documento de diseño generado como string Markdown limpio
@@ -185,7 +199,7 @@ def generate_design_document(python_code: str, include_diagrams: bool = True) ->
     if not api_key:
         return "Error: OPENROUTER_API_KEY no está configurada en las variables de entorno"
     
-    lm = dspy.LM('openrouter/openai/gpt-4o', api_key=api_key)
+    lm = dspy.LM(model, api_key=api_key)
     
     # Usar context en lugar de configure para evitar conflictos en async tasks
     with dspy.context(lm=lm):
@@ -203,7 +217,7 @@ def generate_design_document(python_code: str, include_diagrams: bool = True) ->
 
 
 @register_function(http_methods=["GET", "POST"])
-def code_to_design(input_path: str, output_path: str, include_diagrams: bool = True) -> str:
+def code_to_design(input_path: str, output_path: str, include_diagrams: bool = True, model: ModelType = 'openrouter/openai/gpt-4o') -> str:
     """
     Convierte código Python en un documento de diseño Markdown.
     
@@ -214,6 +228,7 @@ def code_to_design(input_path: str, output_path: str, include_diagrams: bool = T
         input_path: Ruta al archivo .py de código fuente
         output_path: Ruta donde guardar el archivo .md generado
         include_diagrams: Si se deben incluir diagramas Mermaid (default: True)
+        model: Modelo de inferencia a utilizar
         
     Returns:
         Mensaje de éxito con las rutas procesadas
@@ -227,7 +242,7 @@ def code_to_design(input_path: str, output_path: str, include_diagrams: bool = T
         python_code = read_file(input_path)
         
         # Generar el documento de diseño
-        design_document = generate_design_document(python_code, include_diagrams)
+        design_document = generate_design_document(python_code, include_diagrams, model)
         
         # Verificar que se generó un documento válido
         if design_document.startswith("Error:"):

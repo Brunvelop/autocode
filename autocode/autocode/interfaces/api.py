@@ -270,7 +270,8 @@ def create_api_app() -> FastAPI:
                         "type": param.type.__name__ if hasattr(param.type, '__name__') else str(param.type),
                         "default": param.default,
                         "required": param.required,
-                        "description": param.description
+                        "description": param.description,
+                        "choices": param.choices
                     }
                     for param in func_info.params
                 ]

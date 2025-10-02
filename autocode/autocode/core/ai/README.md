@@ -8,14 +8,22 @@ Este módulo proporciona funcionalidades bidireccionales de generación usando D
 
 ### Generación de Código (Text to Code)
 
-### 1. `generate_python_code(design_text: str) -> str`
+### 1. `generate_python_code(design_text: str, model: str = 'openrouter/openai/gpt-4o') -> str`
 
 Genera código Python a partir de un texto de diseño.
 
 **Características:**
 - Usa DSPy con ChainOfThought para razonamiento
+- Modelo de inferencia configurable
 - Extensible con few-shot learning
 - Registrada en el registry (accesible vía API/CLI/MCP)
+
+**Modelos disponibles:**
+- `openrouter/openai/gpt-4o` (default)
+- `openrouter/x-ai/grok-4`
+- `openrouter/anthropic/claude-sonnet-4.5`
+- `openrouter/openai/gpt-5`
+- `openrouter/openai/gpt-5-codex`
 
 **Uso:**
 ```python
@@ -28,13 +36,19 @@ Crear una función que calcule el factorial de un número.
 - Retorna: int
 """
 
+# Usar modelo por defecto
 code = generate_python_code(design)
+print(code)
+
+# Usar modelo específico
+code = generate_python_code(design, model='openrouter/anthropic/claude-sonnet-4.5')
 print(code)
 ```
 
 **Vía CLI:**
 ```bash
 autocode generate-python-code --design-text "Crear una función que sume dos números"
+autocode generate-python-code --design-text "Crear una función que sume dos números" --model "openrouter/x-ai/grok-4"
 ```
 
 **Vía API:**
@@ -42,15 +56,20 @@ autocode generate-python-code --design-text "Crear una función que sume dos nú
 curl -X POST http://localhost:8000/generate_python_code \
   -H "Content-Type: application/json" \
   -d '{"design_text": "Crear una función que sume dos números"}'
+  
+curl -X POST http://localhost:8000/generate_python_code \
+  -H "Content-Type: application/json" \
+  -d '{"design_text": "Crear una función que sume dos números", "model": "openrouter/anthropic/claude-sonnet-4.5"}'
 ```
 
-### 2. `text_to_code(input_path: str, output_path: str) -> str`
+### 2. `text_to_code(input_path: str, output_path: str, model: str = 'openrouter/openai/gpt-4o') -> str`
 
 Convierte un archivo de diseño en un archivo .py.
 
 **Características:**
 - Lee documentos Markdown u otros formatos de texto
 - Genera y guarda el código automáticamente
+- Modelo de inferencia configurable
 - Manejo de errores integrado
 - Registrada en el registry (accesible vía API/CLI/MCP)
 
@@ -63,11 +82,20 @@ result = text_to_code(
     output_path="generated.py"
 )
 print(result)
+
+# Con modelo específico
+result = text_to_code(
+    input_path="design.md",
+    output_path="generated.py",
+    model="openrouter/x-ai/grok-4"
+)
+print(result)
 ```
 
 **Vía CLI:**
 ```bash
 autocode text-to-code --input-path design.md --output-path generated.py
+autocode text-to-code --input-path design.md --output-path generated.py --model "openrouter/anthropic/claude-sonnet-4.5"
 ```
 
 **Vía API:**
@@ -75,11 +103,15 @@ autocode text-to-code --input-path design.md --output-path generated.py
 curl -X POST http://localhost:8000/text_to_code \
   -H "Content-Type: application/json" \
   -d '{"input_path": "design.md", "output_path": "generated.py"}'
+  
+curl -X POST http://localhost:8000/text_to_code \
+  -H "Content-Type: application/json" \
+  -d '{"input_path": "design.md", "output_path": "generated.py", "model": "openrouter/openai/gpt-5"}'
 ```
 
 ### Generación de Documentación (Code to Design)
 
-### 3. `generate_design_document(python_code: str, include_diagrams: bool = True) -> str`
+### 3. `generate_design_document(python_code: str, include_diagrams: bool = True, model: str = 'openrouter/openai/gpt-4o') -> str`
 
 Genera un documento de diseño Markdown a partir de código Python.
 
@@ -87,6 +119,7 @@ Genera un documento de diseño Markdown a partir de código Python.
 - Usa DSPy con ChainOfThought para análisis profundo del código
 - Genera documentación estructurada siguiendo el formato de los ejemplos proporcionados
 - Incluye secciones como: Resumen Ejecutivo, Componentes, Flujos, Dependencias, Diagramas Mermaid, Ejemplos, Testing, etc.
+- Modelo de inferencia configurable
 - Extensible con few-shot learning
 - Registrada en el registry (accesible vía API/CLI/MCP)
 
@@ -104,11 +137,20 @@ def calculate_factorial(n: int) -> int:
 
 design_doc = generate_design_document(python_code, include_diagrams=True)
 print(design_doc)
+
+# Con modelo específico
+design_doc = generate_design_document(
+    python_code, 
+    include_diagrams=True,
+    model='openrouter/anthropic/claude-sonnet-4.5'
+)
+print(design_doc)
 ```
 
 **Vía CLI:**
 ```bash
 autocode generate-design-document --python-code "def suma(a, b): return a + b" --include-diagrams true
+autocode generate-design-document --python-code "def suma(a, b): return a + b" --include-diagrams true --model "openrouter/x-ai/grok-4"
 ```
 
 **Vía API:**
@@ -116,9 +158,13 @@ autocode generate-design-document --python-code "def suma(a, b): return a + b" -
 curl -X POST http://localhost:8000/generate_design_document \
   -H "Content-Type: application/json" \
   -d '{"python_code": "def suma(a, b): return a + b", "include_diagrams": true}'
+  
+curl -X POST http://localhost:8000/generate_design_document \
+  -H "Content-Type: application/json" \
+  -d '{"python_code": "def suma(a, b): return a + b", "include_diagrams": true, "model": "openrouter/openai/gpt-5-codex"}'
 ```
 
-### 4. `code_to_design(input_path: str, output_path: str, include_diagrams: bool = True) -> str`
+### 4. `code_to_design(input_path: str, output_path: str, include_diagrams: bool = True, model: str = 'openrouter/openai/gpt-4o') -> str`
 
 Convierte un archivo .py en un documento de diseño .md.
 
@@ -126,6 +172,7 @@ Convierte un archivo .py en un documento de diseño .md.
 - Lee archivos de código Python
 - Genera documentación Markdown estructurada automáticamente
 - Control opcional sobre inclusión de diagramas Mermaid
+- Modelo de inferencia configurable
 - Manejo de errores integrado
 - Registrada en el registry (accesible vía API/CLI/MCP)
 
@@ -139,11 +186,21 @@ result = code_to_design(
     include_diagrams=True
 )
 print(result)
+
+# Con modelo específico
+result = code_to_design(
+    input_path="my_module.py",
+    output_path="my_module_design.md",
+    include_diagrams=True,
+    model="openrouter/anthropic/claude-sonnet-4.5"
+)
+print(result)
 ```
 
 **Vía CLI:**
 ```bash
 autocode code-to-design --input-path my_module.py --output-path design.md --include-diagrams true
+autocode code-to-design --input-path my_module.py --output-path design.md --include-diagrams true --model "openrouter/openai/gpt-5"
 ```
 
 **Vía API:**
@@ -151,6 +208,10 @@ autocode code-to-design --input-path my_module.py --output-path design.md --incl
 curl -X POST http://localhost:8000/code_to_design \
   -H "Content-Type: application/json" \
   -d '{"input_path": "my_module.py", "output_path": "design.md", "include_diagrams": true}'
+  
+curl -X POST http://localhost:8000/code_to_design \
+  -H "Content-Type: application/json" \
+  -d '{"input_path": "my_module.py", "output_path": "design.md", "include_diagrams": true, "model": "openrouter/x-ai/grok-4"}'
 ```
 
 ### 5. Funciones de I/O (Módulo separado)
