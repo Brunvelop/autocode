@@ -6,7 +6,7 @@ with DSPy generation for complete workflows.
 """
 from typing import Literal, Dict, Any, Optional
 from autocode.autocode.interfaces.registry import register_function
-from autocode.autocode.interfaces.models import GenericOutput
+from autocode.autocode.interfaces.models import DspyOutput
 from autocode.autocode.core.utils.file_utils import (
     read_design_document,
     write_python_file,
@@ -63,19 +63,19 @@ def text_to_code(
         # Leer el documento de diseño
         design_text = read_design_document(input_path)
         
-        # Generar código usando generate_with_dspy (retorna dict)
-        result = generate_with_dspy(
+        # Generar código usando generate_with_dspy (retorna DspyOutput)
+        output = generate_with_dspy(
             signature_class=CodeGenerationSignature,
             inputs={'design_text': design_text},
             model=model
         )
         
-        # Verificar errores
-        if 'error' in result:
-            return f"Error: {result['error']}"
+        # Verificar éxito
+        if not output.success:
+            return f"Error: {output.message}"
         
-        # Extraer el campo python_code del dict
-        python_code = result.get('python_code', '')
+        # Extraer el campo python_code del result
+        python_code = output.result.get('python_code', '')
         if not python_code:
             return "Error: No se generó código Python"
         
@@ -122,19 +122,19 @@ def code_to_design(
         # Leer el código Python
         python_code = read_file(input_path)
         
-        # Generar documento usando generate_with_dspy (retorna dict)
-        result = generate_with_dspy(
+        # Generar documento usando generate_with_dspy (retorna DspyOutput)
+        output = generate_with_dspy(
             signature_class=DesignDocumentSignature,
             inputs={'python_code': python_code, 'include_diagrams': include_diagrams},
             model=model
         )
         
-        # Verificar errores
-        if 'error' in result:
-            return f"Error: {result['error']}"
+        # Verificar éxito
+        if not output.success:
+            return f"Error: {output.message}"
         
-        # Extraer el campo design_document del dict
-        design_document = result.get('design_document', '')
+        # Extraer el campo design_document del result
+        design_document = output.result.get('design_document', '')
         if not design_document:
             return "Error: No se generó documento de diseño"
         
@@ -162,7 +162,7 @@ def generate(
     module_kwargs: Optional[Dict[str, Any]] = None,
     max_tokens: int = 16000,
     temperature: float = 0.7
-) -> Dict[str, Any]:
+) -> DspyOutput:
     """
     Generador genérico con selección de signature y módulo DSPy desde la UI.
     
@@ -179,7 +179,7 @@ def generate(
         temperature: Temperature para la generación (default: 0.7). Valores más altos = más creatividad
         
     Returns:
-        Dict con todos los outputs de la signature (puede tener múltiples fields)
+        DspyOutput con todos los outputs de la signature y metadata DSPy
         
     Example inputs por signature_type:
         - code_generation: {"design_text": "Create a function that..."}
@@ -196,9 +196,13 @@ def generate(
     """
     signature_class = SIGNATURE_MAP.get(signature_type)
     if not signature_class:
-        return {"error": f"Signature type '{signature_type}' no válido. Opciones: {list(SIGNATURE_MAP.keys())}"}
+        return DspyOutput(
+            success=False,
+            result={},
+            message=f"Signature type '{signature_type}' no válido. Opciones: {list(SIGNATURE_MAP.keys())}"
+        )
     
-    # Retorna el dict completo (útil para funciones genéricas con múltiples outputs)
+    # Retorna DspyOutput completo (útil para funciones genéricas con múltiples outputs)
     return generate_with_dspy(
         signature_class=signature_class,
         inputs=inputs,
@@ -225,18 +229,18 @@ def generate_code(
     Returns:
         Código Python generado
     """
-    result = generate_with_dspy(
+    output = generate_with_dspy(
         signature_class=CodeGenerationSignature,
         inputs={'design_text': design_text},
         model=model
     )
     
-    # Verificar errores
-    if 'error' in result:
-        return f"Error: {result['error']}"
+    # Verificar éxito
+    if not output.success:
+        return f"Error: {output.message}"
     
     # Extraer el campo python_code
-    return result.get('python_code', 'Error: No se generó código')
+    return output.result.get('python_code', 'Error: No se generó código')
 
 
 @register_function(http_methods=["GET", "POST"])
@@ -256,18 +260,18 @@ def generate_design(
     Returns:
         Documento de diseño en Markdown
     """
-    result = generate_with_dspy(
+    output = generate_with_dspy(
         signature_class=DesignDocumentSignature,
         inputs={'python_code': python_code, 'include_diagrams': include_diagrams},
         model=model
     )
     
-    # Verificar errores
-    if 'error' in result:
-        return f"Error: {result['error']}"
+    # Verificar éxito
+    if not output.success:
+        return f"Error: {output.message}"
     
     # Extraer el campo design_document
-    return result.get('design_document', 'Error: No se generó documento')
+    return output.result.get('design_document', 'Error: No se generó documento')
 
 
 @register_function(http_methods=["GET", "POST"])
@@ -285,18 +289,18 @@ def generate_answer(
     Returns:
         Respuesta a la pregunta
     """
-    result = generate_with_dspy(
+    output = generate_with_dspy(
         signature_class=QASignature,
         inputs={'question': question},
         model=model
     )
     
-    # Verificar errores
-    if 'error' in result:
-        return f"Error: {result['error']}"
+    # Verificar éxito
+    if not output.success:
+        return f"Error: {output.message}"
     
     # Extraer el campo answer
-    return result.get('answer', 'Error: No se generó respuesta')
+    return output.result.get('answer', 'Error: No se generó respuesta')
 
 
 @register_function(http_methods=["POST"])
@@ -378,7 +382,7 @@ def chat(
             tools.append(create_tool_wrapper(func_name, func_info))
         
         # Generar respuesta usando ReAct con tools enriquecidas
-        result = generate_with_dspy(
+        output = generate_with_dspy(
             signature_class=ChatSignature,
             inputs={
                 'message': message,
@@ -391,17 +395,17 @@ def chat(
             temperature=temperature
         )
         
-        # Verificar errores
-        if 'error' in result:
+        # Verificar éxito
+        if not output.success:
             return {
                 "result": {
-                    "error": result['error'],
+                    "error": output.message,
                     "conversation_history": conversation_history
                 }
             }
         
         # Extraer respuesta
-        response_text = result.get('response', 'Error: No se generó respuesta')
+        response_text = output.result.get('response', 'Error: No se generó respuesta')
         
         # Actualizar historial
         updated_history = conversation_history + [

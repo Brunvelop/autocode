@@ -8,6 +8,7 @@ import os
 from typing import Any, Dict, Literal, Type
 
 import dspy
+from autocode.autocode.interfaces.models import DspyOutput
 
 
 # Available models for inference
@@ -49,13 +50,13 @@ def generate_with_dspy(
     max_tokens: int = 16000,
     temperature: float = 0.7,
     **lm_kwargs
-) -> Dict[str, Any]:
+) -> DspyOutput:
     """
     Generador genérico que ejecuta cualquier signature de DSPy con el módulo seleccionado.
     
     Esta función proporciona una interfaz unificada para ejecutar cualquier
     signature de DSPy con diferentes módulos (Predict, ChainOfThought, ReAct, etc.).
-    Diseñada para ser extensible con few-shot learning en el futuro.
+    Retorna siempre un DspyOutput con los campos principales y metadata DSPy.
     
     Args:
         signature_class: La clase de signature de DSPy a utilizar
@@ -69,9 +70,8 @@ def generate_with_dspy(
         **lm_kwargs: Parámetros adicionales para dspy.LM (stop, cache, etc.)
         
     Returns:
-        Diccionario con todos los campos de output de la signature.
-        Siempre retorna un dict, incluso para signatures con un solo output.
-        Ejemplo: {'python_code': '...'} o {'answer': '...', 'reasoning': '...'}
+        DspyOutput con todos los campos de output de la signature, más metadata DSPy
+        (reasoning, completions, observations cuando apliquen).
         
     Raises:
         ValueError: Si la API key no está configurada o module_type es inválido
@@ -82,27 +82,17 @@ def generate_with_dspy(
         ...     CodeGenerationSignature,
         ...     {"design_text": "Create a hello world function"}
         ... )
-        >>> print(result['python_code'])
+        >>> print(result.result['python_code'])
+        >>> print(result.success)  # True
         
-        >>> # Ejemplo con parámetros de LM personalizados
-        >>> result = generate_with_dspy(
-        ...     CodeGenerationSignature,
-        ...     {"design_text": "Create a complex class"},
-        ...     max_tokens=20000,
-        ...     temperature=0.9
-        ... )
-        >>> print(result['python_code'])
-        
-        >>> # Ejemplo con módulo específico y parámetros
-        >>> def search_web(query: str) -> str:
-        ...     return f"Results for {query}"
+        >>> # Ejemplo con ChainOfThought (incluye reasoning)
         >>> result = generate_with_dspy(
         ...     QASignature,
         ...     {"question": "What is Python?"},
-        ...     module_type='ReAct',
-        ...     module_kwargs={'tools': [search_web], 'max_iters': 5}
+        ...     module_type='ChainOfThought'
         ... )
-        >>> print(result['answer'])
+        >>> print(result.result['answer'])
+        >>> print(result.reasoning)  # Razonamiento paso a paso
     """
     # Inicializar module_kwargs si no se proporciona
     if module_kwargs is None:
@@ -111,10 +101,11 @@ def generate_with_dspy(
     # Validar module_type antes de configurar el LM
     if module_type not in MODULE_MAP:
         valid_options = list(MODULE_MAP.keys())
-        return {
-            "error": f"Invalid module_type '{module_type}'. "
-                    f"Valid options: {valid_options}"
-        }
+        return DspyOutput(
+            success=False,
+            result={},
+            message=f"Invalid module_type '{module_type}'. Valid options: {valid_options}"
+        )
     
     # Configurar el Language Model
     try:
@@ -125,16 +116,27 @@ def generate_with_dspy(
             **lm_kwargs
         )
     except ValueError as e:
-        return {"error": str(e)}
+        return DspyOutput(
+            success=False,
+            result={},
+            message=f"Error configurando LM: {str(e)}"
+        )
     
     # Usar context en lugar de configure para evitar conflictos en async tasks
-    with dspy.context(lm=lm):
-        # Crear el generador con el módulo seleccionado
-        module_class = MODULE_MAP[module_type]
-        generator = module_class(signature_class, **module_kwargs)
-        
-        # Ejecutar la generación con los inputs proporcionados
-        response = generator(**inputs)
+    try:
+        with dspy.context(lm=lm):
+            # Crear el generador con el módulo seleccionado
+            module_class = MODULE_MAP[module_type]
+            generator = module_class(signature_class, **module_kwargs)
+            
+            # Ejecutar la generación con los inputs proporcionados
+            response = generator(**inputs)
+    except Exception as e:
+        return DspyOutput(
+            success=False,
+            result={},
+            message=f"Error en generación DSPy: {str(e)}"
+        )
     
     # Extraer output fields de la signature
     output_fields = [
@@ -142,18 +144,61 @@ def generate_with_dspy(
         if field.json_schema_extra.get('__dspy_field_type') == 'output'
     ]
     
-    # Construir resultado accediendo directamente a la response
-    result = {field: getattr(response, field, None) for field in output_fields}
+    # Construir dict con outputs principales
+    dspy_fields = {field: getattr(response, field, None) for field in output_fields}
     
     # Fallback si no hay outputs explícitos
-    if not result:
-        result = {
+    if not dspy_fields:
+        dspy_fields = {
             attr: getattr(response, attr) 
             for attr in dir(response)
             if not attr.startswith('_') and not callable(getattr(response, attr))
         }
     
-    return result if result else {"error": "No output fields found in response"}
+    # Verificar si se generó algo
+    if not dspy_fields:
+        return DspyOutput(
+            success=False,
+            result={},
+            message="No se encontraron campos de output en la response de DSPy"
+        )
+    
+    # Extraer y procesar campos DSPy comunes (si existen)
+    # Convertir objetos Prediction a strings para evitar errores de validación Pydantic
+    reasoning = getattr(response, 'reasoning', None)
+    completions_raw = getattr(response, 'completions', None)
+    observations_raw = getattr(response, 'observations', None)
+    
+    # Procesar completions: convertir Prediction objects a strings
+    completions = None
+    if completions_raw is not None:
+        if isinstance(completions_raw, list):
+            completions = [
+                str(comp) if hasattr(comp, '__dict__') else comp 
+                for comp in completions_raw
+            ]
+        else:
+            completions = [str(completions_raw)]
+    
+    # Procesar observations: convertir a strings si es necesario
+    observations = None
+    if observations_raw is not None:
+        if isinstance(observations_raw, list):
+            observations = [
+                str(obs) if hasattr(obs, '__dict__') else obs 
+                for obs in observations_raw
+            ]
+        else:
+            observations = [str(observations_raw)]
+    
+    return DspyOutput(
+        success=True,
+        result=dspy_fields,
+        message="Generación exitosa",
+        reasoning=reasoning,
+        completions=completions,
+        observations=observations
+    )
 
 
 def get_dspy_lm(
