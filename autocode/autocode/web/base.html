@@ -12,28 +12,33 @@
     <!-- Chat Flotante -->
     <div id="chatWidget">
         <!-- Botón flotante -->
-<button id="chatToggleBtn" class="fixed top-4 left-4 z-50 bg-white text-indigo-600 rounded-full p-4 shadow-lg hover:shadow-xl ring-1 ring-black/10 transition-transform duration-300 hover:scale-105 focus:outline-none focus:ring-2 focus:ring-indigo-400">
+<button id="chatToggleBtn" class="fixed top-4 left-4 z-[110] bg-white text-indigo-600 rounded-full p-4 shadow-lg hover:shadow-xl ring-1 ring-black/10 transition-transform duration-300 hover:scale-105 focus:outline-none focus:ring-2 focus:ring-indigo-400">
             <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
             </svg>
         </button>
 
         <!-- Panel de Chat (oculto por defecto) -->
-        <div id="chatPanel" class="hidden fixed inset-0 z-[60] bg-transparent">
-            <div class="fixed top-0 left-0 h-full w-full md:w-[420px] lg:w-[480px] bg-white rounded-2xl shadow-2xl ring-1 ring-black/5 overflow-hidden flex flex-col">
+<div id="chatPanel" class="hidden fixed inset-0 z-[100] bg-transparent pointer-events-none">
+<div id="chatWindow" class="fixed top-20 right-6 w-[92vw] md:w-[480px] lg:w-[560px] h-[70vh] bg-white rounded-2xl shadow-2xl ring-1 ring-black/10 drop-shadow-xl overflow-hidden flex flex-col pointer-events-auto">
                 <!-- Header del Chat -->
-                <div class="bg-gradient-to-r from-indigo-600 to-violet-600 p-4 flex items-center justify-between">
+<div id="chatDragHandle" class="bg-gradient-to-r from-indigo-600 to-violet-600 p-4 flex items-center justify-between cursor-grab select-none">
                     <div class="flex items-center gap-3">
                         <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
                         </svg>
                         <h2 class="text-white font-bold text-xl">Autocode AI Chat</h2>
                     </div>
-                    <button id="chatCloseBtn" class="text-white hover:bg-indigo-700 rounded-full p-2 transition-colors">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                    </button>
+<div class="flex items-center gap-2">
+                        <button id="newChatBtn" class="text-indigo-100 bg-white/10 hover:bg-white/20 border border-white/20 rounded-full px-3 py-1.5 text-sm font-semibold transition-colors">
+                            Nueva
+                        </button>
+                        <button id="chatCloseBtn" class="text-white hover:bg-indigo-700 rounded-full p-2 transition-colors">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                        </button>
+                    </div>
                 </div>
 
                 <!-- Selector de Modelo -->
@@ -74,6 +79,11 @@
                         </button>
                     </form>
                 </div>
+                <div id="chatResizeHandle" class="absolute bottom-2 right-2 w-4 h-4 cursor-se-resize text-indigo-300/70 hover:text-indigo-400 select-none">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 11L11 21M17 7L7 17" />
+                    </svg>
+                </div>
             </div>
         </div>
     </div>
@@ -81,7 +91,7 @@
     <script>
         class FloatingChat {
             constructor() {
-                this.conversationHistory = [];
+this.conversationHistory = [];
                 this.chatPanel = document.getElementById('chatPanel');
                 this.chatToggleBtn = document.getElementById('chatToggleBtn');
                 this.chatCloseBtn = document.getElementById('chatCloseBtn');
@@ -91,17 +101,24 @@
                 this.sendBtn = document.getElementById('sendBtn');
                 this.modelSelect = document.getElementById('modelSelect');
                 this.emptyState = document.getElementById('emptyState');
+                this.chatWindow = document.getElementById('chatWindow');
+                this.chatDragHandle = document.getElementById('chatDragHandle');
+                this.newChatBtn = document.getElementById('newChatBtn');
+                this.chatResizeHandle = document.getElementById('chatResizeHandle');
                 
                 this.init();
             }
 
-            init() {
+init() {
                 this.chatToggleBtn.addEventListener('click', () => this.toggleChat());
                 this.chatCloseBtn.addEventListener('click', () => this.toggleChat());
                 this.chatPanel.addEventListener('click', (e) => {
                     if (e.target === this.chatPanel) this.toggleChat();
                 });
                 this.chatForm.addEventListener('submit', (e) => this.handleSubmit(e));
+                if (this.newChatBtn) this.newChatBtn.addEventListener('click', () => this.resetConversation());
+                this.setupDrag();
+                this.setupResize();
             }
 
             toggleChat() {
@@ -197,8 +214,133 @@
                 this.sendBtn.textContent = loading ? 'Pensando... 🤔' : 'Enviar 🚀';
             }
 
-            scrollToBottom() {
+scrollToBottom() {
                 this.messagesContainer.scrollTop = this.messagesContainer.scrollHeight;
+            }
+
+            resetConversation() {
+                this.conversationHistory = [];
+                this.messagesContainer.innerHTML = '';
+                if (this.emptyState) this.emptyState.style.display = '';
+                this.messageInput.value = '';
+                this.messageInput.focus();
+            }
+
+            setupDrag() {
+                if (!this.chatWindow || !this.chatDragHandle) return;
+                let isDragging = false;
+                let offsetX = 0, offsetY = 0;
+
+                const onPointerMove = (e) => {
+                    if (!isDragging) return;
+                    const w = this.chatWindow.offsetWidth;
+                    const h = this.chatWindow.offsetHeight;
+                    let x = e.clientX - offsetX;
+                    let y = e.clientY - offsetY;
+                    const maxX = Math.max(0, window.innerWidth - w);
+                    const maxY = Math.max(0, window.innerHeight - h);
+                    x = Math.min(Math.max(0, x), maxX);
+                    y = Math.min(Math.max(0, y), maxY);
+                    this.chatWindow.style.left = `${x}px`;
+                    this.chatWindow.style.top = `${y}px`;
+                };
+
+                const onPointerUp = () => {
+                    if (!isDragging) return;
+                    isDragging = false;
+                    this.chatDragHandle.classList.remove('cursor-grabbing');
+                    document.removeEventListener('pointermove', onPointerMove);
+                    document.removeEventListener('pointerup', onPointerUp);
+                };
+
+                this.chatDragHandle.addEventListener('pointerdown', (e) => {
+                    if (e.button !== undefined && e.button !== 0) return;
+                    isDragging = true;
+                    this.chatDragHandle.classList.add('cursor-grabbing');
+
+                    const rect = this.chatWindow.getBoundingClientRect();
+                    this.chatWindow.style.left = `${rect.left}px`;
+                    this.chatWindow.style.top = `${rect.top}px`;
+                    this.chatWindow.style.right = 'auto';
+                    this.chatWindow.style.bottom = 'auto';
+
+                    offsetX = e.clientX - rect.left;
+                    offsetY = e.clientY - rect.top;
+
+                    document.addEventListener('pointermove', onPointerMove);
+                    document.addEventListener('pointerup', onPointerUp);
+                });
+            }
+
+            setupResize() {
+                if (!this.chatWindow || !this.chatResizeHandle) return;
+                let isResizing = false;
+                let startX = 0, startY = 0, startW = 0, startH = 0;
+
+                const onPointerMove = (e) => {
+                    if (!isResizing) return;
+                    const dx = e.clientX - startX;
+                    const dy = e.clientY - startY;
+
+                    const rect = this.chatWindow.getBoundingClientRect();
+                    let newW = startW + dx;
+                    let newH = startH + dy;
+
+                    const top = rect.top;
+                    const left = rect.left;
+                    const viewportW = window.innerWidth;
+                    const viewportH = window.innerHeight;
+                    const margin = 8;
+
+                    // tamaños mínimos: un poco más anchos y responsivos
+                    const minW = viewportW < 420 ? Math.max(280, viewportW - margin * 2) : 420;
+                    const minH = viewportH < 600 ? Math.max(260, viewportH - margin * 2) : 300;
+
+                    // permitir ensanchar hasta casi todo el viewport, independientemente de 'left'
+                    const maxW = viewportW - margin;
+                    const maxH = viewportH - margin;
+
+                    newW = Math.min(Math.max(minW, newW), maxW);
+                    newH = Math.min(Math.max(minH, newH), maxH);
+
+                    // si al ensanchar se sale por la derecha, recolocar hacia la izquierda
+                    let newLeft = left;
+                    const overflowRight = (left + newW) - (viewportW - margin);
+                    if (overflowRight > 0) {
+                        newLeft = Math.max(margin, left - overflowRight);
+                    } else {
+                        // mantener dentro por la izquierda también
+                        newLeft = Math.max(margin, Math.min(left, viewportW - margin - newW));
+                    }
+
+                    this.chatWindow.style.left = `${newLeft}px`;
+                    this.chatWindow.style.width = `${newW}px`;
+                    this.chatWindow.style.height = `${newH}px`;
+                };
+
+                const onPointerUp = () => {
+                    if (!isResizing) return;
+                    isResizing = false;
+                    document.removeEventListener('pointermove', onPointerMove);
+                    document.removeEventListener('pointerup', onPointerUp);
+                };
+
+                this.chatResizeHandle.addEventListener('pointerdown', (e) => {
+                    if (e.button !== undefined && e.button !== 0) return;
+                    const rect = this.chatWindow.getBoundingClientRect();
+                    // Lock current size to px so resizing overrides Tailwind classes
+                    this.chatWindow.style.width = `${rect.width}px`;
+                    this.chatWindow.style.height = `${rect.height}px`;
+
+                    startX = e.clientX;
+                    startY = e.clientY;
+                    startW = rect.width;
+                    startH = rect.height;
+
+                    isResizing = true;
+                    document.addEventListener('pointermove', onPointerMove);
+                    document.addEventListener('pointerup', onPointerUp);
+                });
             }
         }
 
