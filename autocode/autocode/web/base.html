@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Autocode{% endblock %}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gradient-to-br from-blue-50 to-indigo-100 min-h-screen">
+    {% block content %}{% endblock %}
+
+    <!-- Chat Flotante -->
+    <div id="chatWidget">
+        <!-- Botón flotante -->
+<button id="chatToggleBtn" class="fixed top-4 left-4 z-50 bg-white text-indigo-600 rounded-full p-4 shadow-lg hover:shadow-xl ring-1 ring-black/10 transition-transform duration-300 hover:scale-105 focus:outline-none focus:ring-2 focus:ring-indigo-400">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+            </svg>
+        </button>
+
+        <!-- Panel de Chat (oculto por defecto) -->
+        <div id="chatPanel" class="hidden fixed inset-0 z-[60] bg-transparent">
+            <div class="fixed top-0 left-0 h-full w-full md:w-[420px] lg:w-[480px] bg-white rounded-2xl shadow-2xl ring-1 ring-black/5 overflow-hidden flex flex-col">
+                <!-- Header del Chat -->
+                <div class="bg-gradient-to-r from-indigo-600 to-violet-600 p-4 flex items-center justify-between">
+                    <div class="flex items-center gap-3">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+                        </svg>
+                        <h2 class="text-white font-bold text-xl">Autocode AI Chat</h2>
+                    </div>
+                    <button id="chatCloseBtn" class="text-white hover:bg-indigo-700 rounded-full p-2 transition-colors">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                    </button>
+                </div>
+
+                <!-- Selector de Modelo -->
+                <div class="bg-white border-b border-gray-100 p-3 flex items-center gap-3">
+                    <label for="modelSelect" class="text-gray-700 font-semibold text-sm">Modelo:</label>
+                    <select id="modelSelect" class="flex-1 p-2 rounded-lg border border-indigo-200 focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white text-gray-800 text-sm">
+                        <option value="openrouter/openai/gpt-4o">GPT-4o (OpenAI)</option>
+                        <option value="openrouter/x-ai/grok-4">Grok-4 (xAI)</option>
+                        <option value="openrouter/anthropic/claude-sonnet-4.5">Claude Sonnet 4.5 (Anthropic)</option>
+                        <option value="openrouter/openai/gpt-5">GPT-5 (OpenAI)</option>
+                        <option value="openrouter/openai/gpt-5-codex">GPT-5 Codex (OpenAI)</option>
+                    </select>
+                </div>
+
+                <!-- Área de Mensajes -->
+                <div id="messagesContainer" class="flex-1 overflow-y-auto p-4 bg-gradient-to-b from-gray-50 to-white space-y-3">
+                    <div class="text-center text-gray-500 italic" id="emptyState">
+                        Inicia una conversación... 💬
+                    </div>
+                </div>
+
+                <!-- Área de Input -->
+                <div class="bg-white p-4 border-t border-gray-200">
+                    <form id="chatForm" class="flex gap-2">
+                        <input 
+                            type="text" 
+                            id="messageInput" 
+                            placeholder="Escribe tu mensaje..." 
+                            class="flex-1 p-3 border border-gray-300 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
+                            required
+                        />
+                        <button 
+                            type="submit" 
+                            id="sendBtn"
+                            class="bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white font-semibold py-3 px-5 rounded-xl shadow transition disabled:bg-gray-400 disabled:cursor-not-allowed text-sm"
+                        >
+                            Enviar 🚀
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        class FloatingChat {
+            constructor() {
+                this.conversationHistory = [];
+                this.chatPanel = document.getElementById('chatPanel');
+                this.chatToggleBtn = document.getElementById('chatToggleBtn');
+                this.chatCloseBtn = document.getElementById('chatCloseBtn');
+                this.messagesContainer = document.getElementById('messagesContainer');
+                this.messageInput = document.getElementById('messageInput');
+                this.chatForm = document.getElementById('chatForm');
+                this.sendBtn = document.getElementById('sendBtn');
+                this.modelSelect = document.getElementById('modelSelect');
+                this.emptyState = document.getElementById('emptyState');
+                
+                this.init();
+            }
+
+            init() {
+                this.chatToggleBtn.addEventListener('click', () => this.toggleChat());
+                this.chatCloseBtn.addEventListener('click', () => this.toggleChat());
+                this.chatPanel.addEventListener('click', (e) => {
+                    if (e.target === this.chatPanel) this.toggleChat();
+                });
+                this.chatForm.addEventListener('submit', (e) => this.handleSubmit(e));
+            }
+
+            toggleChat() {
+                this.chatPanel.classList.toggle('hidden');
+                if (!this.chatPanel.classList.contains('hidden')) {
+                    this.messageInput.focus();
+                }
+            }
+
+            async handleSubmit(event) {
+                event.preventDefault();
+                
+                const message = this.messageInput.value.trim();
+                if (!message) return;
+
+                this.addMessage('user', message);
+                this.messageInput.value = '';
+                this.emptyState.style.display = 'none';
+                this.setLoading(true);
+
+                try {
+                    const response = await this.sendMessage(message);
+                    
+                    if (response.error) {
+                        this.addMessage('error', response.error);
+                    } else {
+                        this.addMessage('assistant', response.response);
+                        this.conversationHistory = response.conversation_history || [];
+                    }
+                } catch (error) {
+                    this.addMessage('error', `Error: ${error.message}`);
+                } finally {
+                    this.setLoading(false);
+                }
+            }
+
+            async sendMessage(message) {
+                const model = this.modelSelect.value;
+                
+                const response = await fetch('/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        message: message,
+                        conversation_history: this.conversationHistory,
+                        model: model,
+                        max_tokens: 16000,
+                        temperature: 0.7
+                    })
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({}));
+                    throw new Error(errorData.detail || `HTTP ${response.status}`);
+                }
+
+                const data = await response.json();
+                return data.result || data;
+            }
+
+            addMessage(role, content) {
+                const messageDiv = document.createElement('div');
+                messageDiv.className = `flex ${role === 'user' ? 'justify-end' : 'justify-start'}`;
+                
+                const bubble = document.createElement('div');
+                bubble.className = `max-w-[85%] rounded-2xl px-4 py-3 ${
+                    role === 'user' 
+                        ? 'bg-indigo-600 text-white shadow-md' 
+                        : role === 'error'
+                        ? 'bg-red-50 text-red-800 border border-red-300 ring-1 ring-red-200'
+                        : 'bg-white text-gray-800 shadow-sm border border-gray-200 ring-1 ring-black/5'
+                }`;
+                
+                const label = document.createElement('div');
+                label.className = 'font-bold text-sm mb-1';
+                label.textContent = role === 'user' ? '👤 Tú' : role === 'error' ? '❌ Error' : '🤖 Asistente';
+                
+                const text = document.createElement('div');
+                text.className = 'whitespace-pre-wrap break-words text-sm';
+                text.textContent = content;
+                
+                bubble.appendChild(label);
+                bubble.appendChild(text);
+                messageDiv.appendChild(bubble);
+                
+                this.messagesContainer.appendChild(messageDiv);
+                this.scrollToBottom();
+            }
+
+            setLoading(loading) {
+                this.sendBtn.disabled = loading;
+                this.messageInput.disabled = loading;
+                this.sendBtn.textContent = loading ? 'Pensando... 🤔' : 'Enviar 🚀';
+            }
+
+            scrollToBottom() {
+                this.messagesContainer.scrollTop = this.messagesContainer.scrollHeight;
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', () => new FloatingChat());
+    </script>
+</body>
+</html>

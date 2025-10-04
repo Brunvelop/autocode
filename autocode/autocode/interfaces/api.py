@@ -5,9 +5,10 @@ import os
 import logging
 from typing import Type, Dict, Any
 from pydantic import BaseModel, create_model, Field
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException, Depends, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
+from fastapi.templating import Jinja2Templates
 
 from autocode.autocode.interfaces.registry import FUNCTION_REGISTRY, load_core_functions
 from autocode.autocode.interfaces.models import GenericOutput, FunctionInfo
@@ -242,20 +243,21 @@ def create_api_app() -> FastAPI:
     endpoint_count = len([route for route in app.routes if hasattr(route, 'path') and route.path.startswith('/') and route.path not in ['/', '/functions', '/health']])
     logger.info(f"Registered {endpoint_count} dynamic endpoints")
 
+    # Setup Jinja2 templates
+    current_dir = os.path.dirname(__file__)
+    web_dir = os.path.join(current_dir, "..", "web")
+    templates = Jinja2Templates(directory=web_dir)
+
     # Standard API endpoints
     @app.get("/")
-    async def root():
-        """Root endpoint - serve the web UI."""
-        current_dir = os.path.dirname(__file__)
-        index_path = os.path.join(current_dir, "..", "web", "index.html")
-        return FileResponse(index_path)
+    async def root(request: Request):
+        """Root endpoint - serve the web UI with chat widget."""
+        return templates.TemplateResponse("templates/index.html", {"request": request})
 
     @app.get("/functions")
-    async def functions_ui():
-        """Serve the dynamic functions UI page."""
-        current_dir = os.path.dirname(__file__)
-        functions_path = os.path.join(current_dir, "..", "web", "functions.html")
-        return FileResponse(functions_path)
+    async def functions_ui(request: Request):
+        """Serve the dynamic functions UI page with chat widget."""
+        return templates.TemplateResponse("templates/functions.html", {"request": request})
 
     @app.get("/functions/details")
     async def list_functions_details():
