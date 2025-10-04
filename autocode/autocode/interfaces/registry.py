@@ -132,7 +132,7 @@ def load_core_functions():
         # The decorators will automatically register the functions
         import autocode.autocode.core.hello.hello_world
         import autocode.autocode.core.math.calculator
-        import autocode.autocode.core.ai.ai_functions
+        import autocode.autocode.core.ai.pipelines
         
         _functions_loaded = True
         logger.info(f"Loaded {len(FUNCTION_REGISTRY)} functions into registry")

@@ -6,9 +6,16 @@ Este módulo proporciona funcionalidades bidireccionales de generación usando D
 
 ## Funciones Disponibles
 
+**Modelos disponibles:**
+- `openrouter/openai/gpt-4o` (default)
+- `openrouter/x-ai/grok-4`
+- `openrouter/anthropic/claude-sonnet-4.5`
+- `openrouter/openai/gpt-5`
+- `openrouter/openai/gpt-5-codex`
+
 ### Generación de Código (Text to Code)
 
-### 1. `generate_python_code(design_text: str, model: str = 'openrouter/openai/gpt-4o') -> str`
+### 1. `generate_code(design_text: str, model: str = 'openrouter/openai/gpt-4o') -> str`
 
 Genera código Python a partir de un texto de diseño.
 
@@ -18,16 +25,9 @@ Genera código Python a partir de un texto de diseño.
 - Extensible con few-shot learning
 - Registrada en el registry (accesible vía API/CLI/MCP)
 
-**Modelos disponibles:**
-- `openrouter/openai/gpt-4o` (default)
-- `openrouter/x-ai/grok-4`
-- `openrouter/anthropic/claude-sonnet-4.5`
-- `openrouter/openai/gpt-5`
-- `openrouter/openai/gpt-5-codex`
-
 **Uso:**
 ```python
-from autocode.autocode.core.ai.ai_functions import generate_python_code
+from autocode.autocode.core.ai.pipelines import generate_code
 
 design = """
 Crear una función que calcule el factorial de un número.
@@ -37,27 +37,27 @@ Crear una función que calcule el factorial de un número.
 """
 
 # Usar modelo por defecto
-code = generate_python_code(design)
+code = generate_code(design)
 print(code)
 
 # Usar modelo específico
-code = generate_python_code(design, model='openrouter/anthropic/claude-sonnet-4.5')
+code = generate_code(design, model='openrouter/anthropic/claude-sonnet-4.5')
 print(code)
 ```
 
 **Vía CLI:**
 ```bash
-autocode generate-python-code --design-text "Crear una función que sume dos números"
-autocode generate-python-code --design-text "Crear una función que sume dos números" --model "openrouter/x-ai/grok-4"
+autocode generate-code --design-text "Crear una función que sume dos números"
+autocode generate-code --design-text "Crear una función que sume dos números" --model "openrouter/x-ai/grok-4"
 ```
 
 **Vía API:**
 ```bash
-curl -X POST http://localhost:8000/generate_python_code \
+curl -X POST http://localhost:8000/generate_code \
   -H "Content-Type: application/json" \
   -d '{"design_text": "Crear una función que sume dos números"}'
   
-curl -X POST http://localhost:8000/generate_python_code \
+curl -X POST http://localhost:8000/generate_code \
   -H "Content-Type: application/json" \
   -d '{"design_text": "Crear una función que sume dos números", "model": "openrouter/anthropic/claude-sonnet-4.5"}'
 ```
@@ -75,7 +75,7 @@ Convierte un archivo de diseño en un archivo .py.
 
 **Uso:**
 ```python
-from autocode.autocode.core.ai.ai_functions import text_to_code
+from autocode.autocode.core.ai.pipelines import text_to_code
 
 result = text_to_code(
     input_path="design.md",
@@ -111,7 +111,7 @@ curl -X POST http://localhost:8000/text_to_code \
 
 ### Generación de Documentación (Code to Design)
 
-### 3. `generate_design_document(python_code: str, include_diagrams: bool = True, model: str = 'openrouter/openai/gpt-4o') -> str`
+### 3. `generate_design(python_code: str, include_diagrams: bool = True, model: str = 'openrouter/openai/gpt-4o') -> str`
 
 Genera un documento de diseño Markdown a partir de código Python.
 
@@ -125,7 +125,7 @@ Genera un documento de diseño Markdown a partir de código Python.
 
 **Uso:**
 ```python
-from autocode.autocode.core.ai.ai_functions import generate_design_document
+from autocode.autocode.core.ai.pipelines import generate_design
 
 python_code = """
 def calculate_factorial(n: int) -> int:
@@ -135,11 +135,11 @@ def calculate_factorial(n: int) -> int:
     return n * calculate_factorial(n - 1)
 """
 
-design_doc = generate_design_document(python_code, include_diagrams=True)
+design_doc = generate_design(python_code, include_diagrams=True)
 print(design_doc)
 
 # Con modelo específico
-design_doc = generate_design_document(
+design_doc = generate_design(
     python_code, 
     include_diagrams=True,
     model='openrouter/anthropic/claude-sonnet-4.5'
@@ -149,17 +149,17 @@ print(design_doc)
 
 **Vía CLI:**
 ```bash
-autocode generate-design-document --python-code "def suma(a, b): return a + b" --include-diagrams true
-autocode generate-design-document --python-code "def suma(a, b): return a + b" --include-diagrams true --model "openrouter/x-ai/grok-4"
+autocode generate-design --python-code "def suma(a, b): return a + b" --include-diagrams true
+autocode generate-design --python-code "def suma(a, b): return a + b" --include-diagrams true --model "openrouter/x-ai/grok-4"
 ```
 
 **Vía API:**
 ```bash
-curl -X POST http://localhost:8000/generate_design_document \
+curl -X POST http://localhost:8000/generate_design \
   -H "Content-Type: application/json" \
   -d '{"python_code": "def suma(a, b): return a + b", "include_diagrams": true}'
   
-curl -X POST http://localhost:8000/generate_design_document \
+curl -X POST http://localhost:8000/generate_design \
   -H "Content-Type: application/json" \
   -d '{"python_code": "def suma(a, b): return a + b", "include_diagrams": true, "model": "openrouter/openai/gpt-5-codex"}'
 ```
@@ -178,7 +178,7 @@ Convierte un archivo .py en un documento de diseño .md.
 
 **Uso:**
 ```python
-from autocode.autocode.core.ai.ai_functions import code_to_design
+from autocode.autocode.core.ai.pipelines import code_to_design
 
 result = code_to_design(
     input_path="my_module.py",
@@ -214,7 +214,74 @@ curl -X POST http://localhost:8000/code_to_design \
   -d '{"input_path": "my_module.py", "output_path": "design.md", "include_diagrams": true, "model": "openrouter/x-ai/grok-4"}'
 ```
 
-### 5. Funciones de I/O (Módulo separado)
+### 5. `generate_answer(question: str, model: str = 'openrouter/openai/gpt-4o') -> str`
+
+Responde una pregunta usando razonamiento.
+
+**Uso:**
+```python
+from autocode.autocode.core.ai.pipelines import generate_answer
+
+answer = generate_answer("¿Qué es DSPy?")
+print(answer)
+```
+
+**Vía CLI:**
+```bash
+autocode generate-answer --question "¿Qué es DSPy?"
+```
+
+**Vía API:**
+```bash
+curl -X POST http://localhost:8000/generate_answer \
+  -H "Content-Type: application/json" \
+  -d '{"question": "¿Qué es DSPy?"}'
+```
+
+### 6. `generate(signature_type: SignatureType, inputs: Dict[str, Any], model: str = 'openrouter/openai/gpt-4o') -> str`
+
+Generador genérico con selección de signature desde la UI.
+
+**Características:**
+- Dropdown en la UI para seleccionar signature: 'code_generation', 'design_document', o 'qa'
+- Ejecuta cualquier signature disponible con inputs dinámicos
+
+**Uso:**
+```python
+from autocode.autocode.core.ai.pipelines import generate
+
+# Generar código
+result = generate(
+    signature_type='code_generation',
+    inputs={'design_text': 'Create a hello world function'}
+)
+
+# Generar documentación
+result = generate(
+    signature_type='design_document',
+    inputs={'python_code': 'def hello(): return "Hello"', 'include_diagrams': True}
+)
+
+# Responder pregunta
+result = generate(
+    signature_type='qa',
+    inputs={'question': '¿Qué es Python?'}
+)
+```
+
+**Vía CLI:**
+```bash
+autocode generate --signature-type code_generation --inputs '{"design_text": "Create a hello world function"}'
+```
+
+**Vía API:**
+```bash
+curl -X POST http://localhost:8000/generate \
+  -H "Content-Type: application/json" \
+  -d '{"signature_type": "code_generation", "inputs": {"design_text": "Create a hello world function"}}'
+```
+
+### 7. Funciones de I/O (Módulo separado)
 
 Las funciones de lectura/escritura de archivos ahora están en `autocode.autocode.core.utils.file_utils`:
 
@@ -244,6 +311,80 @@ export OPENROUTER_API_KEY="tu_api_key_aqui"
 ```
 
 ## Arquitectura DSPy
+
+### Nuevas Características (v2.0)
+
+#### 1. Selección de Módulo DSPy
+Ahora puedes elegir el tipo de módulo DSPy a utilizar mediante el parámetro `module_type`:
+
+- **`dspy.Predict`**: Predictor básico sin modificaciones a la signature
+- **`dspy.ChainOfThought`**: Enseña al LM a pensar paso a paso (default)
+- **`dspy.ProgramOfThought`**: Genera código cuya ejecución determina la respuesta
+- **`dspy.ReAct`**: Agente que puede usar herramientas para implementar la signature
+- **`dspy.MultiChainComparison`**: Compara múltiples outputs de ChainOfThought
+
+**Ejemplo de uso:**
+```python
+from autocode.autocode.core.ai.dspy_utils import generate_with_dspy, ModuleType
+from autocode.autocode.core.ai.signatures import QASignature
+
+# Usando ReAct con herramientas
+def search_web(query: str) -> str:
+    return f"Results for {query}"
+
+result = generate_with_dspy(
+    signature_class=QASignature,
+    inputs={'question': 'What is Python?'},
+    module_type='ReAct',
+    module_kwargs={'tools': [search_web], 'max_iters': 5}
+)
+print(result['answer'])  # Nota: ahora retorna dict
+```
+
+#### 2. Parámetros Extras por Módulo
+El parámetro `module_kwargs` permite pasar configuraciones específicas de cada módulo:
+
+```python
+# Para ReAct: tools y max_iters
+module_kwargs={'tools': [tool1, tool2], 'max_iters': 10}
+
+# Para Predict/ChainOfThought: n (número de completions)
+module_kwargs={'n': 5}
+
+# Para MultiChainComparison: candidates
+module_kwargs={'num_comparisons': 3}
+```
+
+#### 3. Outputs como Dict (Múltiples Campos)
+**Cambio importante:** `generate_with_dspy` ahora **siempre retorna un dict** con todos los campos de output de la signature, incluso si solo hay uno.
+
+**Antes (legacy):**
+```python
+python_code = generate_with_dspy(CodeGenerationSignature, {...})  # str
+```
+
+**Ahora (v2.0):**
+```python
+result = generate_with_dspy(CodeGenerationSignature, {...})  # dict
+python_code = result['python_code']  # extraer campo específico
+```
+
+**Ventajas:**
+- Soporte para signatures con múltiples outputs (ej: `{'answer': '...', 'reasoning': '...'}`)
+- Consistencia: siempre retorna el mismo tipo
+- Extensibilidad: agregar campos no rompe el código
+
+**Ejemplo con múltiples outputs:**
+```python
+# Signature con múltiples campos de output
+class QAWithReasoning(dspy.Signature):
+    question: str = dspy.InputField()
+    answer: str = dspy.OutputField()
+    confidence: float = dspy.OutputField()
+
+result = generate_with_dspy(QAWithReasoning, {'question': '...'})
+print(result)  # {'answer': '...', 'confidence': 0.95, 'reasoning': '...'}
+```
 
 ### Signature Refinada para Código Limpio
 
@@ -475,6 +616,112 @@ El módulo sigue SRP con funciones especializadas:
 - `write_file` / `write_python_file`: Solo escritura de archivos
 
 Esta separación permite reutilizar las funciones individuales en otros contextos y facilita el testing unitario.
+
+## Ejemplos de Uso de Módulos DSPy
+
+### Usando Predict (Básico)
+```python
+from autocode.autocode.core.ai.dspy_utils import generate_with_dspy
+from autocode.autocode.core.ai.signatures import CodeGenerationSignature
+
+result = generate_with_dspy(
+    signature_class=CodeGenerationSignature,
+    inputs={'design_text': 'Create a function to calculate fibonacci'},
+    module_type='Predict'  # Predictor básico sin razonamiento
+)
+print(result['python_code'])
+```
+
+### Usando ChainOfThought (Default con Razonamiento)
+```python
+from autocode.autocode.core.ai.dspy_utils import generate_with_dspy
+from autocode.autocode.core.ai.signatures import QASignature
+
+result = generate_with_dspy(
+    signature_class=QASignature,
+    inputs={'question': 'Explain what is a decorator in Python'},
+    module_type='ChainOfThought'  # Incluye reasoning antes de answer
+)
+print(result['reasoning'])  # Ver el razonamiento paso a paso
+print(result['answer'])
+```
+
+### Usando ProgramOfThought (Generación de Código para Respuesta)
+```python
+from autocode.autocode.core.ai.dspy_utils import generate_with_dspy
+from autocode.autocode.core.ai.signatures import QASignature
+
+result = generate_with_dspy(
+    signature_class=QASignature,
+    inputs={'question': 'What is 15% of 240?'},
+    module_type='ProgramOfThought'  # Genera código Python para resolver
+)
+print(result)  # Incluye el código generado y ejecutado
+```
+
+### Usando ReAct (Agente con Herramientas)
+```python
+from autocode.autocode.core.ai.dspy_utils import generate_with_dspy
+from autocode.autocode.core.ai.signatures import QASignature
+
+# Definir herramientas que el agente puede usar
+def calculator(expression: str) -> str:
+    """Evaluate mathematical expressions"""
+    try:
+        return str(eval(expression))
+    except:
+        return "Error in calculation"
+
+def search_database(query: str) -> str:
+    """Search in a mock database"""
+    data = {
+        'python': 'A high-level programming language',
+        'dspy': 'A framework for programming LMs'
+    }
+    return data.get(query.lower(), 'Not found')
+
+result = generate_with_dspy(
+    signature_class=QASignature,
+    inputs={'question': 'What is DSPy and calculate 25 * 4'},
+    module_type='ReAct',
+    module_kwargs={
+        'tools': [calculator, search_database],
+        'max_iters': 5  # Máximo 5 iteraciones de razonamiento + tool use
+    }
+)
+print(result['answer'])
+# El agente usará las herramientas para responder
+```
+
+### Usando MultiChainComparison (Comparar Múltiples Outputs)
+```python
+from autocode.autocode.core.ai.dspy_utils import generate_with_dspy
+from autocode.autocode.core.ai.signatures import CodeGenerationSignature
+
+result = generate_with_dspy(
+    signature_class=CodeGenerationSignature,
+    inputs={'design_text': 'Create a function to sort a list'},
+    module_type='MultiChainComparison',
+    module_kwargs={
+        'num_comparisons': 3  # Genera 3 soluciones y elige la mejor
+    }
+)
+print(result['python_code'])  # La mejor de las 3 soluciones
+```
+
+### Vía API con module_type (Próximamente)
+```bash
+# Nota: Para exponer module_type en la API, necesitarías agregar el parámetro
+# a las funciones en pipelines.py
+curl -X POST http://localhost:8000/generate \
+  -H "Content-Type: application/json" \
+  -d '{
+    "signature_type": "qa",
+    "inputs": {"question": "What is Python?"},
+    "module_type": "ReAct",
+    "module_kwargs": {"tools": [...], "max_iters": 5}
+  }'
+```
 
 ## Roadmap
 
