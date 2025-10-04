@@ -73,3 +73,24 @@ class QASignature(dspy.Signature):
     answer: str = dspy.OutputField(
         desc="La respuesta a la pregunta"
     )
+
+
+class ChatSignature(dspy.Signature):
+    """
+    Chat conversacional con memoria y capacidad de usar herramientas (tools).
+    
+    Este signature está diseñado para trabajar con ReAct, permitiendo al modelo:
+    - Mantener contexto de la conversación anterior
+    - Razonar sobre qué herramientas usar
+    - Generar respuestas coherentes y contextualmente apropiadas
+    """
+    
+    message: str = dspy.InputField(
+        desc="Mensaje actual del usuario"
+    )
+    conversation_history: str = dspy.InputField(
+        desc="Historial de la conversación en formato 'User: ... | Assistant: ...'"
+    )
+    response: str = dspy.OutputField(
+        desc="Respuesta del asistente al mensaje del usuario, considerando el contexto"
+    )

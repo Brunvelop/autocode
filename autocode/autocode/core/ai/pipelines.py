@@ -6,6 +6,7 @@ with DSPy generation for complete workflows.
 """
 from typing import Literal, Dict, Any, Optional
 from autocode.autocode.interfaces.registry import register_function
+from autocode.autocode.interfaces.models import GenericOutput
 from autocode.autocode.core.utils.file_utils import (
     read_design_document,
     write_python_file,
@@ -16,8 +17,10 @@ from autocode.autocode.core.ai.dspy_utils import generate_with_dspy, ModelType, 
 from autocode.autocode.core.ai.signatures import (
     CodeGenerationSignature,
     DesignDocumentSignature,
-    QASignature
+    QASignature,
+    ChatSignature
 )
+from autocode.autocode.interfaces.registry import FUNCTION_REGISTRY
 
 
 # Available signature types for UI selection
@@ -294,3 +297,131 @@ def generate_answer(
     
     # Extraer el campo answer
     return result.get('answer', 'Error: No se generó respuesta')
+
+
+@register_function(http_methods=["POST"])
+def chat(
+    message: str,
+    conversation_history: list = None,
+    model: ModelType = 'openrouter/openai/gpt-4o',
+    max_tokens: int = 16000,
+    temperature: float = 0.7
+) -> Dict[str, Any]:
+    """
+    Chat conversacional con memoria y acceso a herramientas MCP.
+    
+    Este endpoint usa DSPy ReAct para:
+    - Mantener contexto de conversaciones anteriores
+    - Acceder a todas las funciones registradas como herramientas con schemas completos
+    - Razonar sobre qué herramientas usar para responder
+    
+    Args:
+        message: Mensaje actual del usuario
+        conversation_history: Lista de mensajes previos [{"role": "user"|"assistant", "content": "..."}]
+        model: Modelo de inferencia a utilizar
+        max_tokens: Número máximo de tokens (default: 16000)
+        temperature: Temperature para generación (default: 0.7)
+        
+    Returns:
+        Dict con 'response' (respuesta del asistente) y 'conversation_history' actualizado
+    """
+    import dspy
+    
+    try:
+        # Inicializar historial si no existe
+        if conversation_history is None:
+            conversation_history = []
+        
+        # Formatear historial para DSPy
+        history_text = ""
+        for msg in conversation_history:
+            role = "User" if msg.get("role") == "user" else "Assistant"
+            history_text += f"{role}: {msg.get('content', '')}\n"
+        
+        # Crear tools con schemas detallados del registry
+        tools = []
+        for func_name, func_info in FUNCTION_REGISTRY.items():
+            # Excluir la función chat de los tools para evitar recursión
+            if func_name == 'chat':
+                continue
+            
+            # Crear wrapper de tool con schema enriquecido
+            def create_tool_wrapper(func_name, func_info):
+                def tool_func(**kwargs):
+                    """Tool wrapper que ejecuta funciones del registry."""
+                    try:
+                        return func_info.func(**kwargs)
+                    except Exception as e:
+                        return f"Error ejecutando {func_name}: {str(e)}"
+                
+                # Configurar metadata del tool con schema detallado
+                tool_func.__name__ = func_name
+                
+                # Construir docstring enriquecida con información de parámetros
+                doc_parts = [func_info.description, "\n\nArgs:"]
+                for param in func_info.params:
+                    # Formato: nombre (tipo, required/optional, default): descripción
+                    param_type = param.type.__name__ if hasattr(param.type, '__name__') else str(param.type)
+                    required_str = "required" if param.required else f"optional, default={param.default}"
+                    
+                    # Agregar choices si existen (para Literal types)
+                    choices_str = ""
+                    if param.choices:
+                        choices_str = f" [choices: {', '.join(map(str, param.choices))}]"
+                    
+                    doc_parts.append(f"    {param.name} ({param_type}, {required_str}){choices_str}: {param.description}")
+                
+                tool_func.__doc__ = "\n".join(doc_parts)
+                
+                return tool_func
+            
+            tools.append(create_tool_wrapper(func_name, func_info))
+        
+        # Generar respuesta usando ReAct con tools enriquecidas
+        result = generate_with_dspy(
+            signature_class=ChatSignature,
+            inputs={
+                'message': message,
+                'conversation_history': history_text
+            },
+            model=model,
+            module_type='ReAct',
+            module_kwargs={'tools': tools, 'max_iters': 5},
+            max_tokens=max_tokens,
+            temperature=temperature
+        )
+        
+        # Verificar errores
+        if 'error' in result:
+            return {
+                "result": {
+                    "error": result['error'],
+                    "conversation_history": conversation_history
+                }
+            }
+        
+        # Extraer respuesta
+        response_text = result.get('response', 'Error: No se generó respuesta')
+        
+        # Actualizar historial
+        updated_history = conversation_history + [
+            {"role": "user", "content": message},
+            {"role": "assistant", "content": response_text}
+        ]
+        
+        # Retornar en formato GenericOutput (campo 'result' requerido)
+        return {
+            "result": {
+                "response": response_text,
+                "conversation_history": updated_history
+            }
+        }
+        
+    except Exception as e:
+        # Retornar error dentro de result
+        return {
+            "result": {
+                "error": f"Error en chat: {str(e)}",
+                "conversation_history": conversation_history or []
+            }
+        }

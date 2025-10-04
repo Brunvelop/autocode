@@ -251,9 +251,11 @@ def create_api_app() -> FastAPI:
         return FileResponse(index_path)
 
     @app.get("/functions")
-    async def list_functions():
-        """List all available registered functions."""
-        return {"functions": list(FUNCTION_REGISTRY.keys())}
+    async def functions_ui():
+        """Serve the dynamic functions UI page."""
+        current_dir = os.path.dirname(__file__)
+        functions_path = os.path.join(current_dir, "..", "web", "functions.html")
+        return FileResponse(functions_path)
 
     @app.get("/functions/details")
     async def list_functions_details():
