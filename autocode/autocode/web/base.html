@@ -78,6 +78,17 @@
                             Enviar 🚀
                         </button>
                     </form>
+                    
+                    <!-- Barra de progreso de contexto -->
+                    <div class="mt-3">
+                        <div class="flex items-center justify-between text-xs text-gray-600 mb-1">
+                            <span id="contextLabel">Ventana de contexto</span>
+                            <span id="contextStats" class="font-mono">0 / 0</span>
+                        </div>
+                        <div class="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+                            <div id="contextBar" class="h-full bg-green-500 transition-all duration-300" style="width: 0%"></div>
+                        </div>
+                    </div>
                 </div>
                 <div id="chatResizeHandle" class="absolute bottom-2 right-2 w-4 h-4 cursor-se-resize text-indigo-300/70 hover:text-indigo-400 select-none">
                     <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -91,7 +102,7 @@
     <script>
         class FloatingChat {
             constructor() {
-this.conversationHistory = [];
+                this.conversationHistory = [];
                 this.chatPanel = document.getElementById('chatPanel');
                 this.chatToggleBtn = document.getElementById('chatToggleBtn');
                 this.chatCloseBtn = document.getElementById('chatCloseBtn');
@@ -105,6 +116,11 @@ this.conversationHistory = [];
                 this.chatDragHandle = document.getElementById('chatDragHandle');
                 this.newChatBtn = document.getElementById('newChatBtn');
                 this.chatResizeHandle = document.getElementById('chatResizeHandle');
+                this.contextBar = document.getElementById('contextBar');
+                this.contextStats = document.getElementById('contextStats');
+                this.contextLabel = document.getElementById('contextLabel');
+                
+                this.debounceTimer = null;
                 
                 this.init();
             }
@@ -117,8 +133,73 @@ init() {
                 });
                 this.chatForm.addEventListener('submit', (e) => this.handleSubmit(e));
                 if (this.newChatBtn) this.newChatBtn.addEventListener('click', () => this.resetConversation());
+                
+                // Listeners para cálculo dinámico de contexto
+                this.messageInput.addEventListener('input', () => this.debouncedUpdateContext());
+                this.modelSelect.addEventListener('change', () => this.updateContextUsage());
+                
                 this.setupDrag();
                 this.setupResize();
+            }
+
+            debouncedUpdateContext() {
+                clearTimeout(this.debounceTimer);
+                this.debounceTimer = setTimeout(() => this.updateContextUsage(), 300);
+            }
+
+            async updateContextUsage() {
+                const currentMessage = this.messageInput.value.trim();
+                const model = this.modelSelect.value;
+                
+                // Construir lista de mensajes completa
+                const messages = [...this.conversationHistory];
+                if (currentMessage) {
+                    messages.push({ role: 'user', content: currentMessage });
+                }
+                
+                // Si no hay mensajes, resetear barra
+                if (messages.length === 0) {
+                    this.contextStats.textContent = '0 / 0';
+                    this.contextBar.style.width = '0%';
+                    this.contextBar.className = 'h-full bg-green-500 transition-all duration-300';
+                    return;
+                }
+                
+                try {
+                    const response = await fetch('/calculate_context_usage', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ model, messages })
+                    });
+                    
+                    if (!response.ok) throw new Error('Failed to calculate context');
+                    
+                    const data = await response.json();
+                    const result = data.result || {};
+                    const current = result.current || 0;
+                    const max = result.max || 0;
+                    const percentage = result.percentage || 0;
+                    
+                    // Actualizar stats
+                    this.contextStats.textContent = `${current.toLocaleString()} / ${max.toLocaleString()}`;
+                    
+                    // Actualizar barra con color basado en porcentaje
+                    this.contextBar.style.width = `${Math.min(percentage, 100)}%`;
+                    
+                    // Cambiar color según uso
+                    if (percentage < 70) {
+                        this.contextBar.className = 'h-full bg-green-500 transition-all duration-300';
+                    } else if (percentage < 90) {
+                        this.contextBar.className = 'h-full bg-yellow-500 transition-all duration-300';
+                    } else {
+                        this.contextBar.className = 'h-full bg-red-500 transition-all duration-300';
+                    }
+                } catch (error) {
+                    console.error('Error calculating context usage:', error);
+                    // Mostrar error silenciosamente sin interrumpir UX
+                    this.contextStats.textContent = 'Error';
+                    this.contextBar.style.width = '0%';
+                }
             }
 
             toggleChat() {
@@ -147,6 +228,7 @@ init() {
                     } else {
                         this.addMessage('assistant', response.response, response.dspy_output);
                         this.conversationHistory = response.conversation_history || [];
+                        await this.updateContextUsage();
                     }
                 } catch (error) {
                     this.addMessage('error', `Error: ${error.message}`);
@@ -354,6 +436,12 @@ scrollToBottom() {
                 this.messagesContainer.innerHTML = '';
                 if (this.emptyState) this.emptyState.style.display = '';
                 this.messageInput.value = '';
+                
+                // Resetear barra de contexto
+                this.contextStats.textContent = '0 / 0';
+                this.contextBar.style.width = '0%';
+                this.contextBar.className = 'h-full bg-green-500 transition-all duration-300';
+                
                 this.messageInput.focus();
             }
 

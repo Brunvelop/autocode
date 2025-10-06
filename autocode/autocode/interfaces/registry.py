@@ -3,12 +3,12 @@ Central registry for all functions exposed via interfaces.
 This registry enables automatic generation of CLI commands, API endpoints, and MCP tools.
 Uses automatic parameter inference from function signatures and docstrings.
 """
-from typing import Dict, Any, List, Callable, get_origin, get_args
+from typing import Dict, Any, List, Callable, get_origin, get_args, Union
 import inspect
 import logging
 from docstring_parser import parse
 
-from autocode.autocode.interfaces.models import FunctionInfo, ExplicitParam
+from autocode.autocode.interfaces.models import FunctionInfo, ExplicitParam, GenericOutput
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -34,6 +34,7 @@ def _generate_function_info(func: Callable, http_methods: List[str] = None) -> F
         
     Raises:
         ValueError: If http_methods contains invalid values
+        RegistryError: If return type is not GenericOutput or a subclass
     """
     if http_methods is None:
         http_methods = ["GET", "POST"]
@@ -43,7 +44,42 @@ def _generate_function_info(func: Callable, http_methods: List[str] = None) -> F
     if not all(method.upper() in valid_methods for method in http_methods):
         raise ValueError(f"Invalid HTTP methods. Must be one of: {valid_methods}")
     
+    # Validate return type annotation
     sig = inspect.signature(func)
+    return_annotation = sig.return_annotation
+    
+    if return_annotation != inspect.Parameter.empty:
+        # Check if return type is GenericOutput or a subclass
+        try:
+            # Handle Union types (e.g., GenericOutput | None)
+            origin = get_origin(return_annotation)
+            if origin is Union:
+                # Get the non-None types from Union
+                args = get_args(return_annotation)
+                valid_types = [arg for arg in args if arg is not type(None)]
+                if valid_types:
+                    return_annotation = valid_types[0]
+            
+            # Verify it's GenericOutput or subclass
+            if not (isinstance(return_annotation, type) and issubclass(return_annotation, GenericOutput)):
+                raise RegistryError(
+                    f"Function '{func.__name__}' must return GenericOutput or a subclass. "
+                    f"Found: {return_annotation}. "
+                    f"Please update the function to return GenericOutput(result=..., success=True/False, message=...)"
+                )
+        except TypeError:
+            # If we can't check (e.g., complex generic), raise error
+            raise RegistryError(
+                f"Function '{func.__name__}' has invalid return type annotation: {return_annotation}. "
+                f"Must be GenericOutput or a subclass."
+            )
+    else:
+        # No return annotation - require it
+        raise RegistryError(
+            f"Function '{func.__name__}' must have a return type annotation of GenericOutput or a subclass. "
+            f"Example: def {func.__name__}(...) -> GenericOutput:"
+        )
+    
     doc = parse(inspect.getdoc(func) or "")
     param_docs = {p.arg_name: p.description for p in doc.params}
     

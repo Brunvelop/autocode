@@ -21,22 +21,36 @@ def create_result_response(result: Any) -> Dict[str, Any]:
     """
     Format function results into consistent API response format.
     
+    All registered functions are now required to return GenericOutput or a subclass
+    (enforced at registration time by the registry). This function simply converts
+    the GenericOutput instance to a dictionary for the API response.
+    
     Args:
-        result: Function result to format (any type)
+        result: Function result (must be GenericOutput or subclass)
         
     Returns:
-        Dict containing formatted response - returns dict as-is, 
-        wraps other types in GenericOutput model
+        Dict containing the GenericOutput fields (success, result, message, etc.)
         
     Example:
-        >>> create_result_response({"key": "value"})
-        {"key": "value"}
-        >>> create_result_response("hello")
-        {"result": "hello"}
+        >>> output = GenericOutput(success=True, result="hello", message="Success")
+        >>> create_result_response(output)
+        {"success": True, "result": "hello", "message": "Success"}
     """
+    # All functions return GenericOutput or subclass (enforced by registry)
+    # Convert to dict using Pydantic's model_dump
+    if isinstance(result, GenericOutput):
+        return result.model_dump()
+    
+    # Fallback for dict (some functions like chat may return raw dict temporarily)
     if isinstance(result, dict):
         return result
-    return GenericOutput(result=result).model_dump()
+    
+    # This should never happen due to registry enforcement, but handle gracefully
+    return GenericOutput(
+        success=False,
+        result=str(result),
+        message="Warning: Function returned non-GenericOutput type"
+    ).model_dump()
 
 
 def create_dynamic_model(func_info: FunctionInfo, for_post: bool = True) -> Type[BaseModel]:

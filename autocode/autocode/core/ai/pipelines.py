@@ -4,9 +4,10 @@ High-level pipelines for AI operations.
 This module contains orchestration functions that combine file I/O
 with DSPy generation for complete workflows.
 """
-from typing import Literal, Dict, Any, Optional
+from typing import Literal, Dict, Any, Optional, List
+import litellm
 from autocode.autocode.interfaces.registry import register_function
-from autocode.autocode.interfaces.models import DspyOutput
+from autocode.autocode.interfaces.models import DspyOutput, GenericOutput
 from autocode.autocode.core.utils.file_utils import (
     read_design_document,
     write_python_file,
@@ -40,7 +41,7 @@ def text_to_code(
     input_path: str,
     output_path: str,
     model: ModelType = 'openrouter/openai/gpt-4o'
-) -> str:
+) -> GenericOutput:
     """
     Convierte un documento de diseño en código Python.
     
@@ -53,11 +54,7 @@ def text_to_code(
         model: Modelo de inferencia a utilizar
         
     Returns:
-        Mensaje de éxito con las rutas procesadas
-        
-    Raises:
-        FileNotFoundError: Si el archivo de entrada no existe
-        IOError: Si hay error al leer o escribir archivos
+        GenericOutput con información sobre el proceso de generación
     """
     try:
         # Leer el documento de diseño
@@ -72,24 +69,42 @@ def text_to_code(
         
         # Verificar éxito
         if not output.success:
-            return f"Error: {output.message}"
+            return GenericOutput(
+                success=False,
+                result={},
+                message=f"Error: {output.message}"
+            )
         
         # Extraer el campo python_code del result
         python_code = output.result.get('python_code', '')
         if not python_code:
-            return "Error: No se generó código Python"
+            return GenericOutput(
+                success=False,
+                result={},
+                message="Error: No se generó código Python"
+            )
         
         # Escribir el código en el archivo de salida
         write_python_file(python_code, output_path)
         
-        return f"Código generado exitosamente:\n- Input: {input_path}\n- Output: {output_path}\n- Líneas: {len(python_code.splitlines())}"
+        lines_count = len(python_code.splitlines())
+        return GenericOutput(
+            success=True,
+            result={
+                "input_path": input_path,
+                "output_path": output_path,
+                "lines_count": lines_count,
+                "code_preview": python_code[:200] + "..." if len(python_code) > 200 else python_code
+            },
+            message=f"Código generado exitosamente: {lines_count} líneas escritas en {output_path}"
+        )
         
     except ValueError as e:
-        return f"Error: {str(e)}"
+        return GenericOutput(success=False, result={}, message=f"Error: {str(e)}")
     except (FileNotFoundError, IOError) as e:
-        return f"Error: {str(e)}"
+        return GenericOutput(success=False, result={}, message=f"Error: {str(e)}")
     except Exception as e:
-        return f"Error inesperado: {str(e)}"
+        return GenericOutput(success=False, result={}, message=f"Error inesperado: {str(e)}")
 
 
 @register_function(http_methods=["GET", "POST"])
@@ -98,7 +113,7 @@ def code_to_design(
     output_path: str,
     include_diagrams: bool = True,
     model: ModelType = 'openrouter/openai/gpt-4o'
-) -> str:
+) -> GenericOutput:
     """
     Convierte código Python en un documento de diseño Markdown.
     
@@ -112,11 +127,7 @@ def code_to_design(
         model: Modelo de inferencia a utilizar
         
     Returns:
-        Mensaje de éxito con las rutas procesadas
-        
-    Raises:
-        FileNotFoundError: Si el archivo de entrada no existe
-        IOError: Si hay error al leer o escribir archivos
+        GenericOutput con información sobre el proceso de generación
     """
     try:
         # Leer el código Python
@@ -131,24 +142,43 @@ def code_to_design(
         
         # Verificar éxito
         if not output.success:
-            return f"Error: {output.message}"
+            return GenericOutput(
+                success=False,
+                result={},
+                message=f"Error: {output.message}"
+            )
         
         # Extraer el campo design_document del result
         design_document = output.result.get('design_document', '')
         if not design_document:
-            return "Error: No se generó documento de diseño"
+            return GenericOutput(
+                success=False,
+                result={},
+                message="Error: No se generó documento de diseño"
+            )
         
         # Escribir el documento en el archivo de salida
         write_file(design_document, output_path, file_type='markdown')
         
-        return f"Documento de diseño generado exitosamente:\n- Input: {input_path}\n- Output: {output_path}\n- Líneas: {len(design_document.splitlines())}\n- Diagramas: {'Sí' if include_diagrams else 'No'}"
+        lines_count = len(design_document.splitlines())
+        return GenericOutput(
+            success=True,
+            result={
+                "input_path": input_path,
+                "output_path": output_path,
+                "lines_count": lines_count,
+                "includes_diagrams": include_diagrams,
+                "document_preview": design_document[:200] + "..." if len(design_document) > 200 else design_document
+            },
+            message=f"Documento de diseño generado exitosamente: {lines_count} líneas escritas en {output_path}"
+        )
         
     except ValueError as e:
-        return f"Error: {str(e)}"
+        return GenericOutput(success=False, result={}, message=f"Error: {str(e)}")
     except (FileNotFoundError, IOError) as e:
-        return f"Error: {str(e)}"
+        return GenericOutput(success=False, result={}, message=f"Error: {str(e)}")
     except Exception as e:
-        return f"Error inesperado: {str(e)}"
+        return GenericOutput(success=False, result={}, message=f"Error inesperado: {str(e)}")
 
 
 # Generic wrapper functions with Literal for UI selection
@@ -218,7 +248,7 @@ def generate(
 def generate_code(
     design_text: str,
     model: ModelType = 'openrouter/openai/gpt-4o'
-) -> str:
+) -> GenericOutput:
     """
     Genera código Python a partir de un texto de diseño.
     
@@ -227,20 +257,44 @@ def generate_code(
         model: Modelo de inferencia a utilizar
         
     Returns:
-        Código Python generado
+        GenericOutput con el código Python generado en el campo result
     """
-    output = generate_with_dspy(
-        signature_class=CodeGenerationSignature,
-        inputs={'design_text': design_text},
-        model=model
-    )
-    
-    # Verificar éxito
-    if not output.success:
-        return f"Error: {output.message}"
-    
-    # Extraer el campo python_code
-    return output.result.get('python_code', 'Error: No se generó código')
+    try:
+        output = generate_with_dspy(
+            signature_class=CodeGenerationSignature,
+            inputs={'design_text': design_text},
+            model=model
+        )
+        
+        # Verificar éxito
+        if not output.success:
+            return GenericOutput(
+                success=False,
+                result="",
+                message=output.message
+            )
+        
+        # Extraer el campo python_code
+        python_code = output.result.get('python_code', '')
+        if not python_code:
+            return GenericOutput(
+                success=False,
+                result="",
+                message="No se generó código Python"
+            )
+        
+        return GenericOutput(
+            success=True,
+            result=python_code,
+            message="Código generado exitosamente"
+        )
+        
+    except Exception as e:
+        return GenericOutput(
+            success=False,
+            result="",
+            message=f"Error generando código: {str(e)}"
+        )
 
 
 @register_function(http_methods=["GET", "POST"])
@@ -248,7 +302,7 @@ def generate_design(
     python_code: str,
     include_diagrams: bool = True,
     model: ModelType = 'openrouter/openai/gpt-4o'
-) -> str:
+) -> GenericOutput:
     """
     Genera un documento de diseño Markdown a partir de código Python.
     
@@ -258,27 +312,51 @@ def generate_design(
         model: Modelo de inferencia a utilizar
         
     Returns:
-        Documento de diseño en Markdown
+        GenericOutput con el documento de diseño en el campo result
     """
-    output = generate_with_dspy(
-        signature_class=DesignDocumentSignature,
-        inputs={'python_code': python_code, 'include_diagrams': include_diagrams},
-        model=model
-    )
-    
-    # Verificar éxito
-    if not output.success:
-        return f"Error: {output.message}"
-    
-    # Extraer el campo design_document
-    return output.result.get('design_document', 'Error: No se generó documento')
+    try:
+        output = generate_with_dspy(
+            signature_class=DesignDocumentSignature,
+            inputs={'python_code': python_code, 'include_diagrams': include_diagrams},
+            model=model
+        )
+        
+        # Verificar éxito
+        if not output.success:
+            return GenericOutput(
+                success=False,
+                result="",
+                message=output.message
+            )
+        
+        # Extraer el campo design_document
+        design_document = output.result.get('design_document', '')
+        if not design_document:
+            return GenericOutput(
+                success=False,
+                result="",
+                message="No se generó documento de diseño"
+            )
+        
+        return GenericOutput(
+            success=True,
+            result=design_document,
+            message="Documento de diseño generado exitosamente"
+        )
+        
+    except Exception as e:
+        return GenericOutput(
+            success=False,
+            result="",
+            message=f"Error generando documento: {str(e)}"
+        )
 
 
 @register_function(http_methods=["GET", "POST"])
 def generate_answer(
     question: str,
     model: ModelType = 'openrouter/openai/gpt-4o'
-) -> str:
+) -> GenericOutput:
     """
     Responde una pregunta usando razonamiento.
     
@@ -287,20 +365,91 @@ def generate_answer(
         model: Modelo de inferencia a utilizar
         
     Returns:
-        Respuesta a la pregunta
+        GenericOutput con la respuesta en el campo result
     """
-    output = generate_with_dspy(
-        signature_class=QASignature,
-        inputs={'question': question},
-        model=model
-    )
+    try:
+        output = generate_with_dspy(
+            signature_class=QASignature,
+            inputs={'question': question},
+            model=model
+        )
+        
+        # Verificar éxito
+        if not output.success:
+            return GenericOutput(
+                success=False,
+                result="",
+                message=output.message
+            )
+        
+        # Extraer el campo answer
+        answer = output.result.get('answer', '')
+        if not answer:
+            return GenericOutput(
+                success=False,
+                result="",
+                message="No se generó respuesta"
+            )
+        
+        return GenericOutput(
+            success=True,
+            result=answer,
+            message="Respuesta generada exitosamente"
+        )
+        
+    except Exception as e:
+        return GenericOutput(
+            success=False,
+            result="",
+            message=f"Error generando respuesta: {str(e)}"
+        )
+
+
+@register_function(http_methods=["POST"])
+def calculate_context_usage(
+    model: ModelType,
+    messages: List[Dict[str, str]]
+) -> GenericOutput:
+    """
+    Calcula el uso actual y máximo de la ventana de contexto para un modelo y mensajes dados.
     
-    # Verificar éxito
-    if not output.success:
-        return f"Error: {output.message}"
+    Usa litellm para:
+    - Contar tokens del mensaje actual usando token_counter
+    - Obtener el tamaño máximo de ventana de contexto usando get_max_tokens
     
-    # Extraer el campo answer
-    return output.result.get('answer', 'Error: No se generó respuesta')
+    Args:
+        model: Modelo de inferencia a utilizar
+        messages: Lista de mensajes en formato OpenAI [{"role": "user"|"assistant", "content": "..."}]
+        
+    Returns:
+        GenericOutput con result={"current": int, "max": int, "percentage": float}
+    """
+    try:
+        # Calcular tokens actuales usando litellm.token_counter
+        current_tokens = litellm.token_counter(model=model, messages=messages)
+        
+        # Obtener tamaño máximo de ventana de contexto
+        max_tokens = litellm.get_max_tokens(model)
+        
+        # Calcular porcentaje de uso
+        percentage = (current_tokens / max_tokens * 100) if max_tokens > 0 else 0
+        
+        return GenericOutput(
+            success=True,
+            result={
+                "current": current_tokens,
+                "max": max_tokens,
+                "percentage": round(percentage, 2)
+            },
+            message=f"Context usage: {current_tokens}/{max_tokens} tokens ({percentage:.1f}%)"
+        )
+        
+    except Exception as e:
+        return GenericOutput(
+            success=False,
+            result={"current": 0, "max": 0, "percentage": 0},
+            message=f"Error calculando uso de contexto: {str(e)}"
+        )
 
 
 @register_function(http_methods=["POST"])
@@ -310,7 +459,7 @@ def chat(
     model: ModelType = 'openrouter/openai/gpt-4o',
     max_tokens: int = 16000,
     temperature: float = 0.7
-) -> Dict[str, Any]:
+) -> GenericOutput:
     """
     Chat conversacional con memoria y acceso a herramientas MCP.
     
@@ -327,7 +476,7 @@ def chat(
         temperature: Temperature para generación (default: 0.7)
         
     Returns:
-        Dict con 'response' (respuesta del asistente) y 'conversation_history' actualizado
+        GenericOutput con 'response', 'conversation_history' y 'dspy_output' en el campo result
     """
     import dspy
     
@@ -397,12 +546,14 @@ def chat(
         
         # Verificar éxito
         if not output.success:
-            return {
-                "result": {
+            return GenericOutput(
+                success=False,
+                result={
                     "error": output.message,
                     "conversation_history": conversation_history
-                }
-            }
+                },
+                message=f"Error en chat: {output.message}"
+            )
         
         # Extraer respuesta
         response_text = output.result.get('response', 'Error: No se generó respuesta')
@@ -414,8 +565,9 @@ def chat(
         ]
         
         # Retornar en formato GenericOutput con dspy_output completo para UI
-        return {
-            "result": {
+        return GenericOutput(
+            success=True,
+            result={
                 "response": response_text,
                 "conversation_history": updated_history,
                 "dspy_output": {
@@ -427,14 +579,17 @@ def chat(
                     "observations": output.observations,
                     "history": output.history
                 }
-            }
-        }
+            },
+            message="Chat response generated successfully"
+        )
         
     except Exception as e:
-        # Retornar error dentro de result
-        return {
-            "result": {
+        # Retornar error
+        return GenericOutput(
+            success=False,
+            result={
                 "error": f"Error en chat: {str(e)}",
                 "conversation_history": conversation_history or []
-            }
-        }
+            },
+            message=f"Error en chat: {str(e)}"
+        )
