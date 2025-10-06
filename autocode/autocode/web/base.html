@@ -22,7 +22,7 @@
 <div id="chatPanel" class="hidden fixed inset-0 z-[100] bg-transparent pointer-events-none">
 <div id="chatWindow" class="fixed top-20 right-6 w-[92vw] md:w-[480px] lg:w-[560px] h-[70vh] bg-white rounded-2xl shadow-2xl ring-1 ring-black/10 drop-shadow-xl overflow-hidden flex flex-col pointer-events-auto">
                 <!-- Header del Chat -->
-<div id="chatDragHandle" class="bg-gradient-to-r from-indigo-600 to-violet-600 p-4 flex items-center justify-between cursor-grab select-none">
+                <div id="chatDragHandle" class="bg-gradient-to-r from-indigo-600 to-violet-600 p-4 flex items-center justify-between cursor-grab select-none">
                     <div class="flex items-center gap-3">
                         <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
@@ -30,6 +30,9 @@
                         <h2 class="text-white font-bold text-xl">Autocode AI Chat</h2>
                     </div>
 <div class="flex items-center gap-2">
+                        <button id="configBtn" class="text-indigo-100 bg-white/10 hover:bg-white/20 border border-white/20 rounded-full px-3 py-1.5 text-sm font-semibold transition-colors">
+                            ⚙️ Config
+                        </button>
                         <button id="newChatBtn" class="text-indigo-100 bg-white/10 hover:bg-white/20 border border-white/20 rounded-full px-3 py-1.5 text-sm font-semibold transition-colors">
                             Nueva
                         </button>
@@ -99,6 +102,110 @@
         </div>
     </div>
 
+    <!-- Modal de Configuración -->
+    <div id="configModal" class="hidden fixed inset-0 z-[130] bg-black/50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[85vh] overflow-hidden flex flex-col">
+            <!-- Header -->
+            <div class="bg-gradient-to-r from-indigo-600 to-violet-600 p-4 flex items-center justify-between">
+                <h3 class="text-white font-bold text-lg">⚙️ Configuración del Chat</h3>
+                <button id="configCloseBtn" class="text-white hover:bg-white/20 rounded-full p-2 transition">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                </button>
+            </div>
+            
+            <!-- Body -->
+            <div class="flex-1 overflow-y-auto p-6 space-y-6">
+                <!-- Sección LLM -->
+                <div class="border border-indigo-200 rounded-xl p-4 bg-indigo-50">
+                    <h4 class="font-bold text-indigo-900 mb-3 flex items-center gap-2">
+                        🤖 Configuración LLM
+                    </h4>
+                    
+                    <!-- Modelo -->
+                    <div class="mb-4">
+                        <label class="block text-sm font-semibold text-gray-700 mb-1">Modelo:</label>
+                        <select id="configModel" class="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                            <option value="openrouter/openai/gpt-4o">GPT-4o (OpenAI)</option>
+                            <option value="openrouter/x-ai/grok-4">Grok-4 (xAI)</option>
+                            <option value="openrouter/anthropic/claude-sonnet-4.5">Claude Sonnet 4.5 (Anthropic)</option>
+                            <option value="openrouter/openai/gpt-5">GPT-5 (OpenAI)</option>
+                            <option value="openrouter/openai/gpt-5-codex">GPT-5 Codex (OpenAI)</option>
+                        </select>
+                    </div>
+                    
+                    <!-- Temperature -->
+                    <div class="mb-4">
+                        <label class="block text-sm font-semibold text-gray-700 mb-1">
+                            Temperature: <span id="tempValue" class="text-indigo-600">0.7</span>
+                        </label>
+                        <input type="range" id="configTemperature" min="0" max="2" step="0.1" value="0.7" 
+                               class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-indigo-600">
+                        <div class="flex justify-between text-xs text-gray-500 mt-1">
+                            <span>0.0 (Determinista)</span>
+                            <span>2.0 (Creativo)</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Max Tokens -->
+                    <div class="mb-4">
+                        <label class="block text-sm font-semibold text-gray-700 mb-1">Max Tokens:</label>
+                        <input type="number" id="configMaxTokens" value="16000" min="1000" max="200000" step="1000"
+                               class="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                        <p class="text-xs text-gray-500 mt-1">Controla la longitud máxima de la respuesta</p>
+                    </div>
+                    
+                    <!-- Warning para GPT-5 -->
+                    <div id="gpt5Warning" class="hidden mt-3 p-3 bg-yellow-50 border border-yellow-300 rounded-lg text-sm text-yellow-800">
+                        ⚠️ <strong>GPT-5 requiere:</strong> temperature=1.0 y max_tokens≥16000
+                    </div>
+                </div>
+                
+                <!-- Sección DSPy -->
+                <div class="border border-purple-200 rounded-xl p-4 bg-purple-50">
+                    <h4 class="font-bold text-purple-900 mb-3 flex items-center gap-2">
+                        🧩 Configuración DSPy
+                    </h4>
+                    
+                    <!-- Module Type -->
+                    <div class="mb-4">
+                        <label class="block text-sm font-semibold text-gray-700 mb-1">Module Type:</label>
+                        <select id="configModuleType" class="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500">
+                            <option value="Predict">Predict (Básico)</option>
+                            <option value="ChainOfThought">ChainOfThought (Con razonamiento)</option>
+                            <option value="ProgramOfThought">ProgramOfThought (Genera código)</option>
+                            <option value="ReAct" selected>ReAct (Con herramientas)</option>
+                            <option value="MultiChainComparison">MultiChainComparison (Compara outputs)</option>
+                        </select>
+                        <p class="text-xs text-gray-500 mt-1" id="moduleTypeDescription">ReAct permite usar herramientas y razonar sobre qué usar</p>
+                    </div>
+                    
+                    <!-- Module Kwargs (JSON) -->
+                    <div class="mb-4">
+                        <label class="block text-sm font-semibold text-gray-700 mb-1">
+                            Module Kwargs (JSON):
+                            <button id="moduleKwargsHelp" class="text-purple-600 hover:text-purple-800">ℹ️</button>
+                        </label>
+                        <textarea id="configModuleKwargs" rows="4" placeholder='{"max_iters": 5}'
+                                  class="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 font-mono text-sm"></textarea>
+                        <p class="text-xs text-gray-500 mt-1">Parámetros adicionales del módulo (opcional)</p>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Footer -->
+            <div class="p-4 border-t border-gray-200 flex justify-end gap-3">
+                <button id="configResetBtn" class="px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg font-semibold transition">
+                    Restaurar por defecto
+                </button>
+                <button id="configSaveBtn" class="px-4 py-2 text-white bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 rounded-lg font-semibold transition">
+                    Guardar Configuración
+                </button>
+            </div>
+        </div>
+    </div>
+
     <script>
         class FloatingChat {
             constructor() {
@@ -119,10 +226,43 @@
                 this.contextBar = document.getElementById('contextBar');
                 this.contextStats = document.getElementById('contextStats');
                 this.contextLabel = document.getElementById('contextLabel');
+                this.configBtn = document.getElementById('configBtn');
                 
                 this.debounceTimer = null;
                 
+                // Configuración por defecto
+                this.config = this.loadConfig();
+                
                 this.init();
+            }
+
+            loadConfig() {
+                const defaultConfig = {
+                    model: 'openrouter/openai/gpt-4o',
+                    temperature: 0.7,
+                    max_tokens: 16000,
+                    module_type: 'ReAct',
+                    module_kwargs: {}
+                };
+                
+                try {
+                    const saved = localStorage.getItem('autocode_chat_config');
+                    return saved ? { ...defaultConfig, ...JSON.parse(saved) } : defaultConfig;
+                } catch (e) {
+                    console.error('Error loading config:', e);
+                    return defaultConfig;
+                }
+            }
+
+            saveConfig(config) {
+                try {
+                    localStorage.setItem('autocode_chat_config', JSON.stringify(config));
+                    this.config = config;
+                    // Actualizar selector de modelo en la UI principal
+                    if (this.modelSelect) this.modelSelect.value = config.model;
+                } catch (e) {
+                    console.error('Error saving config:', e);
+                }
             }
 
 init() {
@@ -133,13 +273,171 @@ init() {
                 });
                 this.chatForm.addEventListener('submit', (e) => this.handleSubmit(e));
                 if (this.newChatBtn) this.newChatBtn.addEventListener('click', () => this.resetConversation());
+                if (this.configBtn) this.configBtn.addEventListener('click', () => this.openConfigModal());
                 
                 // Listeners para cálculo dinámico de contexto
                 this.messageInput.addEventListener('input', () => this.debouncedUpdateContext());
-                this.modelSelect.addEventListener('change', () => this.updateContextUsage());
+                this.modelSelect.addEventListener('change', () => {
+                    this.config.model = this.modelSelect.value;
+                    this.updateContextUsage();
+                });
                 
+                this.setupConfigModal();
                 this.setupDrag();
                 this.setupResize();
+                
+                // Aplicar config inicial
+                if (this.modelSelect) this.modelSelect.value = this.config.model;
+            }
+
+            setupConfigModal() {
+                const modal = document.getElementById('configModal');
+                const closeBtn = document.getElementById('configCloseBtn');
+                const saveBtn = document.getElementById('configSaveBtn');
+                const resetBtn = document.getElementById('configResetBtn');
+                const tempSlider = document.getElementById('configTemperature');
+                const tempValue = document.getElementById('tempValue');
+                const modelSelect = document.getElementById('configModel');
+                const moduleTypeSelect = document.getElementById('configModuleType');
+                const moduleKwargsHelp = document.getElementById('moduleKwargsHelp');
+                const gpt5Warning = document.getElementById('gpt5Warning');
+                
+                // Actualizar display de temperatura
+                if (tempSlider && tempValue) {
+                    tempSlider.addEventListener('input', () => {
+                        tempValue.textContent = tempSlider.value;
+                    });
+                }
+                
+                // Mostrar warning para GPT-5
+                if (modelSelect && gpt5Warning) {
+                    modelSelect.addEventListener('change', () => {
+                        const isGPT5 = modelSelect.value.includes('gpt-5');
+                        gpt5Warning.classList.toggle('hidden', !isGPT5);
+                    });
+                }
+                
+                // Help de module_kwargs
+                if (moduleKwargsHelp) {
+                    moduleKwargsHelp.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        alert('Module Kwargs ejemplos:\n\n' +
+                              '- ReAct: {"max_iters": 5}\n' +
+                              '- Predict: {"n": 3}\n' +
+                              '- MultiChainComparison: {"num_comparisons": 3}\n\n' +
+                              'Dejar vacío para usar defaults.');
+                    });
+                }
+                
+                // Descripción de module_type
+                const moduleDescriptions = {
+                    'Predict': 'Predictor básico sin modificaciones',
+                    'ChainOfThought': 'Incluye razonamiento paso a paso',
+                    'ProgramOfThought': 'Genera código para resolver',
+                    'ReAct': 'Permite usar herramientas y razonar sobre qué usar',
+                    'MultiChainComparison': 'Compara múltiples outputs y elige el mejor'
+                };
+                
+                if (moduleTypeSelect) {
+                    moduleTypeSelect.addEventListener('change', () => {
+                        const desc = document.getElementById('moduleTypeDescription');
+                        if (desc) desc.textContent = moduleDescriptions[moduleTypeSelect.value] || '';
+                    });
+                }
+                
+                // Cerrar modal
+                if (closeBtn) {
+                    closeBtn.addEventListener('click', () => modal.classList.add('hidden'));
+                }
+                modal?.addEventListener('click', (e) => {
+                    if (e.target === modal) modal.classList.add('hidden');
+                });
+                
+                // Guardar configuración
+                if (saveBtn) {
+                    saveBtn.addEventListener('click', () => {
+                        const moduleKwargsText = document.getElementById('configModuleKwargs')?.value.trim();
+                        let moduleKwargs = {};
+                        
+                        if (moduleKwargsText) {
+                            try {
+                                moduleKwargs = JSON.parse(moduleKwargsText);
+                            } catch (e) {
+                                alert('Error en Module Kwargs JSON: ' + e.message);
+                                return;
+                            }
+                        }
+                        
+                        const newConfig = {
+                            model: document.getElementById('configModel')?.value || this.config.model,
+                            temperature: parseFloat(document.getElementById('configTemperature')?.value) || 0.7,
+                            max_tokens: parseInt(document.getElementById('configMaxTokens')?.value) || 16000,
+                            module_type: document.getElementById('configModuleType')?.value || 'ReAct',
+                            module_kwargs: moduleKwargs
+                        };
+                        
+                        // Validar GPT-5
+                        if (newConfig.model.includes('gpt-5')) {
+                            if (newConfig.temperature !== 1.0 || newConfig.max_tokens < 16000) {
+                                alert('⚠️ GPT-5 requiere temperature=1.0 y max_tokens≥16000');
+                                return;
+                            }
+                        }
+                        
+                        this.saveConfig(newConfig);
+                        modal.classList.add('hidden');
+                        alert('✅ Configuración guardada');
+                    });
+                }
+                
+                // Restaurar por defecto
+                if (resetBtn) {
+                    resetBtn.addEventListener('click', () => {
+                        if (confirm('¿Restaurar configuración por defecto?')) {
+                            const defaultConfig = {
+                                model: 'openrouter/openai/gpt-4o',
+                                temperature: 0.7,
+                                max_tokens: 16000,
+                                module_type: 'ReAct',
+                                module_kwargs: {}
+                            };
+                            this.saveConfig(defaultConfig);
+                            this.loadConfigToModal();
+                            alert('✅ Configuración restaurada');
+                        }
+                    });
+                }
+            }
+
+            openConfigModal() {
+                this.loadConfigToModal();
+                document.getElementById('configModal')?.classList.remove('hidden');
+            }
+
+            loadConfigToModal() {
+                const modelSelect = document.getElementById('configModel');
+                const tempSlider = document.getElementById('configTemperature');
+                const tempValue = document.getElementById('tempValue');
+                const maxTokens = document.getElementById('configMaxTokens');
+                const moduleType = document.getElementById('configModuleType');
+                const moduleKwargs = document.getElementById('configModuleKwargs');
+                const gpt5Warning = document.getElementById('gpt5Warning');
+                
+                if (modelSelect) modelSelect.value = this.config.model;
+                if (tempSlider) tempSlider.value = this.config.temperature;
+                if (tempValue) tempValue.textContent = this.config.temperature;
+                if (maxTokens) maxTokens.value = this.config.max_tokens;
+                if (moduleType) moduleType.value = this.config.module_type;
+                if (moduleKwargs) {
+                    moduleKwargs.value = Object.keys(this.config.module_kwargs).length > 0 
+                        ? JSON.stringify(this.config.module_kwargs, null, 2) 
+                        : '';
+                }
+                
+                // Mostrar warning si es GPT-5
+                if (gpt5Warning) {
+                    gpt5Warning.classList.toggle('hidden', !this.config.model.includes('gpt-5'));
+                }
             }
 
             debouncedUpdateContext() {
@@ -238,18 +536,21 @@ init() {
             }
 
             async sendMessage(message) {
-                const model = this.modelSelect.value;
+                // Usar configuración guardada
+                const payload = {
+                    message: message,
+                    conversation_history: this.conversationHistory,
+                    model: this.config.model,
+                    max_tokens: this.config.max_tokens,
+                    temperature: this.config.temperature,
+                    module_type: this.config.module_type,
+                    module_kwargs: this.config.module_kwargs
+                };
                 
                 const response = await fetch('/chat', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        message: message,
-                        conversation_history: this.conversationHistory,
-                        model: model,
-                        max_tokens: 16000,
-                        temperature: 0.7
-                    })
+                    body: JSON.stringify(payload)
                 });
 
                 if (!response.ok) {

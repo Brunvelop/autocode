@@ -458,15 +458,17 @@ def chat(
     conversation_history: list = None,
     model: ModelType = 'openrouter/openai/gpt-4o',
     max_tokens: int = 16000,
-    temperature: float = 0.7
+    temperature: float = 0.7,
+    module_type: ModuleType = 'ReAct',
+    module_kwargs: Optional[Dict[str, Any]] = None
 ) -> GenericOutput:
     """
     Chat conversacional con memoria y acceso a herramientas MCP.
     
-    Este endpoint usa DSPy ReAct para:
+    Este endpoint usa DSPy con el módulo configurado para:
     - Mantener contexto de conversaciones anteriores
     - Acceder a todas las funciones registradas como herramientas con schemas completos
-    - Razonar sobre qué herramientas usar para responder
+    - Razonar sobre qué herramientas usar para responder (con ReAct)
     
     Args:
         message: Mensaje actual del usuario
@@ -474,6 +476,8 @@ def chat(
         model: Modelo de inferencia a utilizar
         max_tokens: Número máximo de tokens (default: 16000)
         temperature: Temperature para generación (default: 0.7)
+        module_type: Tipo de módulo DSPy (Predict, ChainOfThought, ReAct, etc.) (default: ReAct)
+        module_kwargs: Parámetros adicionales del módulo (ej: max_iters para ReAct)
         
     Returns:
         GenericOutput con 'response', 'conversation_history' y 'dspy_output' en el campo result
@@ -530,7 +534,18 @@ def chat(
             
             tools.append(create_tool_wrapper(func_name, func_info))
         
-        # Generar respuesta usando ReAct con tools enriquecidas
+        # Preparar module_kwargs con tools para ReAct
+        if module_kwargs is None:
+            module_kwargs = {}
+        
+        # Si es ReAct, asegurar que tenga tools y max_iters
+        if module_type == 'ReAct':
+            if 'tools' not in module_kwargs:
+                module_kwargs['tools'] = tools
+            if 'max_iters' not in module_kwargs:
+                module_kwargs['max_iters'] = 5
+        
+        # Generar respuesta usando el módulo configurado
         output = generate_with_dspy(
             signature_class=ChatSignature,
             inputs={
@@ -538,8 +553,8 @@ def chat(
                 'conversation_history': history_text
             },
             model=model,
-            module_type='ReAct',
-            module_kwargs={'tools': tools, 'max_iters': 5},
+            module_type=module_type,
+            module_kwargs=module_kwargs,
             max_tokens=max_tokens,
             temperature=temperature
         )
