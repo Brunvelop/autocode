@@ -413,11 +413,20 @@ def chat(
             {"role": "assistant", "content": response_text}
         ]
         
-        # Retornar en formato GenericOutput (campo 'result' requerido)
+        # Retornar en formato GenericOutput con dspy_output completo para UI
         return {
             "result": {
                 "response": response_text,
-                "conversation_history": updated_history
+                "conversation_history": updated_history,
+                "dspy_output": {
+                    "success": output.success,
+                    "result": output.result,
+                    "message": output.message,
+                    "reasoning": output.reasoning,
+                    "completions": output.completions,
+                    "observations": output.observations,
+                    "history": output.history
+                }
             }
         }
         

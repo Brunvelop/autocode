@@ -145,7 +145,7 @@ init() {
                     if (response.error) {
                         this.addMessage('error', response.error);
                     } else {
-                        this.addMessage('assistant', response.response);
+                        this.addMessage('assistant', response.response, response.dspy_output);
                         this.conversationHistory = response.conversation_history || [];
                     }
                 } catch (error) {
@@ -179,7 +179,7 @@ init() {
                 return data.result || data;
             }
 
-            addMessage(role, content) {
+            addMessage(role, content, dspyOutput = null) {
                 const messageDiv = document.createElement('div');
                 messageDiv.className = `flex ${role === 'user' ? 'justify-end' : 'justify-start'}`;
                 
@@ -202,10 +202,141 @@ init() {
                 
                 bubble.appendChild(label);
                 bubble.appendChild(text);
+                
+                // Agregar botón "Más info" si hay dspy_output (solo para asistente)
+                if (role === 'assistant' && dspyOutput) {
+                    const moreInfoBtn = document.createElement('button');
+                    moreInfoBtn.className = 'mt-2 text-xs bg-indigo-100 hover:bg-indigo-200 text-indigo-700 font-semibold py-1 px-3 rounded-full transition';
+                    moreInfoBtn.textContent = '📊 Más info DSPy';
+                    moreInfoBtn.onclick = () => this.showDspyModal(dspyOutput);
+                    bubble.appendChild(moreInfoBtn);
+                }
+                
                 messageDiv.appendChild(bubble);
                 
                 this.messagesContainer.appendChild(messageDiv);
                 this.scrollToBottom();
+            }
+
+            showDspyModal(dspyOutput) {
+                // Crear el modal
+                const modal = document.createElement('div');
+                modal.className = 'fixed inset-0 z-[120] bg-black/50 flex items-center justify-center p-4';
+                modal.onclick = (e) => {
+                    if (e.target === modal) modal.remove();
+                };
+                
+                const modalContent = document.createElement('div');
+                modalContent.className = 'bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[80vh] overflow-hidden flex flex-col';
+                
+                // Header del modal
+                const modalHeader = document.createElement('div');
+                modalHeader.className = 'bg-gradient-to-r from-indigo-600 to-violet-600 p-4 flex items-center justify-between';
+                modalHeader.innerHTML = `
+                    <h3 class="text-white font-bold text-lg">📊 DSPy Output & Metadata</h3>
+                    <button class="text-white hover:bg-white/20 rounded-full p-2 transition" onclick="this.closest('.fixed').remove()">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                    </button>
+                `;
+                
+                // Cuerpo del modal con tabs
+                const modalBody = document.createElement('div');
+                modalBody.className = 'flex-1 overflow-y-auto p-6 space-y-4';
+                
+                // Función helper para crear sección
+                const createSection = (title, content, icon = '📄') => {
+                    if (!content) return '';
+                    const value = typeof content === 'object' ? JSON.stringify(content, null, 2) : content;
+                    return `
+                        <div class="border border-gray-200 rounded-xl p-4 bg-gray-50">
+                            <h4 class="font-bold text-gray-800 mb-2">${icon} ${title}</h4>
+                            <pre class="bg-white p-3 rounded-lg text-xs overflow-x-auto border border-gray-300"><code>${value}</code></pre>
+                        </div>
+                    `;
+                };
+                
+                // Construir contenido del modal
+                let sections = '';
+                
+                // Success status
+                sections += `
+                    <div class="flex items-center gap-2 p-3 rounded-xl ${dspyOutput.success ? 'bg-green-50 border border-green-300' : 'bg-red-50 border border-red-300'}">
+                        <span class="text-2xl">${dspyOutput.success ? '✅' : '❌'}</span>
+                        <span class="font-bold">${dspyOutput.success ? 'Success' : 'Failed'}</span>
+                        ${dspyOutput.message ? `<span class="text-sm text-gray-600">- ${dspyOutput.message}</span>` : ''}
+                    </div>
+                `;
+                
+                // Result
+                if (dspyOutput.result) {
+                    sections += createSection('Result', dspyOutput.result, '🎯');
+                }
+                
+                // Reasoning
+                if (dspyOutput.reasoning) {
+                    sections += createSection('Reasoning', dspyOutput.reasoning, '🧠');
+                }
+                
+                // Completions
+                if (dspyOutput.completions && dspyOutput.completions.length > 0) {
+                    sections += createSection('Completions', dspyOutput.completions, '📝');
+                }
+                
+                // Observations
+                if (dspyOutput.observations && dspyOutput.observations.length > 0) {
+                    sections += createSection('Observations', dspyOutput.observations, '👁️');
+                }
+                
+                // History (LM metadata)
+                if (dspyOutput.history && dspyOutput.history.length > 0) {
+                    sections += `
+                        <div class="border border-indigo-200 rounded-xl p-4 bg-indigo-50">
+                            <h4 class="font-bold text-indigo-900 mb-3">🔍 LM History (${dspyOutput.history.length} calls)</h4>
+                            <div class="space-y-3">
+                                ${dspyOutput.history.map((entry, idx) => `
+                                    <details class="bg-white rounded-lg border border-indigo-200">
+                                        <summary class="cursor-pointer p-3 font-semibold text-indigo-700 hover:bg-indigo-50">
+                                            Call #${idx + 1} - ${entry.model || 'Unknown model'}
+                                        </summary>
+                                        <div class="p-3 space-y-2 border-t border-indigo-100">
+                                            ${entry.usage ? `
+                                                <div class="text-sm">
+                                                    <strong>Usage:</strong> 
+                                                    <code class="bg-gray-100 px-2 py-1 rounded">${JSON.stringify(entry.usage)}</code>
+                                                </div>
+                                            ` : ''}
+                                            ${entry.cost ? `
+                                                <div class="text-sm">
+                                                    <strong>Cost:</strong> 
+                                                    <code class="bg-green-100 px-2 py-1 rounded text-green-800">$${entry.cost}</code>
+                                                </div>
+                                            ` : ''}
+                                            ${entry.timestamp ? `
+                                                <div class="text-sm">
+                                                    <strong>Timestamp:</strong> ${entry.timestamp}
+                                                </div>
+                                            ` : ''}
+                                            <details class="mt-2">
+                                                <summary class="cursor-pointer text-sm font-semibold text-gray-700">Full Entry JSON</summary>
+                                                <pre class="mt-2 bg-gray-50 p-2 rounded text-xs overflow-x-auto border"><code>${JSON.stringify(entry, null, 2)}</code></pre>
+                                            </details>
+                                        </div>
+                                    </details>
+                                `).join('')}
+                            </div>
+                        </div>
+                    `;
+                }
+                
+                modalBody.innerHTML = sections;
+                
+                // Ensamblar modal
+                modalContent.appendChild(modalHeader);
+                modalContent.appendChild(modalBody);
+                modal.appendChild(modalContent);
+                document.body.appendChild(modal);
             }
 
             setLoading(loading) {

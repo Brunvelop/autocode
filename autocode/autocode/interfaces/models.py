@@ -71,3 +71,7 @@ class DspyOutput(GenericOutput):
         default=None, 
         description="Observaciones de tools en ReAct"
     )
+    history: Optional[List[Dict[str, Any]]] = Field(
+        default=None,
+        description="Historial completo de llamadas al LM con metadata (prompt, response, usage, cost, etc.)"
+    )

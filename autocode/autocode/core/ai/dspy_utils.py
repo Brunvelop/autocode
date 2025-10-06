@@ -191,13 +191,33 @@ def generate_with_dspy(
         else:
             observations = [str(observations_raw)]
     
+    # Capturar historial del LM para metadata adicional
+    history = None
+    if hasattr(lm, 'history') and lm.history:
+        history = []
+        for entry in lm.history:
+            # Convertir cada entrada del historial a un dict serializable
+            history_entry = {}
+            for key, value in entry.items():
+                # Convertir objetos complejos a strings/dicts serializables
+                if hasattr(value, '__dict__'):
+                    history_entry[key] = str(value)
+                elif isinstance(value, (str, int, float, bool, type(None))):
+                    history_entry[key] = value
+                elif isinstance(value, (list, dict)):
+                    history_entry[key] = value
+                else:
+                    history_entry[key] = str(value)
+            history.append(history_entry)
+    
     return DspyOutput(
         success=True,
         result=dspy_fields,
         message="Generación exitosa",
         reasoning=reasoning,
         completions=completions,
-        observations=observations
+        observations=observations,
+        history=history
     )
 
 
