@@ -387,7 +387,7 @@ class FloatingChat {
     /**
      * Carga la configuración actual en el modal
      */
-    loadConfigToModal() {
+    async loadConfigToModal() {
         const modelSelect = document.getElementById('configModel');
         const tempSlider = document.getElementById('configTemperature');
         const tempValue = document.getElementById('tempValue');
@@ -396,7 +396,19 @@ class FloatingChat {
         const moduleKwargs = document.getElementById('configModuleKwargs');
         const gpt5Warning = document.getElementById('gpt5Warning');
         
-        if (modelSelect) modelSelect.value = this.config.model;
+        // Cargar modelos disponibles dinámicamente si la función está disponible
+        if (modelSelect && window.chatComponents?.loadAvailableModels && window.chatComponents?.populateModelSelect) {
+            const models = await window.chatComponents.loadAvailableModels();
+            if (models) {
+                window.chatComponents.populateModelSelect(modelSelect, models, this.config.model);
+            } else {
+                // Fallback: solo establecer el valor actual si no se pudieron cargar
+                modelSelect.value = this.config.model;
+            }
+        } else if (modelSelect) {
+            modelSelect.value = this.config.model;
+        }
+        
         if (tempSlider) tempSlider.value = this.config.temperature;
         if (tempValue) tempValue.textContent = this.config.temperature;
         if (maxTokens) maxTokens.value = this.config.max_tokens;

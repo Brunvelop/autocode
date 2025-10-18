@@ -46,13 +46,103 @@ function initChatToggleButton() {
 // ============================================
 
 /**
+ * Carga los modelos disponibles desde el API
+ * @returns {Promise<Array<string>>} Lista de modelos disponibles
+ */
+async function loadAvailableModels() {
+    try {
+        const response = await fetch('/functions/details');
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        
+        const data = await response.json();
+        
+        // Extraer choices del parámetro 'model' de la función 'chat'
+        const chatFunction = data.functions?.chat;
+        if (!chatFunction) {
+            console.warn('Chat function not found in API response');
+            return null;
+        }
+        
+        const modelParam = chatFunction.parameters?.find(p => p.name === 'model');
+        if (!modelParam || !modelParam.choices) {
+            console.warn('Model parameter or choices not found');
+            return null;
+        }
+        
+        return modelParam.choices;
+    } catch (error) {
+        console.error('Error loading models:', error);
+        return null;
+    }
+}
+
+/**
+ * Popular un selector con las opciones de modelos
+ * @param {HTMLSelectElement} selectElement - Elemento select a popular
+ * @param {Array<string>} models - Lista de modelos
+ * @param {string} selectedValue - Valor a seleccionar (opcional)
+ */
+function populateModelSelect(selectElement, models, selectedValue = null) {
+    if (!selectElement || !models || models.length === 0) return;
+    
+    // Limpiar opciones existentes
+    selectElement.innerHTML = '';
+    
+    // Crear opciones dinámicamente
+    models.forEach(model => {
+        const option = document.createElement('option');
+        option.value = model;
+        
+        // Extraer nombre amigable del modelo
+        // Formato: "openrouter/provider/model-name" -> "Model Name (Provider)"
+        const parts = model.split('/');
+        if (parts.length === 3) {
+            const provider = parts[1];
+            const modelName = parts[2]
+                .split('-')
+                .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+                .join(' ');
+            option.textContent = `${modelName} (${provider.charAt(0).toUpperCase() + provider.slice(1)})`;
+        } else {
+            option.textContent = model;
+        }
+        
+        selectElement.appendChild(option);
+    });
+    
+    // Seleccionar valor si se proporciona
+    if (selectedValue && models.includes(selectedValue)) {
+        selectElement.value = selectedValue;
+    }
+}
+
+/**
  * Inicializa el selector de modelo y sincroniza con la configuración
  * Escucha cambios tanto del usuario como de la configuración guardada
  */
-function initModelSelector() {
+async function initModelSelector() {
     const modelSelect = document.getElementById('modelSelect');
     
     if (!modelSelect) return;
+    
+    // Cargar modelos disponibles desde el API
+    const models = await loadAvailableModels();
+    
+    // Si no se pudieron cargar, usar fallback hardcodeado
+    const fallbackModels = [
+        'openrouter/openai/gpt-4o',
+        'openrouter/x-ai/grok-4',
+        'openrouter/anthropic/claude-sonnet-4.5',
+        'openrouter/openai/gpt-5',
+        'openrouter/openai/gpt-5-codex'
+    ];
+    
+    const availableModels = models || fallbackModels;
+    
+    // Popular el selector
+    populateModelSelect(modelSelect, availableModels);
     
     // Función para actualizar el selector desde la configuración
     const updateFromConfig = () => {
@@ -79,6 +169,11 @@ function initModelSelector() {
             window.floatingChat.updateContextUsage();
         }
     });
+    
+    // Exponer función para uso en otros módulos
+    window.chatComponents = window.chatComponents || {};
+    window.chatComponents.loadAvailableModels = loadAvailableModels;
+    window.chatComponents.populateModelSelect = populateModelSelect;
 }
 
 // ============================================

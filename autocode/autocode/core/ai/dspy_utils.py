@@ -15,7 +15,10 @@ from autocode.autocode.interfaces.models import DspyOutput
 ModelType = Literal[
     'openrouter/openai/gpt-4o',
     'openrouter/x-ai/grok-4',
+    'openrouter/x-ai/grok-code-fast-1',
+    'openrouter/x-ai/grok-4-fast',
     'openrouter/anthropic/claude-sonnet-4.5',
+    'openrouter/openai/gpt-oss-20b',
     'openrouter/openai/gpt-5',
     'openrouter/openai/gpt-5-codex'
 ]
