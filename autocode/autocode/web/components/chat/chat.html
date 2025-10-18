@@ -1,0 +1,37 @@
+<!-- Chat Flotante - Componente Principal -->
+<div id="chatWidget">
+    <!-- Botón flotante -->
+    {% include 'components/chat/html/chat-toggle-button.html' %}
+
+    <!-- Panel de Chat (oculto por defecto) -->
+    <div id="chatPanel" class="hidden fixed inset-0 z-[100] bg-transparent pointer-events-none">
+        <div id="chatWindow" class="fixed top-20 right-6 w-[92vw] md:w-[480px] lg:w-[560px] h-[70vh] bg-white rounded-2xl shadow-2xl ring-1 ring-black/10 drop-shadow-xl overflow-hidden flex flex-col pointer-events-auto">
+            <!-- Header del Chat -->
+            {% include 'components/chat/html/chat-header.html' %}
+
+            <!-- Selector de Modelo -->
+            {% include 'components/chat/html/model-selector.html' %}
+
+            <!-- Área de Mensajes -->
+            {% include 'components/chat/html/messages-container.html' %}
+
+            <!-- Área de Input -->
+            {% include 'components/chat/html/input-form.html' %}
+            
+            <!-- Barra de progreso de contexto -->
+            {% include 'components/chat/html/context-bar.html' %}
+            
+            <!-- Handle de redimensionamiento -->
+            {% include 'components/chat/html/resize-handle.html' %}
+        </div>
+    </div>
+</div>
+
+<!-- Modal de Configuración -->
+{% include 'components/chat/html/config-modal.html' %}
+
+<!-- Scripts del componente de chat -->
+<!-- Orden de carga: helpers -> components -> clase principal -->
+<script src="/static/components/chat/js/chat-helpers.js" defer></script>
+<script src="/static/components/chat/js/chat-components.js" defer></script>
+<script src="/static/components/chat/js/floating-chat.js" defer></script>

@@ -1,0 +1,22 @@
+<!-- Área de Input -->
+<div class="bg-white p-4 border-t border-gray-200">
+    <form id="chatForm" class="flex gap-2" aria-label="Formulario de envío de mensajes">
+        <input 
+            type="text" 
+            id="messageInput" 
+            placeholder="Escribe tu mensaje..." 
+            class="flex-1 p-3 border border-gray-300 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
+            aria-label="Mensaje"
+            required
+            autocomplete="off"
+        />
+        <button 
+            type="submit" 
+            id="sendBtn"
+            class="bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white font-semibold py-3 px-5 rounded-xl shadow transition disabled:bg-gray-400 disabled:cursor-not-allowed text-sm"
+            aria-label="Enviar mensaje"
+        >
+            Enviar 🚀
+        </button>
+    </form>
+</div>
