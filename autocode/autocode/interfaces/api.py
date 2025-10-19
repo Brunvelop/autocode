@@ -1,238 +1,40 @@
 """
 FastAPI server with dynamic endpoints from registry and static file serving.
 """
-import os
 import logging
-from typing import Type, Dict, Any
-from pydantic import BaseModel, create_model, Field
-from fastapi import FastAPI, HTTPException, Depends, Request
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
-from fastapi.templating import Jinja2Templates
+import os
+from typing import Any, Dict, Type
 
+from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+from pydantic import BaseModel, Field, create_model
+
+from autocode.autocode.interfaces.models import FunctionInfo, GenericOutput
 from autocode.autocode.interfaces.registry import FUNCTION_REGISTRY, load_core_functions
-from autocode.autocode.interfaces.models import GenericOutput, FunctionInfo
 
 # Setup logging
 logger = logging.getLogger(__name__)
 
 
-def create_result_response(result: Any) -> Dict[str, Any]:
-    """
-    Format function results into consistent API response format.
-    
-    All registered functions are now required to return GenericOutput or a subclass
-    (enforced at registration time by the registry). This function simply converts
-    the GenericOutput instance to a dictionary for the API response.
-    
-    Args:
-        result: Function result (must be GenericOutput or subclass)
-        
-    Returns:
-        Dict containing the GenericOutput fields (success, result, message, etc.)
-        
-    Example:
-        >>> output = GenericOutput(success=True, result="hello", message="Success")
-        >>> create_result_response(output)
-        {"success": True, "result": "hello", "message": "Success"}
-    """
-    # All functions return GenericOutput or subclass (enforced by registry)
-    # Convert to dict using Pydantic's model_dump
-    if isinstance(result, GenericOutput):
-        return result.model_dump()
-    
-    # Fallback for dict (some functions like chat may return raw dict temporarily)
-    if isinstance(result, dict):
-        return result
-    
-    # This should never happen due to registry enforcement, but handle gracefully
-    return GenericOutput(
-        success=False,
-        result=str(result),
-        message="Warning: Function returned non-GenericOutput type"
-    ).model_dump()
-
-
-def create_dynamic_model(func_info: FunctionInfo, for_post: bool = True) -> Type[BaseModel]:
-    """
-    Create a dynamic Pydantic model based on function parameters.
-    
-    Args:
-        func_info: Function information with parameters
-        for_post: If True, creates model for POST body; if False, for GET query params
-        
-    Returns:
-        Dynamically created Pydantic model class
-    """
-    fields = {}
-    
-    for param in func_info.params:
-        # Convert type annotation
-        field_type = param.type
-        
-        # Handle default values and required fields
-        if param.required:
-            # Required field without default
-            fields[param.name] = (field_type, Field(description=param.description))
-        else:
-            # Optional field with default
-            default_value = param.default if param.default is not None else None
-            fields[param.name] = (field_type, Field(default=default_value, description=param.description))
-    
-    # Create model name
-    suffix = "Input" if for_post else "QueryParams"
-    model_name = f"{func_info.name.title()}{suffix}"
-    
-    # Create the dynamic model
-    return create_model(model_name, **fields)
-
-
-def extract_function_params(func_info: FunctionInfo, request_params: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Extract and prepare function parameters from request data.
-    
-    Args:
-        func_info: Function information containing parameter definitions
-        request_params: Dictionary with request parameters from API call
-        
-    Returns:
-        Dict with extracted parameters ready for function execution
-        
-    Handles both explicit parameters and default values.
-    For required parameters missing from request, they are omitted 
-    (validation should happen at Pydantic model level).
-    
-    Example:
-        >>> func_info = FunctionInfo(params=[Param(name="x", required=True), 
-        ...                                 Param(name="y", required=False, default=1)])
-        >>> extract_function_params(func_info, {"x": 5})
-        {"x": 5, "y": 1}
-    """
-    func_params = {}
-    for param in func_info.params:
-        if param.name in request_params:
-            func_params[param.name] = request_params[param.name]
-        elif not param.required and param.default is not None:
-            func_params[param.name] = param.default
-    return func_params
-
-
-def execute_function_with_params(
-    func_info: FunctionInfo, 
-    request_params: Dict[str, Any], 
-    method: str, 
-    extra_debug_info: str = ""
-) -> Dict[str, Any]:
-    """
-    Execute registered function with extracted parameters and handle common logic.
-    
-    Args:
-        func_info: Function metadata and callable to execute
-        request_params: Dictionary with parameters from API request
-        method: HTTP method name for logging purposes
-        extra_debug_info: Additional debug information to log
-        
-    Returns:
-        Dict containing formatted function result
-        
-    Raises:
-        HTTPException: 400 for parameter validation errors, 500 for runtime errors
-        
-    Handles parameter extraction, logging, function execution, and error management.
-    Provides specific error codes for different types of failures.
-    
-    Example:
-        >>> result = execute_function_with_params(func_info, {"x": 5}, "POST")
-        {"result": 25}
-    """
-    try:
-        func_params = extract_function_params(func_info, request_params)
-        debug_msg = f"{method} {func_info.name}: params={func_params}"
-        if extra_debug_info:
-            debug_msg += f", {extra_debug_info}"
-        logger.debug(debug_msg)
-        result = func_info.func(**func_params)
-        return create_result_response(result)
-    except (ValueError, TypeError) as e:
-        # Parameter validation or type errors
-        logger.warning(f"{method} {func_info.name} parameter error: {str(e)}")
-        raise HTTPException(status_code=400, detail=f"Parameter error: {str(e)}")
-    except Exception as e:
-        # Runtime errors during function execution
-        logger.error(f"{method} {func_info.name} runtime error: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
-
-
-def create_handler(func_info: FunctionInfo, method: str):
-    """
-    Create endpoint handler for registered function with dynamic model.
-    
-    Args:
-        func_info: Function information with parameters and metadata
-        method: HTTP method ("GET" or "POST")
-        
-    Returns:
-        Tuple of (handler_function, pydantic_model) ready for FastAPI registration
-        
-    Handles both GET (query parameters) and POST (request body) methods
-    by creating appropriate Pydantic models and handler functions.
-    
-    Example:
-        >>> handler, model = create_handler(func_info, "POST")
-        >>> app.add_api_route("/endpoint", handler, methods=["POST"])
-    """
-    is_post = method.upper() == "POST"
-    DynamicModel = create_dynamic_model(func_info, for_post=is_post)
-    
-    if is_post:
-        async def handler(request: DynamicModel):
-            # Convert Pydantic model to dict for processing
-            request_params = request.model_dump()
-            return execute_function_with_params(func_info, request_params, method)
-    else:
-        async def handler(query_params: DynamicModel = Depends()):
-            # Convert Pydantic model to dict for processing
-            request_params = query_params.model_dump()
-            return execute_function_with_params(
-                func_info, request_params, method, f"query={request_params}"
-            )
-    
-    return handler, DynamicModel
-
-
-def register_dynamic_endpoints(app: FastAPI):
-    """
-    Register all functions from registry as API endpoints.
-    
-    Creates both GET and POST handlers based on function metadata with dynamic models.
-    Uses the unified create_handler function to avoid code duplication.
-    
-    Args:
-        app: FastAPI application instance to register routes on
-        
-    Example:
-        >>> app = FastAPI()
-        >>> register_dynamic_endpoints(app)  # Registers all functions from FUNCTION_REGISTRY
-    """
-    for func_name, func_info in FUNCTION_REGISTRY.items():
-        for method in func_info.http_methods:
-            handler, input_model = create_handler(func_info, method)
-            app.add_api_route(
-                f"/{func_name}",
-                handler,
-                methods=[method.upper()],
-                response_model=GenericOutput,
-                operation_id=f"{func_name}_{method.lower()}",
-                summary=func_info.description
-            )
-
+# ============================================================================
+# MAIN APPLICATION FACTORY
+# ============================================================================
 
 def create_api_app() -> FastAPI:
     """
     Create and configure FastAPI application.
     
-    Sets up dynamic endpoints from registry, static file serving,
-    and standard API endpoints (health, functions list, root).
+    Entry point for creating the complete API application with:
+    - Dynamic endpoints from function registry
+    - Standard API endpoints (health, functions list)
+    - Web UI with templates and static files
+    
+    Returns:
+        Configured FastAPI application ready to run
+        
+    Raises:
+        Exception: If core functions fail to load
     """
     app = FastAPI(
         title="Autocode API",
@@ -240,29 +42,62 @@ def create_api_app() -> FastAPI:
         version="1.0.0"
     )
 
-    # Load core functions before registering endpoints
+    # Load and validate core functions
+    _load_and_validate_functions()
+    
+    # Register dynamic endpoints from function registry
+    logger.info("Registering dynamic endpoints...")
+    register_dynamic_endpoints(app)
+    _log_endpoint_count(app)
+    
+    # Setup templates and static files
+    templates = _setup_templates()
+    
+    # Register standard API endpoints
+    _register_standard_endpoints(app, templates)
+    _register_static_files(app)
+
+    return app
+
+
+def _load_and_validate_functions():
+    """Load core functions and validate registry state."""
     logger.info("Loading core functions for API...")
     try:
         load_core_functions()
-        logger.info(f"Successfully loaded {len(FUNCTION_REGISTRY)} functions: {list(FUNCTION_REGISTRY.keys())}")
+        if not FUNCTION_REGISTRY:
+            logger.warning("No functions loaded in registry")
+        else:
+            logger.info(
+                f"Successfully loaded {len(FUNCTION_REGISTRY)} functions: "
+                f"{list(FUNCTION_REGISTRY.keys())}"
+            )
     except Exception as e:
         logger.error(f"Failed to load core functions: {e}")
         raise
 
-    # Register dynamic endpoints from function registry
-    logger.info("Registering dynamic endpoints...")
-    register_dynamic_endpoints(app)
-    
-    # Count registered endpoints for debugging
-    endpoint_count = len([route for route in app.routes if hasattr(route, 'path') and route.path.startswith('/') and route.path not in ['/', '/functions', '/health']])
+
+def _log_endpoint_count(app: FastAPI):
+    """Log the number of registered dynamic endpoints for debugging."""
+    endpoint_count = len([
+        route for route in app.routes 
+        if hasattr(route, 'path') 
+        and route.path.startswith('/') 
+        and route.path not in ['/', '/functions', '/health', '/functions/details']
+    ])
     logger.info(f"Registered {endpoint_count} dynamic endpoints")
 
-    # Setup Jinja2 templates
+
+def _setup_templates() -> Jinja2Templates:
+    """Setup Jinja2 templates for web UI."""
     current_dir = os.path.dirname(__file__)
     web_dir = os.path.join(current_dir, "..", "web")
-    templates = Jinja2Templates(directory=web_dir)
+    return Jinja2Templates(directory=web_dir)
 
-    # Standard API endpoints
+
+def _register_standard_endpoints(app: FastAPI, templates: Jinja2Templates):
+    """Register standard API endpoints (root, health, functions)."""
+    
     @app.get("/")
     async def root(request: Request):
         """Root endpoint - serve the web UI with chat widget."""
@@ -301,10 +136,199 @@ def create_api_app() -> FastAPI:
         """Health check endpoint with function count."""
         return {"status": "healthy", "functions": len(FUNCTION_REGISTRY)}
 
-    # Mount static files for web UI
+
+def _register_static_files(app: FastAPI):
+    """Mount static files directory for web UI."""
     current_dir = os.path.dirname(__file__)
     web_dir = os.path.join(current_dir, "..", "web")
     if os.path.exists(web_dir):
         app.mount("/static", StaticFiles(directory=web_dir), name="static")
 
-    return app
+
+# ============================================================================
+# DYNAMIC ENDPOINT REGISTRATION
+# ============================================================================
+
+def register_dynamic_endpoints(app: FastAPI):
+    """
+    Register all functions from registry as API endpoints.
+    
+    Creates both GET and POST handlers based on function metadata with dynamic models.
+    Uses the unified create_handler function to avoid code duplication.
+    
+    Args:
+        app: FastAPI application instance to register routes on
+        
+    Example:
+        >>> app = FastAPI()
+        >>> register_dynamic_endpoints(app)
+    """
+    for func_name, func_info in FUNCTION_REGISTRY.items():
+        for method in func_info.http_methods:
+            handler, input_model = create_handler(func_info, method)
+            app.add_api_route(
+                f"/{func_name}",
+                handler,
+                methods=[method.upper()],
+                response_model=GenericOutput,
+                operation_id=f"{func_name}_{method.lower()}",
+                summary=func_info.description
+            )
+
+
+def create_handler(func_info: FunctionInfo, method: str):
+    """
+    Create endpoint handler for registered function with dynamic model.
+    
+    Args:
+        func_info: Function information with parameters and metadata
+        method: HTTP method ("GET" or "POST")
+        
+    Returns:
+        Tuple of (handler_function, pydantic_model) ready for FastAPI registration
+        
+    Handles both GET (query parameters) and POST (request body) methods
+    by creating appropriate Pydantic models and handler functions.
+    """
+    is_post = method.upper() == "POST"
+    DynamicModel = create_dynamic_model(func_info, for_post=is_post)
+    
+    if is_post:
+        async def handler(request: DynamicModel):
+            request_params = request.model_dump()
+            return execute_function_with_params(func_info, request_params, method)
+    else:
+        async def handler(query_params: DynamicModel = Depends()):
+            request_params = query_params.model_dump()
+            return execute_function_with_params(
+                func_info, request_params, method, f"query={request_params}"
+            )
+    
+    return handler, DynamicModel
+
+
+# ============================================================================
+# PYDANTIC MODEL GENERATION
+# ============================================================================
+
+def create_dynamic_model(func_info: FunctionInfo, for_post: bool = True) -> Type[BaseModel]:
+    """
+    Create a dynamic Pydantic model based on function parameters.
+    
+    Args:
+        func_info: Function information with parameters
+        for_post: If True, creates model for POST body; if False, for GET query params
+        
+    Returns:
+        Dynamically created Pydantic model class
+    """
+    fields = {}
+    
+    for param in func_info.params:
+        field_type = param.type
+        
+        # Handle default values and required fields
+        if param.required:
+            fields[param.name] = (field_type, Field(description=param.description))
+        else:
+            default_value = param.default if param.default is not None else None
+            fields[param.name] = (field_type, Field(default=default_value, description=param.description))
+    
+    # Create model name
+    suffix = "Input" if for_post else "QueryParams"
+    model_name = f"{func_info.name.title()}{suffix}"
+    
+    return create_model(model_name, **fields)
+
+
+# ============================================================================
+# FUNCTION EXECUTION
+# ============================================================================
+
+def execute_function_with_params(
+    func_info: FunctionInfo, 
+    request_params: Dict[str, Any], 
+    method: str, 
+    extra_debug_info: str = ""
+) -> Dict[str, Any]:
+    """
+    Execute registered function with extracted parameters and handle errors.
+    
+    Args:
+        func_info: Function metadata and callable to execute
+        request_params: Dictionary with parameters from API request
+        method: HTTP method name for logging purposes
+        extra_debug_info: Additional debug information to log
+        
+    Returns:
+        Dict containing formatted function result
+        
+    Raises:
+        HTTPException: 400 for parameter validation errors, 500 for runtime errors
+    """
+    try:
+        func_params = extract_function_params(func_info, request_params)
+        debug_msg = f"{method} {func_info.name}: params={func_params}"
+        if extra_debug_info:
+            debug_msg += f", {extra_debug_info}"
+        logger.debug(debug_msg)
+        result = func_info.func(**func_params)
+        return create_result_response(result)
+    except (ValueError, TypeError) as e:
+        logger.warning(f"{method} {func_info.name} parameter error: {str(e)}")
+        raise HTTPException(status_code=400, detail=f"Parameter error: {str(e)}")
+    except Exception as e:
+        logger.error(f"{method} {func_info.name} runtime error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
+
+
+def extract_function_params(func_info: FunctionInfo, request_params: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Extract and prepare function parameters from request data.
+    
+    Args:
+        func_info: Function information containing parameter definitions
+        request_params: Dictionary with request parameters from API call
+        
+    Returns:
+        Dict with extracted parameters ready for function execution
+    """
+    func_params = {}
+    for param in func_info.params:
+        if param.name in request_params:
+            func_params[param.name] = request_params[param.name]
+        elif not param.required and param.default is not None:
+            func_params[param.name] = param.default
+    return func_params
+
+
+# ============================================================================
+# RESPONSE FORMATTING
+# ============================================================================
+
+def create_result_response(result: Any) -> Dict[str, Any]:
+    """
+    Format function results into consistent API response format.
+    
+    Converts GenericOutput instances to dictionaries for JSON serialization.
+    All registered functions must return GenericOutput or subclass (enforced by registry).
+    
+    Args:
+        result: Function result (GenericOutput or subclass)
+        
+    Returns:
+        Dict with GenericOutput fields (success, result, message, etc.)
+    """
+    if isinstance(result, GenericOutput):
+        return result.model_dump()
+    
+    # Fallback for dict (temporary compatibility)
+    if isinstance(result, dict):
+        return result
+    
+    # Should never happen due to registry enforcement
+    return GenericOutput(
+        success=False,
+        result=str(result),
+        message="Warning: Function returned non-GenericOutput type"
+    ).model_dump()
