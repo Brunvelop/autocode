@@ -8,7 +8,7 @@ import os
 from typing import Any, Dict, Literal, Type
 
 import dspy
-from autocode.autocode.interfaces.models import DspyOutput
+from autocode.autocode.core.ai.models import DspyOutput
 
 
 # Available models for inference

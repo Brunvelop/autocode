@@ -7,7 +7,8 @@ with DSPy generation for complete workflows.
 from typing import Literal, Dict, Any, Optional, List
 import litellm
 from autocode.autocode.interfaces.registry import register_function
-from autocode.autocode.interfaces.models import DspyOutput, GenericOutput
+from autocode.autocode.interfaces.models import GenericOutput
+from autocode.autocode.core.ai.models import DspyOutput
 from autocode.autocode.core.utils.file_utils import (
     read_design_document,
     write_python_file,
