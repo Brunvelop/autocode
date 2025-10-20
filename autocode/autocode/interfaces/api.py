@@ -13,7 +13,22 @@ from pydantic import BaseModel, Field, create_model
 from autocode.autocode.interfaces.models import FunctionInfo, GenericOutput
 from autocode.autocode.interfaces.registry import FUNCTION_REGISTRY, load_core_functions
 
-# Setup logging
+# Setup logging with custom filter for autocode modules only
+class AutocodeLogFilter(logging.Filter):
+    """Filter to only show logs from autocode modules."""
+    def filter(self, record):
+        # Only allow logs from loggers that start with 'autocode'
+        return record.name.startswith('autocode')
+
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+
+# Add filter to root logger to exclude third-party library logs
+root_logger = logging.getLogger()
+root_logger.addFilter(AutocodeLogFilter())
+
 logger = logging.getLogger(__name__)
 
 
