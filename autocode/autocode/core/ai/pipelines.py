@@ -508,7 +508,14 @@ def chat(
                 def tool_func(**kwargs):
                     """Tool wrapper que ejecuta funciones del registry."""
                     try:
-                        return func_info.func(**kwargs)
+                        # DSPy ReAct puede pasar los params dentro de un argumento 'kwargs'
+                        # Si recibimos kwargs={'name': 'value'} en lugar de name='value'
+                        if 'kwargs' in kwargs and isinstance(kwargs['kwargs'], dict):
+                            actual_kwargs = kwargs['kwargs']
+                        else:
+                            actual_kwargs = kwargs
+                        
+                        return func_info.func(**actual_kwargs)
                     except Exception as e:
                         return f"Error ejecutando {func_name}: {str(e)}"
                 
