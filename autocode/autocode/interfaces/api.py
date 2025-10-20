@@ -13,12 +13,25 @@ from pydantic import BaseModel, Field, create_model
 from autocode.autocode.interfaces.models import FunctionInfo, GenericOutput
 from autocode.autocode.interfaces.registry import FUNCTION_REGISTRY, load_core_functions
 
-# Setup logging with custom filter for autocode modules only
+# Setup logging with custom filter to exclude noisy third-party libraries
 class AutocodeLogFilter(logging.Filter):
-    """Filter to only show logs from autocode modules."""
+    """Filter to exclude logs from specified noisy third-party modules."""
+    
+    # List of module prefixes to exclude from logs
+    EXCLUDED_MODULES = [
+        'sse_starlette',
+        'LiteLLM',
+        'httpcore',
+        'mcp',
+        'fastapi_mcp',
+    ]
+    
     def filter(self, record):
-        # Only allow logs from loggers that start with 'autocode'
-        return record.name.startswith('autocode')
+        # Exclude logs from modules in the exclusion list
+        for excluded in self.EXCLUDED_MODULES:
+            if record.name.startswith(excluded):
+                return False
+        return True
 
 logging.basicConfig(
     level=logging.DEBUG,
@@ -28,6 +41,17 @@ logging.basicConfig(
 # Add filter to root logger to exclude third-party library logs
 root_logger = logging.getLogger()
 root_logger.addFilter(AutocodeLogFilter())
+
+# Silence specific noisy third-party loggers by setting their level to WARNING
+# This is necessary because some libraries bypass filters with custom handlers
+for noisy_logger in ['LiteLLM', 'httpcore', 'sse_starlette', 'mcp', 'fastapi_mcp']:
+    logging.getLogger(noisy_logger).setLevel(logging.WARNING)
+    # Also silence sub-loggers
+    for sub in ['connection', 'http11', 'sse', 'server', 'lowlevel']:
+        logging.getLogger(f'{noisy_logger}.{sub}').setLevel(logging.WARNING)
+    # Silence nested sub-loggers (e.g., mcp.server.lowlevel.server)
+    for nested in ['server.lowlevel.server', 'server.sse', 'server.lowlevel']:
+        logging.getLogger(f'{noisy_logger}.{nested}').setLevel(logging.WARNING)
 
 logger = logging.getLogger(__name__)
 
