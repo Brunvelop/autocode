@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Auto Elements Generator - Demo</title>
+    
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <style>
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen p-8">
+    
+    <div class="max-w-7xl mx-auto">
+        <!-- Header -->
+        <header class="mb-8">
+            <h1 class="text-4xl font-bold text-gray-900 mb-2">
+                🚀 Auto Element Generator Demo
+            </h1>
+            <p class="text-gray-600">
+                Elementos generados automáticamente desde el registry de funciones
+            </p>
+        </header>
+
+        <!-- Sección de información -->
+        <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-8">
+            <h2 class="text-lg font-semibold text-blue-900 mb-2">ℹ️ Información</h2>
+            <p class="text-sm text-blue-800 mb-2">
+                Los elementos a continuación se generan automáticamente desde el registry de funciones.
+                Cada función del registry se convierte en un custom element <auto-{nombre}> con:
+            </p>
+            <ul class="text-sm text-blue-800 list-disc list-inside space-y-1">
+                <li>UI básica con Tailwind para funcionalidad</li>
+                <li>Validación automática de parámetros requeridos</li>
+                <li>Slots para extensión/personalización</li>
+                <li>Eventos custom (before-execute, after-execute, etc.)</li>
+                <li>Métodos públicos (execute(), getResult(), setParam(), etc.)</li>
+            </ul>
+        </div>
+
+        <!-- Grid de ejemplos -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+            
+            <!-- Ejemplo 1: Elemento básico -->
+            <div class="space-y-4">
+                <h2 class="text-2xl font-bold text-gray-900">
+                    📝 Ejemplo Básico
+                </h2>
+                <p class="text-sm text-gray-600">
+                    Elemento sin modificaciones, UI generada automáticamente
+                </p>
+                
+                <!-- Auto-elemento generado (hello_world o add) -->
+                <auto-add></auto-add>
+            </div>
+
+            <!-- Ejemplo 2: Con auto-execute -->
+            <div class="space-y-4">
+                <h2 class="text-2xl font-bold text-gray-900">
+                    ⚡ Auto-Execute
+                </h2>
+                <p class="text-sm text-gray-600">
+                    Ejecuta automáticamente al cargar con valores por defecto
+                </p>
+                
+                <auto-hello_world auto-execute="true"></auto-hello_world>
+            </div>
+
+            <!-- Ejemplo 3: Readonly -->
+            <div class="space-y-4">
+                <h2 class="text-2xl font-bold text-gray-900">
+                    🔒 Solo Lectura
+                </h2>
+                <p class="text-sm text-gray-600">
+                    Elemento en modo readonly (deshabilitado)
+                </p>
+                
+                <auto-multiply readonly="true"></auto-multiply>
+            </div>
+
+            <!-- Ejemplo 4: Con slot personalizado -->
+            <div class="space-y-4">
+                <h2 class="text-2xl font-bold text-gray-900">
+                    🎨 Con Slot Personalizado
+                </h2>
+                <p class="text-sm text-gray-600">
+                    Header personalizado usando slots
+                </p>
+                
+                <auto-multiply>
+                    <div slot="header" class="bg-gradient-to-r from-purple-500 to-pink-500 text-white p-4 rounded-lg">
+                        <h3 class="text-lg font-bold mb-1">✨ Calculadora Personalizada</h3>
+                        <p class="text-sm opacity-90">Multiplica dos números con estilo</p>
+                    </div>
+                </auto-multiply>
+            </div>
+
+            <!-- Ejemplo 5: Sin parámetros visibles -->
+            <div class="space-y-4">
+                <h2 class="text-2xl font-bold text-gray-900">
+                    👁️ Sin Parámetros
+                </h2>
+                <p class="text-sm text-gray-600">
+                    Oculta el formulario de parámetros
+                </p>
+                
+                <auto-hello_world show-params="false"></auto-hello_world>
+            </div>
+
+            <!-- Ejemplo 6: Con eventos custom -->
+            <div class="space-y-4">
+                <h2 class="text-2xl font-bold text-gray-900">
+                    📡 Con Eventos Custom
+                </h2>
+                <p class="text-sm text-gray-600">
+                    Escucha eventos y muestra logs
+                </p>
+                
+                <auto-add id="eventExample"></auto-add>
+                
+                <div class="mt-2 p-3 bg-gray-100 rounded-lg">
+                    <h4 class="text-xs font-semibold text-gray-700 mb-2">Event Log:</h4>
+                    <div id="eventLog" class="text-xs text-gray-600 font-mono space-y-1 max-h-32 overflow-y-auto">
+                        <div class="text-gray-400">Esperando eventos...</div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Sección de uso programático -->
+        <div class="bg-white rounded-lg shadow-md p-6 mb-8">
+            <h2 class="text-2xl font-bold text-gray-900 mb-4">
+                💻 Uso Programático
+            </h2>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <!-- Control programático -->
+                <div>
+                    <h3 class="text-lg font-semibold text-gray-800 mb-3">Control por JS</h3>
+                    <auto-multiply id="programmaticExample"></auto-multiply>
+                    
+                    <div class="mt-4 flex flex-wrap gap-2">
+                        <button 
+                            onclick="setValues()"
+                            class="px-3 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+                            Establecer valores (10, 2)
+                        </button>
+                        <button 
+                            onclick="executeElement()"
+                            class="px-3 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700">
+                            Ejecutar
+                        </button>
+                        <button 
+                            onclick="getElementResult()"
+                            class="px-3 py-2 text-sm bg-purple-600 text-white rounded-lg hover:bg-purple-700">
+                            Obtener resultado
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Código de ejemplo -->
+                <div>
+                    <h3 class="text-lg font-semibold text-gray-800 mb-3">Código JS</h3>
+                    <pre class="bg-gray-900 text-gray-100 p-4 rounded-lg text-xs overflow-x-auto"><code>// Obtener elemento
+const elem = document.querySelector('#programmaticExample');
+
+// Establecer parámetros
+elem.setParam('x', 10);
+elem.setParam('y', 2);
+
+// Ejecutar
+await elem.execute();
+
+// Obtener resultado
+const result = elem.getResult();
+console.log(result);</code></pre>
+                </div>
+            </div>
+        </div>
+
+        <!-- Información de extensibilidad -->
+        <div class="bg-white rounded-lg shadow-md p-6">
+            <h2 class="text-2xl font-bold text-gray-900 mb-4">
+                🔌 Extensibilidad
+            </h2>
+            
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <!-- Slots -->
+                <div>
+                    <h3 class="text-lg font-semibold text-gray-800 mb-2">Slots Disponibles</h3>
+                    <ul class="text-sm text-gray-600 space-y-1">
+                        <li>• <code class="bg-gray-100 px-1 rounded">header</code></li>
+                        <li>• <code class="bg-gray-100 px-1 rounded">title</code></li>
+                        <li>• <code class="bg-gray-100 px-1 rounded">toolbar</code></li>
+                        <li>• <code class="bg-gray-100 px-1 rounded">params-ui</code></li>
+                        <li>• <code class="bg-gray-100 px-1 rounded">execute-button</code></li>
+                        <li>• <code class="bg-gray-100 px-1 rounded">result-ui</code></li>
+                        <li>• <code class="bg-gray-100 px-1 rounded">status</code></li>
+                        <li>• <code class="bg-gray-100 px-1 rounded">footer</code></li>
+                    </ul>
+                </div>
+
+                <!-- Atributos -->
+                <div>
+                    <h3 class="text-lg font-semibold text-gray-800 mb-2">Atributos</h3>
+                    <ul class="text-sm text-gray-600 space-y-1">
+                        <li>• <code class="bg-gray-100 px-1 rounded">auto-execute</code></li>
+                        <li>• <code class="bg-gray-100 px-1 rounded">show-result</code></li>
+                        <li>• <code class="bg-gray-100 px-1 rounded">show-params</code></li>
+                        <li>• <code class="bg-gray-100 px-1 rounded">readonly</code></li>
+                    </ul>
+                </div>
+
+                <!-- Eventos -->
+                <div>
+                    <h3 class="text-lg font-semibold text-gray-800 mb-2">Eventos Custom</h3>
+                    <ul class="text-sm text-gray-600 space-y-1">
+                        <li>• <code class="bg-gray-100 px-1 rounded">function-connected</code></li>
+                        <li>• <code class="bg-gray-100 px-1 rounded">before-execute</code></li>
+                        <li>• <code class="bg-gray-100 px-1 rounded">after-execute</code></li>
+                        <li>• <code class="bg-gray-100 px-1 rounded">execute-error</code></li>
+                        <li>• <code class="bg-gray-100 px-1 rounded">params-changed</code></li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="mt-6 p-4 bg-gray-50 rounded-lg">
+                <h3 class="text-lg font-semibold text-gray-800 mb-2">Métodos Públicos</h3>
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm text-gray-600">
+                    <code class="bg-white px-2 py-1 rounded border">execute()</code>
+                    <code class="bg-white px-2 py-1 rounded border">getResult()</code>
+                    <code class="bg-white px-2 py-1 rounded border">setParam(name, value)</code>
+                    <code class="bg-white px-2 py-1 rounded border">getParam(name)</code>
+                    <code class="bg-white px-2 py-1 rounded border">getParams()</code>
+                    <code class="bg-white px-2 py-1 rounded border">validate()</code>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="/static/components/functions/js/auto-element-generator.js"></script>
+    
+    <script>
+        // Event listeners para el ejemplo de eventos
+        const eventExample = document.getElementById('eventExample');
+        const eventLog = document.getElementById('eventLog');
+        
+        function logEvent(eventName, detail) {
+            const timestamp = new Date().toLocaleTimeString();
+            const logEntry = document.createElement('div');
+            logEntry.className = 'text-xs';
+            logEntry.innerHTML = `<span class="text-gray-400">[${timestamp}]</span> <span class="font-semibold text-blue-600">${eventName}</span>: ${JSON.stringify(detail)}`;
+            
+            // Limpiar mensaje inicial
+            if (eventLog.querySelector('.text-gray-400')) {
+                eventLog.innerHTML = '';
+            }
+            
+            eventLog.appendChild(logEntry);
+            eventLog.scrollTop = eventLog.scrollHeight;
+        }
+        
+        if (eventExample) {
+            eventExample.addEventListener('function-connected', (e) => {
+                logEvent('function-connected', { funcName: e.detail.funcName });
+            });
+            
+            eventExample.addEventListener('before-execute', (e) => {
+                logEvent('before-execute', { params: e.detail.params });
+            });
+            
+            eventExample.addEventListener('after-execute', (e) => {
+                logEvent('after-execute', { result: e.detail.result });
+            });
+            
+            eventExample.addEventListener('execute-error', (e) => {
+                logEvent('execute-error', { error: e.detail.error.message });
+            });
+            
+            eventExample.addEventListener('params-changed', (e) => {
+                logEvent('params-changed', { params: e.detail.params });
+            });
+        }
+
+        // Funciones para control programático
+        async function setValues() {
+            // Esperar a que el elemento esté definido
+            await customElements.whenDefined('auto-multiply');
+            const elem = document.getElementById('programmaticExample');
+            if (elem) {
+                elem.setParam('x', 10);
+                elem.setParam('y', 2);
+                alert('Valores establecidos: x=10, y=2');
+            }
+        }
+
+        async function executeElement() {
+            await customElements.whenDefined('auto-multiply');
+            const elem = document.getElementById('programmaticExample');
+            if (elem) {
+                await elem.execute();
+            }
+        }
+
+        async function getElementResult() {
+            await customElements.whenDefined('auto-multiply');
+            const elem = document.getElementById('programmaticExample');
+            if (elem) {
+                const result = elem.getResult();
+                alert('Resultado: ' + JSON.stringify(result, null, 2));
+            }
+        }
+
+        // Log de elementos registrados
+        setTimeout(() => {
+            if (window.autoElementGenerator) {
+                console.log('✅ Elementos registrados:', 
+                    Array.from(window.autoElementGenerator.registeredElements));
+            }
+        }, 1000);
+    </script>
+</body>
+</html>
