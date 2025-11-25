@@ -1,0 +1,154 @@
+<!-- Modal de Configuración -->
+<div 
+    id="configModal" 
+    class="hidden fixed inset-0 z-[130] bg-black/50 flex items-center justify-center p-4"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="config-modal-title"
+>
+    <div class="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[85vh] overflow-hidden flex flex-col">
+        <!-- Header -->
+        <div class="bg-gradient-to-r from-indigo-600 to-violet-600 p-4 flex items-center justify-between">
+            <h3 id="config-modal-title" class="text-white font-bold text-lg">⚙️ Configuración del Chat</h3>
+            <button 
+                id="configCloseBtn" 
+                class="text-white hover:bg-white/20 rounded-full p-2 transition"
+                aria-label="Cerrar modal de configuración"
+            >
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+            </button>
+        </div>
+        
+        <!-- Body -->
+        <div class="flex-1 overflow-y-auto p-6 space-y-6">
+            <!-- Sección LLM -->
+            <div class="border border-indigo-200 rounded-xl p-4 bg-indigo-50">
+                <h4 class="font-bold text-indigo-900 mb-3 flex items-center gap-2">
+                    🤖 Configuración LLM
+                </h4>
+                
+                <!-- Modelo -->
+                <div class="mb-4">
+                    <label for="configModel" class="block text-sm font-semibold text-gray-700 mb-1">Modelo:</label>
+                    <select 
+                        id="configModel" 
+                        class="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        aria-describedby="configModelHelp"
+                    >
+                        <!-- Las opciones se cargan dinámicamente desde /functions/details vía JS -->
+                    </select>
+                </div>
+                
+                <!-- Temperature -->
+                <div class="mb-4">
+                    <label for="configTemperature" class="block text-sm font-semibold text-gray-700 mb-1">
+                        Temperature: <span id="tempValue" class="text-indigo-600" aria-live="polite">0.7</span>
+                    </label>
+                    <input 
+                        type="range" 
+                        id="configTemperature" 
+                        min="0" 
+                        max="2" 
+                        step="0.1" 
+                        value="0.7" 
+                        class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
+                        aria-valuemin="0"
+                        aria-valuemax="2"
+                        aria-valuenow="0.7"
+                        aria-label="Temperatura del modelo"
+                    >
+                    <div class="flex justify-between text-xs text-gray-500 mt-1">
+                        <span>0.0 (Determinista)</span>
+                        <span>2.0 (Creativo)</span>
+                    </div>
+                </div>
+                
+                <!-- Max Tokens -->
+                <div class="mb-4">
+                    <label for="configMaxTokens" class="block text-sm font-semibold text-gray-700 mb-1">Max Tokens:</label>
+                    <input 
+                        type="number" 
+                        id="configMaxTokens" 
+                        value="16000" 
+                        min="1000" 
+                        max="200000" 
+                        step="1000"
+                        class="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        aria-describedby="configMaxTokensHelp"
+                    >
+                    <p id="configMaxTokensHelp" class="text-xs text-gray-500 mt-1">Controla la longitud máxima de la respuesta</p>
+                </div>
+                
+                <!-- Warning para GPT-5 -->
+                <div id="gpt5Warning" class="hidden mt-3 p-3 bg-yellow-50 border border-yellow-300 rounded-lg text-sm text-yellow-800" role="alert">
+                    ⚠️ <strong>GPT-5 requiere:</strong> temperature=1.0 y max_tokens≥16000
+                </div>
+            </div>
+            
+            <!-- Sección DSPy -->
+            <div class="border border-purple-200 rounded-xl p-4 bg-purple-50">
+                <h4 class="font-bold text-purple-900 mb-3 flex items-center gap-2">
+                    🧩 Configuración DSPy
+                </h4>
+                
+                <!-- Module Type -->
+                <div class="mb-4">
+                    <label for="configModuleType" class="block text-sm font-semibold text-gray-700 mb-1">Module Type:</label>
+                    <select 
+                        id="configModuleType" 
+                        class="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                        aria-describedby="moduleTypeDescription"
+                    >
+                        <option value="Predict">Predict (Básico)</option>
+                        <option value="ChainOfThought">ChainOfThought (Con razonamiento)</option>
+                        <option value="ProgramOfThought">ProgramOfThought (Genera código)</option>
+                        <option value="ReAct" selected>ReAct (Con herramientas)</option>
+                        <option value="MultiChainComparison">MultiChainComparison (Compara outputs)</option>
+                    </select>
+                    <p id="moduleTypeDescription" class="text-xs text-gray-500 mt-1">ReAct permite usar herramientas y razonar sobre qué usar</p>
+                </div>
+                
+                <!-- Module Kwargs (JSON) -->
+                <div class="mb-4">
+                    <label for="configModuleKwargs" class="block text-sm font-semibold text-gray-700 mb-1">
+                        Module Kwargs (JSON):
+                        <button 
+                            id="moduleKwargsHelp" 
+                            class="text-purple-600 hover:text-purple-800"
+                            aria-label="Ayuda sobre Module Kwargs"
+                            type="button"
+                        >ℹ️</button>
+                    </label>
+                    <textarea 
+                        id="configModuleKwargs" 
+                        rows="4" 
+                        placeholder='{"max_iters": 5}'
+                        class="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 font-mono text-sm"
+                        aria-describedby="configModuleKwargsHelp"
+                    ></textarea>
+                    <p id="configModuleKwargsHelp" class="text-xs text-gray-500 mt-1">Parámetros adicionales del módulo (opcional)</p>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Footer -->
+        <div class="p-4 border-t border-gray-200 flex justify-end gap-3">
+            <button 
+                id="configResetBtn" 
+                class="px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg font-semibold transition"
+                aria-label="Restaurar configuración por defecto"
+            >
+                Restaurar por defecto
+            </button>
+            <button 
+                id="configSaveBtn" 
+                class="px-4 py-2 text-white bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 rounded-lg font-semibold transition"
+                aria-label="Guardar configuración"
+            >
+                Guardar Configuración
+            </button>
+        </div>
+    </div>
+</div>

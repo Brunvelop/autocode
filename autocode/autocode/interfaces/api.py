@@ -3,7 +3,7 @@ FastAPI server with dynamic endpoints from registry and static file serving.
 """
 import logging
 import os
-from typing import Any, Dict, Type
+from typing import Any, Dict, Type, Union
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
@@ -11,6 +11,7 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field, create_model
 
 from autocode.autocode.interfaces.models import FunctionInfo, GenericOutput
+from autocode.autocode.core.ai.models import DspyOutput
 from autocode.autocode.interfaces.registry import FUNCTION_REGISTRY, load_core_functions
 
 # Setup logging with custom filter to exclude noisy third-party libraries
@@ -147,6 +148,11 @@ def _register_standard_endpoints(app: FastAPI, templates: Jinja2Templates):
         """Serve the dynamic functions UI page with chat widget."""
         return templates.TemplateResponse("templates/functions.html", {"request": request})
 
+    @app.get("/demo")
+    async def demo_ui(request: Request):
+        """Serve the custom elements demo page."""
+        return templates.TemplateResponse("templates/auto-elements-demo.html", {"request": request})
+
     @app.get("/functions/details")
     async def list_functions_details():
         """Get detailed information about all registered functions."""
@@ -209,7 +215,7 @@ def register_dynamic_endpoints(app: FastAPI):
                 f"/{func_name}",
                 handler,
                 methods=[method.upper()],
-                response_model=GenericOutput,
+                response_model=Union[GenericOutput, DspyOutput],
                 operation_id=f"{func_name}_{method.lower()}",
                 summary=func_info.description
             )
@@ -312,7 +318,9 @@ def execute_function_with_params(
             debug_msg += f", {extra_debug_info}"
         logger.debug(debug_msg)
         result = func_info.func(**func_params)
-        return create_result_response(result)
+        response = create_result_response(result)
+        logger.debug(response)
+        return response
     except (ValueError, TypeError) as e:
         logger.warning(f"{method} {func_info.name} parameter error: {str(e)}")
         raise HTTPException(status_code=400, detail=f"Parameter error: {str(e)}")

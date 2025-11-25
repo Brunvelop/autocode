@@ -410,7 +410,7 @@ def _extract_param_info(param: inspect.Parameter, param_name: str, param_docs: D
     """
     param_type = param.annotation if param.annotation != inspect.Parameter.empty else Any
     default = param.default if param.default != inspect.Parameter.empty else None
-    required = default is None
+    required = param.default == inspect.Parameter.empty
     description = param_docs.get(param_name, f"Parameter {param_name}")
     
     # Extract choices from Literal type

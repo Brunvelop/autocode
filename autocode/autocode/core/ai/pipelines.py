@@ -456,24 +456,24 @@ def calculate_context_usage(
 @register_function(http_methods=["POST"])
 def chat(
     message: str,
-    conversation_history: list = None,
+    conversation_history: str = "",
     model: ModelType = 'openrouter/openai/gpt-4o',
     max_tokens: int = 16000,
     temperature: float = 0.7,
     module_type: ModuleType = 'ReAct',
     module_kwargs: Optional[Dict[str, Any]] = None
-) -> GenericOutput:
+) -> DspyOutput:
     """
-    Chat conversacional con memoria y acceso a herramientas MCP.
+    Chat conversacional con acceso a herramientas MCP.
     
     Este endpoint usa DSPy con el módulo configurado para:
-    - Mantener contexto de conversaciones anteriores
     - Acceder a todas las funciones registradas como herramientas con schemas completos
     - Razonar sobre qué herramientas usar para responder (con ReAct)
+    - Retornar un DspyOutput completo con trajectory, reasoning, history, etc.
     
     Args:
         message: Mensaje actual del usuario
-        conversation_history: Lista de mensajes previos [{"role": "user"|"assistant", "content": "..."}]
+        conversation_history: Historial de conversación en formato texto (opcional)
         model: Modelo de inferencia a utilizar
         max_tokens: Número máximo de tokens (default: 16000)
         temperature: Temperature para generación (default: 0.7)
@@ -481,21 +481,16 @@ def chat(
         module_kwargs: Parámetros adicionales del módulo (ej: max_iters para ReAct)
         
     Returns:
-        GenericOutput con 'response', 'conversation_history' y 'dspy_output' en el campo result
+        DspyOutput con:
+        - result: Dict con 'response', 'trajectory' (si ReAct), 'reasoning', etc.
+        - history: Historial completo de llamadas al LM con metadata
+        - trajectory: Trayectoria de ReAct (thoughts, tool_names, tool_args, observations)
+        - reasoning: Razonamiento paso a paso
+        - completions: Múltiples completions si aplica
     """
     import dspy
     
     try:
-        # Inicializar historial si no existe
-        if conversation_history is None:
-            conversation_history = []
-        
-        # Formatear historial para DSPy
-        history_text = ""
-        for msg in conversation_history:
-            role = "User" if msg.get("role") == "user" else "Assistant"
-            history_text += f"{role}: {msg.get('content', '')}\n"
-        
         # Crear tools con schemas detallados del registry
         tools = []
         for func_name, func_info in FUNCTION_REGISTRY.items():
@@ -554,11 +549,12 @@ def chat(
                 module_kwargs['max_iters'] = 5
         
         # Generar respuesta usando el módulo configurado
-        output = generate_with_dspy(
+        # generate_with_dspy ya retorna DspyOutput completo con todo lo necesario
+        return generate_with_dspy(
             signature_class=ChatSignature,
             inputs={
                 'message': message,
-                'conversation_history': history_text
+                'conversation_history': conversation_history
             },
             model=model,
             module_type=module_type,
@@ -567,52 +563,10 @@ def chat(
             temperature=temperature
         )
         
-        # Verificar éxito
-        if not output.success:
-            return GenericOutput(
-                success=False,
-                result={
-                    "error": output.message,
-                    "conversation_history": conversation_history
-                },
-                message=f"Error en chat: {output.message}"
-            )
-        
-        # Extraer respuesta
-        response_text = output.result.get('response', 'Error: No se generó respuesta')
-        
-        # Actualizar historial
-        updated_history = conversation_history + [
-            {"role": "user", "content": message},
-            {"role": "assistant", "content": response_text}
-        ]
-        
-        # Retornar en formato GenericOutput con dspy_output completo para UI
-        return GenericOutput(
-            success=True,
-            result={
-                "response": response_text,
-                "conversation_history": updated_history,
-                "dspy_output": {
-                    "success": output.success,
-                    "result": output.result,
-                    "message": output.message,
-                    "reasoning": output.reasoning,
-                    "completions": output.completions,
-                    "observations": output.observations,
-                    "history": output.history
-                }
-            },
-            message="Chat response generated successfully"
-        )
-        
     except Exception as e:
-        # Retornar error
-        return GenericOutput(
+        # Retornar error en formato DspyOutput
+        return DspyOutput(
             success=False,
-            result={
-                "error": f"Error en chat: {str(e)}",
-                "conversation_history": conversation_history or []
-            },
+            result={"error": f"Error en chat: {str(e)}"},
             message=f"Error en chat: {str(e)}"
         )

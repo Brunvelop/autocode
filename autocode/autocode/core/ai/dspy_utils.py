@@ -6,7 +6,7 @@ including setup functions and generic generators.
 """
 import logging
 import os
-from typing import Any, Dict, List, Literal, Optional, Type
+from typing import Any, Dict, Literal, Optional, Type
 
 import dspy
 from autocode.autocode.core.ai.models import DspyOutput
@@ -102,87 +102,6 @@ def _create_and_execute_module(
         return generator(**inputs)
 
 
-def _extract_and_process_outputs(
-    response: Any,
-    signature_class: Type[dspy.Signature]
-) -> Dict[str, Any]:
-    """
-    Extrae y procesa los campos de output de una response DSPy.
-    
-    Combina la extracción de campos y su procesamiento en una sola función
-    para mayor simplicidad y eficiencia.
-    
-    Args:
-        response: Response del módulo DSPy
-        signature_class: La clase de signature utilizada
-        
-    Returns:
-        Diccionario con los campos de output procesados
-    """
-    # Extraer output fields de la signature
-    output_fields = [
-        name for name, field in signature_class.model_fields.items()
-        if field.json_schema_extra.get('__dspy_field_type') == 'output'
-    ]
-    
-    # Construir dict con outputs principales
-    result = {field: getattr(response, field, None) for field in output_fields}
-    
-    # Fallback si no hay outputs explícitos
-    if not result:
-        result = {
-            attr: getattr(response, attr) 
-            for attr in dir(response)
-            if not attr.startswith('_') and not callable(getattr(response, attr))
-        }
-    
-    return result
-
-
-def _process_list_field(field_value: Any) -> Optional[List[str]]:
-    """
-    Procesa un campo DSPy convirtiéndolo a lista de strings si es necesario.
-    
-    Esta función maneja la conversión de objetos Prediction y otras
-    estructuras complejas a strings serializables.
-    
-    Args:
-        field_value: Valor del campo a procesar
-        
-    Returns:
-        Lista de strings si el campo existe, None si no
-    """
-    if field_value is None:
-        return None
-    
-    if isinstance(field_value, list):
-        return [str(item) if hasattr(item, '__dict__') else item for item in field_value]
-    
-    return [str(field_value)]
-
-
-def _extract_lm_history(lm: dspy.LM) -> Optional[List[Dict[str, Any]]]:
-    """
-    Extrae el historial del Language Model en formato serializable.
-    
-    Args:
-        lm: Language Model de DSPy
-        
-    Returns:
-        Lista de entradas del historial o None si no hay historial
-    """
-    if not hasattr(lm, 'history') or not lm.history:
-        return None
-    
-    return [
-        {
-            k: str(v) if hasattr(v, '__dict__') else v 
-            if isinstance(v, (str, int, float, bool, type(None), list, dict)) 
-            else str(v)
-            for k, v in entry.items()
-        }
-        for entry in lm.history
-    ]
 
 
 # ============================================================================
@@ -339,27 +258,50 @@ def generate_with_dspy(
         logger.error(error_msg, exc_info=True)
         return DspyOutput(success=False, result={}, message=error_msg)
     
-    # Extraer y procesar outputs de la signature
-    dspy_fields = _extract_and_process_outputs(response, signature_class)
+    # Extracción simplificada con getattr
+    result = getattr(response, 'response', {})
+    reasoning = getattr(response, 'reasoning', None)
+    completions = getattr(response, 'completions', None)
+    trajectory = getattr(response, 'trajectory', None)
+    history = getattr(lm, 'history', None)
     
-    if not dspy_fields:
+    if not result:
         error_msg = "No se encontraron campos de output en la response de DSPy"
         logger.warning(error_msg)
         return DspyOutput(success=False, result={}, message=error_msg)
     
-    # Procesar campos DSPy especiales
-    reasoning = getattr(response, 'reasoning', None)
-    completions = _process_list_field(getattr(response, 'completions', None))
-    observations = _process_list_field(getattr(response, 'observations', None))
-    history = _extract_lm_history(lm)
+    # Convertir campos complejos a formatos serializables para API
+    # History: Convertir ModelResponse y otros objetos a dicts
+    if history:
+        serialized_history = []
+        for item in history:
+            if hasattr(item, 'model_dump'):
+                serialized_history.append(item.model_dump())
+            elif hasattr(item, '__dict__'):
+                serialized_history.append(vars(item))
+            else:
+                serialized_history.append(item)
+        history = serialized_history
     
-    logger.info(f"Generación exitosa con {len(dspy_fields)} campos de output")
+    # Trajectory: Convertir objetos anidados (como GenericOutput) a dicts
+    if isinstance(trajectory, dict):
+        serialized_trajectory = {}
+        for key, value in trajectory.items():
+            if hasattr(value, 'model_dump'):
+                serialized_trajectory[key] = value.model_dump()
+            elif hasattr(value, '__dict__'):
+                serialized_trajectory[key] = vars(value)
+            else:
+                serialized_trajectory[key] = value
+        trajectory = serialized_trajectory
+    
+    logger.info(f"Generación exitosa con {len(result)} campos de output")
     return DspyOutput(
         success=True,
-        result=dspy_fields,
+        result=result,
         message="Generación exitosa",
         reasoning=reasoning,
         completions=completions,
-        observations=observations,
+        trajectory=trajectory,
         history=history
     )
