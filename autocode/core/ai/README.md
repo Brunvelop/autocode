@@ -27,7 +27,7 @@ Genera código Python a partir de un texto de diseño.
 
 **Uso:**
 ```python
-from autocode.autocode.core.ai.pipelines import generate_code
+from autocode.core.ai.pipelines import generate_code
 
 design = """
 Crear una función que calcule el factorial de un número.
@@ -75,7 +75,7 @@ Convierte un archivo de diseño en un archivo .py.
 
 **Uso:**
 ```python
-from autocode.autocode.core.ai.pipelines import text_to_code
+from autocode.core.ai.pipelines import text_to_code
 
 result = text_to_code(
     input_path="design.md",
@@ -125,7 +125,7 @@ Genera un documento de diseño Markdown a partir de código Python.
 
 **Uso:**
 ```python
-from autocode.autocode.core.ai.pipelines import generate_design
+from autocode.core.ai.pipelines import generate_design
 
 python_code = """
 def calculate_factorial(n: int) -> int:
@@ -178,7 +178,7 @@ Convierte un archivo .py en un documento de diseño .md.
 
 **Uso:**
 ```python
-from autocode.autocode.core.ai.pipelines import code_to_design
+from autocode.core.ai.pipelines import code_to_design
 
 result = code_to_design(
     input_path="my_module.py",
@@ -220,7 +220,7 @@ Responde una pregunta usando razonamiento.
 
 **Uso:**
 ```python
-from autocode.autocode.core.ai.pipelines import generate_answer
+from autocode.core.ai.pipelines import generate_answer
 
 answer = generate_answer("¿Qué es DSPy?")
 print(answer)
@@ -248,7 +248,7 @@ Generador genérico con selección de signature desde la UI.
 
 **Uso:**
 ```python
-from autocode.autocode.core.ai.pipelines import generate
+from autocode.core.ai.pipelines import generate
 
 # Generar código
 result = generate(
@@ -283,7 +283,7 @@ curl -X POST http://localhost:8000/generate \
 
 ### 7. Funciones de I/O (Módulo separado)
 
-Las funciones de lectura/escritura de archivos ahora están en `autocode.autocode.core.utils.file_utils`:
+Las funciones de lectura/escritura de archivos ahora están en `autocode.core.utils.file_utils`:
 
 #### `read_design_document(path: str) -> str`
 Lee un archivo de diseño y retorna su contenido.
@@ -325,8 +325,8 @@ Ahora puedes elegir el tipo de módulo DSPy a utilizar mediante el parámetro `m
 
 **Ejemplo de uso:**
 ```python
-from autocode.autocode.core.ai.dspy_utils import generate_with_dspy, ModuleType
-from autocode.autocode.core.ai.signatures import QASignature
+from autocode.core.ai.dspy_utils import generate_with_dspy, ModuleType
+from autocode.core.ai.signatures import QASignature
 
 # Usando ReAct con herramientas
 def search_web(query: str) -> str:
@@ -621,8 +621,8 @@ Esta separación permite reutilizar las funciones individuales en otros contexto
 
 ### Usando Predict (Básico)
 ```python
-from autocode.autocode.core.ai.dspy_utils import generate_with_dspy
-from autocode.autocode.core.ai.signatures import CodeGenerationSignature
+from autocode.core.ai.dspy_utils import generate_with_dspy
+from autocode.core.ai.signatures import CodeGenerationSignature
 
 result = generate_with_dspy(
     signature_class=CodeGenerationSignature,
@@ -634,8 +634,8 @@ print(result['python_code'])
 
 ### Usando ChainOfThought (Default con Razonamiento)
 ```python
-from autocode.autocode.core.ai.dspy_utils import generate_with_dspy
-from autocode.autocode.core.ai.signatures import QASignature
+from autocode.core.ai.dspy_utils import generate_with_dspy
+from autocode.core.ai.signatures import QASignature
 
 result = generate_with_dspy(
     signature_class=QASignature,
@@ -648,8 +648,8 @@ print(result['answer'])
 
 ### Usando ProgramOfThought (Generación de Código para Respuesta)
 ```python
-from autocode.autocode.core.ai.dspy_utils import generate_with_dspy
-from autocode.autocode.core.ai.signatures import QASignature
+from autocode.core.ai.dspy_utils import generate_with_dspy
+from autocode.core.ai.signatures import QASignature
 
 result = generate_with_dspy(
     signature_class=QASignature,
@@ -661,8 +661,8 @@ print(result)  # Incluye el código generado y ejecutado
 
 ### Usando ReAct (Agente con Herramientas)
 ```python
-from autocode.autocode.core.ai.dspy_utils import generate_with_dspy
-from autocode.autocode.core.ai.signatures import QASignature
+from autocode.core.ai.dspy_utils import generate_with_dspy
+from autocode.core.ai.signatures import QASignature
 
 # Definir herramientas que el agente puede usar
 def calculator(expression: str) -> str:
@@ -695,8 +695,8 @@ print(result['answer'])
 
 ### Usando MultiChainComparison (Comparar Múltiples Outputs)
 ```python
-from autocode.autocode.core.ai.dspy_utils import generate_with_dspy
-from autocode.autocode.core.ai.signatures import CodeGenerationSignature
+from autocode.core.ai.dspy_utils import generate_with_dspy
+from autocode.core.ai.signatures import CodeGenerationSignature
 
 result = generate_with_dspy(
     signature_class=CodeGenerationSignature,

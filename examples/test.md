@@ -676,7 +676,7 @@ classDiagram
 ### Ejemplo 1: Conversión Texto-a-Código
 
 ```python
-from autocode.autocode.core.ai.pipelines import text_to_code
+from autocode.core.ai.pipelines import text_to_code
 
 # Generar implementación desde especificación
 result = text_to_code(
@@ -696,7 +696,7 @@ print(result)
 ### Ejemplo 2: Conversión Código-a-Diseño
 
 ```python
-from autocode.autocode.core.ai.pipelines import code_to_design
+from autocode.core.ai.pipelines import code_to_design
 
 # Documentar código existente
 result = code_to_design(
@@ -718,7 +718,7 @@ print(result)
 ### Ejemplo 3: Generación Genérica con ChainOfThought
 
 ```python
-from autocode.autocode.core.ai.pipelines import generate
+from autocode.core.ai.pipelines import generate
 
 # Generar código con razonamiento explícito
 result = generate(
@@ -737,7 +737,7 @@ print(result['python_code'])
 ### Ejemplo 4: Generación con ReAct y Herramientas
 
 ```python
-from autocode.autocode.core.ai.pipelines import generate
+from autocode.core.ai.pipelines import generate
 
 def search_docs(query: str) -> str:
     """Simula búsqueda en documentación"""
@@ -767,7 +767,7 @@ print(result)
 ### Ejemplo 5: Funciones Especializadas
 
 ```python
-from autocode.autocode.core.ai.pipelines import (
+from autocode.core.ai.pipelines import (
     generate_code,
     generate_design,
     generate_answer
@@ -800,7 +800,7 @@ print(f"Answer:\n{answer}")
 ### Ejemplo 6: Múltiples Completions con Predict
 
 ```python
-from autocode.autocode.core.ai.pipelines import generate
+from autocode.core.ai.pipelines import generate
 
 # Generar múltiples variantes de código
 result = generate(
@@ -1193,9 +1193,9 @@ if not campo:
 from unittest.mock import Mock, patch
 
 def test_text_to_code_success():
-    with patch('autocode.autocode.core.utils.file_utils.read_design_document') as mock_read, \
-         patch('autocode.autocode.core.ai.dspy_utils.generate_with_dspy') as mock_generate, \
-         patch('autocode.autocode.core.utils.file_utils.write_python_file') as mock_write:
+    with patch('autocode.core.utils.file_utils.read_design_document') as mock_read, \
+         patch('autocode.core.ai.dspy_utils.generate_with_dspy') as mock_generate, \
+         patch('autocode.core.utils.file_utils.write_python_file') as mock_write:
         
         mock_read.return_value = "Design text"
         mock_generate.return_value = {'python_code': 'def foo(): pass'}
@@ -1244,7 +1244,7 @@ def test_text_to_code_integration(temp_files):
     input_file, output_file = temp_files
     
     # Mock solo el LLM, file_utils es real
-    with patch('autocode.autocode.core.ai.dspy_utils.generate_with_dspy') as mock_llm:
+    with patch('autocode.core.ai.dspy_utils.generate_with_dspy') as mock_llm:
         mock_llm.return_value = {'python_code': 'def hello():\n    print("Hello")'}
         
         result = text_to_code(input_file, output_file)
@@ -1302,7 +1302,7 @@ def test_real_text_to_code():
 def test_text_to_code_performance(benchmark, temp_files):
     input_file, output_file = temp_files
     
-    with patch('autocode.autocode.core.ai.dspy_utils.generate_with_dspy') as mock_llm:
+    with patch('autocode.core.ai.dspy_utils.generate_with_dspy') as mock_llm:
         mock_llm.return_value = {'python_code': 'def foo(): pass'}
         
         result = benchmark(text_to_code, input_file, output_file)
@@ -1345,7 +1345,7 @@ def mock_design_response():
 @pytest.fixture
 def mock_generate_with_dspy(mock_llm_response):
     """Mock de generate_with_dspy con respuesta configurable"""
-    with patch('autocode.autocode.core.ai.dspy_utils.generate_with_dspy') as mock:
+    with patch('autocode.core.ai.dspy_utils.generate_with_dspy') as mock:
         mock.return_value = mock_llm_response
         yield mock
 ```
@@ -1526,7 +1526,7 @@ RUN_E2E_TESTS=1 pytest tests/e2e/ -m e2e
 pytest tests/performance/ --benchmark-only --benchmark-html=report.html
 
 # Coverage report
-pytest tests/ --cov=autocode.autocode.core.ai.pipelines --cov-report=html
+pytest tests/ --cov=autocode.core.ai.pipelines --cov-report=html
 
 # Tests específicos de una función
 pytest tests/ -k "text_to_code"

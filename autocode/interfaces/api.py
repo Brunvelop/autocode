@@ -10,9 +10,9 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field, create_model
 
-from autocode.autocode.interfaces.models import FunctionInfo, GenericOutput
-from autocode.autocode.core.ai.models import DspyOutput
-from autocode.autocode.interfaces.registry import FUNCTION_REGISTRY, load_core_functions
+from autocode.interfaces.models import FunctionInfo, GenericOutput
+from autocode.core.ai.models import DspyOutput
+from autocode.interfaces.registry import FUNCTION_REGISTRY, load_core_functions
 
 # Setup logging with custom filter to exclude noisy third-party libraries
 class AutocodeLogFilter(logging.Filter):

@@ -6,23 +6,23 @@ with DSPy generation for complete workflows.
 """
 from typing import Literal, Dict, Any, Optional, List
 import litellm
-from autocode.autocode.interfaces.registry import register_function
-from autocode.autocode.interfaces.models import GenericOutput
-from autocode.autocode.core.ai.models import DspyOutput
-from autocode.autocode.core.utils.file_utils import (
+from autocode.interfaces.registry import register_function
+from autocode.interfaces.models import GenericOutput
+from autocode.core.ai.models import DspyOutput
+from autocode.core.utils.file_utils import (
     read_design_document,
     write_python_file,
     read_file,
     write_file
 )
-from autocode.autocode.core.ai.dspy_utils import generate_with_dspy, ModelType, ModuleType
-from autocode.autocode.core.ai.signatures import (
+from autocode.core.ai.dspy_utils import generate_with_dspy, ModelType, ModuleType
+from autocode.core.ai.signatures import (
     CodeGenerationSignature,
     DesignDocumentSignature,
     QASignature,
     ChatSignature
 )
-from autocode.autocode.interfaces.registry import FUNCTION_REGISTRY
+from autocode.interfaces.registry import FUNCTION_REGISTRY
 
 
 # Available signature types for UI selection

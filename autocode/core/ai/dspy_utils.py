@@ -9,7 +9,7 @@ import os
 from typing import Any, Dict, Literal, Optional, Type
 
 import dspy
-from autocode.autocode.core.ai.models import DspyOutput
+from autocode.core.ai.models import DspyOutput
 
 
 # Configure logging

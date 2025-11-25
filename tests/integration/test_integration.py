@@ -9,12 +9,12 @@ from unittest.mock import Mock, patch, MagicMock
 from fastapi.testclient import TestClient
 from click.testing import CliRunner
 
-from autocode.autocode.interfaces.registry import (
+from autocode.interfaces.registry import (
     register_function, FUNCTION_REGISTRY, clear_registry
 )
-from autocode.autocode.interfaces.api import create_api_app
-from autocode.autocode.interfaces.cli import app as cli_app
-from autocode.autocode.interfaces.mcp import create_mcp_app
+from autocode.interfaces.api import create_api_app
+from autocode.interfaces.cli import app as cli_app
+from autocode.interfaces.mcp import create_mcp_app
 
 
 class TestFullIntegration:
@@ -66,7 +66,7 @@ class TestFullIntegration:
         
         # Cleanup is handled by conftest.py cleanup_registry fixture
     
-    @patch('autocode.autocode.interfaces.api.load_core_functions')
+    @patch('autocode.interfaces.api.load_core_functions')
     def test_api_integration_with_registered_functions(self, mock_load):
         """Test that API correctly serves registered functions."""
         app = create_api_app()
@@ -128,8 +128,8 @@ class TestFullIntegration:
         assert "--a" in result.output
         assert "--b" in result.output
     
-    @patch('autocode.autocode.interfaces.mcp.create_api_app')
-    @patch('autocode.autocode.interfaces.mcp.FastApiMCP')
+    @patch('autocode.interfaces.mcp.create_api_app')
+    @patch('autocode.interfaces.mcp.FastApiMCP')
     def test_mcp_integration_preserves_api_functionality(self, mock_fastapi_mcp, mock_create_api_app):
         """Test that MCP integration preserves API functionality."""
         # Create actual API app for this test
@@ -140,7 +140,7 @@ class TestFullIntegration:
         mock_fastapi_mcp.return_value = mock_mcp_instance
         
         # Create MCP app
-        with patch('autocode.autocode.interfaces.api.load_core_functions'):
+        with patch('autocode.interfaces.api.load_core_functions'):
             mcp_app = create_mcp_app()
         
         # Test that API functionality is preserved
@@ -180,7 +180,7 @@ class TestFullIntegration:
             }
         
         # Verify function was registered correctly
-        from autocode.autocode.interfaces.registry import get_function_info, get_parameters
+        from autocode.interfaces.registry import get_function_info, get_parameters
         
         func_info = get_function_info("complex_function")
         assert func_info.name == "complex_function"
@@ -201,7 +201,7 @@ class TestFullIntegration:
         assert bool_param["required"] is False
         assert bool_param["default"] is True
     
-    @patch('autocode.autocode.interfaces.api.load_core_functions')
+    @patch('autocode.interfaces.api.load_core_functions')
     def test_error_handling_across_interfaces(self, mock_load):
         """Test error handling consistency across interfaces."""
         # Register a function that can error
@@ -238,7 +238,7 @@ class TestFullIntegration:
     
     def test_function_registry_stats_integration(self):
         """Test registry statistics with multiple registered functions."""
-        from autocode.autocode.interfaces.registry import get_registry_stats
+        from autocode.interfaces.registry import get_registry_stats
         
         stats = get_registry_stats()
         
@@ -264,7 +264,7 @@ class TestInterfaceConsistency:
             return f"{param1}:{param2}"
         
         # Test via API
-        with patch('autocode.autocode.interfaces.api.load_core_functions'):
+        with patch('autocode.interfaces.api.load_core_functions'):
             app = create_api_app()
             client = TestClient(app)
             
@@ -305,7 +305,7 @@ class TestInterfaceConsistency:
             """
             return {"x": x, "y": y}
         
-        from autocode.autocode.interfaces.registry import get_function_info
+        from autocode.interfaces.registry import get_function_info
         
         func_info = get_function_info("metadata_test")
         
@@ -346,11 +346,11 @@ class TestCrossModuleDependencies:
         assert "dynamic_function" in result.output
         
         # Test that API would reflect the change
-        from autocode.autocode.interfaces.registry import list_functions
+        from autocode.interfaces.registry import list_functions
         functions = list_functions()
         assert "dynamic_function" in functions
     
-    @patch('autocode.autocode.interfaces.api.load_core_functions')
+    @patch('autocode.interfaces.api.load_core_functions')
     def test_mcp_and_api_integration(self, mock_load):
         """Test integration between MCP and API components."""
         # Register a test function
@@ -360,7 +360,7 @@ class TestCrossModuleDependencies:
             return {"processed": data.upper()}
         
         # Create MCP app
-        with patch('autocode.autocode.interfaces.mcp.FastApiMCP') as mock_mcp:
+        with patch('autocode.interfaces.mcp.FastApiMCP') as mock_mcp:
             mock_mcp_instance = Mock()
             mock_mcp.return_value = mock_mcp_instance
             
@@ -377,15 +377,15 @@ class TestCrossModuleDependencies:
     
     def test_error_propagation_across_modules(self):
         """Test that errors propagate correctly across module boundaries."""
-        from autocode.autocode.interfaces.registry import RegistryError, get_function
+        from autocode.interfaces.registry import RegistryError, get_function
         
         # Test that registry errors propagate
         with pytest.raises(RegistryError, match="Function 'nonexistent' not found"):
             get_function("nonexistent")
         
         # Test that API would handle registry errors
-        from autocode.autocode.interfaces.api import execute_function_with_params
-        from autocode.autocode.interfaces.models import FunctionInfo
+        from autocode.interfaces.api import execute_function_with_params
+        from autocode.interfaces.models import FunctionInfo
         
         # Create a function info that references nonexistent function
         fake_func = lambda: None  # This won't be called
@@ -444,7 +444,7 @@ class TestRealWorldScenarios:
             }
         
         # Test via API
-        with patch('autocode.autocode.interfaces.api.load_core_functions'):
+        with patch('autocode.interfaces.api.load_core_functions'):
             app = create_api_app()
             client = TestClient(app)
             
@@ -499,7 +499,7 @@ class TestRealWorldScenarios:
             return complexity
         
         # Verify all tools are registered
-        from autocode.autocode.interfaces.registry import list_functions
+        from autocode.interfaces.registry import list_functions
         functions = list_functions()
         
         assert "format_code" in functions

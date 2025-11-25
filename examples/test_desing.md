@@ -5,8 +5,8 @@ Este documento describe un conjunto de funciones implementadas en Python que uti
 
 ## Componentes Principales por Archivo/Directorio
 - **dspy**: Biblioteca utilizada para la generación de código y documentos.
-- **autocode.autocode.interfaces.registry**: Módulo para registrar funciones accesibles vía HTTP.
-- **autocode.autocode.core.utils.file_utils**: Utilidades para la lectura y escritura de archivos.
+- **autocode.interfaces.registry**: Módulo para registrar funciones accesibles vía HTTP.
+- **autocode.core.utils.file_utils**: Utilidades para la lectura y escritura de archivos.
 
 ## Flujos y Procesos Clave
 1. **Generación de Código**: A partir de un documento de diseño, se genera código Python utilizando una firma de generación específica.

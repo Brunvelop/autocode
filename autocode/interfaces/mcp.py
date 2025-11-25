@@ -8,7 +8,7 @@ other MCP-compatible clients.
 import logging
 from fastapi import FastAPI
 from fastapi_mcp import FastApiMCP
-from autocode.autocode.interfaces.api import create_api_app
+from autocode.interfaces.api import create_api_app
 
 # Setup logging
 logger = logging.getLogger(__name__)

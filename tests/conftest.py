@@ -6,8 +6,8 @@ from unittest.mock import Mock, MagicMock, patch
 from typing import Dict, Any, List
 import logging
 
-from autocode.autocode.interfaces.models import ExplicitParam, FunctionInfo
-from autocode.autocode.interfaces.registry import FUNCTION_REGISTRY, clear_registry
+from autocode.interfaces.models import ExplicitParam, FunctionInfo
+from autocode.interfaces.registry import FUNCTION_REGISTRY, clear_registry
 
 # Configure logging for tests
 logging.basicConfig(level=logging.DEBUG)
@@ -128,6 +128,6 @@ def fastapi_test_client():
 @pytest.fixture
 def mock_core_functions():
     """Mock core function imports to prevent actual loading."""
-    with patch('autocode.autocode.core.hello.hello_world'), \
-         patch('autocode.autocode.core.math.calculator'):
+    with patch('autocode.core.hello.hello_world'), \
+         patch('autocode.core.math.calculator'):
         yield

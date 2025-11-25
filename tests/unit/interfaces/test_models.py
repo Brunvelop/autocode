@@ -8,7 +8,7 @@ import pytest
 from typing import Any
 from pydantic import ValidationError
 
-from autocode.autocode.interfaces.models import (
+from autocode.interfaces.models import (
     ExplicitParam, FunctionInfo, ExplicitInput, GenericOutput
 )
 

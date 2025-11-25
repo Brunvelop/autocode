@@ -13,13 +13,13 @@ from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from pydantic import BaseModel
 
-from autocode.autocode.interfaces.api import (
+from autocode.interfaces.api import (
     create_result_response, create_dynamic_model, extract_function_params,
     execute_function_with_params, create_handler, register_dynamic_endpoints,
     create_api_app
 )
-from autocode.autocode.interfaces.models import GenericOutput, FunctionInfo, ExplicitParam
-from autocode.autocode.interfaces.registry import FUNCTION_REGISTRY
+from autocode.interfaces.models import GenericOutput, FunctionInfo, ExplicitParam
+from autocode.interfaces.registry import FUNCTION_REGISTRY
 
 
 class TestCreateResultResponse:
@@ -280,7 +280,7 @@ class TestExecuteFunctionWithParams:
         assert exc_info.value.status_code == 500
         assert "Internal error" in str(exc_info.value.detail)
     
-    @patch('autocode.autocode.interfaces.api.logger')
+    @patch('autocode.interfaces.api.logger')
     def test_execute_function_with_params_logging(self, mock_logger, sample_function_info):
         """Test that function execution logs appropriately."""
         request_params = {"x": 5, "y": 3}
@@ -421,8 +421,8 @@ class TestRegisterDynamicEndpoints:
 class TestCreateApiApp:
     """Tests for create_api_app - complete FastAPI app creation."""
     
-    @patch('autocode.autocode.interfaces.api.load_core_functions')
-    @patch('autocode.autocode.interfaces.api.register_dynamic_endpoints')
+    @patch('autocode.interfaces.api.load_core_functions')
+    @patch('autocode.interfaces.api.register_dynamic_endpoints')
     def test_create_api_app_success(self, mock_register, mock_load):
         """Test successful API app creation."""
         app = create_api_app()
@@ -436,7 +436,7 @@ class TestCreateApiApp:
         mock_load.assert_called_once()
         mock_register.assert_called_once_with(app)
     
-    @patch('autocode.autocode.interfaces.api.load_core_functions')
+    @patch('autocode.interfaces.api.load_core_functions')
     def test_create_api_app_load_error(self, mock_load):
         """Test API app creation with loading error."""
         mock_load.side_effect = Exception("Loading failed")
@@ -444,7 +444,7 @@ class TestCreateApiApp:
         with pytest.raises(Exception, match="Loading failed"):
             create_api_app()
     
-    @patch('autocode.autocode.interfaces.api.load_core_functions')
+    @patch('autocode.interfaces.api.load_core_functions')
     def test_create_api_app_endpoints(self, mock_load):
         """Test that standard endpoints are created."""
         app = create_api_app()
@@ -471,7 +471,7 @@ class TestCreateApiApp:
         data = response.json()
         assert "functions" in data
     
-    @patch('autocode.autocode.interfaces.api.load_core_functions')
+    @patch('autocode.interfaces.api.load_core_functions')
     @patch('os.path.exists')
     def test_create_api_app_static_files(self, mock_exists, mock_load):
         """Test static file mounting."""
@@ -483,7 +483,7 @@ class TestCreateApiApp:
         static_routes = [route for route in app.routes if hasattr(route, 'name') and route.name == "static"]
         # Note: This test might need adjustment based on FastAPI's internal structure
     
-    @patch('autocode.autocode.interfaces.api.load_core_functions')
+    @patch('autocode.interfaces.api.load_core_functions')
     def test_create_api_app_root_endpoint(self, mock_load):
         """Test root endpoint serves index.html."""
         app = create_api_app()
@@ -505,7 +505,7 @@ class TestCreateApiApp:
 class TestApiIntegration:
     """Integration tests for API functionality."""
     
-    @patch('autocode.autocode.interfaces.api.load_core_functions')
+    @patch('autocode.interfaces.api.load_core_functions')
     def test_full_api_integration(self, mock_load, populated_registry):
         """Test full API integration with real function."""
         app = create_api_app()
@@ -523,7 +523,7 @@ class TestApiIntegration:
         data = response.json()
         assert data["result"] == 15
     
-    @patch('autocode.autocode.interfaces.api.load_core_functions')
+    @patch('autocode.interfaces.api.load_core_functions')
     def test_api_error_handling(self, mock_load, populated_registry):
         """Test API error handling."""
         app = create_api_app()
@@ -874,7 +874,7 @@ class TestExecuteFunctionWithParamsExtended:
         assert result["success"] is True
         assert result["message"] is None
     
-    @patch('autocode.autocode.interfaces.api.logger')
+    @patch('autocode.interfaces.api.logger')
     def test_execute_function_with_params_error_logging(self, mock_logger):
         """Test that errors are logged appropriately."""
         def error_func() -> str:
@@ -900,7 +900,7 @@ class TestExecuteFunctionWithParamsExtended:
 class TestStaticFilesAndRootEndpoint:
     """Unit tests for static files mounting and root endpoint logic."""
     
-    @patch('autocode.autocode.interfaces.api.load_core_functions')
+    @patch('autocode.interfaces.api.load_core_functions')
     @patch('os.path.exists')
     @patch('os.path.join')
     @patch('os.path.isdir')
@@ -922,7 +922,7 @@ class TestStaticFilesAndRootEndpoint:
         routes = [route for route in app.routes if hasattr(route, 'path')]
         # The exact verification depends on FastAPI's internal structure
     
-    @patch('autocode.autocode.interfaces.api.load_core_functions')
+    @patch('autocode.interfaces.api.load_core_functions')
     @patch('os.path.exists')
     def test_static_files_not_mounted_when_dir_missing(self, mock_exists, mock_load):
         """Test static files are not mounted when web directory doesn't exist."""
@@ -936,7 +936,7 @@ class TestStaticFilesAndRootEndpoint:
         # App should still be created successfully
         assert app.title == "Autocode API"
     
-    @patch('autocode.autocode.interfaces.api.load_core_functions')
+    @patch('autocode.interfaces.api.load_core_functions')
     @patch('os.path.join')
     @patch('fastapi.responses.FileResponse')
     def test_root_endpoint_file_response(self, mock_file_response, mock_join, mock_load):
@@ -962,7 +962,7 @@ class TestStaticFilesAndRootEndpoint:
         index_call = next((call for call in join_calls if "index.html" in str(call)), None)
         assert index_call is not None
     
-    @patch('autocode.autocode.interfaces.api.load_core_functions')
+    @patch('autocode.interfaces.api.load_core_functions')
     def test_root_endpoint_path_construction(self, mock_load):
         """Test that root endpoint constructs correct path to index.html."""
         with patch('os.path.dirname') as mock_dirname, \

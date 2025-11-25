@@ -7,25 +7,25 @@ dynamic parameter inference, multiple server modes, and function listing.
 
 Example:
     # List available functions
-    $ python -m autocode.autocode.interfaces.cli list
+    $ python -m autocode.interfaces.cli list
     
     # Execute a registered function
-    $ python -m autocode.autocode.interfaces.cli hello_world --name "World"
+    $ python -m autocode.interfaces.cli hello_world --name "World"
     
     # Start API server
-    $ python -m autocode.autocode.interfaces.cli serve-api --port 8000
+    $ python -m autocode.interfaces.cli serve-api --port 8000
 """
 import click
 import uvicorn
 from typing import Dict, Any, Callable, Optional
 
-from autocode.autocode.interfaces.registry import (
+from autocode.interfaces.registry import (
     FUNCTION_REGISTRY, 
     get_parameters,
     load_core_functions
 )
-from autocode.autocode.interfaces.api import create_api_app
-from autocode.autocode.interfaces.mcp import create_mcp_app
+from autocode.interfaces.api import create_api_app
+from autocode.interfaces.mcp import create_mcp_app
 
 
 # ============================================================================
@@ -70,7 +70,7 @@ def list_functions():
     - Required vs optional parameters
     
     Example:
-        $ python -m autocode.autocode.interfaces.cli list
+        $ python -m autocode.interfaces.cli list
     """
     click.echo("Available functions:")
     for func_name, func_info in FUNCTION_REGISTRY.items():
@@ -112,7 +112,7 @@ def serve_api(host: str, port: int, reload: bool):
         reload: Enable auto-reload on code changes (development mode)
         
     Example:
-        $ python -m autocode.autocode.interfaces.cli serve-api --port 8000 --reload
+        $ python -m autocode.interfaces.cli serve-api --port 8000 --reload
     """
     click.echo(f"Starting Autocode API server on {host}:{port}")
     api_app = create_api_app()
@@ -135,7 +135,7 @@ def serve_mcp(host: str, port: int, reload: bool):
         reload: Enable auto-reload on code changes (development mode)
         
     Example:
-        $ python -m autocode.autocode.interfaces.cli serve-mcp --port 8001
+        $ python -m autocode.interfaces.cli serve-mcp --port 8001
     """
     click.echo(f"Starting Autocode server (API + MCP) on {host}:{port}")
     mcp_app = create_mcp_app()
@@ -158,7 +158,7 @@ def serve(host: str, port: int, reload: bool):
         reload: Enable auto-reload on code changes (development mode)
         
     Example:
-        $ python -m autocode.autocode.interfaces.cli serve --port 8000 --reload
+        $ python -m autocode.interfaces.cli serve --port 8000 --reload
     """
     click.echo(f"Starting Autocode unified server (API + MCP) on {host}:{port}")
     

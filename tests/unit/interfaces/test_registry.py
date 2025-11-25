@@ -9,13 +9,13 @@ import inspect
 from typing import Any
 from unittest.mock import patch, Mock
 
-from autocode.autocode.interfaces.registry import (
+from autocode.interfaces.registry import (
     FUNCTION_REGISTRY, _generate_function_info, register_function,
     get_function, get_function_info, get_parameters, list_functions,
     clear_registry, get_registry_stats, load_core_functions,
     RegistryError, _functions_loaded
 )
-from autocode.autocode.interfaces.models import FunctionInfo, ExplicitParam
+from autocode.interfaces.models import FunctionInfo, ExplicitParam
 
 
 class TestGenerateFunctionInfo:
@@ -182,7 +182,7 @@ class TestRegisterFunctionDecorator:
     
     def test_register_function_error_handling(self):
         """Test error handling in function registration."""
-        with patch('autocode.autocode.interfaces.registry._generate_function_info') as mock_generate:
+        with patch('autocode.interfaces.registry._generate_function_info') as mock_generate:
             mock_generate.side_effect = Exception("Generation error")
             
             with pytest.raises(RegistryError, match="Failed to register function"):
@@ -303,7 +303,7 @@ class TestLoadCoreFunctions:
     def test_load_core_functions_success(self, mock_core_functions):
         """Test successful loading of core functions."""
         # Import the module's _functions_loaded to manipulate it
-        from autocode.autocode.interfaces import registry
+        from autocode.interfaces import registry
         original_loaded = registry._functions_loaded
         
         try:
@@ -321,7 +321,7 @@ class TestLoadCoreFunctions:
     
     def test_load_core_functions_already_loaded(self, mock_core_functions):
         """Test that load_core_functions doesn't reload if already loaded."""
-        from autocode.autocode.interfaces import registry
+        from autocode.interfaces import registry
         original_loaded = registry._functions_loaded
         
         try:
@@ -338,7 +338,7 @@ class TestLoadCoreFunctions:
     
     def test_load_core_functions_import_error(self):
         """Test handling of import errors during loading."""
-        from autocode.autocode.interfaces import registry
+        from autocode.interfaces import registry
         original_loaded = registry._functions_loaded
         
         try:

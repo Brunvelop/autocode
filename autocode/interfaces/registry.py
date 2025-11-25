@@ -22,7 +22,7 @@ import inspect
 import logging
 from docstring_parser import parse
 
-from autocode.autocode.interfaces.models import FunctionInfo, ExplicitParam, GenericOutput
+from autocode.interfaces.models import FunctionInfo, ExplicitParam, GenericOutput
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -262,9 +262,9 @@ def load_core_functions():
     try:
         # Import modules to trigger decorator registration
         # The decorators will automatically register the functions
-        import autocode.autocode.core.hello.hello_world
-        import autocode.autocode.core.math.calculator
-        import autocode.autocode.core.ai.pipelines
+        import autocode.core.hello.hello_world
+        import autocode.core.math.calculator
+        import autocode.core.ai.pipelines
         
         _functions_loaded = True
         logger.info(f"Loaded {len(FUNCTION_REGISTRY)} functions into registry")

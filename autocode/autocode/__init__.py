@@ -1,3 +1,0 @@
-"""
-Autocode internal module
-"""

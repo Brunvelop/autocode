@@ -9,12 +9,12 @@ from unittest.mock import Mock, patch, MagicMock, call
 from click.testing import CliRunner
 import click
 
-from autocode.autocode.interfaces.cli import (
-    app, add_command_options, create_handler, register_commands,
+from autocode.interfaces.cli import (
+    app, _add_command_options, _create_handler, _register_commands,
     list_functions, serve_api, serve_mcp, serve, TYPE_MAP
 )
-from autocode.autocode.interfaces.registry import FUNCTION_REGISTRY
-from autocode.autocode.interfaces.models import ExplicitParam, FunctionInfo
+from autocode.interfaces.registry import FUNCTION_REGISTRY
+from autocode.interfaces.models import ExplicitParam, FunctionInfo
 
 
 class TestTypeMappingAndUtils:
@@ -43,7 +43,7 @@ class TestTypeMappingAndUtils:
             ExplicitParam(name="name", type=str, required=True, description="Name parameter")
         ]
         
-        decorated_func = add_command_options(test_command, params)
+        decorated_func = _add_command_options(test_command, params)
         
         # Verify function is still callable
         assert callable(decorated_func)
@@ -67,7 +67,7 @@ class TestTypeMappingAndUtils:
             ExplicitParam(name="required_param", type=str, required=True, description="Required parameter")
         ]
         
-        decorated_func = add_command_options(test_command, params)
+        decorated_func = _add_command_options(test_command, params)
         
         runner = CliRunner()
         
@@ -91,7 +91,7 @@ class TestTypeMappingAndUtils:
             ExplicitParam(name="bool_param", type=bool, default=True, required=False, description="Boolean param"),
         ]
         
-        decorated_func = add_command_options(test_command, params)
+        decorated_func = _add_command_options(test_command, params)
         
         runner = CliRunner()
         result = runner.invoke(decorated_func, ['--help'])
@@ -107,7 +107,7 @@ class TestCreateHandler:
     
     def test_create_handler_basic(self, sample_function_info):
         """Test creating a basic command handler."""
-        handler = create_handler("test_add", sample_function_info)
+        handler = _create_handler("test_add", sample_function_info)
         
         assert callable(handler)
         assert handler.__name__ == "test_add_command"
@@ -115,7 +115,7 @@ class TestCreateHandler:
     
     def test_create_handler_execution_success(self, sample_function_info):
         """Test successful handler execution."""
-        handler = create_handler("test_add", sample_function_info)
+        handler = _create_handler("test_add", sample_function_info)
         
         # Mock click.echo to capture output
         with patch('click.echo') as mock_echo:
@@ -127,7 +127,7 @@ class TestCreateHandler:
     
     def test_create_handler_execution_with_defaults(self, sample_function_info):
         """Test handler execution using default parameter values."""
-        handler = create_handler("test_add", sample_function_info)
+        handler = _create_handler("test_add", sample_function_info)
         
         with patch('click.echo') as mock_echo:
             # Call with only required parameter
@@ -149,7 +149,7 @@ class TestCreateHandler:
             params=sample_function_info.params
         )
         
-        handler = create_handler("error_func", func_info)
+        handler = _create_handler("error_func", func_info)
         
         with patch('click.echo') as mock_echo, \
              pytest.raises(click.Abort):
@@ -162,7 +162,7 @@ class TestCreateHandler:
 class TestRegisterCommands:
     """Tests for register_commands - dynamic command registration."""
     
-    @patch('autocode.autocode.interfaces.cli.load_core_functions')
+    @patch('autocode.interfaces.cli.load_core_functions')
     def test_register_commands_with_populated_registry(self, mock_load, populated_registry):
         """Test command registration with functions in registry."""
         # Clear existing commands from app first
@@ -170,7 +170,7 @@ class TestRegisterCommands:
         app.commands.clear()
         
         try:
-            register_commands()
+            _register_commands()
             
             # Should have registered commands for functions in registry
             assert "test_add" in app.commands
@@ -187,7 +187,7 @@ class TestRegisterCommands:
             # Restore original commands
             app.commands = original_commands
     
-    @patch('autocode.autocode.interfaces.cli.load_core_functions')
+    @patch('autocode.interfaces.cli.load_core_functions')
     def test_register_commands_empty_registry(self, mock_load):
         """Test command registration with empty registry."""
         # Clear registry and commands
@@ -197,7 +197,7 @@ class TestRegisterCommands:
         app.commands.clear()
         
         try:
-            register_commands()
+            _register_commands()
             
             # Should not have registered any new commands (only built-in ones)
             # Note: This test depends on the order of operations in the module
@@ -273,7 +273,7 @@ class TestBuiltInCommands:
         assert call_args[1]['reload'] is True
     
     @patch('uvicorn.run')
-    @patch('autocode.autocode.interfaces.cli.create_mcp_app')
+    @patch('autocode.interfaces.cli.create_mcp_app')
     def test_serve_mcp_command(self, mock_create_mcp_app, mock_uvicorn_run):
         """Test serve-mcp command."""
         mock_app = Mock()
@@ -291,7 +291,7 @@ class TestBuiltInCommands:
         )
     
     @patch('uvicorn.run')
-    @patch('autocode.autocode.interfaces.cli.create_mcp_app')
+    @patch('autocode.interfaces.cli.create_mcp_app')
     def test_serve_command_unified(self, mock_create_mcp_app, mock_uvicorn_run):
         """Test unified serve command."""
         mock_app = Mock()
@@ -319,7 +319,7 @@ class TestCLIIntegration:
         app.commands.clear()
         
         try:
-            register_commands()
+            _register_commands()
             
             runner = CliRunner()
             
@@ -350,7 +350,7 @@ class TestCLIIntegration:
         app.commands.clear()
         
         try:
-            register_commands()
+            _register_commands()
             
             runner = CliRunner()
             
@@ -422,8 +422,8 @@ class TestCLIErrorScenarios:
         
         try:
             # Add the new command manually for testing
-            handler = create_handler("always_fails", error_func_info)
-            decorated_handler = add_command_options(handler, error_func_info.params)
+            handler = _create_handler("always_fails", error_func_info)
+            decorated_handler = _add_command_options(handler, error_func_info.params)
             command = app.command(name="always_fails", help=error_func_info.description)(decorated_handler)
             
             runner = CliRunner()
@@ -468,7 +468,7 @@ class TestCLICommandRegistrationEdgeCases:
         def test_command():
             pass
         
-        decorated_func = add_command_options(test_command, func_info.params)
+        decorated_func = _add_command_options(test_command, func_info.params)
         
         runner = CliRunner()
         result = runner.invoke(decorated_func, ['--help'])
@@ -490,7 +490,7 @@ class TestCLICommandRegistrationEdgeCases:
         def complex_command():
             pass
         
-        decorated_func = add_command_options(complex_command, params)
+        decorated_func = _add_command_options(complex_command, params)
         
         runner = CliRunner()
         result = runner.invoke(decorated_func, ['--help'])

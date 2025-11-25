@@ -133,7 +133,7 @@ pytest -m cli          # Solo tests de CLI
 pytest -v -s
 
 # Tests con coverage específico
-pytest --cov=autocode.autocode.interfaces --cov-report=term-missing
+pytest --cov=autocode.interfaces --cov-report=term-missing
 ```
 
 ### Debugging y Desarrollo
@@ -161,7 +161,7 @@ open htmlcov/index.html
 pytest --cov-report=term-missing
 
 # Coverage solo para módulos específicos
-pytest --cov=autocode.autocode.interfaces.registry --cov-report=term
+pytest --cov=autocode.interfaces.registry --cov-report=term
 ```
 
 ## 🎨 Principios de Testing Aplicados

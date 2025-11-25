@@ -9,7 +9,7 @@ de DSPy y otras funcionalidades de AI.
 import json
 from pydantic import Field
 from typing import Any, Dict, List, Optional
-from autocode.autocode.interfaces.models import GenericOutput
+from autocode.interfaces.models import GenericOutput
 
 
 class DspyOutput(GenericOutput):
