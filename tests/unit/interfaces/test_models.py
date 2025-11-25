@@ -5,7 +5,7 @@ Tests the Pydantic models that define input/output contracts for functions
 registered in the registry, ensuring data validation and type safety.
 """
 import pytest
-from typing import Any
+from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 from pydantic import ValidationError
 
 from autocode.interfaces.models import (
@@ -253,3 +253,136 @@ class TestModelsIntegration:
         
         assert x_param.name == "x" and x_param.required is True
         assert y_param.name == "y" and y_param.required is False and y_param.default == "default"
+
+
+class TestSerializeType:
+    """Tests para _serialize_type() - serialización de tipos Python a strings."""
+
+    def _serialize(self, py_type: Any) -> str:
+        """Helper para testear _serialize_type() a través de ExplicitParam."""
+        param = ExplicitParam(
+            name="test",
+            type=py_type,
+            required=True,
+            description="Test parameter"
+        )
+        return param._serialize_type(py_type)
+
+    # ========================================================================
+    # Tests para tipos básicos (ya soportados - regresión)
+    # ========================================================================
+
+    @pytest.mark.parametrize("py_type,expected", [
+        (int, "int"),
+        (str, "str"),
+        (float, "float"),
+        (bool, "bool"),
+        (list, "list"),
+        (dict, "dict"),
+    ])
+    def test_basic_types(self, py_type, expected):
+        """Verifica que los tipos básicos se serializan correctamente."""
+        assert self._serialize(py_type) == expected
+
+    # ========================================================================
+    # Tests para tipos genéricos (List, Dict, Tuple)
+    # ========================================================================
+
+    @pytest.mark.parametrize("py_type,expected", [
+        (List[str], "list[str]"),
+        (List[int], "list[int]"),
+        (List[float], "list[float]"),
+        (List[bool], "list[bool]"),
+        (Dict[str, int], "dict[str, int]"),
+        (Dict[str, str], "dict[str, str]"),
+        (Dict[str, Any], "dict[str, Any]"),
+        (Tuple[int, str], "tuple[int, str]"),
+        (Tuple[int, int, int], "tuple[int, int, int]"),
+    ])
+    def test_generic_types(self, py_type, expected):
+        """Verifica que los tipos genéricos se serializan correctamente."""
+        assert self._serialize(py_type) == expected
+
+    # ========================================================================
+    # Tests para Optional y Union
+    # ========================================================================
+
+    @pytest.mark.parametrize("py_type,expected", [
+        (Optional[str], "str?"),
+        (Optional[int], "int?"),
+        (Optional[float], "float?"),
+        (Optional[List[str]], "list[str]?"),
+    ])
+    def test_optional_types(self, py_type, expected):
+        """Verifica que Optional[X] se serializa como 'X?'."""
+        assert self._serialize(py_type) == expected
+
+    @pytest.mark.parametrize("py_type,expected", [
+        (Union[str, int], "str | int"),
+        (Union[str, int, float], "str | int | float"),
+        (Union[List[str], Dict[str, int]], "list[str] | dict[str, int]"),
+    ])
+    def test_union_types(self, py_type, expected):
+        """Verifica que Union[X, Y] se serializa como 'X | Y'."""
+        assert self._serialize(py_type) == expected
+
+    # ========================================================================
+    # Tests para Literal
+    # ========================================================================
+
+    def test_literal_strings(self):
+        """Verifica que Literal con strings se serializa correctamente."""
+        assert self._serialize(Literal["a", "b"]) == "Literal['a', 'b']"
+
+    def test_literal_ints(self):
+        """Verifica que Literal con ints se serializa correctamente."""
+        assert self._serialize(Literal[1, 2, 3]) == "Literal[1, 2, 3]"
+
+    def test_literal_mixed(self):
+        """Verifica que Literal mixto se serializa correctamente."""
+        assert self._serialize(Literal["a", 1]) == "Literal['a', 1]"
+
+    # ========================================================================
+    # Tests para tipos anidados
+    # ========================================================================
+
+    @pytest.mark.parametrize("py_type,expected", [
+        (List[List[int]], "list[list[int]]"),
+        (List[List[List[str]]], "list[list[list[str]]]"),
+        (Dict[str, List[int]], "dict[str, list[int]]"),
+        (Dict[str, Dict[str, int]], "dict[str, dict[str, int]]"),
+        (List[Dict[str, int]], "list[dict[str, int]]"),
+        (List[Optional[str]], "list[str?]"),
+        (Dict[str, Optional[int]], "dict[str, int?]"),
+    ])
+    def test_nested_generic_types(self, py_type, expected):
+        """Verifica que los tipos genéricos anidados se serializan correctamente."""
+        assert self._serialize(py_type) == expected
+
+    # ========================================================================
+    # Tests para to_schema() (integración)
+    # ========================================================================
+
+    def test_to_schema_with_generic_type(self):
+        """Verifica que to_schema() usa _serialize_type() correctamente."""
+        param = ExplicitParam(
+            name="items",
+            type=List[str],
+            required=True,
+            description="List of items"
+        )
+        schema = param.to_schema()
+        assert schema.type == "list[str]"
+        assert schema.name == "items"
+
+    def test_to_schema_with_optional_type(self):
+        """Verifica que to_schema() serializa Optional correctamente."""
+        param = ExplicitParam(
+            name="name",
+            type=Optional[str],
+            required=False,
+            default=None,
+            description="Optional name"
+        )
+        schema = param.to_schema()
+        assert schema.type == "str?"

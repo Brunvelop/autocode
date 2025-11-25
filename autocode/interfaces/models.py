@@ -8,7 +8,7 @@ Example usage:
 """
 
 from pydantic import BaseModel, Field, ConfigDict
-from typing import Any, Callable, Dict, List, Optional, Type
+from typing import Any, Callable, Dict, List, Literal, Optional, Type, Union, get_origin, get_args
 
 
 # ============================================================================
@@ -66,7 +66,16 @@ class ExplicitParam(BaseModel):
         )
 
     def _serialize_type(self, t: Any) -> str:
-        """Serializa tipo Python a string."""
+        """Serializa tipo Python a string, incluyendo genéricos.
+        
+        Soporta:
+        - Tipos básicos: int, str, float, bool, list, dict, tuple
+        - Tipos genéricos: List[str], Dict[str, int], Tuple[int, str]
+        - Optional: Optional[str] -> "str?"
+        - Union: Union[str, int] -> "str | int"
+        - Literal: Literal["a", "b"] -> "Literal['a', 'b']"
+        - Tipos anidados: List[Dict[str, int]] -> "list[dict[str, int]]"
+        """
         # Mapping de tipos comunes a nombres amigables para frontend
         TYPE_MAP = {
             int: "int",
@@ -75,11 +84,38 @@ class ExplicitParam(BaseModel):
             bool: "bool",
             list: "list",
             dict: "dict",
+            tuple: "tuple",
         }
         
         # Si es uno de los tipos básicos mapeados
         if t in TYPE_MAP:
             return TYPE_MAP[t]
+        
+        # Tipos genéricos (List[str], Dict[str, int], Optional[str], etc.)
+        origin = get_origin(t)
+        if origin is not None:
+            args = get_args(t)
+            
+            # Optional[X] es Union[X, None] - detectar y convertir a "X?"
+            if origin is Union:
+                non_none_args = [a for a in args if a is not type(None)]
+                # Si es Optional (Union con un solo tipo + None)
+                if len(non_none_args) == 1 and type(None) in args:
+                    return f"{self._serialize_type(non_none_args[0])}?"
+                # Union normal: "str | int | float"
+                return " | ".join(self._serialize_type(a) for a in args)
+            
+            # Literal['a', 'b'] -> "Literal['a', 'b']"
+            if origin is Literal:
+                args_str = ", ".join(repr(a) for a in args)
+                return f"Literal[{args_str}]"
+            
+            # List[X], Dict[K, V], Tuple[X, Y], etc.
+            origin_name = TYPE_MAP.get(origin, getattr(origin, '__name__', str(origin)).lower())
+            if args:
+                args_str = ", ".join(self._serialize_type(a) for a in args)
+                return f"{origin_name}[{args_str}]"
+            return origin_name
             
         # Si tiene __name__ (clases, tipos nativos)
         if hasattr(t, '__name__'):
