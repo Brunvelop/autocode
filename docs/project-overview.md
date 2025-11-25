@@ -62,10 +62,90 @@ autocode/                           # Proyecto root
 └── uv.lock                        # Lock file de dependencias
 ```
 
+## Sistema de Modelos
+
+Todas las funciones registradas en Autocode **DEBEN** retornar `GenericOutput` o una subclase. Esta restricción asegura consistencia en las respuestas de API, CLI y MCP.
+
+### GenericOutput (Modelo Base)
+
+Ubicación: `autocode/interfaces/models.py`
+
+```python
+class GenericOutput(BaseModel):
+    result: Any           # Resultado principal de la función
+    success: bool         # Estado de la operación (True/False)
+    message: Optional[str] # Mensaje descriptivo (opcional)
+```
+
+| Campo | Tipo | Descripción |
+|-------|------|-------------|
+| `result` | `Any` | El output semántico de la función (lo que el usuario pidió) |
+| `success` | `bool` | Indica si la operación fue exitosa |
+| `message` | `Optional[str]` | Mensaje legible para humanos (errores, info adicional) |
+
+### DspyOutput (Para operaciones AI/DSPy)
+
+Ubicación: `autocode/core/ai/models.py`
+
+Extiende `GenericOutput` con metadata de ejecución para operaciones DSPy:
+
+```python
+class DspyOutput(GenericOutput):
+    # Campos heredados: result, success, message
+    reasoning: Optional[str]      # Chain of thought (CoT)
+    completions: Optional[List]   # Alternativas generadas
+    trajectory: Optional[Dict]    # Trazas de ReAct
+    history: Optional[List]       # Historial de llamadas al LM
+```
+
+**Nota:** Los campos adicionales de `DspyOutput` son **metadata de ejecución**, no parte del resultado semántico. El campo `result` contiene el output principal; los demás campos describen *cómo* se llegó a ese resultado.
+
+### Validación Automática
+
+El registry (`autocode/interfaces/registry.py`) valida automáticamente al registrar una función:
+
+1. **Anotación requerida**: La función DEBE tener anotación de tipo de retorno
+2. **Tipo válido**: Debe ser `GenericOutput` o una subclase
+3. **Union types**: Se soporta `GenericOutput | None`
+
+```python
+# ✅ Correcto
+@register_function()
+def mi_funcion(x: int) -> GenericOutput:
+    return GenericOutput(result=x * 2, success=True)
+
+# ✅ Correcto (subclase)
+@register_function()
+def mi_funcion_ai(prompt: str) -> DspyOutput:
+    return DspyOutput(result="respuesta", success=True, reasoning="...")
+
+# ❌ Incorrecto - Lanza RegistryError al registrar
+@register_function()
+def mi_funcion(x: int) -> int:
+    return x * 2
+
+# ❌ Incorrecto - Lanza RegistryError (sin anotación)
+@register_function()
+def mi_funcion(x: int):
+    return x * 2
+```
+
+### Extender Modelos
+
+Para funciones especializadas, crea subclases de `GenericOutput`:
+
+```python
+from autocode.interfaces.models import GenericOutput
+
+class MiOutputEspecializado(GenericOutput):
+    campo_extra: str = Field(description="Mi campo adicional")
+    metricas: Dict[str, float] = Field(default_factory=dict)
+```
+
 ## Diseño Detallado
 - **Core**:
-  - Funciones puras: Toman/retornan datos inmutables (e.g., def hello_world(name: str) -> str).
-  - No dependencias externas (solo stdlib).
+  - Funciones puras: Toman datos inmutables y retornan `GenericOutput` (e.g., `def hello_world(name: str) -> GenericOutput`).
+  - Dependencias mínimas (stdlib + pydantic para modelos).
 - **Registry (autocode/interfaces/registry.py)**:
   - Dict FUNCTION_REGISTRY que describe cada func: nombre, ref, descripción y parámetros explícitos (sin inferencia).
   - Parámetros definidos explícitamente como ExplicitParam con name, type, default, required, description.
