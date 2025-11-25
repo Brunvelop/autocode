@@ -478,9 +478,11 @@ class TestCreateApiApp:
     
     @patch('autocode.interfaces.api.load_core_functions')
     @patch('os.path.exists')
-    def test_create_api_app_static_files(self, mock_exists, mock_load):
+    @patch('os.path.isdir')
+    def test_create_api_app_static_files(self, mock_isdir, mock_exists, mock_load):
         """Test static file mounting."""
         mock_exists.return_value = True
+        mock_isdir.return_value = True
         
         app = create_api_app()
         

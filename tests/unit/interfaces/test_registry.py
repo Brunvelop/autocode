@@ -11,11 +11,11 @@ from unittest.mock import patch, Mock
 
 from autocode.interfaces.registry import (
     FUNCTION_REGISTRY, _generate_function_info, register_function,
-    get_function, get_function_info, get_parameters, list_functions,
+    get_function, get_function_info, get_all_function_schemas, list_functions,
     clear_registry, get_registry_stats, load_core_functions,
     RegistryError, _functions_loaded
 )
-from autocode.interfaces.models import FunctionInfo, ExplicitParam, GenericOutput
+from autocode.interfaces.models import FunctionInfo, ExplicitParam, GenericOutput, FunctionSchema
 
 
 class TestGenerateFunctionInfo:
@@ -233,24 +233,29 @@ class TestRegistryPublicAPI:
         with pytest.raises(RegistryError, match="Function 'nonexistent' not found"):
             get_function_info("nonexistent")
     
-    def test_get_parameters(self, populated_registry):
-        """Test parameter information retrieval."""
-        params = get_parameters("test_add")
+    def test_get_all_function_schemas(self, populated_registry):
+        """Test schemas retrieval."""
+        schemas = get_all_function_schemas()
         
+        assert "test_add" in schemas
+        schema = schemas["test_add"]
+        assert isinstance(schema, FunctionSchema)
+        
+        params = schema.parameters
         assert len(params) == 2
         
         x_param = params[0]
-        assert x_param["name"] == "x"
-        assert x_param["type"] == "int"
-        assert x_param["required"] is True
-        assert x_param["description"] == "First number"
+        assert x_param.name == "x"
+        assert x_param.type == "int"
+        assert x_param.required is True
+        assert x_param.description == "First number"
         
         y_param = params[1]
-        assert y_param["name"] == "y"
-        assert y_param["type"] == "int"
-        assert y_param["required"] is False
-        assert y_param["default"] == 1
-        assert y_param["description"] == "Second number"
+        assert y_param.name == "y"
+        assert y_param.type == "int"
+        assert y_param.required is False
+        assert y_param.default == 1
+        assert y_param.description == "Second number"
     
     def test_list_functions_empty(self):
         """Test listing functions with empty registry."""
@@ -396,15 +401,16 @@ class TestRegistryIntegration:
         assert result.result == "test test test"
         
         # Test parameter information
-        params = get_parameters("integration_test_func")
+        schema = get_all_function_schemas()["integration_test_func"]
+        params = schema.parameters
         assert len(params) == 2
         
-        name_param = next(p for p in params if p["name"] == "name")
-        count_param = next(p for p in params if p["name"] == "count")
+        name_param = next(p for p in params if p.name == "name")
+        count_param = next(p for p in params if p.name == "count")
         
-        assert name_param["required"] is True
-        assert count_param["required"] is False
-        assert count_param["default"] == 1
+        assert name_param.required is True
+        assert count_param.required is False
+        assert count_param.default == 1
         
         # Test stats
         stats = get_registry_stats()
@@ -420,6 +426,3 @@ class TestRegistryIntegration:
         
         with pytest.raises(RegistryError):
             get_function_info("does_not_exist")
-        
-        with pytest.raises(RegistryError):
-            get_parameters("does_not_exist")

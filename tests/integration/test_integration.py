@@ -184,26 +184,26 @@ class TestFullIntegration:
             }, success=True)
         
         # Verify function was registered correctly
-        from autocode.interfaces.registry import get_function_info, get_parameters
+        from autocode.interfaces.registry import get_function_info
         
         func_info = get_function_info("complex_function")
         assert func_info.name == "complex_function"
         assert len(func_info.params) == 3
         
-        # Check parameter details
-        params = get_parameters("complex_function")
+        # Check parameter details using schemas
+        params = [p.to_schema() for p in func_info.params]
         
-        str_param = next(p for p in params if p["name"] == "required_str")
-        assert str_param["required"] is True
-        assert str_param["type"] == "str"
+        str_param = next(p for p in params if p.name == "required_str")
+        assert str_param.required is True
+        assert str_param.type == "str"
         
-        int_param = next(p for p in params if p["name"] == "optional_int")
-        assert int_param["required"] is False
-        assert int_param["default"] == 42
+        int_param = next(p for p in params if p.name == "optional_int")
+        assert int_param.required is False
+        assert int_param.default == 42
         
-        bool_param = next(p for p in params if p["name"] == "optional_bool")
-        assert bool_param["required"] is False
-        assert bool_param["default"] is True
+        bool_param = next(p for p in params if p.name == "optional_bool")
+        assert bool_param.required is False
+        assert bool_param.default is True
     
     @patch('autocode.interfaces.api.load_core_functions')
     def test_error_handling_across_interfaces(self, mock_load):

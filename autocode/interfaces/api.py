@@ -10,9 +10,9 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, create_model
 
-from autocode.interfaces.models import FunctionInfo, GenericOutput
+from autocode.interfaces.models import FunctionInfo, GenericOutput, FunctionDetailsResponse
 from autocode.core.ai.models import DspyOutput
-from autocode.interfaces.registry import FUNCTION_REGISTRY, load_core_functions
+from autocode.interfaces.registry import FUNCTION_REGISTRY, load_core_functions, get_all_function_schemas
 
 # Setup logging with custom filter to exclude noisy third-party libraries
 class AutocodeLogFilter(logging.Filter):
@@ -146,28 +146,12 @@ def _register_standard_endpoints(app: FastAPI):
         """Serve the custom elements demo page."""
         return FileResponse(os.path.join(views_dir, "demo.html"))
 
-    @app.get("/functions/details")
+    @app.get("/functions/details", response_model=FunctionDetailsResponse)
     async def list_functions_details():
         """Get detailed information about all registered functions."""
-        functions_details = {}
-        for func_name, func_info in FUNCTION_REGISTRY.items():
-            functions_details[func_name] = {
-                "name": func_info.name,
-                "description": func_info.description,
-                "http_methods": func_info.http_methods,
-                "parameters": [
-                    {
-                        "name": param.name,
-                        "type": param.type.__name__ if hasattr(param.type, '__name__') else str(param.type),
-                        "default": param.default,
-                        "required": param.required,
-                        "description": param.description,
-                        "choices": param.choices
-                    }
-                    for param in func_info.params
-                ]
-            }
-        return {"functions": functions_details}
+        return FunctionDetailsResponse(
+            functions=get_all_function_schemas()
+        )
 
     @app.get("/health")
     async def health_check():

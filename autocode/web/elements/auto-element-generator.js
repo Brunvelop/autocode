@@ -17,6 +17,7 @@
  * - Atributos: auto-execute, show-result, show-params, readonly
  * - Eventos: function-connected, before-execute, after-execute, execute-error, params-changed
  * - Métodos: execute(), getResult(), setParam(), getParam(), getParams(), validate()
+ * - Métodos DOM (para subclases): createParamElement(param), createExecuteButton()
  */
 
 export class AutoElementGenerator {
@@ -88,8 +89,6 @@ export class AutoElementGenerator {
      * Crear clase de custom element para una función
      */
     createElementClass(funcName, funcInfo) {
-        const generator = this;
-        
         return class extends HTMLElement {
             static get observedAttributes() {
                 return [
@@ -117,7 +116,8 @@ export class AutoElementGenerator {
             connectedCallback() {
                 this.loadAttributeDefaults();
                 this.render();
-                this.setupEventListeners();
+                // setupEventListeners ya no es necesario globalmente si asignamos eventos al crear elementos,
+                // pero lo mantenemos para lógica general si fuera necesaria.
                 
                 if (this._autoExecute) {
                     this.executeWithDefaults();
@@ -161,164 +161,227 @@ export class AutoElementGenerator {
             }
 
             render() {
-                const html = this.getHTML();
-                this.innerHTML = html;
+                this.innerHTML = '';
+                const layout = this.buildDefaultLayout();
+                this.appendChild(layout);
             }
 
-            getHTML() {
-                const paramsHTML = this.funcInfo.parameters
-                    .map(param => this.createParamHTML(param))
-                    .join('');
+            /**
+             * Construye el layout por defecto usando métodos granulares
+             * Puede ser usado por subclases para obtener la estructura base
+             */
+            buildDefaultLayout() {
+                const container = document.createElement('div');
+                container.className = "flex flex-col gap-4 p-4 border border-gray-200 rounded-lg bg-white shadow-sm";
+                container.dataset.part = "container";
 
-                return `
-                    <div class="flex flex-col gap-4 p-4 border border-gray-200 rounded-lg bg-white shadow-sm" data-part="container">
-                        
-                        <!-- Slot para header customizable -->
-                        <slot name="header">
-                            <div class="flex justify-between items-center gap-4">
-                                <slot name="title">
-                                    <h3 class="text-xl font-semibold text-gray-800 m-0" data-part="title">
-                                        🔧 ${this.funcInfo.name}
-                                    </h3>
-                                </slot>
-                                
-                                <!-- Slot para toolbar (botones extra) -->
-                                <div class="flex gap-2 items-center">
-                                    <slot name="toolbar"></slot>
-                                </div>
-                            </div>
-                            
-                            ${this.funcInfo.description ? `
-                                <p class="text-sm text-gray-600 italic m-0">
-                                    ${this.funcInfo.description}
-                                </p>
-                            ` : ''}
-                            
-                            <div class="flex gap-2 flex-wrap">
-                                ${this.funcInfo.http_methods.map(method => 
-                                    `<span class="px-2 py-0.5 rounded-full text-xs font-bold ${method === 'GET' ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'}">${method}</span>`
-                                ).join('')}
-                            </div>
+                // 1. Header Slot
+                const headerSlot = document.createElement('slot');
+                headerSlot.name = "header";
+                
+                // Default Header Content
+                const defaultHeader = document.createElement('div');
+                defaultHeader.className = "flex flex-col gap-2";
+                defaultHeader.innerHTML = `
+                    <div class="flex justify-between items-center gap-4">
+                        <slot name="title">
+                            <h3 class="text-xl font-semibold text-gray-800 m-0" data-part="title">
+                                🔧 ${this.funcInfo.name}
+                            </h3>
                         </slot>
-                        
-                        <!-- Mensaje de error general -->
-                        <div data-ref="error" class="hidden p-3 bg-red-100 border border-red-300 rounded-lg text-red-800 text-sm" data-part="error-message">
+                        <div class="flex gap-2 items-center">
+                            <slot name="toolbar"></slot>
                         </div>
-                        
-                        <!-- Slot para UI custom de parámetros -->
-                        <slot name="params-ui">
-                            <div class="${!this._showParams ? 'hidden' : ''} flex flex-col gap-3" data-ref="defaultParams">
-                                ${paramsHTML}
-                            </div>
-                        </slot>
-                        
-                        <!-- Slot para botón custom -->
-                        <slot name="execute-button">
-                            <button 
-                                data-ref="executeBtn"
-                                class="px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-indigo-600 to-purple-600 rounded-lg hover:from-indigo-700 hover:to-purple-700 transition-all duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                                data-part="execute-button">
-                                Ejecutar ${this.funcInfo.name} ⚡
-                            </button>
-                        </slot>
-                        
-                        <!-- Slot para resultado custom -->
-                        <slot name="result-ui">
-                            <div data-ref="resultContainer" class="${!this._showResult ? 'hidden' : ''} hidden p-3 rounded-lg font-mono text-sm whitespace-pre-wrap break-words" data-part="result-container">
-                            </div>
-                        </slot>
-                        
-                        <!-- Slot para status customizable -->
-                        <slot name="status">
-                            <div class="flex gap-2 items-center text-xs text-gray-600" data-part="status">
-                                <div data-ref="indicator" class="w-2 h-2 rounded-full bg-gray-300" data-part="status-indicator"></div>
-                                <span data-ref="statusText">Listo</span>
-                            </div>
-                        </slot>
-                        
-                        <!-- Slot para footer -->
-                        <slot name="footer"></slot>
+                    </div>
+                    ${this.funcInfo.description ? `
+                        <p class="text-sm text-gray-600 italic m-0">
+                            ${this.funcInfo.description}
+                        </p>
+                    ` : ''}
+                    <div class="flex gap-2 flex-wrap">
+                        ${this.funcInfo.http_methods.map(method => 
+                            `<span class="px-2 py-0.5 rounded-full text-xs font-bold ${method === 'GET' ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'}">${method}</span>`
+                        ).join('')}
                     </div>
                 `;
-            }
+                headerSlot.appendChild(defaultHeader);
+                container.appendChild(headerSlot);
 
-            createParamHTML(param) {
-                const requiredMark = param.required ? '<span class="text-red-500">*</span>' : '';
-                const defaultValue = param.default !== null ? param.default : '';
-                
-                if (param.choices && Array.isArray(param.choices) && param.choices.length > 0) {
-                    const options = param.choices.map(choice => 
-                        `<option value="${choice}" ${choice === defaultValue ? 'selected' : ''}>${choice}</option>`
-                    ).join('');
-                    
-                    return `
-                        <div class="flex flex-col gap-1" data-param="${param.name}">
-                            <label class="text-sm font-semibold text-gray-700">
-                                ${param.name} ${requiredMark}
-                            </label>
-                            <p class="text-xs text-gray-500 m-0">
-                                ${param.description} (${param.type})
-                            </p>
-                            <select 
-                                name="${param.name}" 
-                                ${param.required ? 'required' : ''}
-                                class="p-2 border border-gray-300 rounded-lg text-sm bg-white text-gray-900 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200 disabled:bg-gray-100 disabled:cursor-not-allowed">
-                                ${options}
-                            </select>
-                        </div>
-                    `;
-                } else {
-                    const inputType = param.type === 'int' || param.type === 'float' ? 'number' : 'text';
-                    const step = param.type === 'float' ? 'step="0.01"' : '';
-                    return `
-                        <div class="flex flex-col gap-1" data-param="${param.name}">
-                            <label class="text-sm font-semibold text-gray-700">
-                                ${param.name} ${requiredMark}
-                            </label>
-                            <p class="text-xs text-gray-500 m-0">
-                                ${param.description} (${param.type})
-                            </p>
-                            <input 
-                                type="${inputType}" 
-                                name="${param.name}" 
-                                value="${defaultValue}"
-                                ${step}
-                                ${param.required ? 'required' : ''}
-                                placeholder="${param.description}"
-                                class="p-2 border border-gray-300 rounded-lg text-sm bg-white text-gray-900 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200 disabled:bg-gray-100 disabled:cursor-not-allowed"
-                            />
-                        </div>
-                    `;
-                }
-            }
+                // 2. Error Message
+                const errorDiv = document.createElement('div');
+                errorDiv.dataset.ref = "error";
+                errorDiv.className = "hidden p-3 bg-red-100 border border-red-300 rounded-lg text-red-800 text-sm";
+                errorDiv.dataset.part = "error-message";
+                container.appendChild(errorDiv);
 
-            setupEventListeners() {
-                const executeBtn = this.querySelector('[data-ref="executeBtn"]');
-                if (executeBtn) {
-                    executeBtn.addEventListener('click', () => this.execute());
-                }
+                // 3. Params UI Slot
+                const paramsSlot = document.createElement('slot');
+                paramsSlot.name = "params-ui";
                 
-                // Escuchar cambios en parámetros
-                const inputs = this.querySelectorAll('input, select');
-                inputs.forEach(input => {
-                    input.addEventListener('change', () => {
-                        this.dispatchEvent(new CustomEvent('params-changed', {
-                            detail: { params: this.getParams() },
-                            bubbles: true,
-                            composed: true
-                        }));
-                    });
+                const defaultParams = document.createElement('div');
+                defaultParams.dataset.ref = "defaultParams";
+                defaultParams.className = `${!this._showParams ? 'hidden' : ''} flex flex-col gap-3`;
+                
+                // Generar inputs para cada parámetro
+                this.funcInfo.parameters.forEach(param => {
+                    defaultParams.appendChild(this.createParamElement(param));
                 });
                 
-                // Escuchar clicks en slots para execute-button
-                const executeSlot = this.querySelector('slot[name="execute-button"]');
-                if (executeSlot) {
-                    executeSlot.addEventListener('click', (e) => {
-                        if (e.target.matches('button')) {
-                            this.execute();
-                        }
+                paramsSlot.appendChild(defaultParams);
+                container.appendChild(paramsSlot);
+
+                // 4. Execute Button Slot
+                const buttonSlot = document.createElement('slot');
+                buttonSlot.name = "execute-button";
+                buttonSlot.appendChild(this.createExecuteButton());
+                container.appendChild(buttonSlot);
+
+                // 5. Result UI Slot
+                const resultSlot = document.createElement('slot');
+                resultSlot.name = "result-ui";
+                
+                const resultContainer = document.createElement('div');
+                resultContainer.dataset.ref = "resultContainer";
+                resultContainer.className = `${!this._showResult ? 'hidden' : ''} hidden p-3 rounded-lg font-mono text-sm whitespace-pre-wrap break-words`;
+                resultContainer.dataset.part = "result-container";
+                
+                resultSlot.appendChild(resultContainer);
+                container.appendChild(resultSlot);
+
+                // 6. Status Slot
+                const statusSlot = document.createElement('slot');
+                statusSlot.name = "status";
+                statusSlot.innerHTML = `
+                    <div class="flex gap-2 items-center text-xs text-gray-600" data-part="status">
+                        <div data-ref="indicator" class="w-2 h-2 rounded-full bg-gray-300" data-part="status-indicator"></div>
+                        <span data-ref="statusText">Listo</span>
+                    </div>
+                `;
+                container.appendChild(statusSlot);
+
+                // 7. Footer Slot
+                const footerSlot = document.createElement('slot');
+                footerSlot.name = "footer";
+                container.appendChild(footerSlot);
+
+                return container;
+            }
+
+            /**
+             * Crea un elemento DOM para un parámetro
+             * @param {Object} param Info del parámetro
+             * @returns {HTMLElement} Div contenedor con label e input
+             */
+            createParamElement(param) {
+                const container = document.createElement('div');
+                container.className = "flex flex-col gap-1";
+                container.dataset.param = param.name;
+
+                // Label
+                const label = document.createElement('label');
+                label.className = "text-sm font-semibold text-gray-700";
+                label.innerHTML = `${param.name} ${param.required ? '<span class="text-red-500">*</span>' : ''}`;
+                container.appendChild(label);
+
+                // Description
+                const desc = document.createElement('p');
+                desc.className = "text-xs text-gray-500 m-0";
+                desc.textContent = `${param.description} (${param.type})`;
+                container.appendChild(desc);
+
+                let input;
+                const defaultValue = param.default !== null ? param.default : '';
+
+                if (param.choices && Array.isArray(param.choices) && param.choices.length > 0) {
+                    input = document.createElement('select');
+                    input.name = param.name;
+                    input.className = "p-2 border border-gray-300 rounded-lg text-sm bg-white text-gray-900 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200 disabled:bg-gray-100 disabled:cursor-not-allowed";
+                    
+                    param.choices.forEach(choice => {
+                        const option = document.createElement('option');
+                        option.value = choice;
+                        option.textContent = choice;
+                        if (choice === defaultValue) option.selected = true;
+                        input.appendChild(option);
                     });
+                } else {
+                    input = document.createElement('input');
+                    const isNumber = param.type === 'int' || param.type === 'float';
+                    input.type = isNumber ? 'number' : 'text';
+                    input.name = param.name;
+                    input.value = defaultValue;
+                    if (param.type === 'float') input.step = "any";
+                    if (param.type === 'int') input.step = "1";
+                    input.placeholder = param.description;
+                    input.className = "p-2 border border-gray-300 rounded-lg text-sm bg-white text-gray-900 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200 disabled:bg-gray-100 disabled:cursor-not-allowed";
                 }
+
+                if (param.required) input.required = true;
+                if (this._readonly) input.disabled = true;
+
+                // Event Listener para cambios
+                input.addEventListener('change', () => {
+                    this.clearFieldError(input); // Limpiar error al editar
+                    this.dispatchEvent(new CustomEvent('params-changed', {
+                        detail: { params: this.getParams() },
+                        bubbles: true,
+                        composed: true
+                    }));
+                });
+                
+                input.addEventListener('input', () => this.clearFieldError(input));
+
+                container.appendChild(input);
+                
+                // Field error message container
+                const errorMsg = document.createElement('span');
+                errorMsg.className = "text-xs text-red-500 hidden";
+                errorMsg.dataset.errorFor = param.name;
+                container.appendChild(errorMsg);
+                
+                return container;
+            }
+
+            clearFieldError(input) {
+                input.classList.remove('border-red-500', 'bg-red-50');
+                input.classList.add('border-gray-300');
+                
+                const container = input.closest('div[data-param]');
+                if (container) {
+                    const errorMsg = container.querySelector(`span[data-error-for="${input.name}"]`);
+                    if (errorMsg) {
+                        errorMsg.textContent = '';
+                        errorMsg.classList.add('hidden');
+                    }
+                }
+            }
+
+            setFieldError(input, message) {
+                input.classList.add('border-red-500', 'bg-red-50');
+                input.classList.remove('border-gray-300');
+                
+                const container = input.closest('div[data-param]');
+                if (container) {
+                    const errorMsg = container.querySelector(`span[data-error-for="${input.name}"]`);
+                    if (errorMsg) {
+                        errorMsg.textContent = message;
+                        errorMsg.classList.remove('hidden');
+                    }
+                }
+            }
+
+            createExecuteButton() {
+                const btn = document.createElement('button');
+                btn.dataset.ref = "executeBtn";
+                btn.className = "px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-indigo-600 to-purple-600 rounded-lg hover:from-indigo-700 hover:to-purple-700 transition-all duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed";
+                btn.dataset.part = "execute-button";
+                btn.textContent = `Ejecutar ${this.funcInfo.name} ⚡`;
+                
+                if (this._readonly) btn.disabled = true;
+
+                btn.addEventListener('click', () => this.execute());
+                
+                return btn;
             }
 
             async execute() {
@@ -364,6 +427,7 @@ export class AutoElementGenerator {
                         bubbles: true,
                         composed: true
                     }));
+                    return result; // Retornar resultado para uso programático
                 } catch (error) {
                     this.showResult(`Error: ${error.message}`, true);
                     this.setStatus('error', 'Error en ejecución');
@@ -373,9 +437,10 @@ export class AutoElementGenerator {
                         bubbles: true,
                         composed: true
                     }));
+                    throw error;
                 } finally {
                     if (executeBtn) {
-                        executeBtn.disabled = false;
+                        executeBtn.disabled = this._readonly; // Restaurar estado readonly
                         executeBtn.textContent = `Ejecutar ${this.funcInfo.name} ⚡`;
                     }
                 }
@@ -386,18 +451,42 @@ export class AutoElementGenerator {
             }
 
             validate() {
-                const inputs = this.querySelectorAll('input[required], select[required]');
                 let isValid = true;
                 this.errors = {};
                 
-                inputs.forEach(input => {
-                    if (!input.value || input.value.trim() === '') {
+                // Iterar sobre definicion de parámetros para validación completa
+                this.funcInfo.parameters.forEach(param => {
+                    const input = this.querySelector(`[name="${param.name}"]`);
+                    if (!input) return;
+
+                    const value = input.value;
+                    let error = null;
+
+                    // 1. Validar Required
+                    if (param.required && (!value || value.trim() === '')) {
+                        error = 'Campo requerido';
+                    }
+                    
+                    // 2. Validar Tipos Numéricos
+                    else if (value && value.trim() !== '') {
+                        if (param.type === 'int') {
+                            const num = Number(value);
+                            if (!Number.isInteger(num)) {
+                                error = 'Debe ser un número entero';
+                            }
+                        } else if (param.type === 'float') {
+                            if (isNaN(parseFloat(value))) {
+                                error = 'Debe ser un número decimal';
+                            }
+                        }
+                    }
+
+                    if (error) {
                         isValid = false;
-                        this.errors[input.name] = 'Campo requerido';
-                        input.classList.add('border-red-500', 'bg-red-50');
+                        this.errors[param.name] = error;
+                        this.setFieldError(input, error);
                     } else {
-                        input.classList.remove('border-red-500', 'bg-red-50');
-                        input.classList.add('border-gray-300');
+                        this.clearFieldError(input);
                     }
                 });
                 
@@ -406,16 +495,20 @@ export class AutoElementGenerator {
 
             getParams() {
                 const params = {};
+                // Busca inputs en todo el elemento (incluyendo los que haya movido el hijo)
                 const inputs = this.querySelectorAll('input, select');
                 
                 inputs.forEach(input => {
                     const value = input.value;
-                    if (value !== '') {
-                        const param = this.funcInfo.parameters.find(p => p.name === input.name);
-                        if (param) {
-                            params[input.name] = param.type === 'int' ? parseInt(value) :
-                                                param.type === 'float' ? parseFloat(value) : value;
-                        }
+                    // Solo incluimos si el input corresponde a un parámetro conocido
+                    const param = this.funcInfo.parameters.find(p => p.name === input.name);
+                    if (param) {
+                        // Si está vacío y no es required, no lo enviamos para que use el default del backend
+                        if (value === '' && !param.required) return;
+
+                        if (param.type === 'int') params[input.name] = value ? parseInt(value) : 0;
+                        else if (param.type === 'float') params[input.name] = value ? parseFloat(value) : 0.0;
+                        else params[input.name] = value;
                     }
                 });
                 
@@ -442,7 +535,8 @@ export class AutoElementGenerator {
                     let errorMsg = `HTTP ${response.status}`;
                     try {
                         const errorData = await response.json();
-                        errorMsg = errorData.detail || errorMsg;
+                        // Intentar obtener mensaje legible o stringify completo
+                        errorMsg = errorData.detail || JSON.stringify(errorData);
                     } catch {
                         errorMsg = response.statusText || errorMsg;
                     }
@@ -461,15 +555,15 @@ export class AutoElementGenerator {
                     ? JSON.stringify(content, null, 2) 
                     : content;
                     
-                // Remover clases previas
                 resultContainer.classList.remove('bg-green-100', 'border-green-300', 'text-green-800', 'bg-red-100', 'border-red-300', 'text-red-800', 'hidden');
                 
-                // Añadir clases según tipo
                 if (isError) {
                     resultContainer.classList.add('bg-red-100', 'border', 'border-red-300', 'text-red-800');
                 } else {
                     resultContainer.classList.add('bg-green-100', 'border', 'border-green-300', 'text-green-800');
                 }
+                // Si show-result es false, lo volvemos a ocultar (aunque hayamos actualizado el contenido)
+                if (!this._showResult) resultContainer.classList.add('hidden');
             }
 
             setStatus(type, message) {
@@ -478,22 +572,13 @@ export class AutoElementGenerator {
                 
                 if (!indicator || !statusText) return;
                 
-                // Remover clases previas
                 indicator.classList.remove('bg-gray-300', 'bg-green-500', 'bg-red-500', 'bg-yellow-500');
                 
-                // Agregar clase según tipo
                 switch(type) {
-                    case 'success':
-                        indicator.classList.add('bg-green-500');
-                        break;
-                    case 'error':
-                        indicator.classList.add('bg-red-500');
-                        break;
-                    case 'loading':
-                        indicator.classList.add('bg-yellow-500');
-                        break;
-                    default:
-                        indicator.classList.add('bg-gray-300');
+                    case 'success': indicator.classList.add('bg-green-500'); break;
+                    case 'error': indicator.classList.add('bg-red-500'); break;
+                    case 'loading': indicator.classList.add('bg-yellow-500'); break;
+                    default: indicator.classList.add('bg-gray-300');
                 }
                 
                 statusText.textContent = message;
@@ -515,22 +600,16 @@ export class AutoElementGenerator {
             updateResultVisibility() {
                 const resultContainer = this.querySelector('[data-ref="resultContainer"]');
                 if (resultContainer) {
-                    if (this._showResult) {
-                        resultContainer.classList.remove('hidden');
-                    } else {
-                        resultContainer.classList.add('hidden');
-                    }
+                    if (this._showResult) resultContainer.classList.remove('hidden');
+                    else resultContainer.classList.add('hidden');
                 }
             }
 
             updateParamsVisibility() {
                 const defaultParams = this.querySelector('[data-ref="defaultParams"]');
                 if (defaultParams) {
-                    if (this._showParams) {
-                        defaultParams.classList.remove('hidden');
-                    } else {
-                        defaultParams.classList.add('hidden');
-                    }
+                    if (this._showParams) defaultParams.classList.remove('hidden');
+                    else defaultParams.classList.add('hidden');
                 }
             }
 
@@ -552,15 +631,12 @@ export class AutoElementGenerator {
             }
 
             // API pública para uso externo
-            getResult() {
-                return this.result;
-            }
+            getResult() { return this.result; }
 
             setParam(paramName, value) {
                 const input = this.querySelector(`[name="${paramName}"]`);
                 if (input) {
                     input.value = value;
-                    // Trigger change event para notificar
                     input.dispatchEvent(new Event('change', { bubbles: true }));
                 }
             }

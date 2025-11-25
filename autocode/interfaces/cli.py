@@ -21,7 +21,6 @@ from typing import Dict, Any, Callable, Optional
 
 from autocode.interfaces.registry import (
     FUNCTION_REGISTRY, 
-    get_parameters,
     load_core_functions
 )
 from autocode.interfaces.api import create_api_app
@@ -77,17 +76,19 @@ def list_functions():
         click.echo(f"  {func_name}: {func_info.description}")
         
         # Show inferred parameters with rich information
-        params = get_parameters(func_name)
+        schema = func_info.to_schema()
+        params = schema.parameters
+        
         if params:
             params_info = []
             for param in params:
-                param_str = f"{param['name']} ({param['type']})"
-                if not param['required']:
-                    param_str += f" = {param['default']}"
+                param_str = f"{param.name} ({param.type})"
+                if not param.required:
+                    param_str += f" = {param.default}"
                 else:
                     param_str += " (required)"
-                if param['description'] != f"Parameter {param['name']}":
-                    param_str += f" - {param['description']}"
+                if param.description != f"Parameter {param.name}":
+                    param_str += f" - {param.description}"
                 params_info.append(param_str)
             
             click.echo(f"    Parameters:")

@@ -22,7 +22,7 @@ import inspect
 import logging
 from docstring_parser import parse
 
-from autocode.interfaces.models import FunctionInfo, ExplicitParam, GenericOutput
+from autocode.interfaces.models import FunctionInfo, ExplicitParam, GenericOutput, FunctionSchema
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -116,39 +116,17 @@ def get_function_info(name: str) -> FunctionInfo:
     return FUNCTION_REGISTRY[name]
 
 
-def get_parameters(name: str) -> List[Dict[str, Any]]:
-    """Get parameter information for a function as a list of dictionaries.
+def get_all_function_schemas() -> Dict[str, FunctionSchema]:
+    """Get serializable schemas for all registered functions.
     
-    This is a convenience method that returns parameters in a simpler format
-    than get_function_info(), useful for generating documentation or UI.
-    
-    Args:
-        name: The name of the function
-        
     Returns:
-        List of parameter dictionaries with keys: name, type, default, 
-        required, description
-        
-    Raises:
-        RegistryError: If the function is not found
-        
-    Example:
-        >>> params = get_parameters("calculate")
-        >>> params[0]
-        {'name': 'x', 'type': 'int', 'default': None, 'required': True, 
-         'description': 'First operand'}
+        Dictionary mapping function names to their schemas.
     """
-    func_info = get_function_info(name)
-    return [
-        {
-            "name": param.name,
-            "type": param.type.__name__,
-            "default": param.default,
-            "required": param.required,
-            "description": param.description
-        }
-        for param in func_info.params
-    ]
+    _ensure_functions_loaded()
+    return {
+        name: info.to_schema()
+        for name, info in FUNCTION_REGISTRY.items()
+    }
 
 
 def list_functions() -> List[str]:
