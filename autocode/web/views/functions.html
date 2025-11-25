@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Autocode - Dynamic API Interface</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Custom Elements -->
+    <script type="module" src="/elements/chat-element.js"></script>
+    <script type="module" src="/elements/auto-element-generator.js"></script>
+</head>
+<body class="bg-gradient-to-br from-blue-50 to-indigo-100 min-h-screen">
+    <div class="max-w-6xl mx-auto p-5">
+        <div class="bg-white p-8 rounded-2xl shadow-2xl ring-1 ring-black/5 mb-5">
+            <h1 class="text-3xl font-bold text-gray-800 text-center mb-8">🚀 Autocode Framework - Dynamic API Interface</h1>
+            <p class="text-center text-gray-600 mb-8">Interfaz automática para todas las funciones expuestas en la API</p>
+            
+            <div id="loading" class="text-center p-10 text-gray-600">
+                <p>Cargando funciones disponibles...</p>
+            </div>
+            
+            <div id="functionsContainer" class="grid grid-cols-1 lg:grid-cols-2 gap-5 mt-5 hidden"></div>
+            
+            <div class="mt-5 p-4 bg-blue-50 border border-blue-200 rounded-xl ring-1 ring-black/5 text-sm">
+                <strong>Arquitectura Dinámica:</strong>
+                <ul class="mt-2 pl-5 list-disc">
+                    <li><strong>Auto-detección:</strong> La página consulta <code>/functions/details</code> para obtener todas las funciones disponibles</li>
+                    <li><strong>Generación dinámica:</strong> Se crean formularios automáticamente basados en los parámetros de cada función</li>
+                    <li><strong>Métodos flexibles:</strong> Soporte para GET y POST según la configuración de cada función</li>
+                    <li><strong>Tipado inteligente:</strong> Inputs apropiados según el tipo de cada parámetro</li>
+                    <li><strong>Valores por defecto:</strong> Pre-llenado automático de parámetros opcionales</li>
+                </ul>
+            </div>
+        </div>
+        
+        <div class="flex justify-center mt-8">
+            <a href="/" class="bg-white text-gray-600 hover:text-gray-900 font-semibold py-2 px-4 rounded shadow hover:shadow-md transition">
+                ← Volver al Inicio
+            </a>
+        </div>
+    </div>
+
+    <!-- Chat Element -->
+    <autocode-chat></autocode-chat>
+
+    <script type="module">
+        class DynamicAPIInterface {
+            constructor() {
+                this.functions = {};
+                this.init();
+            }
+
+            async init() {
+                try {
+                    // Esperar a que el generador se inicialice
+                    await this.waitForGenerator();
+                    
+                    // Cargar funciones para obtener metadata
+                    await this.loadFunctions();
+                    
+                    // Renderizar elementos
+                    this.renderFunctions();
+                    
+                    document.getElementById('loading').classList.add('hidden');
+                    document.getElementById('functionsContainer').classList.remove('hidden');
+                } catch (error) {
+                    console.error('Error loading functions:', error);
+                    this.showError('Error cargando las funciones: ' + error.message);
+                }
+            }
+
+            async waitForGenerator() {
+                // Esperar a que autoElementGenerator esté disponible y inicializado
+                let attempts = 0;
+                while (!window.autoElementGenerator && attempts < 50) {
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                    attempts++;
+                }
+                
+                if (!window.autoElementGenerator) {
+                    throw new Error('Auto element generator no se cargó correctamente');
+                }
+                
+                console.log('✅ Auto element generator listo');
+            }
+
+            async loadFunctions() {
+                const response = await fetch('/functions/details');
+                if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                const data = await response.json();
+                this.functions = data.functions;
+                console.log('Loaded functions:', this.functions);
+            }
+
+            renderFunctions() {
+                const container = document.getElementById('functionsContainer');
+                container.innerHTML = '';
+                
+                for (const [funcName, funcInfo] of Object.entries(this.functions)) {
+                    const card = document.createElement('div');
+                    card.className = 'space-y-4';
+                    
+                    // Simplemente insertar el auto-element
+                    const autoElement = document.createElement(`auto-${funcName}`);
+                    card.appendChild(autoElement);
+                    
+                    container.appendChild(card);
+                }
+                
+                console.log(`✨ Renderizados ${Object.keys(this.functions).length} elementos`);
+            }
+
+            showError(message) {
+                document.getElementById('loading').innerHTML = `
+                    <p class="text-red-600">❌ ${message}</p>
+                    <button onclick="location.reload()" class="mt-2 bg-blue-500 text-white py-2 px-4 rounded hover:bg-blue-600">Reintentar</button>
+                `;
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', () => new DynamicAPIInterface());
+    </script>
+</body>
+</html>

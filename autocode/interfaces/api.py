@@ -6,8 +6,8 @@ import os
 from typing import Any, Dict, Type, Union
 
 from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field, create_model
 
 from autocode.interfaces.models import FunctionInfo, GenericOutput
@@ -90,11 +90,8 @@ def create_api_app() -> FastAPI:
     register_dynamic_endpoints(app)
     _log_endpoint_count(app)
     
-    # Setup templates and static files
-    templates = _setup_templates()
-    
     # Register standard API endpoints
-    _register_standard_endpoints(app, templates)
+    _register_standard_endpoints(app)
     _register_static_files(app)
 
     return app
@@ -128,30 +125,26 @@ def _log_endpoint_count(app: FastAPI):
     logger.info(f"Registered {endpoint_count} dynamic endpoints")
 
 
-def _setup_templates() -> Jinja2Templates:
-    """Setup Jinja2 templates for web UI."""
-    current_dir = os.path.dirname(__file__)
-    web_dir = os.path.join(current_dir, "..", "web")
-    return Jinja2Templates(directory=web_dir)
-
-
-def _register_standard_endpoints(app: FastAPI, templates: Jinja2Templates):
+def _register_standard_endpoints(app: FastAPI):
     """Register standard API endpoints (root, health, functions)."""
     
+    current_dir = os.path.dirname(__file__)
+    views_dir = os.path.join(current_dir, "..", "web", "views")
+    
     @app.get("/")
-    async def root(request: Request):
+    async def root():
         """Root endpoint - serve the web UI with chat widget."""
-        return templates.TemplateResponse("templates/index.html", {"request": request})
+        return FileResponse(os.path.join(views_dir, "index.html"))
 
     @app.get("/functions")
-    async def functions_ui(request: Request):
+    async def functions_ui():
         """Serve the dynamic functions UI page with chat widget."""
-        return templates.TemplateResponse("templates/functions.html", {"request": request})
+        return FileResponse(os.path.join(views_dir, "functions.html"))
 
     @app.get("/demo")
-    async def demo_ui(request: Request):
+    async def demo_ui():
         """Serve the custom elements demo page."""
-        return templates.TemplateResponse("templates/auto-elements-demo.html", {"request": request})
+        return FileResponse(os.path.join(views_dir, "demo.html"))
 
     @app.get("/functions/details")
     async def list_functions_details():
@@ -186,8 +179,16 @@ def _register_static_files(app: FastAPI):
     """Mount static files directory for web UI."""
     current_dir = os.path.dirname(__file__)
     web_dir = os.path.join(current_dir, "..", "web")
-    if os.path.exists(web_dir):
-        app.mount("/static", StaticFiles(directory=web_dir), name="static")
+    
+    # Mount elements directory for Web Components
+    elements_dir = os.path.join(web_dir, "elements")
+    if os.path.exists(elements_dir):
+        app.mount("/elements", StaticFiles(directory=elements_dir), name="elements")
+
+    # Mount static directory for general assets
+    static_dir = os.path.join(web_dir, "static")
+    if os.path.exists(static_dir):
+        app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
 
 # ============================================================================

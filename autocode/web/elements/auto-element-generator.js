@@ -19,7 +19,7 @@
  * - Métodos: execute(), getResult(), setParam(), getParam(), getParams(), validate()
  */
 
-class AutoElementGenerator {
+export class AutoElementGenerator {
     constructor() {
         this.functions = {};
         this.registeredElements = new Set();
@@ -582,9 +582,4 @@ if (document.readyState === 'loading') {
 } else {
     window.autoElementGenerator = new AutoElementGenerator();
     window.autoElementGenerator.init();
-}
-
-// Export para módulos
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = AutoElementGenerator;
 }
