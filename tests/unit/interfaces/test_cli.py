@@ -115,6 +115,7 @@ class TestCreateHandler:
     
     def test_create_handler_execution_success(self, sample_function_info):
         """Test successful handler execution."""
+        from autocode.interfaces.models import GenericOutput
         handler = _create_handler("test_add", sample_function_info)
         
         # Mock click.echo to capture output
@@ -122,19 +123,28 @@ class TestCreateHandler:
             # Call handler with keyword arguments (as Click would)
             handler(x=5, y=3)
             
-            # Should have echoed the result
-            mock_echo.assert_called_once_with(8)
+            # Should have echoed the result wrapped in GenericOutput
+            mock_echo.assert_called_once()
+            call_args = mock_echo.call_args[0][0]
+            assert isinstance(call_args, GenericOutput)
+            assert call_args.result == 8
+            assert call_args.success == True
     
     def test_create_handler_execution_with_defaults(self, sample_function_info):
         """Test handler execution using default parameter values."""
+        from autocode.interfaces.models import GenericOutput
         handler = _create_handler("test_add", sample_function_info)
         
         with patch('click.echo') as mock_echo:
             # Call with only required parameter
             handler(x=10, y=None)  # y should use default
             
-            # Should use default value for y (1)
-            mock_echo.assert_called_once_with(11)
+            # Should use default value for y (1), result wrapped in GenericOutput
+            mock_echo.assert_called_once()
+            call_args = mock_echo.call_args[0][0]
+            assert isinstance(call_args, GenericOutput)
+            assert call_args.result == 11
+            assert call_args.success == True
     
     def test_create_handler_execution_error(self, sample_function_info):
         """Test handler execution with function error."""

@@ -13,8 +13,9 @@ from autocode.interfaces.registry import (
     register_function, FUNCTION_REGISTRY, clear_registry
 )
 from autocode.interfaces.api import create_api_app
-from autocode.interfaces.cli import app as cli_app
+from autocode.interfaces.cli import app as cli_app, _register_commands
 from autocode.interfaces.mcp import create_mcp_app
+from autocode.interfaces.models import GenericOutput
 
 
 class TestFullIntegration:
@@ -25,7 +26,7 @@ class TestFullIntegration:
         """Set up test functions for integration testing."""
         # Register test functions using the decorator
         @register_function(http_methods=["GET", "POST"])
-        def integration_add(a: int, b: int = 10) -> int:
+        def integration_add(a: int, b: int = 10) -> GenericOutput:
             """Add two integers for integration testing.
             
             Args:
@@ -35,10 +36,10 @@ class TestFullIntegration:
             Returns:
                 Sum of a and b
             """
-            return a + b
+            return GenericOutput(result=a + b, success=True)
         
         @register_function(http_methods=["POST"])
-        def integration_multiply(x: float, y: float = 2.0) -> float:
+        def integration_multiply(x: float, y: float = 2.0) -> GenericOutput:
             """Multiply two floats for integration testing.
             
             Args:
@@ -48,10 +49,10 @@ class TestFullIntegration:
             Returns:
                 Product of x and y
             """
-            return x * y
+            return GenericOutput(result=x * y, success=True)
         
         @register_function(http_methods=["GET"])
-        def integration_greet(name: str = "World") -> dict:
+        def integration_greet(name: str = "World") -> GenericOutput:
             """Generate a greeting message.
             
             Args:
@@ -60,7 +61,10 @@ class TestFullIntegration:
             Returns:
                 Dictionary containing greeting
             """
-            return {"message": f"Hello, {name}!"}
+            return GenericOutput(result={"message": f"Hello, {name}!"}, success=True)
+        
+        # Re-register CLI commands after adding new functions
+        _register_commands()
         
         yield
         
@@ -84,11 +88,11 @@ class TestFullIntegration:
         data = response.json()
         assert data["result"] == 10
         
-        # Test function that returns dict (should not wrap in GenericOutput)
+        # Test function that returns GenericOutput with dict result
         response = client.get("/integration_greet?name=Test")
         assert response.status_code == 200
         data = response.json()
-        assert data == {"message": "Hello, Test!"}
+        assert data["result"] == {"message": "Hello, Test!"}
         
         # Test POST-only endpoint
         response = client.post("/integration_multiply", json={"x": 4.5, "y": 3.0})
@@ -165,7 +169,7 @@ class TestFullIntegration:
             required_str: str,
             optional_int: int = 42,
             optional_bool: bool = True
-        ) -> dict:
+        ) -> GenericOutput:
             """Complex function with various parameter types.
             
             Args:
@@ -173,11 +177,11 @@ class TestFullIntegration:
                 optional_int: An optional integer parameter
                 optional_bool: An optional boolean parameter
             """
-            return {
+            return GenericOutput(result={
                 "required_str": required_str,
                 "optional_int": optional_int,
                 "optional_bool": optional_bool
-            }
+            }, success=True)
         
         # Verify function was registered correctly
         from autocode.interfaces.registry import get_function_info, get_parameters
@@ -206,11 +210,11 @@ class TestFullIntegration:
         """Test error handling consistency across interfaces."""
         # Register a function that can error
         @register_function()
-        def error_prone_function(value: int) -> int:
+        def error_prone_function(value: int) -> GenericOutput:
             """Function that errors on negative values."""
             if value < 0:
                 raise ValueError("Value cannot be negative")
-            return value * 2
+            return GenericOutput(result=value * 2, success=True)
         
         # Test API error handling
         app = create_api_app()
@@ -223,6 +227,9 @@ class TestFullIntegration:
         # Should handle error gracefully
         response = client.post("/error_prone_function", json={"value": -1})
         assert response.status_code == 400  # Parameter error
+        
+        # Re-register CLI commands for new function
+        _register_commands()
         
         # Test CLI error handling
         runner = CliRunner()
@@ -259,9 +266,9 @@ class TestInterfaceConsistency:
     def test_parameter_handling_consistency(self):
         """Test that parameter handling is consistent between API and CLI."""
         @register_function()
-        def consistency_test(param1: str, param2: int = 100) -> str:
+        def consistency_test(param1: str, param2: int = 100) -> GenericOutput:
             """Test function for consistency checking."""
-            return f"{param1}:{param2}"
+            return GenericOutput(result=f"{param1}:{param2}", success=True)
         
         # Test via API
         with patch('autocode.interfaces.api.load_core_functions'):
@@ -280,6 +287,9 @@ class TestInterfaceConsistency:
             data = response.json()
             assert data["result"] == "test:50"
         
+        # Re-register CLI commands for new function
+        _register_commands()
+        
         # Test via CLI
         runner = CliRunner()
         
@@ -296,14 +306,14 @@ class TestInterfaceConsistency:
     def test_function_metadata_consistency(self):
         """Test that function metadata is consistent across interfaces."""
         @register_function(http_methods=["GET", "POST", "PUT"])
-        def metadata_test(x: int, y: str = "default") -> dict:
+        def metadata_test(x: int, y: str = "default") -> GenericOutput:
             """Test function for metadata consistency.
             
             Args:
                 x: An integer parameter
                 y: A string parameter with default
             """
-            return {"x": x, "y": y}
+            return GenericOutput(result={"x": x, "y": y}, success=True)
         
         from autocode.interfaces.registry import get_function_info
         
@@ -332,9 +342,9 @@ class TestCrossModuleDependencies:
         
         # Add function dynamically
         @register_function()
-        def dynamic_function(value: str) -> str:
+        def dynamic_function(value: str) -> GenericOutput:
             """Dynamically added function."""
-            return f"Dynamic: {value}"
+            return GenericOutput(result=f"Dynamic: {value}", success=True)
         
         # Verify registry was updated
         assert len(FUNCTION_REGISTRY) == initial_count + 1
@@ -355,9 +365,9 @@ class TestCrossModuleDependencies:
         """Test integration between MCP and API components."""
         # Register a test function
         @register_function()
-        def mcp_test_function(data: str) -> dict:
+        def mcp_test_function(data: str) -> GenericOutput:
             """Function for MCP testing."""
-            return {"processed": data.upper()}
+            return GenericOutput(result={"processed": data.upper()}, success=True)
         
         # Create MCP app
         with patch('autocode.interfaces.mcp.FastApiMCP') as mock_mcp:
@@ -398,7 +408,8 @@ class TestCrossModuleDependencies:
         
         # This should work (no registry lookup involved in execute_function_with_params)
         result = execute_function_with_params(fake_func_info, {}, "POST")
-        assert result["result"] is None
+        # When function returns None (not GenericOutput), API wraps it with warning
+        assert result["success"] is False or result["result"] == "None"
 
 
 class TestRealWorldScenarios:
@@ -411,7 +422,7 @@ class TestRealWorldScenarios:
             code: str,
             strict_mode: bool = False,
             max_line_length: int = 88
-        ) -> dict:
+        ) -> GenericOutput:
             """Analyze code quality metrics.
             
             Args:
@@ -437,18 +448,19 @@ class TestRealWorldScenarios:
                         "message": f"Line {i} has trailing whitespace"
                     })
             
-            return {
+            return GenericOutput(result={
                 "total_lines": len(lines),
                 "issues": issues,
                 "score": max(0, 100 - len(issues) * 10)
-            }
+            }, success=True)
         
         # Test via API
         with patch('autocode.interfaces.api.load_core_functions'):
             app = create_api_app()
             client = TestClient(app)
             
-            test_code = "def test():\n    return 'hello world'\n"
+            # Note: "line1\nline2\n" splits into ['line1', 'line2', ''] = 3 elements
+            test_code = "def test():\n    return 'hello world'"
             
             response = client.post("/analyze_code_quality", json={
                 "code": test_code,
@@ -458,9 +470,12 @@ class TestRealWorldScenarios:
             
             assert response.status_code == 200
             data = response.json()
-            assert data["total_lines"] == 2
-            assert data["score"] >= 0
-            assert isinstance(data["issues"], list)
+            assert data["result"]["total_lines"] == 2
+            assert data["result"]["score"] >= 0
+            assert isinstance(data["result"]["issues"], list)
+        
+        # Re-register CLI commands for new function
+        _register_commands()
         
         # Test via CLI
         runner = CliRunner()
@@ -478,25 +493,25 @@ class TestRealWorldScenarios:
         """Test that multiple tools can coexist in the registry."""
         # Register multiple tools
         @register_function()
-        def format_code(code: str, style: str = "pep8") -> str:
+        def format_code(code: str, style: str = "pep8") -> GenericOutput:
             """Format code according to style guide."""
-            return f"[{style}] {code.strip()}"
+            return GenericOutput(result=f"[{style}] {code.strip()}", success=True)
         
         @register_function()
-        def check_imports(code: str) -> dict:
+        def check_imports(code: str) -> GenericOutput:
             """Check import statements in code."""
             import_lines = [line for line in code.split('\n') if line.strip().startswith('import')]
-            return {"import_count": len(import_lines), "imports": import_lines}
+            return GenericOutput(result={"import_count": len(import_lines), "imports": import_lines}, success=True)
         
         @register_function()
-        def calculate_complexity(code: str) -> int:
+        def calculate_complexity(code: str) -> GenericOutput:
             """Calculate cyclomatic complexity."""
             # Simplified complexity calculation
             complexity_keywords = ['if', 'elif', 'for', 'while', 'except', 'and', 'or']
             complexity = 1  # Base complexity
             for keyword in complexity_keywords:
                 complexity += code.count(keyword)
-            return complexity
+            return GenericOutput(result=complexity, success=True)
         
         # Verify all tools are registered
         from autocode.interfaces.registry import list_functions
@@ -505,6 +520,9 @@ class TestRealWorldScenarios:
         assert "format_code" in functions
         assert "check_imports" in functions
         assert "calculate_complexity" in functions
+        
+        # Re-register CLI commands for new functions
+        _register_commands()
         
         # Test that they work independently
         runner = CliRunner()

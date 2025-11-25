@@ -15,7 +15,7 @@ from autocode.interfaces.registry import (
     clear_registry, get_registry_stats, load_core_functions,
     RegistryError, _functions_loaded
 )
-from autocode.interfaces.models import FunctionInfo, ExplicitParam
+from autocode.interfaces.models import FunctionInfo, ExplicitParam, GenericOutput
 
 
 class TestGenerateFunctionInfo:
@@ -23,7 +23,7 @@ class TestGenerateFunctionInfo:
     
     def test_generate_function_info_simple(self):
         """Test function info generation from simple function."""
-        def simple_func(x: int, y: str = "default") -> str:
+        def simple_func(x: int, y: str = "default") -> GenericOutput:
             """Simple function for testing.
             
             Args:
@@ -33,7 +33,7 @@ class TestGenerateFunctionInfo:
             Returns:
                 A formatted string
             """
-            return f"{x}: {y}"
+            return GenericOutput(result=f"{x}: {y}", success=True)
         
         info = _generate_function_info(simple_func)
         
@@ -59,14 +59,24 @@ class TestGenerateFunctionInfo:
         assert y_param.description == "A string parameter with default"
     
     def test_generate_function_info_no_annotations(self):
-        """Test function info generation without type annotations."""
+        """Test function info generation without type annotations - should fail without return type."""
         def no_annotations_func(x, y=42):
             """Function without type annotations."""
             return x + y
         
-        info = _generate_function_info(no_annotations_func)
+        # Should raise RegistryError because no return type annotation
+        with pytest.raises(RegistryError, match="must have a return type annotation"):
+            _generate_function_info(no_annotations_func)
+    
+    def test_generate_function_info_with_any_params(self):
+        """Test function info generation with Any type parameters but GenericOutput return."""
+        def any_params_func(x, y=42) -> GenericOutput:
+            """Function with Any type parameters."""
+            return GenericOutput(result=x + y, success=True)
         
-        assert info.name == "no_annotations_func"
+        info = _generate_function_info(any_params_func)
+        
+        assert info.name == "any_params_func"
         assert len(info.params) == 2
         
         # Parameters should use Any type when no annotation
@@ -83,8 +93,8 @@ class TestGenerateFunctionInfo:
     
     def test_generate_function_info_no_docstring(self):
         """Test function info generation without docstring."""
-        def no_doc_func(x: int) -> int:
-            return x * 2
+        def no_doc_func(x: int) -> GenericOutput:
+            return GenericOutput(result=x * 2, success=True)
         
         info = _generate_function_info(no_doc_func)
         
@@ -98,9 +108,9 @@ class TestGenerateFunctionInfo:
     
     def test_generate_function_info_custom_http_methods(self):
         """Test function info generation with custom HTTP methods."""
-        def custom_func(x: int) -> int:
+        def custom_func(x: int) -> GenericOutput:
             """Custom function."""
-            return x
+            return GenericOutput(result=x, success=True)
         
         info = _generate_function_info(custom_func, http_methods=["POST", "PUT"])
         
@@ -108,8 +118,8 @@ class TestGenerateFunctionInfo:
     
     def test_generate_function_info_invalid_http_methods(self):
         """Test function info generation with invalid HTTP methods."""
-        def test_func(x: int) -> int:
-            return x
+        def test_func(x: int) -> GenericOutput:
+            return GenericOutput(result=x, success=True)
         
         with pytest.raises(ValueError, match="Invalid HTTP methods"):
             _generate_function_info(test_func, http_methods=["INVALID"])
@@ -121,14 +131,14 @@ class TestGenerateFunctionInfo:
             optional_param: int = 10,
             *args,
             **kwargs
-        ) -> dict:
+        ) -> GenericOutput:
             """Complex function with various parameter types.
             
             Args:
                 required_param: A required string parameter
                 optional_param: An optional integer parameter
             """
-            return {"result": "complex"}
+            return GenericOutput(result={"result": "complex"}, success=True)
         
         info = _generate_function_info(complex_func)
         
@@ -153,9 +163,9 @@ class TestRegisterFunctionDecorator:
     def test_register_function_basic(self):
         """Test basic function registration."""
         @register_function()
-        def test_basic_func(x: int) -> int:
+        def test_basic_func(x: int) -> GenericOutput:
             """Basic test function."""
-            return x * 2
+            return GenericOutput(result=x * 2, success=True)
         
         assert "test_basic_func" in FUNCTION_REGISTRY
         func_info = FUNCTION_REGISTRY["test_basic_func"]
@@ -167,14 +177,15 @@ class TestRegisterFunctionDecorator:
         assert func_info.params[0].name == "x"
         
         # Test that function still works normally
-        assert test_basic_func(5) == 10
+        result = test_basic_func(5)
+        assert result.result == 10
     
     def test_register_function_custom_methods(self):
         """Test function registration with custom HTTP methods."""
         @register_function(http_methods=["GET"])
-        def get_only_func(x: str) -> str:
+        def get_only_func(x: str) -> GenericOutput:
             """GET-only function."""
-            return f"GET: {x}"
+            return GenericOutput(result=f"GET: {x}", success=True)
         
         assert "get_only_func" in FUNCTION_REGISTRY
         func_info = FUNCTION_REGISTRY["get_only_func"]
@@ -199,9 +210,9 @@ class TestRegistryPublicAPI:
         func = get_function("test_add")
         
         assert callable(func)
-        # Test that we got the right function
+        # Test that we got the right function - now returns GenericOutput
         result = func(3, 4)
-        assert result == 7
+        assert result.result == 7
     
     def test_get_function_not_found(self):
         """Test function retrieval with non-existent function."""
@@ -254,8 +265,9 @@ class TestRegistryPublicAPI:
         
         # Add another function and test sorting
         @register_function()
-        def another_func():
-            pass
+        def another_func() -> GenericOutput:
+            """Another function for testing."""
+            return GenericOutput(result="done", success=True)
         
         functions = list_functions()
         assert functions == ["another_func", "test_add"]
@@ -284,8 +296,9 @@ class TestRegistryPublicAPI:
         """Test registry statistics with populated registry."""
         # Add another function with different methods
         @register_function(http_methods=["GET", "PUT"])
-        def put_func():
-            pass
+        def put_func() -> GenericOutput:
+            """PUT function for testing."""
+            return GenericOutput(result="put", success=True)
         
         stats = get_registry_stats()
         
@@ -365,14 +378,14 @@ class TestRegistryIntegration:
         """Test complete flow from registration to usage."""
         # Register a function
         @register_function(http_methods=["GET", "POST"])
-        def integration_test_func(name: str, count: int = 1) -> str:
+        def integration_test_func(name: str, count: int = 1) -> GenericOutput:
             """Integration test function.
             
             Args:
                 name: The name to repeat
                 count: How many times to repeat it
             """
-            return " ".join([name] * count)
+            return GenericOutput(result=" ".join([name] * count), success=True)
         
         # Verify registration
         assert "integration_test_func" in FUNCTION_REGISTRY
@@ -380,7 +393,7 @@ class TestRegistryIntegration:
         # Test function retrieval and execution
         func = get_function("integration_test_func")
         result = func("test", 3)
-        assert result == "test test test"
+        assert result.result == "test test test"
         
         # Test parameter information
         params = get_parameters("integration_test_func")

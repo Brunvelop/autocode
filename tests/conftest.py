@@ -6,7 +6,7 @@ from unittest.mock import Mock, MagicMock, patch
 from typing import Dict, Any, List
 import logging
 
-from autocode.interfaces.models import ExplicitParam, FunctionInfo
+from autocode.interfaces.models import ExplicitParam, FunctionInfo, GenericOutput
 from autocode.interfaces.registry import FUNCTION_REGISTRY, clear_registry
 
 # Configure logging for tests
@@ -24,7 +24,7 @@ def cleanup_registry():
 @pytest.fixture
 def sample_function():
     """Sample function for testing registry functionality."""
-    def test_add(x: int, y: int = 1) -> int:
+    def test_add(x: int, y: int = 1) -> GenericOutput:
         """Add two numbers together.
         
         Args:
@@ -34,7 +34,7 @@ def sample_function():
         Returns:
             Sum of x and y
         """
-        return x + y
+        return GenericOutput(result=x + y, success=True)
     return test_add
 
 
