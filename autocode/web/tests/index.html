@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🧪 Autocode - Test Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gradient-to-br from-gray-50 to-gray-100 min-h-screen">
+    <div class="max-w-4xl mx-auto p-8">
+        <!-- Header -->
+        <div class="text-center mb-12">
+            <h1 class="text-4xl font-bold text-gray-800 mb-2">🧪 Test Dashboard</h1>
+            <p class="text-gray-600">Hub central para todos los tests del proyecto Autocode</p>
+            <a href="/" class="inline-block mt-4 text-indigo-600 hover:text-indigo-800 text-sm">
+                ← Volver a la app
+            </a>
+        </div>
+
+        <!-- Test Suites Grid -->
+        <div class="grid gap-6 md:grid-cols-2">
+            
+            <!-- Unit Tests: Chat Components -->
+            <a href="/tests/components/chat.test.html" 
+               class="block p-6 bg-white rounded-2xl shadow-lg hover:shadow-xl transition-shadow border border-gray-100 group">
+                <div class="flex items-start gap-4">
+                    <div class="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center text-2xl group-hover:scale-110 transition-transform">
+                        🧩
+                    </div>
+                    <div class="flex-1">
+                        <h2 class="text-xl font-bold text-gray-800 mb-1">Chat Components</h2>
+                        <p class="text-gray-500 text-sm mb-3">Tests unitarios de web components</p>
+                        <div class="flex gap-2 flex-wrap">
+                            <span class="px-2 py-1 bg-gray-100 text-gray-600 rounded text-xs">chat-input</span>
+                            <span class="px-2 py-1 bg-gray-100 text-gray-600 rounded text-xs">chat-messages</span>
+                            <span class="px-2 py-1 bg-gray-100 text-gray-600 rounded text-xs">chat-window</span>
+                            <span class="px-2 py-1 bg-gray-100 text-gray-600 rounded text-xs">context-bar</span>
+                        </div>
+                    </div>
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-300 group-hover:text-indigo-500 transition-colors" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd" />
+                    </svg>
+                </div>
+            </a>
+
+            <!-- Integration Tests (placeholder) -->
+            <div class="p-6 bg-white rounded-2xl shadow-lg border border-gray-100 opacity-60">
+                <div class="flex items-start gap-4">
+                    <div class="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center text-2xl">
+                        🔗
+                    </div>
+                    <div class="flex-1">
+                        <h2 class="text-xl font-bold text-gray-800 mb-1">Integration Tests</h2>
+                        <p class="text-gray-500 text-sm mb-3">Tests de integración (requieren servidor)</p>
+                        <div class="flex gap-2 flex-wrap">
+                            <span class="px-2 py-1 bg-yellow-100 text-yellow-700 rounded text-xs">⏳ Próximamente</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- E2E Tests Info -->
+            <div class="p-6 bg-white rounded-2xl shadow-lg border border-gray-100">
+                <div class="flex items-start gap-4">
+                    <div class="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center text-2xl">
+                        🎭
+                    </div>
+                    <div class="flex-1">
+                        <h2 class="text-xl font-bold text-gray-800 mb-1">E2E Tests (Playwright)</h2>
+                        <p class="text-gray-500 text-sm mb-3">Tests automatizados con Playwright</p>
+                        <div class="p-3 bg-gray-50 rounded-lg">
+                            <code class="text-xs text-gray-600 font-mono">uv run pytest tests/e2e/ -v</code>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Python Unit Tests Info -->
+            <div class="p-6 bg-white rounded-2xl shadow-lg border border-gray-100">
+                <div class="flex items-start gap-4">
+                    <div class="w-12 h-12 bg-yellow-100 rounded-xl flex items-center justify-center text-2xl">
+                        🐍
+                    </div>
+                    <div class="flex-1">
+                        <h2 class="text-xl font-bold text-gray-800 mb-1">Python Tests</h2>
+                        <p class="text-gray-500 text-sm mb-3">Tests unitarios del backend</p>
+                        <div class="p-3 bg-gray-50 rounded-lg">
+                            <code class="text-xs text-gray-600 font-mono">uv run pytest tests/unit/ -v</code>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Info Section -->
+        <div class="mt-12 p-6 bg-white/50 rounded-2xl border border-gray-200">
+            <h3 class="font-bold text-gray-700 mb-3">📋 Tipos de Tests</h3>
+            <div class="grid gap-4 md:grid-cols-3 text-sm">
+                <div>
+                    <div class="font-semibold text-green-700">Unit Tests (Browser)</div>
+                    <p class="text-gray-500">Tests de componentes aislados que se ejecutan directamente en el navegador sin servidor.</p>
+                </div>
+                <div>
+                    <div class="font-semibold text-blue-700">Integration Tests</div>
+                    <p class="text-gray-500">Tests que verifican la interacción entre componentes con el servidor corriendo.</p>
+                </div>
+                <div>
+                    <div class="font-semibold text-purple-700">E2E Tests</div>
+                    <p class="text-gray-500">Tests automatizados con Playwright que simulan interacción real del usuario.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="mt-8 text-center text-gray-400 text-sm">
+            <p>Autocode Test Framework • TDD Approach</p>
+        </div>
+    </div>
+</body>
+</html>

@@ -130,6 +130,7 @@ def _register_standard_endpoints(app: FastAPI):
     
     current_dir = os.path.dirname(__file__)
     views_dir = os.path.join(current_dir, "..", "web", "views")
+    tests_dir = os.path.join(current_dir, "..", "web", "tests")
     
     @app.get("/")
     async def root():
@@ -145,6 +146,11 @@ def _register_standard_endpoints(app: FastAPI):
     async def demo_ui():
         """Serve the custom elements demo page."""
         return FileResponse(os.path.join(views_dir, "demo.html"))
+
+    @app.get("/tests")
+    async def tests_dashboard():
+        """Serve the test dashboard page."""
+        return FileResponse(os.path.join(tests_dir, "index.html"))
 
     @app.get("/functions/details", response_model=FunctionDetailsResponse)
     async def list_functions_details():
@@ -168,6 +174,11 @@ def _register_static_files(app: FastAPI):
     elements_dir = os.path.join(web_dir, "elements")
     if os.path.exists(elements_dir):
         app.mount("/elements", StaticFiles(directory=elements_dir), name="elements")
+
+    # Mount tests directory for browser-based tests
+    tests_dir = os.path.join(web_dir, "tests")
+    if os.path.exists(tests_dir):
+        app.mount("/tests", StaticFiles(directory=tests_dir, html=True), name="tests")
 
     # Mount static directory for general assets
     static_dir = os.path.join(web_dir, "static")
