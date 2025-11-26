@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Context Bar - Unit Tests</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="p-8 bg-gray-100 min-h-screen">
+    <div class="flex items-center gap-4 mb-2">
+        <a href="/tests" class="text-indigo-600 hover:text-indigo-800">← Tests</a>
+        <h1 class="text-3xl font-bold">📊 Context Bar - Unit Tests</h1>
+    </div>
+    
+    <div id="summary" class="mb-6 p-4 bg-white rounded-lg shadow"></div>
+    <div id="results" class="space-y-2"></div>
+
+    <script type="module">
+        import { TestRunner } from '../../utils/test-runner.js'; 
+        
+        try {
+            await import('/elements/chat/context-bar.js');
+        } catch (e) {
+            console.warn('context-bar.js no encontrado:', e.message);
+        }
+
+        const runner = new TestRunner();
+
+        runner.group('ContextBar', () => {
+            runner.test('ContextBar: se registra como custom element', async () => {
+                await runner.waitForElement('context-bar');
+                runner.assertTrue(customElements.get('context-bar'));
+            });
+
+            runner.test('ContextBar: muestra current/max correctamente', async (stage) => {
+                await runner.waitForElement('context-bar');
+                const el = document.createElement('context-bar');
+                el.setAttribute('current', '5000');
+                el.setAttribute('max', '10000');
+                stage.appendChild(el);
+                
+                const stats = el.querySelector('[data-ref="stats"]') || el.shadowRoot?.querySelector('[data-ref="stats"]');
+                // Verificar formato "X / Y"
+                runner.assertTrue(stats.textContent.includes('/'), 'Debe mostrar formato current / max');
+                runner.assertTrue(stats.textContent.includes('5'), 'Debe contener el valor 5000');
+                runner.assertTrue(stats.textContent.includes('10'), 'Debe contener el valor 10000');
+            });
+
+            runner.test('ContextBar: barra verde cuando < 70%', async (stage) => {
+                await runner.waitForElement('context-bar');
+                const el = document.createElement('context-bar');
+                el.setAttribute('current', '3000');
+                el.setAttribute('max', '10000');
+                stage.appendChild(el);
+                
+                const bar = el.querySelector('[data-ref="bar"]') || el.shadowRoot?.querySelector('[data-ref="bar"]');
+                runner.assertTrue(bar.classList.contains('bg-green-500'), 'Debe ser verde bajo 70%');
+            });
+
+            runner.test('ContextBar: barra amarilla cuando 70-90%', async (stage) => {
+                await runner.waitForElement('context-bar');
+                const el = document.createElement('context-bar');
+                el.setAttribute('current', '8000');
+                el.setAttribute('max', '10000');
+                stage.appendChild(el);
+                
+                const bar = el.querySelector('[data-ref="bar"]') || el.shadowRoot?.querySelector('[data-ref="bar"]');
+                runner.assertTrue(bar.classList.contains('bg-yellow-500'), 'Debe ser amarillo entre 70-90%');
+            });
+
+            runner.test('ContextBar: barra roja cuando > 90%', async (stage) => {
+                await runner.waitForElement('context-bar');
+                const el = document.createElement('context-bar');
+                el.setAttribute('current', '9500');
+                el.setAttribute('max', '10000');
+                stage.appendChild(el);
+                
+                const bar = el.querySelector('[data-ref="bar"]') || el.shadowRoot?.querySelector('[data-ref="bar"]');
+                runner.assertTrue(bar.classList.contains('bg-red-500'), 'Debe ser rojo sobre 90%');
+            });
+
+            runner.test('ContextBar: actualiza al cambiar atributos', async (stage) => {
+                await runner.waitForElement('context-bar');
+                const el = document.createElement('context-bar');
+                el.setAttribute('current', '1000');
+                el.setAttribute('max', '10000');
+                stage.appendChild(el);
+                
+                el.setAttribute('current', '9000');
+                
+                await runner.sleep(50); // Esperar actualización
+                const bar = el.querySelector('[data-ref="bar"]') || el.shadowRoot?.querySelector('[data-ref="bar"]');
+                runner.assertTrue(bar.classList.contains('bg-yellow-500') || bar.classList.contains('bg-red-500'));
+            });
+        });
+
+        runner.run();
+    </script>
+</body>
+</html>

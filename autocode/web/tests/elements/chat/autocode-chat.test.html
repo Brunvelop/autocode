@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Autocode Chat - Component UI Tests</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="p-8 bg-gray-100 min-h-screen">
+    <div class="flex items-center gap-4 mb-2">
+        <a href="/tests" class="text-indigo-600 hover:text-indigo-800">← Tests</a>
+        <h1 class="text-3xl font-bold">🖥️ Autocode Chat - Component UI Tests</h1>
+    </div>
+    
+    <div id="summary" class="mb-6 p-4 bg-white rounded-lg shadow"></div>
+    <div id="results" class="space-y-2"></div>
+
+    <script type="module">
+        import { TestRunner } from '../../utils/test-runner.js'; 
+        
+        // Importar auto-element-generator primero (mock o real)
+        try { await import('/elements/auto-element-generator.js'); } catch {}
+        
+        // Importar componente principal
+        try {
+            await import('/elements/chat/autocode-chat.js');
+        } catch (e) {
+            console.warn('autocode-chat.js no encontrado:', e.message);
+        }
+
+        const runner = new TestRunner();
+
+        // Helper para mockear un entorno de test aislado
+        const createChatUI = async (stage) => {
+            await runner.waitForElement('autocode-chat');
+            const el = document.createElement('autocode-chat');
+            
+            // Mockear funcInfo para evitar llamadas iniciales
+            el.funcInfo = {
+                name: 'chat',
+                description: 'Mock Chat',
+                http_methods: ['POST'],
+                parameters: []
+            };
+            
+            stage.appendChild(el);
+            await runner.sleep(50);
+            return el;
+        };
+
+        runner.group('AutocodeChat UI', () => {
+            runner.test('Component: se registra correctamente', async () => {
+                await runner.waitForElement('autocode-chat');
+                runner.assertTrue(customElements.get('autocode-chat'));
+            });
+
+            runner.test('Structure: renderiza todos los sub-componentes', async (stage) => {
+                const el = await createChatUI(stage);
+                
+                runner.assertTrue(el.querySelector('chat-window'), 'Debe tener chat-window');
+                runner.assertTrue(el.querySelector('chat-messages'), 'Debe tener chat-messages');
+                runner.assertTrue(el.querySelector('chat-input'), 'Debe tener chat-input');
+                runner.assertTrue(el.querySelector('context-bar'), 'Debe tener context-bar');
+                runner.assertTrue(el.querySelector('chat-settings'), 'Debe tener chat-settings');
+            });
+
+            runner.test('Header: muestra badge de modelo cargando inicialmente', async (stage) => {
+                const el = await createChatUI(stage);
+                const badge = el.querySelector('[data-ref="modelName"]');
+                runner.assertTrue(badge.textContent.includes('Loading') || badge.textContent === '', 'Debe iniciar en loading o vacío');
+            });
+
+            runner.test('Header: botón Nueva existe', async (stage) => {
+                const el = await createChatUI(stage);
+                const btn = el.querySelector('[data-ref="newChatBtn"]');
+                runner.assertTrue(btn, 'Botón Nueva debe existir');
+            });
+
+            runner.test('Logic: click en Nueva limpia historial local', async (stage) => {
+                const el = await createChatUI(stage);
+                
+                // Simular estado sucio
+                el.conversationHistory = [{ role: 'user', content: 'test' }];
+                
+                // Click
+                const btn = el.querySelector('[data-ref="newChatBtn"]');
+                btn.click();
+                
+                await runner.sleep(10);
+                runner.assertEqual(el.conversationHistory.length, 0, 'Historial debe vaciarse');
+            });
+
+            runner.test('Logic: setupComponentRefs inicializa referencias privadas', async (stage) => {
+                const el = await createChatUI(stage);
+                
+                runner.assertTrue(el._window, '_window ref ok');
+                runner.assertTrue(el._messages, '_messages ref ok');
+                runner.assertTrue(el._input, '_input ref ok');
+                runner.assertTrue(el._contextBar, '_contextBar ref ok');
+                runner.assertTrue(el._settings, '_settings ref ok');
+            });
+            
+            runner.test('Logic: injectHiddenParams crea inputs ocultos', async (stage) => {
+                const el = await createChatUI(stage);
+                
+                // Configurar parámetros
+                el.funcInfo = {
+                    parameters: [
+                        { name: 'model', type: 'str', default: 'gpt-4o' },
+                        { name: 'temperature', type: 'float', default: 0.7 }
+                    ]
+                };
+                
+                // Forzar inyección
+                el._injectHiddenParams();
+                
+                const hiddenParams = el.querySelector('[data-ref="hiddenParams"]');
+                runner.assertTrue(hiddenParams.querySelector('input[name="model"]'), 'Input model debe existir');
+                runner.assertTrue(hiddenParams.querySelector('input[name="temperature"]'), 'Input temperature debe existir');
+            });
+        });
+
+        runner.run();
+    </script>
+</body>
+</html>

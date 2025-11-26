@@ -3,6 +3,7 @@
  *
  * Responsabilidad única: ejecutar tests, assertions y reportar resultados.
  * Soporta agrupación visual (suites) y expansión de detalles.
+ * Soporta comunicación con ventana padre (iframe mode) para orquestación.
  */
 
 export class TestRunner {
@@ -19,6 +20,9 @@ export class TestRunner {
         
         // Estado para agrupación
         this.currentGroup = null;
+
+        // Detectar si estamos en un iframe
+        this.isEmbedded = window.parent !== window;
     }
 
     // ============================================
@@ -188,6 +192,21 @@ export class TestRunner {
     }
 
     // ============================================
+    // COMMUNICATION (Iframe Mode)
+    // ============================================
+
+    _notifyParent(type, payload = {}) {
+        if (this.isEmbedded) {
+            window.parent.postMessage({
+                type: `TEST_${type}`,
+                ...payload,
+                // Incluir location para que el padre sepa qué archivo reporta
+                file: window.location.pathname
+            }, '*');
+        }
+    }
+
+    // ============================================
     // UI RENDERING HELPERS
     // ============================================
 
@@ -280,6 +299,7 @@ export class TestRunner {
 
     async run() {
         this.serverAvailable = await this.checkServer();
+        this._notifyParent('START', { totalTests: this.testQueue.length });
 
         for (const { name, fn, options, group } of this.testQueue) {
             // Preparar UI del test
@@ -289,6 +309,7 @@ export class TestRunner {
             if (options.requiresServer && !this.serverAvailable) {
                 this._updateTestCard(card, 'skipped', 'requiere servidor');
                 this.skipped++;
+                this._notifyParent('RESULT', { name, status: 'skipped', message: 'requiere servidor' });
                 if (group) { group.skipped++; this._updateGroupStatus(group); }
                 continue;
             }
@@ -298,15 +319,23 @@ export class TestRunner {
                 await fn(card.stage);
                 this._updateTestCard(card, 'passed');
                 this.passed++;
+                this._notifyParent('RESULT', { name, status: 'passed' });
                 if (group) { group.passed++; this._updateGroupStatus(group); }
             } catch (e) {
                 this._updateTestCard(card, 'failed', e.message);
                 this.failed++;
+                this._notifyParent('RESULT', { name, status: 'failed', message: e.message });
                 if (group) { group.failed++; this._updateGroupStatus(group); }
             }
         }
 
         this._renderSummary();
+        this._notifyParent('COMPLETE', { 
+            passed: this.passed, 
+            failed: this.failed, 
+            skipped: this.skipped,
+            total: this.passed + this.failed + this.skipped
+        });
     }
 
     _renderSummary() {

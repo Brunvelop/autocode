@@ -10,7 +10,7 @@
  * - Eventos
  *
  * Uso:
- *   import { generateAutoElementTests } from './_shared/auto-element-tests.js';
+ *   import { generateAutoElementTests } from '../utils/auto-element-tests.js';
  *   await generateAutoElementTests(runner);
  */
 

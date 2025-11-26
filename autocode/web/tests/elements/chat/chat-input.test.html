@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat Input - Unit Tests</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="p-8 bg-gray-100 min-h-screen">
+    <div class="flex items-center gap-4 mb-2">
+        <a href="/tests" class="text-indigo-600 hover:text-indigo-800">← Tests</a>
+        <h1 class="text-3xl font-bold">⌨️ Chat Input - Unit Tests</h1>
+    </div>
+    
+    <div id="summary" class="mb-6 p-4 bg-white rounded-lg shadow"></div>
+    <div id="results" class="space-y-2"></div>
+
+    <script type="module">
+        import { TestRunner } from '../../utils/test-runner.js'; 
+        
+        // Importar componente
+        try {
+            await import('/elements/chat/chat-input.js');
+        } catch (e) {
+            console.warn('chat-input.js no encontrado:', e.message);
+        }
+
+        const runner = new TestRunner();
+
+        runner.group('ChatInput', () => {
+            runner.test('ChatInput: se registra como custom element', async () => {
+                await runner.waitForElement('chat-input');
+                runner.assertTrue(customElements.get('chat-input'));
+            });
+
+            runner.test('ChatInput: renderiza input y botón', async (stage) => {
+                await runner.waitForElement('chat-input');
+                const el = document.createElement('chat-input');
+                stage.appendChild(el);
+                
+                const input = el.querySelector('input') || el.shadowRoot?.querySelector('input');
+                const button = el.querySelector('button') || el.shadowRoot?.querySelector('button');
+                
+                runner.assertTrue(input, 'Debe tener un input');
+                runner.assertTrue(button, 'Debe tener un botón');
+            });
+
+            runner.test('ChatInput: placeholder configurable via atributo', async (stage) => {
+                await runner.waitForElement('chat-input');
+                const el = document.createElement('chat-input');
+                el.setAttribute('placeholder', 'Test placeholder');
+                stage.appendChild(el);
+                
+                const input = el.querySelector('input') || el.shadowRoot?.querySelector('input');
+                runner.assertEqual(input.placeholder, 'Test placeholder');
+            });
+
+            runner.test('ChatInput: emite evento submit con mensaje al hacer click', async (stage) => {
+                await runner.waitForElement('chat-input');
+                const el = document.createElement('chat-input');
+                stage.appendChild(el);
+                
+                let receivedMessage = null;
+                el.addEventListener('submit', (e) => {
+                    receivedMessage = e.detail.message;
+                });
+                
+                const input = el.querySelector('input') || el.shadowRoot?.querySelector('input');
+                const button = el.querySelector('button') || el.shadowRoot?.querySelector('button');
+                
+                input.value = 'Test message';
+                button.click();
+                
+                runner.assertEqual(receivedMessage, 'Test message');
+            });
+
+            runner.test('ChatInput: emite evento submit con Enter', async (stage) => {
+                await runner.waitForElement('chat-input');
+                const el = document.createElement('chat-input');
+                stage.appendChild(el);
+                
+                let receivedMessage = null;
+                el.addEventListener('submit', (e) => {
+                    receivedMessage = e.detail.message;
+                });
+                
+                const input = el.querySelector('input') || el.shadowRoot?.querySelector('input');
+                input.value = 'Enter test';
+                input.dispatchEvent(new KeyboardEvent('keypress', { key: 'Enter', bubbles: true }));
+                
+                runner.assertEqual(receivedMessage, 'Enter test');
+            });
+
+            runner.test('ChatInput: clear() limpia el input', async (stage) => {
+                await runner.waitForElement('chat-input');
+                const el = document.createElement('chat-input');
+                stage.appendChild(el);
+                
+                const input = el.querySelector('input') || el.shadowRoot?.querySelector('input');
+                input.value = 'Some text';
+                
+                el.clear();
+                runner.assertEqual(input.value, '');
+            });
+
+            runner.test('ChatInput: focus() enfoca el input', async (stage) => {
+                await runner.waitForElement('chat-input');
+                const el = document.createElement('chat-input');
+                stage.appendChild(el);
+                
+                el.focus();
+                await runner.sleep(50);
+                
+                const input = el.querySelector('input') || el.shadowRoot?.querySelector('input');
+                if (document.activeElement !== document.body) {
+                     runner.assertEqual(document.activeElement, input);
+                }
+            });
+
+            runner.test('ChatInput: disabled desactiva input y botón', async (stage) => {
+                await runner.waitForElement('chat-input');
+                const el = document.createElement('chat-input');
+                el.setAttribute('disabled', '');
+                stage.appendChild(el);
+                
+                const input = el.querySelector('input') || el.shadowRoot?.querySelector('input');
+                const button = el.querySelector('button') || el.shadowRoot?.querySelector('button');
+                
+                runner.assertTrue(input.disabled, 'Input debe estar disabled');
+                runner.assertTrue(button.disabled, 'Botón debe estar disabled');
+            });
+        });
+
+        runner.run();
+    </script>
+</body>
+</html>

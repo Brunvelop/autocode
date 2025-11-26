@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat Messages - Unit Tests</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="p-8 bg-gray-100 min-h-screen">
+    <div class="flex items-center gap-4 mb-2">
+        <a href="/tests" class="text-indigo-600 hover:text-indigo-800">← Tests</a>
+        <h1 class="text-3xl font-bold">💬 Chat Messages - Unit Tests</h1>
+    </div>
+    
+    <div id="summary" class="mb-6 p-4 bg-white rounded-lg shadow"></div>
+    <div id="results" class="space-y-2"></div>
+
+    <script type="module">
+        import { TestRunner } from '../../utils/test-runner.js'; 
+        
+        try {
+            await import('/elements/chat/chat-messages.js');
+        } catch (e) {
+            console.warn('chat-messages.js no encontrado:', e.message);
+        }
+
+        const runner = new TestRunner();
+
+        runner.group('ChatMessages', () => {
+            runner.test('ChatMessages: se registra como custom element', async () => {
+                await runner.waitForElement('chat-messages');
+                runner.assertTrue(customElements.get('chat-messages'));
+            });
+
+            runner.test('ChatMessages: addMessage() añade mensaje de usuario', async (stage) => {
+                await runner.waitForElement('chat-messages');
+                const el = document.createElement('chat-messages');
+                stage.appendChild(el);
+                
+                el.addMessage('user', 'Hola mundo');
+                
+                const messages = el.querySelectorAll('[data-role="user"]');
+                runner.assertEqual(messages.length, 1);
+                runner.assertTrue(messages[0].textContent.includes('Hola mundo'));
+            });
+
+            runner.test('ChatMessages: addMessage() añade mensaje de asistente', async (stage) => {
+                await runner.waitForElement('chat-messages');
+                const el = document.createElement('chat-messages');
+                stage.appendChild(el);
+                
+                el.addMessage('assistant', 'Respuesta AI');
+                
+                const messages = el.querySelectorAll('[data-role="assistant"]');
+                runner.assertEqual(messages.length, 1);
+                runner.assertTrue(messages[0].textContent.includes('Respuesta AI'));
+            });
+
+            runner.test('ChatMessages: addMessage() añade mensaje de error', async (stage) => {
+                await runner.waitForElement('chat-messages');
+                const el = document.createElement('chat-messages');
+                stage.appendChild(el);
+                
+                el.addMessage('error', 'Algo salió mal');
+                
+                const messages = el.querySelectorAll('[data-role="error"]');
+                runner.assertEqual(messages.length, 1);
+            });
+
+            runner.test('ChatMessages: clear() elimina todos los mensajes', async (stage) => {
+                await runner.waitForElement('chat-messages');
+                const el = document.createElement('chat-messages');
+                stage.appendChild(el);
+                
+                el.addMessage('user', 'Mensaje 1');
+                el.addMessage('assistant', 'Mensaje 2');
+                el.clear();
+                
+                const messages = el.querySelectorAll('[data-role]');
+                runner.assertEqual(messages.length, 0);
+            });
+
+            runner.test('ChatMessages: auto-scroll al añadir mensaje', async (stage) => {
+                await runner.waitForElement('chat-messages');
+                const el = document.createElement('chat-messages');
+                el.style.height = '100px';
+                el.style.overflow = 'auto';
+                stage.appendChild(el);
+                
+                // El contenedor interno es el que tiene scroll
+                const container = el.querySelector('[data-ref="container"]');
+                if (container) {
+                    container.style.height = '100px';
+                    container.style.overflow = 'auto';
+                }
+                
+                // Añadir varios mensajes para forzar scroll
+                for (let i = 0; i < 10; i++) {
+                    el.addMessage('user', `Mensaje largo ${i} que ocupa espacio`);
+                }
+                
+                // Esperar que requestAnimationFrame procese el scroll
+                await runner.sleep(150);
+                
+                // Verificar que hay contenido con scroll (scrollHeight > clientHeight)
+                const scrollContainer = container || el;
+                runner.assertTrue(scrollContainer.scrollHeight > scrollContainer.clientHeight, 'Debe tener contenido scrolleable');
+            });
+
+            runner.test('ChatMessages: soporta objeto complejo con reasoning', async (stage) => {
+                await runner.waitForElement('chat-messages');
+                const el = document.createElement('chat-messages');
+                stage.appendChild(el);
+                
+                const complexResponse = {
+                    result: { response: 'Respuesta final' },
+                    reasoning: 'Paso 1: Pensar...'
+                };
+                
+                el.addMessage('assistant', complexResponse);
+                
+                // Verificar que se renderiza el reasoning
+                const reasoningEl = el.querySelector('[data-type="reasoning"]');
+                runner.assertTrue(reasoningEl, 'Debe existir el elemento de reasoning');
+                runner.assertTrue(reasoningEl.textContent.includes('Paso 1: Pensar'), 'Debe contener el texto del reasoning');
+            });
+
+            runner.test('ChatMessages: soporta objeto complejo con trajectory', async (stage) => {
+                await runner.waitForElement('chat-messages');
+                const el = document.createElement('chat-messages');
+                stage.appendChild(el);
+                
+                const complexResponse = {
+                    result: { response: 'Respuesta final' },
+                    trajectory: [
+                        { thought: 'Pensar', tool_name: 'test_tool', tool_input: '{}', observation: 'Resultado' }
+                    ]
+                };
+                
+                el.addMessage('assistant', complexResponse);
+                
+                // Buscar el texto de la herramienta en el contenido
+                const content = el.textContent || el.innerText;
+                runner.assertTrue(content.includes('test_tool'), 'Debe mostrar nombre de herramienta');
+            });
+        });
+
+        runner.run();
+    </script>
+</body>
+</html>
