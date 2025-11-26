@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat Debug Info - Unit Tests</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="p-8 bg-gray-100 min-h-screen">
+    <div class="flex items-center gap-4 mb-2">
+        <a href="/tests" class="text-indigo-600 hover:text-indigo-800">← Tests</a>
+        <h1 class="text-3xl font-bold">🐞 Chat Debug Info - Unit Tests</h1>
+    </div>
+    
+    <div id="summary" class="mb-6 p-4 bg-white rounded-lg shadow"></div>
+    <div id="results" class="space-y-2"></div>
+
+    <script type="module">
+        import { TestRunner } from '../integration/_shared/test-runner.js';
+        
+        // Importar el componente (aún no creado, fallará la carga si no se crea pronto, 
+        // pero en este entorno crearemos el archivo JS después)
+        try {
+            await import('/elements/chat/chat-debug-info.js');
+        } catch (e) {
+            console.warn('chat-debug-info.js aún no existe, los tests fallarán si no se crea.');
+        }
+
+        const runner = new TestRunner();
+
+        // Datos de prueba basados en el ejemplo real del usuario
+        const mockResponse = {
+            "result": "¡Hola! ¿En qué puedo ayudarte hoy?",
+            "success": true,
+            "message": "Generación exitosa",
+            "history": [
+                {
+                    "prompt": null,
+                    "messages": [],
+                    "response": {
+                        "id": "gen-123",
+                        "model": "x-ai/grok-code-fast-1",
+                        "usage": {
+                            "completion_tokens": 205,
+                            "prompt_tokens": 444,
+                            "total_tokens": 649
+                        },
+                        "provider": "xAI"
+                    },
+                    "timestamp": "2025-11-26T12:29:23.534618",
+                    "model": "openrouter/x-ai/grok-code-fast-1"
+                }
+            ]
+        };
+
+        const mockSimpleResponse = {
+            "result": "Simple response without history",
+            "success": true
+        };
+
+        runner.group('ChatDebugInfo', () => {
+            runner.test('ChatDebugInfo: se registra como custom element', async () => {
+                await runner.waitForElement('chat-debug-info');
+                runner.assertTrue(customElements.get('chat-debug-info'));
+            });
+
+            runner.test('ChatDebugInfo: renderiza resumen colapsado por defecto', async (stage) => {
+                const el = document.createElement('chat-debug-info');
+                stage.appendChild(el);
+                
+                // Asignar datos
+                el.data = mockResponse;
+                await runner.sleep(10);
+                
+                const details = el.querySelector('details');
+                runner.assertTrue(details, 'Debe renderizar un <details>');
+                runner.assertFalse(details.hasAttribute('open'), 'Debe estar cerrado por defecto');
+            });
+
+            runner.test('ChatDebugInfo: extrae y muestra modelo y tokens en resumen', async (stage) => {
+                const el = document.createElement('chat-debug-info');
+                stage.appendChild(el);
+                
+                el.data = mockResponse;
+                await runner.sleep(10);
+                
+                const summary = el.querySelector('summary');
+                const text = summary.textContent;
+                
+                runner.assertTrue(text.includes('649'), 'Debe mostrar total de tokens (649)');
+                runner.assertTrue(text.includes('grok-code-fast-1'), 'Debe mostrar nombre del modelo');
+            });
+
+            runner.test('ChatDebugInfo: muestra JSON completo al expandir', async (stage) => {
+                const el = document.createElement('chat-debug-info');
+                stage.appendChild(el);
+                el.data = mockResponse;
+                await runner.sleep(10);
+                
+                const jsonPre = el.querySelector('pre');
+                runner.assertTrue(jsonPre, 'Debe tener un bloque pre para JSON');
+                
+                // Verificar contenido JSON
+                const jsonContent = JSON.parse(jsonPre.textContent);
+                runner.assertEqual(jsonContent.result, mockResponse.result, 'JSON renderizado debe coincidir con datos');
+            });
+
+            runner.test('ChatDebugInfo: maneja respuestas sin metadatos (graceful degradation)', async (stage) => {
+                const el = document.createElement('chat-debug-info');
+                stage.appendChild(el);
+                
+                el.data = mockSimpleResponse;
+                await runner.sleep(10);
+                
+                const summary = el.querySelector('summary');
+                // Debería mostrar algo genérico si no hay tokens/modelo
+                runner.assertTrue(summary.textContent.includes('Info Técnica') || summary.textContent.includes('Debug'), 'Debe mostrar título genérico');
+            });
+
+            runner.test('ChatDebugInfo: formatea correctamente los contadores de tokens', async (stage) => {
+                const el = document.createElement('chat-debug-info');
+                stage.appendChild(el);
+                el.data = mockResponse;
+                await runner.sleep(10);
+                
+                // Buscar métricas detalladas (Prompt, Completion, Total)
+                const content = el.innerHTML; // O buscar elementos específicos si implementamos con clases
+                runner.assertTrue(content.includes('444'), 'Debe mostrar prompt tokens');
+                runner.assertTrue(content.includes('205'), 'Debe mostrar completion tokens');
+            });
+        });
+
+        runner.run();
+    </script>
+</body>
+</html>

@@ -259,7 +259,8 @@ class TestBuiltInCommands:
         # Check the arguments passed to uvicorn.run
         assert call_args[1]['host'] == "127.0.0.1"
         assert call_args[1]['port'] == 8000
-        assert call_args[1]['reload'] is False
+        # reload parameter is not passed when False
+        assert 'reload' not in call_args[1]
     
     @patch('uvicorn.run')
     def test_serve_api_command_custom_params(self, mock_uvicorn_run):
@@ -278,9 +279,11 @@ class TestBuiltInCommands:
         mock_uvicorn_run.assert_called_once()
         call_args = mock_uvicorn_run.call_args
         
+        assert call_args[0][0] == "autocode.interfaces.api:create_api_app"
         assert call_args[1]['host'] == "0.0.0.0"
         assert call_args[1]['port'] == 3000
         assert call_args[1]['reload'] is True
+        assert call_args[1]['factory'] is True
     
     @patch('uvicorn.run')
     @patch('autocode.interfaces.cli.create_mcp_app')
@@ -297,7 +300,7 @@ class TestBuiltInCommands:
         # Should have created MCP app and started uvicorn
         mock_create_mcp_app.assert_called_once()
         mock_uvicorn_run.assert_called_once_with(
-            mock_app, host="127.0.0.1", port=8001, reload=False
+            mock_app, host="127.0.0.1", port=8001
         )
     
     @patch('uvicorn.run')
@@ -312,10 +315,16 @@ class TestBuiltInCommands:
         
         assert result.exit_code == 0
         
-        # Should have created unified MCP app
-        mock_create_mcp_app.assert_called_once()
+        # Should NOT have called create_mcp_app directly (uses factory string)
+        mock_create_mcp_app.assert_not_called()
+        
+        # Should pass import string and factory=True
         mock_uvicorn_run.assert_called_once_with(
-            mock_app, host="127.0.0.1", port=8000, reload=True
+            "autocode.interfaces.mcp:create_mcp_app", 
+            host="127.0.0.1", 
+            port=8000, 
+            reload=True,
+            factory=True
         )
 
 

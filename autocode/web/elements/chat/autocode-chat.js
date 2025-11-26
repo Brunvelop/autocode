@@ -8,6 +8,7 @@
  * - ChatMessages: Lista de mensajes con scroll
  * - ChatInput: Input y botón de envío
  * - ContextBar: Barra de uso de tokens
+ * - ChatSettings: Configuración de modelo y parámetros
  */
 
 // Importar sub-componentes
@@ -15,6 +16,7 @@ import './chat-input.js';
 import './chat-messages.js';
 import './chat-window.js';
 import './context-bar.js';
+import './chat-settings.js';
 
 async function initAutocodeChat() {
     // Esperar a que auto-chat esté definido (generado por AutoElementGenerator)
@@ -33,25 +35,44 @@ async function initAutocodeChat() {
             this._input = null;
             this._contextBar = null;
             this._historyInput = null;
+            this._settings = null;
         }
 
         connectedCallback() {
             this.render();
             this._setupComponentRefs();
             this._setupEvents();
+            
+            // Configurar settings dinámicamente con la info de la función
+            if (this._settings && this.funcInfo) {
+                this._settings.configure(this.funcInfo);
+                this._updateModelBadge();
+            }
         }
 
         render() {
             this.innerHTML = `
                 <chat-window title="Autocode AI Chat">
                     <!-- Header actions -->
-                    <button 
-                        slot="header-actions"
-                        data-ref="newChatBtn"
-                        class="text-indigo-100 bg-white/10 hover:bg-white/20 border border-white/20 rounded-full px-3 py-1.5 text-sm font-semibold transition-colors"
-                    >
-                        Nueva
-                    </button>
+                    <div slot="header-actions" class="flex items-center gap-2">
+                        <!-- Model Badge -->
+                        <div 
+                            data-ref="modelBadge" 
+                            class="hidden md:flex items-center gap-1 px-2 py-1 rounded-full bg-indigo-50 border border-indigo-100 text-[10px] font-mono text-indigo-600 truncate max-w-[150px]"
+                            title="Modelo actual"
+                        >
+                            <span class="w-1.5 h-1.5 rounded-full bg-indigo-400"></span>
+                            <span data-ref="modelName">Loading...</span>
+                        </div>
+
+                        <chat-settings></chat-settings>
+                        <button 
+                            data-ref="newChatBtn"
+                            class="text-indigo-100 bg-white/10 hover:bg-white/20 border border-white/20 rounded-full px-3 py-1.5 text-sm font-semibold transition-colors"
+                        >
+                            Nueva
+                        </button>
+                    </div>
                     
                     <!-- Content: mensajes -->
                     <chat-messages slot="content" style="flex: 1;"></chat-messages>
@@ -73,6 +94,7 @@ async function initAutocodeChat() {
             this._messages = this.querySelector('chat-messages');
             this._input = this.querySelector('chat-input');
             this._contextBar = this.querySelector('context-bar');
+            this._settings = this.querySelector('chat-settings');
             
             // Inyectar parámetros ocultos de la función chat (model, conversation_history, etc.)
             this._injectHiddenParams();
@@ -113,6 +135,11 @@ async function initAutocodeChat() {
                     setTimeout(() => this._input?.focus(), 100);
                 }
             });
+
+            // Escuchar cambios de configuración
+            this._settings?.addEventListener('settings-change', () => {
+                this._updateSettingsParams();
+            });
         }
 
         async _handleSubmit(message) {
@@ -125,8 +152,10 @@ async function initAutocodeChat() {
             this._messages?.addMessage('user', message);
 
             // 2. Actualizar el valor del input "message" para el API call
-            // Necesitamos encontrar o crear el input que usará super.execute()
             this._setMessageParam(message);
+
+            // 2.5 Actualizar parámetros de configuración desde chat-settings
+            this._updateSettingsParams();
 
             // 3. Ejecutar llamada a la API via clase base
             try {
@@ -142,39 +171,145 @@ async function initAutocodeChat() {
         }
 
         _setMessageParam(message) {
-            // Buscar el input 'message' en los parámetros ocultos o crearlo
-            let messageInput = this.querySelector('[name="message"]');
+            this._setHiddenParam('message', message);
+        }
+
+        _updateSettingsParams() {
+            if (!this._settings) return;
             
-            if (!messageInput) {
-                // Crear input oculto para el parámetro message
-                const hiddenParams = this.querySelector('[data-ref="hiddenParams"]');
-                const input = document.createElement('input');
-                input.type = 'hidden';
-                input.name = 'message';
-                hiddenParams?.appendChild(input);
-                messageInput = input;
+            const settings = this._settings.getSettings();
+            
+            // Actualizar cada parámetro de configuración
+            for (const [key, value] of Object.entries(settings)) {
+                this._setHiddenParam(key, value);
+            }
+
+            // Actualizar badge también
+            this._updateModelBadge();
+        }
+
+        _updateModelBadge() {
+            const modelNameEl = this.querySelector('[data-ref="modelName"]');
+            if (!modelNameEl || !this._settings) return;
+
+            const settings = this._settings.getSettings();
+            if (settings.model) {
+                // Simplificar nombre del modelo (quitar prefix openrouter/openai/ etc)
+                const simpleName = settings.model.split('/').pop();
+                modelNameEl.textContent = simpleName;
+            }
+        }
+
+        /**
+         * Sobreescribimos callAPI para obtener la respuesta completa (incluyendo metadatos)
+         * y no solo el campo 'result' como hace la clase base.
+         */
+        async callAPI(params) {
+            const method = this.funcInfo.http_methods[0];
+            let url = `/${this.funcName}`;
+            let options = { 
+                method: method.toUpperCase(), 
+                headers: { 'Content-Type': 'application/json' } 
+            };
+            
+            if (method.toUpperCase() === 'GET') {
+                const queryParams = new URLSearchParams();
+                for (const [key, val] of Object.entries(params)) {
+                    if (typeof val === 'object' && val !== null) {
+                        queryParams.append(key, JSON.stringify(val));
+                    } else {
+                        queryParams.append(key, val);
+                    }
+                }
+                const queryString = queryParams.toString();
+                if (queryString) url += `?${queryString}`;
+            } else {
+                options.body = JSON.stringify(params);
             }
             
-            messageInput.value = message;
+            const response = await fetch(url, options);
+            if (!response.ok) {
+                let errorMsg = `HTTP ${response.status}`;
+                try {
+                    const errorData = await response.json();
+                    if (errorData.detail) {
+                        errorMsg = typeof errorData.detail === 'string' 
+                            ? errorData.detail 
+                            : JSON.stringify(errorData.detail, null, 2);
+                    } else {
+                        errorMsg = JSON.stringify(errorData, null, 2);
+                    }
+                } catch {
+                    errorMsg = response.statusText || errorMsg;
+                }
+                throw new Error(errorMsg);
+            }
+            
+            // Devolver objeto completo (sin extraer .result) para tener acceso a history/usage
+            return await response.json();
+        }
+
+        _setHiddenParam(name, value) {
+            // FIX CRITICO: Solo buscar inputs dentro del contenedor oculto o que sean explícitamente hidden
+            // Esto evita seleccionar inputs de UI (como los de chat-settings) que causarían un bucle infinito
+            // al disparar eventos change que chat-settings vuelve a capturar.
+            
+            // 1. Intentar buscar en el contenedor de hidden params (más seguro)
+            let input = this.querySelector(`[data-ref="hiddenParams"] input[name="${name}"]`);
+
+            // 2. Si no está ahí, buscar cualquier input hidden directo (legacy support)
+            if (!input) {
+                input = this.querySelector(`input[name="${name}"][type="hidden"]`);
+            }
+            
+            // 3. Si no existe, CREARLO en el contenedor oculto
+            if (!input) {
+                const hiddenParams = this.querySelector('[data-ref="hiddenParams"]');
+                if (hiddenParams) {
+                    input = document.createElement('input');
+                    input.type = 'hidden';
+                    input.name = name;
+                    hiddenParams.appendChild(input);
+                }
+            }
+            
+            if (input) {
+                // Manejar tipos complejos
+                if (typeof value === 'object' && value !== null) {
+                    input.value = JSON.stringify(value);
+                } else {
+                    input.value = value;
+                }
+                // Disparar change para que auto-element detecte el cambio
+                input.dispatchEvent(new Event('change', { bubbles: true }));
+            }
         }
 
         /**
          * Sobreescribimos showResult de la clase base para mostrar en burbujas
          */
         showResult(result, isError = false) {
+            // Manejar error explícito de red/sistema
             if (isError) {
                 this._messages?.addMessage('error', 
                     typeof result === 'string' ? result : JSON.stringify(result));
                 return;
             }
 
-            // Extraer respuesta del resultado (DspyOutput o similar)
+            // Manejar error de backend (DspyOutput con success=False)
+            if (result && result.success === false) {
+                this._messages?.addMessage('error', result.message || result.error || 'Error desconocido');
+                return;
+            }
+
+            // Pasar resultado completo a chat-messages para renderizado rico
+            // (Si es DspyOutput, contendrá reasoning, trajectory, etc.)
+            this._messages?.addMessage('assistant', result);
+
+            // Extraer solo el texto para el historial
             const responseText = result?.result?.response || 
                                result?.response || 
                                (typeof result === 'string' ? result : JSON.stringify(result, null, 2));
-
-            // Mostrar respuesta del asistente
-            this._messages?.addMessage('assistant', responseText);
 
             // Actualizar historial conversacional con el mensaje que capturamos ANTES
             if (this._pendingUserMessage) {
@@ -239,11 +374,15 @@ async function initAutocodeChat() {
 
             try {
                 // Obtener modelo de los parámetros
-                const modelInput = this.querySelector('[name="model"]');
+                // Usar _setHiddenParam logic (buscar el input correcto)
+                // Ojo: querySelector simple puede fallar si hay múltiples.
+                // Priorizar el input hidden que acabamos de actualizar
+                let modelInput = this.querySelector('input[name="model"][type="hidden"]');
+                if (!modelInput) modelInput = this.querySelector('[name="model"]');
+                
                 const model = modelInput?.value || 'openrouter/openai/gpt-4o';
                 
                 // Llamar al endpoint de cálculo de contexto
-                // TODO: En el futuro usar <auto-calculate_context_usage> para consistencia
                 const response = await fetch('/calculate_context_usage', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },

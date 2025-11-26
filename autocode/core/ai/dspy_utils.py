@@ -264,6 +264,21 @@ def generate_with_dspy(
     completions = getattr(response, 'completions', None)
     trajectory = getattr(response, 'trajectory', None)
     history = getattr(lm, 'history', None)
+
+    # Normalización de tipos para DSPy (que a veces devuelve objetos complejos)
+    if reasoning is not None and not isinstance(reasoning, str):
+        reasoning = str(reasoning)
+
+    if completions is not None:
+        normalized_completions = []
+        for c in completions:
+            if isinstance(c, str):
+                normalized_completions.append(c)
+            elif hasattr(c, 'response'): # dspy.Prediction
+                normalized_completions.append(str(c.response))
+            else:
+                normalized_completions.append(str(c))
+        completions = normalized_completions
     
     if not result:
         error_msg = "No se encontraron campos de output en la response de DSPy"
@@ -294,6 +309,20 @@ def generate_with_dspy(
             else:
                 serialized_trajectory[key] = value
         trajectory = serialized_trajectory
+    elif isinstance(trajectory, list):
+        # Si es lista (ya normalizada o lista de pasos), intentar serializar items internos si son objetos
+        serialized_trajectory = []
+        for item in trajectory:
+            if hasattr(item, 'model_dump'):
+                serialized_trajectory.append(item.model_dump())
+            elif hasattr(item, '__dict__'):
+                serialized_trajectory.append(vars(item))
+            else:
+                serialized_trajectory.append(item)
+        trajectory = serialized_trajectory
+    else:
+        # Si no es dict ni lista (ej: Mock, objeto extraño), forzar a None para evitar error de validación
+        trajectory = None
     
     logger.info(f"Generación exitosa con {len(result)} campos de output")
     return DspyOutput(

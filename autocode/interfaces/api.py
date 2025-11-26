@@ -163,6 +163,59 @@ def _register_standard_endpoints(app: FastAPI):
     async def health_check():
         """Health check endpoint with function count."""
         return {"status": "healthy", "functions": len(FUNCTION_REGISTRY)}
+        
+    @app.get("/api/tests/discover")
+    async def discover_tests():
+        """Discover all available tests in the tests directory."""
+        tests_root = os.path.join(current_dir, "..", "web", "tests")
+        discovered = {}
+        
+        # Recorrer directorio de tests
+        for root, dirs, files in os.walk(tests_root):
+            # Ignorar carpetas ocultas o _shared
+            dirs[:] = [d for d in dirs if not d.startswith('_') and not d.startswith('.')]
+            
+            rel_path = os.path.relpath(root, tests_root)
+            if rel_path == '.':
+                category = 'General'
+            else:
+                # Usar el nombre de la carpeta como categoría (ej: components, integration)
+                category = rel_path.replace(os.sep, ' ').title()
+            
+            for file in files:
+                if file.endswith('.test.html'):
+                    file_path = os.path.join(root, file)
+                    web_path = f"/tests/{os.path.relpath(file_path, tests_root).replace(os.sep, '/')}"
+                    
+                    # Intentar extraer título
+                    title = file
+                    description = "Test suite"
+                    try:
+                        with open(file_path, 'r', encoding='utf-8') as f:
+                            content = f.read()
+                            import re
+                            title_match = re.search(r'<title>(.*?)</title>', content)
+                            if title_match:
+                                title = title_match.group(1).replace(' - Unit Tests', '').replace(' - Integration Tests', '').strip()
+                            
+                            # Intentar extraer descripción de algún p o meta
+                            desc_match = re.search(r'<p class=".*?text-gray-600.*?">(.*?)</p>', content)
+                            if desc_match:
+                                description = desc_match.group(1).strip()
+                    except Exception:
+                        pass
+
+                    if category not in discovered:
+                        discovered[category] = []
+                        
+                    discovered[category].append({
+                        "name": title,
+                        "description": description,
+                        "path": web_path,
+                        "filename": file
+                    })
+        
+        return discovered
 
 
 def _register_static_files(app: FastAPI):

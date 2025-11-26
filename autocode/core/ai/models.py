@@ -8,7 +8,7 @@ de DSPy y otras funcionalidades de AI.
 
 import json
 from pydantic import Field
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 from autocode.interfaces.models import GenericOutput
 
 
@@ -30,7 +30,7 @@ class DspyOutput(GenericOutput):
         default=None, 
         description="Múltiples completions si aplica (e.g., de Predict con n>1)"
     )
-    trajectory: Optional[Dict[str, Any]] = Field(
+    trajectory: Optional[Union[Dict[str, Any], List[Dict[str, Any]]]] = Field(
         default=None,
         description="Trayectoria completa de ReAct u otros módulos similares (thoughts, tool_names, tool_args, observations)"
     )
@@ -50,6 +50,9 @@ class DspyOutput(GenericOutput):
         Returns:
             Dict con todos los campos serializados de forma segura para JSON
         """
+        # Normalizar trayectoria si es necesario (limpieza de formato plano de DSPy)
+        normalized_trajectory = self._normalize_trajectory(self.trajectory)
+
         # Construir el dict manualmente para evitar problemas con super().model_dump()
         # cuando hay objetos no serializables
         data = {
@@ -58,12 +61,54 @@ class DspyOutput(GenericOutput):
             'message': self.message,
             'reasoning': self.reasoning,
             'completions': self._serialize_value(self.completions),
-            'trajectory': self._serialize_value(self.trajectory),
+            'trajectory': self._serialize_value(normalized_trajectory),
             'history': self._serialize_value(self.history)
         }
         
         return data
     
+    def _normalize_trajectory(self, trajectory: Any) -> Any:
+        """
+        Detecta y normaliza trayectorias planas de DSPy (thought_0, tool_0...) 
+        a una lista estructurada de pasos.
+        """
+        if not isinstance(trajectory, dict):
+            return trajectory
+
+        # Detectar claves con sufijo numérico (ej: thought_0)
+        import re
+        steps = {}
+        has_indexed_keys = False
+        
+        for key, value in trajectory.items():
+            match = re.search(r'^(.*)_(\d+)$', key)
+            if match:
+                has_indexed_keys = True
+                field_name = match.group(1)
+                step_idx = int(match.group(2))
+                
+                if step_idx not in steps:
+                    steps[step_idx] = {}
+                
+                # Normalizar nombres de campos
+                if field_name == 'tool_args':
+                    # A veces args vienen como string JSON, otras como dict
+                    steps[step_idx]['tool_args'] = value
+                elif field_name in ['tool', 'tool_name']:
+                    steps[step_idx]['tool_name'] = value
+                else:
+                    steps[step_idx][field_name] = value
+
+        if not has_indexed_keys:
+            return trajectory
+
+        # Convertir mapa de pasos a lista ordenada
+        ordered_steps = []
+        for idx in sorted(steps.keys()):
+            ordered_steps.append(steps[idx])
+            
+        return ordered_steps
+
     def _serialize_value(self, value: Any) -> Any:
         """
         Serializa recursivamente un valor a tipos básicos de Python.

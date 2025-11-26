@@ -264,6 +264,161 @@
         }, { requiresServer: true });
 
         // ============================================
+        // TESTS: Settings
+        // ============================================
+
+        runner.test('autocode-chat: renderiza chat-settings', async (stage) => {
+            const el = await createChat(stage);
+            runner.assertTrue(el.querySelector('chat-settings'), 'Debe tener chat-settings');
+            runner.assertTrue(el._settings, 'Debe tener referencia _settings');
+        }, { requiresServer: true });
+
+        runner.test('autocode-chat: badge de modelo se actualiza reactivamente', async (stage) => {
+            const el = await createChat(stage);
+            
+            // Mock funcInfo para configurar settings
+            el.funcInfo = {
+                parameters: [{ name: 'model', default: 'gpt-4o' }]
+            };
+            el._settings.configure(el.funcInfo);
+            
+            await runner.sleep(50);
+            
+            const badgeName = el.querySelector('[data-ref="modelName"]');
+            
+            // Simular cambio en settings
+            el._settings._updateSetting('model', 'claude-3-opus');
+            
+            await runner.sleep(50);
+            
+            runner.assertEqual(badgeName.textContent, 'claude-3-opus', 'El badge debe actualizarse inmediatamente');
+        }, { requiresServer: true });
+
+        runner.test('autocode-chat: settings changes propagate to hidden inputs', async (stage) => {
+            const el = await createChat(stage);
+            
+            // Mock funcInfo para configurar settings
+            const mockFuncInfo = {
+                name: 'chat',
+                description: 'Chat function',
+                http_methods: ['POST'],
+                parameters: [
+                    {
+                        name: 'model',
+                        type: 'str',
+                        required: false,
+                        default: 'gpt-4o',
+                        description: 'Model to use',
+                        choices: ['gpt-4o', 'claude-3']
+                    },
+                    {
+                        name: 'message',
+                        type: 'str',
+                        required: true
+                    }
+                ]
+            };
+
+            // Forzar funcInfo para el test (simulando carga real)
+            el.funcInfo = mockFuncInfo;
+            // Re-ejecutar lógica de inicialización de settings
+            if (el._settings) el._settings.configure(mockFuncInfo);
+            el._injectHiddenParams();
+
+            await runner.sleep(50);
+
+            // 1. Verificar valor inicial
+            // Buscamos el input oculto que usa el generator para enviar
+            let modelInput = el.querySelector('input[name="model"][type="hidden"]');
+            if (!modelInput) modelInput = el.querySelector('[name="model"]');
+            runner.assertTrue(modelInput, 'Debe existir input inicial para model');
+            
+            // 2. Simular cambio en Settings UI
+            const settings = el._settings;
+            runner.assertTrue(settings, 'Debe tener componente settings');
+
+            // Cambiar valor en settings (simulando interacción de usuario)
+            // Opción A: Modificar UI de settings
+            const settingsSelect = settings.querySelector('select[name="model"]');
+            if (settingsSelect) {
+                settingsSelect.value = 'claude-3';
+                settingsSelect.dispatchEvent(new Event('change', { bubbles: true }));
+            } else {
+                // Fallback si la UI no está lista, forzamos estado interno
+                settings._updateSetting('model', 'claude-3');
+            }
+
+            await runner.sleep(50);
+
+            // 3. Simular Envío de Mensaje
+            // Esto dispara _handleSubmit -> _updateSettingsParams
+            el._handleNewChat(); // Limpiar estado
+            el._input.dispatchEvent(new CustomEvent('submit', { 
+                detail: { message: 'Test message' } 
+            }));
+
+            await runner.sleep(50);
+
+            // 4. VERIFICACIÓN CRÍTICA
+            // El input que usa el generator (el que tiene name="model") debe tener el NUEVO valor
+            let finalModelInput = el.querySelector('input[name="model"][type="hidden"]');
+            if (!finalModelInput) finalModelInput = el.querySelector('[name="model"]');
+            
+            const value = finalModelInput.value;
+            // console.log('Model value sent:', value);
+
+            runner.assertEqual(value, 'claude-3', 'El input oculto debe actualizarse con la selección de settings');
+
+        }, { requiresServer: true });
+
+        // ============================================
+        // TESTS: Mensajes Ricos (Integración)
+        // ============================================
+
+        runner.test('autocode-chat: showResult con reasoning lo pasa a mensajes', async (stage) => {
+            const el = await createChat(stage);
+            el._handleNewChat?.();
+
+            const complexResponse = {
+                result: { response: 'Respuesta final' },
+                reasoning: 'Reasoning integration test'
+            };
+            
+            el.showResult(complexResponse);
+            await runner.sleep(50);
+            
+            // Verificar en el DOM de chat-messages
+            const messagesEl = el._messages;
+            const reasoningEl = messagesEl.querySelector('[data-type="reasoning"]');
+            runner.assertTrue(reasoningEl, 'Debe renderizar reasoning');
+            runner.assertTrue(reasoningEl.textContent.includes('Reasoning integration'), 'Debe contener el texto');
+        }, { requiresServer: true });
+
+        runner.test('autocode-chat: maneja errores de backend gracefully', async (stage) => {
+            const el = await createChat(stage);
+            el._handleNewChat?.();
+
+            // Simular respuesta de error del backend (DspyOutput success=False)
+            const errorResponse = {
+                success: false,
+                message: "Error de validación Pydantic",
+                result: {}
+            };
+            
+            el.showResult(errorResponse);
+            await runner.sleep(50);
+            
+            // Verificar que se muestra como ERROR, no como asistente
+            const errorMsgs = el._messages.querySelectorAll('[data-role="error"]');
+            runner.assertEqual(errorMsgs.length, 1, 'Debe haber 1 mensaje de error');
+            runner.assertTrue(errorMsgs[0].textContent.includes('Error de validación'), 'Debe mostrar el mensaje de error');
+            
+            // Verificar que NO se muestra como asistente
+            const assistantMsgs = el._messages.querySelectorAll('[data-role="assistant"]');
+            runner.assertEqual(assistantMsgs.length, 0, 'No debe haber mensaje de asistente');
+        }, { requiresServer: true });
+
+        // ============================================
         // IMPORTAR Y EJECUTAR
         // ============================================
 

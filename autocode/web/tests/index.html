@@ -5,119 +5,99 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>🧪 Autocode - Test Dashboard</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Alpine.js for interactivity -->
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
 </head>
 <body class="bg-gradient-to-br from-gray-50 to-gray-100 min-h-screen">
-    <div class="max-w-4xl mx-auto p-8">
+    <div class="max-w-6xl mx-auto p-8" x-data="testDashboard()">
         <!-- Header -->
         <div class="text-center mb-12">
             <h1 class="text-4xl font-bold text-gray-800 mb-2">🧪 Test Dashboard</h1>
-            <p class="text-gray-600">Hub central para todos los tests del proyecto Autocode</p>
+            <p class="text-gray-600">Hub central dinámico para todos los tests del proyecto Autocode</p>
             <a href="/" class="inline-block mt-4 text-indigo-600 hover:text-indigo-800 text-sm">
                 ← Volver a la app
             </a>
         </div>
 
-        <!-- Test Suites Grid -->
-        <div class="grid gap-6 md:grid-cols-2">
+        <!-- Search Bar -->
+        <div class="max-w-xl mx-auto mb-10 relative">
+            <input 
+                type="text" 
+                x-model="search"
+                placeholder="Buscar tests..." 
+                class="w-full px-5 py-3 rounded-xl border-gray-200 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-gray-700 bg-white"
+            >
+            <div class="absolute right-4 top-3.5 text-gray-400">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+            </div>
+        </div>
+
+        <!-- Loading State -->
+        <div x-show="loading" class="text-center py-20">
+            <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto"></div>
+            <p class="mt-4 text-gray-500">Escaneando directorio de tests...</p>
+        </div>
+
+        <!-- Tests Grid -->
+        <div x-show="!loading" class="grid gap-8">
+            <template x-for="(tests, category) in filteredTests" :key="category">
+                <div class="space-y-4" x-show="tests.length > 0">
+                    <h2 class="text-xl font-bold text-gray-800 flex items-center gap-2 border-b pb-2">
+                        <span x-text="getCategoryIcon(category)"></span>
+                        <span x-text="category"></span>
+                        <span class="text-xs font-normal text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full" x-text="tests.length"></span>
+                    </h2>
+                    
+                    <div class="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                        <template x-for="test in tests" :key="test.path">
+                            <a :href="test.path" 
+                               class="block p-6 bg-white rounded-2xl shadow-sm hover:shadow-xl transition-all border border-gray-100 group h-full flex flex-col">
+                                <div class="flex items-start gap-4 mb-3">
+                                    <div class="w-10 h-10 rounded-lg flex items-center justify-center text-xl transition-transform group-hover:scale-110"
+                                         :class="getCategoryColor(category)">
+                                        <span x-text="getCategoryIcon(category)"></span>
+                                    </div>
+                                    <div class="flex-1 min-w-0">
+                                        <h3 class="text-lg font-bold text-gray-800 truncate" x-text="test.name"></h3>
+                                        <p class="text-xs text-gray-400 font-mono truncate" x-text="test.filename"></p>
+                                    </div>
+                                </div>
+                                
+                                <p class="text-gray-600 text-sm mb-4 flex-1 line-clamp-2" x-text="test.description"></p>
+                                
+                                <div class="flex justify-end pt-2 border-t border-gray-50">
+                                    <span class="text-xs font-semibold text-indigo-600 group-hover:underline flex items-center gap-1">
+                                        Ejecutar Test
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" viewBox="0 0 20 20" fill="currentColor">
+                                            <path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd" />
+                                        </svg>
+                                    </span>
+                                </div>
+                            </a>
+                        </template>
+                    </div>
+                </div>
+            </template>
             
-            <!-- Unit Tests: Chat Components -->
-            <a href="/tests/components/chat.test.html" 
-               class="block p-6 bg-white rounded-2xl shadow-lg hover:shadow-xl transition-shadow border border-gray-100 group">
-                <div class="flex items-start gap-4">
-                    <div class="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center text-2xl group-hover:scale-110 transition-transform">
-                        🧩
-                    </div>
-                    <div class="flex-1">
-                        <h2 class="text-xl font-bold text-gray-800 mb-1">Chat Components</h2>
-                        <p class="text-gray-500 text-sm mb-3">Tests unitarios de web components</p>
-                        <div class="flex gap-2 flex-wrap">
-                            <span class="px-2 py-1 bg-gray-100 text-gray-600 rounded text-xs">chat-input</span>
-                            <span class="px-2 py-1 bg-gray-100 text-gray-600 rounded text-xs">chat-messages</span>
-                            <span class="px-2 py-1 bg-gray-100 text-gray-600 rounded text-xs">chat-window</span>
-                            <span class="px-2 py-1 bg-gray-100 text-gray-600 rounded text-xs">context-bar</span>
-                        </div>
-                    </div>
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-300 group-hover:text-indigo-500 transition-colors" viewBox="0 0 20 20" fill="currentColor">
-                        <path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd" />
-                    </svg>
-                </div>
-            </a>
+            <!-- Empty State -->
+            <div x-show="Object.keys(filteredTests).length === 0" class="text-center py-10 bg-gray-50 rounded-2xl border-2 border-dashed border-gray-200">
+                <p class="text-gray-500">No se encontraron tests que coincidan con tu búsqueda.</p>
+            </div>
+        </div>
 
-            <!-- Integration Tests: AutoElementGenerator -->
-            <a href="/tests/integration/auto-element-generator.test.html" 
-               class="block p-6 bg-white rounded-2xl shadow-lg hover:shadow-xl transition-shadow border border-gray-100 group">
-                <div class="flex items-start gap-4">
-                    <div class="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center text-2xl group-hover:scale-110 transition-transform">
-                        ⚙️
-                    </div>
-                    <div class="flex-1">
-                        <h2 class="text-xl font-bold text-gray-800 mb-1">AutoElementGenerator</h2>
-                        <p class="text-gray-500 text-sm mb-3">Tests del generador de custom elements</p>
-                        <div class="flex gap-2 flex-wrap">
-                            <span class="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs">Integration</span>
-                            <span class="px-2 py-1 bg-gray-100 text-gray-600 rounded text-xs">Inicialización</span>
-                            <span class="px-2 py-1 bg-gray-100 text-gray-600 rounded text-xs">Registro</span>
-                        </div>
-                    </div>
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-300 group-hover:text-indigo-500 transition-colors" viewBox="0 0 20 20" fill="currentColor">
-                        <path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd" />
-                    </svg>
-                </div>
-            </a>
-
-            <!-- Integration Tests: Function Execution -->
-            <a href="/tests/integration/function-execution.test.html" 
-               class="block p-6 bg-white rounded-2xl shadow-lg hover:shadow-xl transition-shadow border border-gray-100 group">
-                <div class="flex items-start gap-4">
-                    <div class="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center text-2xl group-hover:scale-110 transition-transform">
-                        ⚡
-                    </div>
-                    <div class="flex-1">
-                        <h2 class="text-xl font-bold text-gray-800 mb-1">Function Execution</h2>
-                        <p class="text-gray-500 text-sm mb-3">Tests de ejecución de funciones via UI</p>
-                        <div class="flex gap-2 flex-wrap">
-                            <span class="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs">Integration</span>
-                            <span class="px-2 py-1 bg-gray-100 text-gray-600 rounded text-xs">Parámetros</span>
-                            <span class="px-2 py-1 bg-gray-100 text-gray-600 rounded text-xs">Eventos</span>
-                        </div>
-                    </div>
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-300 group-hover:text-indigo-500 transition-colors" viewBox="0 0 20 20" fill="currentColor">
-                        <path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd" />
-                    </svg>
-                </div>
-            </a>
-
-            <!-- Integration Tests: Autocode Chat -->
-            <a href="/tests/integration/autocode-chat.test.html" 
-               class="block p-6 bg-white rounded-2xl shadow-lg hover:shadow-xl transition-shadow border border-gray-100 group">
-                <div class="flex items-start gap-4">
-                    <div class="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center text-2xl group-hover:scale-110 transition-transform">
-                        🗨️
-                    </div>
-                    <div class="flex-1">
-                        <h2 class="text-xl font-bold text-gray-800 mb-1">Autocode Chat</h2>
-                        <p class="text-gray-500 text-sm mb-3">Tests del componente de chat integrado</p>
-                        <div class="flex gap-2 flex-wrap">
-                            <span class="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs">Integration</span>
-                            <span class="px-2 py-1 bg-gray-100 text-gray-600 rounded text-xs">UI Flow</span>
-                            <span class="px-2 py-1 bg-gray-100 text-gray-600 rounded text-xs">Mensajes</span>
-                        </div>
-                    </div>
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-300 group-hover:text-indigo-500 transition-colors" viewBox="0 0 20 20" fill="currentColor">
-                        <path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd" />
-                    </svg>
-                </div>
-            </a>
-
+        <!-- Static Info Section -->
+        <div class="mt-16 grid gap-6 md:grid-cols-2">
             <!-- E2E Tests Info -->
-            <div class="p-6 bg-white rounded-2xl shadow-lg border border-gray-100">
+            <div class="p-6 bg-white rounded-2xl shadow border border-gray-100">
                 <div class="flex items-start gap-4">
                     <div class="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center text-2xl">
                         🎭
                     </div>
                     <div class="flex-1">
                         <h2 class="text-xl font-bold text-gray-800 mb-1">E2E Tests (Playwright)</h2>
-                        <p class="text-gray-500 text-sm mb-3">Tests automatizados con Playwright</p>
+                        <p class="text-gray-500 text-sm mb-3">Tests automatizados fuera del navegador</p>
                         <div class="p-3 bg-gray-50 rounded-lg">
                             <code class="text-xs text-gray-600 font-mono">uv run pytest tests/e2e/ -v</code>
                         </div>
@@ -126,7 +106,7 @@
             </div>
 
             <!-- Python Unit Tests Info -->
-            <div class="p-6 bg-white rounded-2xl shadow-lg border border-gray-100">
+            <div class="p-6 bg-white rounded-2xl shadow border border-gray-100">
                 <div class="flex items-start gap-4">
                     <div class="w-12 h-12 bg-yellow-100 rounded-xl flex items-center justify-center text-2xl">
                         🐍
@@ -141,30 +121,76 @@
                 </div>
             </div>
         </div>
-
-        <!-- Info Section -->
-        <div class="mt-12 p-6 bg-white/50 rounded-2xl border border-gray-200">
-            <h3 class="font-bold text-gray-700 mb-3">📋 Tipos de Tests</h3>
-            <div class="grid gap-4 md:grid-cols-3 text-sm">
-                <div>
-                    <div class="font-semibold text-green-700">Unit Tests (Browser)</div>
-                    <p class="text-gray-500">Tests de componentes aislados que se ejecutan directamente en el navegador sin servidor.</p>
-                </div>
-                <div>
-                    <div class="font-semibold text-blue-700">Integration Tests</div>
-                    <p class="text-gray-500">Tests que verifican la interacción entre componentes con el servidor corriendo.</p>
-                </div>
-                <div>
-                    <div class="font-semibold text-purple-700">E2E Tests</div>
-                    <p class="text-gray-500">Tests automatizados con Playwright que simulan interacción real del usuario.</p>
-                </div>
-            </div>
-        </div>
-
-        <!-- Footer -->
-        <div class="mt-8 text-center text-gray-400 text-sm">
-            <p>Autocode Test Framework • TDD Approach</p>
-        </div>
     </div>
+
+    <script>
+        function testDashboard() {
+            return {
+                loading: true,
+                search: '',
+                allTests: {},
+                
+                async init() {
+                    try {
+                        const response = await fetch('/api/tests/discover');
+                        if (!response.ok) throw new Error('Failed to load tests');
+                        this.allTests = await response.json();
+                    } catch (error) {
+                        console.error('Error loading tests:', error);
+                        // Fallback data if API fails
+                        this.allTests = {
+                            'Error': [{
+                                name: 'Error cargando tests',
+                                description: 'Verifica que el servidor backend esté corriendo.',
+                                path: '#',
+                                filename: 'error.log'
+                            }]
+                        };
+                    } finally {
+                        this.loading = false;
+                    }
+                },
+
+                get filteredTests() {
+                    if (!this.search) return this.allTests;
+                    
+                    const result = {};
+                    const term = this.search.toLowerCase();
+                    
+                    for (const [category, tests] of Object.entries(this.allTests)) {
+                        const filtered = tests.filter(test => 
+                            test.name.toLowerCase().includes(term) || 
+                            test.filename.toLowerCase().includes(term) ||
+                            test.description.toLowerCase().includes(term)
+                        );
+                        
+                        if (filtered.length > 0) {
+                            result[category] = filtered;
+                        }
+                    }
+                    return result;
+                },
+
+                getCategoryIcon(category) {
+                    const map = {
+                        'Components': '🧩',
+                        'Integration': '⚡',
+                        'E2e': '🎭',
+                        'Unit': '🧪'
+                    };
+                    return map[category] || '📁';
+                },
+
+                getCategoryColor(category) {
+                    const map = {
+                        'Components': 'bg-green-100 text-green-700',
+                        'Integration': 'bg-blue-100 text-blue-700',
+                        'E2e': 'bg-purple-100 text-purple-700'
+                    };
+                    return map[category] || 'bg-gray-100 text-gray-700';
+                }
+            }
+        }
+    </script>
 </body>
 </html>

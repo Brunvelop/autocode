@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat Settings - Unit Tests</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="p-8 bg-gray-100 min-h-screen">
+    <div class="flex items-center gap-4 mb-2">
+        <a href="/tests" class="text-indigo-600 hover:text-indigo-800">← Tests</a>
+        <h1 class="text-3xl font-bold">⚙️ Chat Settings - Unit Tests</h1>
+    </div>
+    
+    <div id="summary" class="mb-6 p-4 bg-white rounded-lg shadow"></div>
+    <div id="results" class="space-y-2"></div>
+
+    <script type="module">
+        import { TestRunner } from '../integration/_shared/test-runner.js';
+        
+        // Importar el componente
+        import '/elements/chat/chat-settings.js';
+
+        const runner = new TestRunner();
+        
+        // Mock de funcInfo
+        const mockFuncInfo = {
+            name: 'chat',
+            description: 'Chat function',
+            http_methods: ['POST'],
+            parameters: [
+                {
+                    name: 'model',
+                    type: 'str',
+                    required: false,
+                    default: 'gpt-4o',
+                    description: 'Model to use',
+                    choices: ['gpt-4o', 'claude-3']
+                },
+                {
+                    name: 'temperature',
+                    type: 'float',
+                    required: false,
+                    default: 0.7,
+                    description: 'Creativity'
+                },
+                {
+                    name: 'max_tokens',
+                    type: 'int',
+                    required: false,
+                    default: 1000,
+                    description: 'Max tokens'
+                },
+                {
+                    name: 'module_type',
+                    type: 'str',
+                    required: false,
+                    default: 'ReAct',
+                    description: 'DSPy Module',
+                    choices: ['ReAct', 'ChainOfThought']
+                },
+                {
+                    name: 'is_pro',
+                    type: 'bool',
+                    required: false,
+                    default: false,
+                    description: 'Pro mode'
+                },
+                // Parámetros ignorados
+                {
+                    name: 'message',
+                    type: 'str',
+                    required: true
+                }
+            ]
+        };
+
+        runner.group('ChatSettings', () => {
+            runner.test('ChatSettings: se registra como custom element', async () => {
+                await runner.waitForElement('chat-settings');
+                runner.assertTrue(customElements.get('chat-settings'));
+            });
+
+            runner.test('ChatSettings: renderiza botón de toggle', async (stage) => {
+                const el = document.createElement('chat-settings');
+                stage.appendChild(el);
+                await runner.sleep(10);
+                
+                const toggleBtn = el.querySelector('[data-ref="toggleBtn"]');
+                runner.assertTrue(toggleBtn, 'Debe tener botón de toggle');
+            });
+
+            runner.test('ChatSettings: panel oculto por defecto', async (stage) => {
+                const el = document.createElement('chat-settings');
+                stage.appendChild(el);
+                await runner.sleep(10);
+                
+                const panel = el.querySelector('[data-ref="panel"]');
+                runner.assertTrue(panel.classList.contains('hidden'), 'Panel debe estar oculto inicialmente');
+            });
+
+            runner.test('ChatSettings: toggle muestra/oculta panel', async (stage) => {
+                const el = document.createElement('chat-settings');
+                stage.appendChild(el);
+                await runner.sleep(10);
+                
+                const toggleBtn = el.querySelector('[data-ref="toggleBtn"]');
+                const panel = el.querySelector('[data-ref="panel"]');
+                
+                toggleBtn.click();
+                runner.assertFalse(panel.classList.contains('hidden'), 'Panel debe mostrarse tras click');
+                
+                toggleBtn.click();
+                runner.assertTrue(panel.classList.contains('hidden'), 'Panel debe ocultarse tras segundo click');
+            });
+
+            runner.test('ChatSettings: genera controles dinámicamente tras configure()', async (stage) => {
+                const el = document.createElement('chat-settings');
+                stage.appendChild(el);
+                
+                // Configurar
+                el.configure(mockFuncInfo);
+                await runner.sleep(10);
+                
+                const modelSelect = el.querySelector('[name="model"]');
+                const tempInput = el.querySelector('[name="temperature"]');
+                const tokensInput = el.querySelector('[name="max_tokens"]');
+                const moduleSelect = el.querySelector('[name="module_type"]');
+                const proCheck = el.querySelector('[name="is_pro"]');
+                const msgInput = el.querySelector('[name="message"]');
+                
+                runner.assertTrue(modelSelect, 'Debe tener selector de modelo');
+                runner.assertTrue(modelSelect.options.length === 2, 'Debe tener 2 opciones de modelo');
+                
+                runner.assertTrue(tempInput, 'Debe tener input de temperatura');
+                runner.assertTrue(tokensInput, 'Debe tener input de max_tokens');
+                
+                runner.assertTrue(moduleSelect, 'Debe tener selector de module_type');
+                
+                runner.assertTrue(proCheck, 'Debe tener checkbox para bool');
+                
+                runner.assertFalse(msgInput, 'NO debe tener input para message');
+            });
+
+            runner.test('ChatSettings: getSettings() devuelve valores configurados', async (stage) => {
+                const el = document.createElement('chat-settings');
+                stage.appendChild(el);
+                el.configure(mockFuncInfo);
+                await runner.sleep(10);
+                
+                const settings = el.getSettings();
+                runner.assertEqual(settings.model, 'gpt-4o', 'Model default correcto');
+                runner.assertEqual(settings.temperature, 0.7, 'Temp default correcto');
+                runner.assertEqual(settings.max_tokens, 1000, 'Max tokens default correcto');
+                runner.assertEqual(settings.is_pro, false, 'Bool default correcto');
+            });
+
+            runner.test('ChatSettings: emite evento change al modificar valor', async (stage) => {
+                const el = document.createElement('chat-settings');
+                stage.appendChild(el);
+                el.configure(mockFuncInfo);
+                await runner.sleep(10);
+                
+                let eventFired = false;
+                let eventDetail = null;
+                el.addEventListener('settings-change', (e) => {
+                    eventFired = true;
+                    eventDetail = e.detail;
+                });
+                
+                const tempInput = el.querySelector('[name="temperature"]');
+                if (tempInput) {
+                    tempInput.value = 0.9;
+                    tempInput.dispatchEvent(new Event('input', { bubbles: true })); // Slider usa input
+                }
+                
+                runner.assertTrue(eventFired, 'Debe emitir settings-change');
+                runner.assertEqual(eventDetail?.temperature, 0.9, 'Debe incluir el nuevo valor');
+                
+                // Probar select
+                eventFired = false;
+                const modelSelect = el.querySelector('[name="model"]');
+                if (modelSelect) {
+                    modelSelect.value = 'claude-3';
+                    modelSelect.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+                
+                runner.assertTrue(eventFired, 'Debe emitir settings-change para select');
+                runner.assertEqual(eventDetail?.model, 'claude-3', 'Debe incluir nuevo modelo');
+            });
+        });
+
+        runner.run();
+    </script>
+</body>
+</html>

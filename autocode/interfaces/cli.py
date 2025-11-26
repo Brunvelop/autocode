@@ -116,8 +116,21 @@ def serve_api(host: str, port: int, reload: bool):
         $ python -m autocode.interfaces.cli serve-api --port 8000 --reload
     """
     click.echo(f"Starting Autocode API server on {host}:{port}")
-    api_app = create_api_app()
-    uvicorn.run(api_app, host=host, port=port, reload=reload)
+    
+    if reload:
+        # When reloading, we must pass the import string to uvicorn
+        # factory=True allows passing a function that returns the app
+        uvicorn.run(
+            "autocode.interfaces.api:create_api_app", 
+            host=host, 
+            port=port, 
+            reload=True,
+            factory=True
+        )
+    else:
+        # Without reload, we can pass the app instance directly
+        api_app = create_api_app()
+        uvicorn.run(api_app, host=host, port=port)
 
 
 @app.command("serve-mcp")
@@ -139,8 +152,18 @@ def serve_mcp(host: str, port: int, reload: bool):
         $ python -m autocode.interfaces.cli serve-mcp --port 8001
     """
     click.echo(f"Starting Autocode server (API + MCP) on {host}:{port}")
-    mcp_app = create_mcp_app()
-    uvicorn.run(mcp_app, host=host, port=port, reload=reload)
+    
+    if reload:
+        uvicorn.run(
+            "autocode.interfaces.mcp:create_mcp_app",
+            host=host,
+            port=port,
+            reload=True,
+            factory=True
+        )
+    else:
+        mcp_app = create_mcp_app()
+        uvicorn.run(mcp_app, host=host, port=port)
 
 
 @app.command("serve")
@@ -163,11 +186,18 @@ def serve(host: str, port: int, reload: bool):
     """
     click.echo(f"Starting Autocode unified server (API + MCP) on {host}:{port}")
     
-    # create_mcp_app() returns an app with both API and MCP integrated
-    unified_app = create_mcp_app()
-    
-    # Start the unified server
-    uvicorn.run(unified_app, host=host, port=port, reload=reload)
+    if reload:
+        # create_mcp_app returns an app with both API and MCP integrated
+        uvicorn.run(
+            "autocode.interfaces.mcp:create_mcp_app",
+            host=host,
+            port=port,
+            reload=True,
+            factory=True
+        )
+    else:
+        unified_app = create_mcp_app()
+        uvicorn.run(unified_app, host=host, port=port)
 
 
 # ============================================================================
