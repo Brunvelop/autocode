@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Autocode Chat - Integration Tests</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="p-8 bg-gray-100 min-h-screen">
+    <div class="flex items-center gap-4 mb-2">
+        <a href="/tests" class="text-indigo-600 hover:text-indigo-800">← Tests</a>
+        <h1 class="text-3xl font-bold">🗨️ Autocode Chat - Integration Tests</h1>
+    </div>
+    <p class="text-gray-600 mb-4">Tests del componente de chat integrado.</p>
+
+    <!-- Server Status -->
+    <div id="serverStatus" class="mb-6 p-4 bg-yellow-100 border border-yellow-300 rounded-lg">
+        <span class="text-yellow-800">⏳ Verificando conexión con el servidor...</span>
+    </div>
+
+    <div id="summary" class="mb-6 p-4 bg-white rounded-lg shadow"></div>
+    <div id="results" class="space-y-2"></div>
+
+    <!-- (Eliminado Test Area global, ahora cada test gestiona su UI) -->
+
+    <script type="module">
+        import { TestRunner } from './_shared/test-runner.js';
+
+        const runner = new TestRunner();
+
+        // Helper para crear chat en el stage actual
+        const createChat = async (stage) => {
+            await runner.waitForElement('autocode-chat');
+            const el = document.createElement('autocode-chat');
+            if (stage) stage.appendChild(el);
+            // Dar tiempo a que se renderice shadow DOM
+            await runner.sleep(50);
+            return el;
+        };
+
+        // ============================================
+        // TESTS: Renderizado
+        // ============================================
+
+        runner.test('autocode-chat: se puede crear', async (stage) => {
+            const el = await createChat(stage);
+            runner.assertTrue(el, 'Debe poder crear el elemento');
+        }, { requiresServer: true });
+
+        runner.test('autocode-chat: renderiza chat-window', async (stage) => {
+            const el = await createChat(stage);
+            runner.assertTrue(el.querySelector('chat-window'), 'Debe tener chat-window');
+        }, { requiresServer: true });
+
+        runner.test('autocode-chat: renderiza chat-messages', async (stage) => {
+            const el = await createChat(stage);
+            runner.assertTrue(el.querySelector('chat-messages'), 'Debe tener chat-messages');
+        }, { requiresServer: true });
+
+        runner.test('autocode-chat: renderiza chat-input', async (stage) => {
+            const el = await createChat(stage);
+            runner.assertTrue(el.querySelector('chat-input'), 'Debe tener chat-input');
+        }, { requiresServer: true });
+
+        runner.test('autocode-chat: renderiza context-bar', async (stage) => {
+            const el = await createChat(stage);
+            runner.assertTrue(el.querySelector('context-bar'), 'Debe tener context-bar');
+        }, { requiresServer: true });
+
+        runner.test('autocode-chat: renderiza botón Nueva', async (stage) => {
+            const el = await createChat(stage);
+            const newBtn = el.querySelector('[data-ref="newChatBtn"]');
+            runner.assertTrue(newBtn, 'Debe tener botón Nueva');
+            runner.assertContains(newBtn.textContent, 'Nueva');
+        }, { requiresServer: true });
+
+        // ============================================
+        // TESTS: Referencias internas
+        // ============================================
+
+        runner.test('autocode-chat: tiene _window', async (stage) => {
+            const el = await createChat(stage);
+            runner.assertTrue(el._window, '_window debe existir');
+        }, { requiresServer: true });
+
+        runner.test('autocode-chat: tiene _messages', async (stage) => {
+            const el = await createChat(stage);
+            runner.assertTrue(el._messages, '_messages debe existir');
+        }, { requiresServer: true });
+
+        runner.test('autocode-chat: tiene _input', async (stage) => {
+            const el = await createChat(stage);
+            runner.assertTrue(el._input, '_input debe existir');
+        }, { requiresServer: true });
+
+        runner.test('autocode-chat: tiene _contextBar', async (stage) => {
+            const el = await createChat(stage);
+            runner.assertTrue(el._contextBar, '_contextBar debe existir');
+        }, { requiresServer: true });
+
+        runner.test('autocode-chat: tiene conversationHistory inicializado', async (stage) => {
+            const el = await createChat(stage);
+            runner.assertTrue(Array.isArray(el.conversationHistory), 'conversationHistory debe ser un array');
+        }, { requiresServer: true });
+
+        // ============================================
+        // TESTS: Funcionalidad Nueva Conversación
+        // ============================================
+
+        runner.test('autocode-chat: botón Nueva limpia mensajes', async (stage) => {
+            const el = await createChat(stage);
+
+            // Añadir mensajes de prueba
+            el._messages?.addMessage('user', 'Test message 1');
+            el._messages?.addMessage('assistant', 'Test response 1');
+
+            let messages = el._messages?.querySelectorAll('[data-role]');
+            runner.assertTrue(messages?.length >= 2, 'Debe tener mensajes antes de limpiar');
+
+            // Click en Nueva
+            const newBtn = el.querySelector('[data-ref="newChatBtn"]');
+            newBtn?.click();
+
+            await runner.sleep(50);
+
+            // Verificar que se limpiaron
+            messages = el._messages?.querySelectorAll('[data-role]');
+            runner.assertEqual(messages?.length || 0, 0, 'Mensajes deben estar vacíos después de Nueva');
+        }, { requiresServer: true });
+
+        runner.test('autocode-chat: botón Nueva limpia historial', async (stage) => {
+            const el = await createChat(stage);
+
+            // Simular historial
+            el.conversationHistory = [
+                { role: 'user', content: 'Test' },
+                { role: 'assistant', content: 'Response' }
+            ];
+
+            // Click en Nueva
+            const newBtn = el.querySelector('[data-ref="newChatBtn"]');
+            newBtn?.click();
+
+            await runner.sleep(50);
+
+            runner.assertEqual(el.conversationHistory.length, 0, 'Historial debe estar vacío');
+        }, { requiresServer: true });
+
+        // ============================================
+        // TESTS: UI Optimista
+        // ============================================
+
+        runner.test('autocode-chat: submit añade mensaje de usuario inmediatamente', async (stage) => {
+            const el = await createChat(stage);
+
+            // Limpiar primero
+            el._handleNewChat?.();
+
+            // Simular submit
+            const testMessage = 'Mensaje de prueba ' + Date.now();
+            el._input?.dispatchEvent(new CustomEvent('submit', {
+                detail: { message: testMessage }
+            }));
+
+            await runner.sleep(50);
+
+            // Verificar que el mensaje del usuario aparece inmediatamente
+            const userMessages = el._messages?.querySelectorAll('[data-role="user"]');
+            runner.assertTrue(userMessages?.length > 0, 'Debe haber al menos un mensaje de usuario');
+
+            const lastUserMsg = userMessages[userMessages.length - 1];
+            runner.assertContains(lastUserMsg.textContent, testMessage, 'El mensaje debe contener el texto enviado');
+        }, { requiresServer: true });
+
+        runner.test('autocode-chat: submit no añade mensaje vacío', async (stage) => {
+            const el = await createChat(stage);
+
+            // Limpiar primero
+            el._handleNewChat?.();
+
+            const initialCount = el._messages?.querySelectorAll('[data-role]')?.length || 0;
+
+            // Simular submit vacío
+            el._input?.dispatchEvent(new CustomEvent('submit', {
+                detail: { message: '' }
+            }));
+
+            await runner.sleep(50);
+
+            const finalCount = el._messages?.querySelectorAll('[data-role]')?.length || 0;
+            runner.assertEqual(finalCount, initialCount, 'No debe añadir mensaje vacío');
+        }, { requiresServer: true });
+
+        // ============================================
+        // TESTS: Toggle de ventana
+        // ============================================
+
+        runner.test('autocode-chat: toggle abre la ventana', async (stage) => {
+            const el = await createChat(stage);
+
+            // Cerrar primero
+            el._window?.close();
+
+            await runner.sleep(50);
+
+            // Abrir con toggle
+            el._window?.toggle();
+
+            await runner.sleep(100);
+
+            // Verificar que está abierto
+            const panel = el._window?.shadowRoot?.querySelector('[data-ref="panel"]');
+            runner.assertFalse(panel?.classList.contains('hidden'), 'Panel debe estar visible');
+        }, { requiresServer: true });
+
+        runner.test('autocode-chat: toggle cierra la ventana', async (stage) => {
+            const el = await createChat(stage);
+
+            // Abrir primero
+            el._window?.open();
+
+            await runner.sleep(50);
+
+            // Cerrar con toggle
+            el._window?.toggle();
+
+            await runner.sleep(100);
+
+            // Verificar que está cerrado
+            const panel = el._window?.shadowRoot?.querySelector('[data-ref="panel"]');
+            runner.assertTrue(panel?.classList.contains('hidden'), 'Panel debe estar oculto');
+        }, { requiresServer: true });
+
+        // ============================================
+        // TESTS: Métodos showResult
+        // ============================================
+
+        runner.test('autocode-chat: showResult añade mensaje del asistente', async (stage) => {
+            const el = await createChat(stage);
+
+            el._handleNewChat?.();
+
+            // Simular resultado
+            el.showResult({ result: { response: 'Respuesta del asistente' } });
+
+            await runner.sleep(50);
+
+            const assistantMessages = el._messages?.querySelectorAll('[data-role="assistant"]');
+            runner.assertTrue(assistantMessages?.length > 0, 'Debe haber mensaje del asistente');
+        }, { requiresServer: true });
+
+        runner.test('autocode-chat: showResult con error muestra mensaje de error', async (stage) => {
+            const el = await createChat(stage);
+
+            el._handleNewChat?.();
+
+            // Simular error
+            el.showResult('Error de prueba', true);
+
+            await runner.sleep(50);
+
+            const errorMessages = el._messages?.querySelectorAll('[data-role="error"]');
+            runner.assertTrue(errorMessages?.length > 0, 'Debe haber mensaje de error');
+        }, { requiresServer: true });
+
+        // ============================================
+        // IMPORTAR Y EJECUTAR
+        // ============================================
+
+        try {
+            await import('/elements/auto-element-generator.js');
+        } catch (e) {
+            console.warn('auto-element-generator.js no cargado:', e.message);
+        }
+
+        await runner.sleep(1000);
+
+        try {
+            await import('/elements/chat/autocode-chat.js');
+        } catch (e) {
+            console.warn('autocode-chat.js no cargado:', e.message);
+        }
+
+        await runner.sleep(500);
+        await runner.run();
+    </script>
+</body>
+</html>

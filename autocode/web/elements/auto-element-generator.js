@@ -292,9 +292,9 @@ export class AutoElementGenerator {
                 let input;
                 const defaultValue = param.default !== null ? param.default : '';
 
+                // Determinar tipo de input
                 if (param.choices && Array.isArray(param.choices) && param.choices.length > 0) {
                     input = document.createElement('select');
-                    input.name = param.name;
                     input.className = "p-2 border border-gray-300 rounded-lg text-sm bg-white text-gray-900 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200 disabled:bg-gray-100 disabled:cursor-not-allowed";
                     
                     param.choices.forEach(choice => {
@@ -304,16 +304,51 @@ export class AutoElementGenerator {
                         if (choice === defaultValue) option.selected = true;
                         input.appendChild(option);
                     });
-                } else {
+                } 
+                else if (this.isComplexType(param.type)) {
+                    // Tipos complejos (dict, list) usan Textarea
+                    input = document.createElement('textarea');
+                    input.rows = 3;
+                    input.className = "p-2 border border-gray-300 rounded-lg text-sm bg-white text-gray-900 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200 disabled:bg-gray-100 disabled:cursor-not-allowed font-mono";
+                    input.placeholder = param.type.includes('list') ? '["item1", "item2"]' : '{"key": "value"}';
+                    input.value = defaultValue ? JSON.stringify(defaultValue, null, 2) : '';
+                } 
+                else if (param.type === 'bool') {
+                    // Boolean usa Checkbox (envuelto en un div para alineación)
+                    const wrapper = document.createElement('div');
+                    wrapper.className = "flex items-center gap-2";
+                    input = document.createElement('input');
+                    input.type = 'checkbox';
+                    input.className = "w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500";
+                    if (defaultValue === true) input.checked = true;
+                    wrapper.appendChild(input);
+                    
+                    const boolLabel = document.createElement('span');
+                    boolLabel.className = "text-sm text-gray-700";
+                    boolLabel.textContent = "Activar";
+                    wrapper.appendChild(boolLabel);
+                    
+                    // El input real es el checkbox, pero retornamos el input para el resto del código
+                    // Ajuste: container.appendChild necesita el input directamente o el wrapper
+                    // Para simplificar lógica posterior, asignamos name al input
+                    input.name = param.name;
+                    container.appendChild(wrapper); // Special case for bool
+                    // input variable still points to the checkbox element
+                }
+                else {
                     input = document.createElement('input');
                     const isNumber = param.type === 'int' || param.type === 'float';
                     input.type = isNumber ? 'number' : 'text';
-                    input.name = param.name;
                     input.value = defaultValue;
                     if (param.type === 'float') input.step = "any";
                     if (param.type === 'int') input.step = "1";
                     input.placeholder = param.description;
                     input.className = "p-2 border border-gray-300 rounded-lg text-sm bg-white text-gray-900 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200 disabled:bg-gray-100 disabled:cursor-not-allowed";
+                }
+
+                if (param.type !== 'bool') {
+                    input.name = param.name;
+                    container.appendChild(input);
                 }
 
                 if (param.required) input.required = true;
@@ -330,8 +365,6 @@ export class AutoElementGenerator {
                 });
                 
                 input.addEventListener('input', () => this.clearFieldError(input));
-
-                container.appendChild(input);
                 
                 // Field error message container
                 const errorMsg = document.createElement('span');
@@ -342,9 +375,15 @@ export class AutoElementGenerator {
                 return container;
             }
 
+            isComplexType(type) {
+                if (!type) return false;
+                // Detectar dict/list/json de forma flexible pero segura (word boundaries para evitar 'predict')
+                return /\b(dict|list)\b|json/i.test(type);
+            }
+
             clearFieldError(input) {
                 input.classList.remove('border-red-500', 'bg-red-50');
-                input.classList.add('border-gray-300');
+                if (input.type !== 'checkbox') input.classList.add('border-gray-300');
                 
                 const container = input.closest('div[data-param]');
                 if (container) {
@@ -358,7 +397,7 @@ export class AutoElementGenerator {
 
             setFieldError(input, message) {
                 input.classList.add('border-red-500', 'bg-red-50');
-                input.classList.remove('border-gray-300');
+                if (input.type !== 'checkbox') input.classList.remove('border-gray-300');
                 
                 const container = input.closest('div[data-param]');
                 if (container) {
@@ -387,7 +426,7 @@ export class AutoElementGenerator {
             async execute() {
                 // Validar antes de ejecutar
                 if (!this.validate()) {
-                    this.showError('Por favor, completa todos los campos requeridos');
+                    this.showError('Por favor, completa todos los campos requeridos y corrige los errores.');
                     return;
                 }
                 
@@ -459,24 +498,32 @@ export class AutoElementGenerator {
                     const input = this.querySelector(`[name="${param.name}"]`);
                     if (!input) return;
 
-                    const value = input.value;
+                    const value = input.type === 'checkbox' ? input.checked : input.value;
                     let error = null;
 
                     // 1. Validar Required
-                    if (param.required && (!value || value.trim() === '')) {
-                        error = 'Campo requerido';
+                    if (param.required) {
+                        if (input.type === 'checkbox') {
+                            // Checkbox required usually means it must be checked (e.g. Terms & Conditions)
+                            // But for boolean parameters, required usually just means present.
+                            // Assuming here required bool doesn't mean must be true.
+                        } else if (!value || value.trim() === '') {
+                            error = 'Campo requerido';
+                        }
                     }
                     
-                    // 2. Validar Tipos Numéricos
-                    else if (value && value.trim() !== '') {
+                    // 2. Validar Tipos y formatos
+                    if (!error && value && typeof value === 'string' && value.trim() !== '') {
                         if (param.type === 'int') {
                             const num = Number(value);
-                            if (!Number.isInteger(num)) {
-                                error = 'Debe ser un número entero';
-                            }
+                            if (!Number.isInteger(num)) error = 'Debe ser un número entero';
                         } else if (param.type === 'float') {
-                            if (isNaN(parseFloat(value))) {
-                                error = 'Debe ser un número decimal';
+                            if (isNaN(parseFloat(value))) error = 'Debe ser un número decimal';
+                        } else if (this.isComplexType(param.type)) {
+                            try {
+                                JSON.parse(value);
+                            } catch (e) {
+                                error = 'JSON inválido';
                             }
                         }
                     }
@@ -496,18 +543,31 @@ export class AutoElementGenerator {
             getParams() {
                 const params = {};
                 // Busca inputs en todo el elemento (incluyendo los que haya movido el hijo)
-                const inputs = this.querySelectorAll('input, select');
+                const inputs = this.querySelectorAll('input, select, textarea');
                 
                 inputs.forEach(input => {
                     const value = input.value;
                     // Solo incluimos si el input corresponde a un parámetro conocido
                     const param = this.funcInfo.parameters.find(p => p.name === input.name);
                     if (param) {
+                        if (param.type === 'bool') {
+                            params[input.name] = input.checked;
+                            return;
+                        }
+
                         // Si está vacío y no es required, no lo enviamos para que use el default del backend
                         if (value === '' && !param.required) return;
 
                         if (param.type === 'int') params[input.name] = value ? parseInt(value) : 0;
                         else if (param.type === 'float') params[input.name] = value ? parseFloat(value) : 0.0;
+                        else if (this.isComplexType(param.type)) {
+                            try {
+                                params[input.name] = value ? JSON.parse(value) : null;
+                            } catch (e) {
+                                console.error(`Error parsing JSON for ${input.name}`, e);
+                                params[input.name] = null; // O dejar string si fallamos? Mejor null para que backend falle si es strict
+                            }
+                        }
                         else params[input.name] = value;
                     }
                 });
@@ -524,7 +584,16 @@ export class AutoElementGenerator {
                 };
                 
                 if (method.toUpperCase() === 'GET') {
-                    const queryString = new URLSearchParams(params).toString();
+                    // Para GET, necesitamos serializar params. Si hay objetos complejos, json stringify
+                    const queryParams = new URLSearchParams();
+                    for (const [key, val] of Object.entries(params)) {
+                        if (typeof val === 'object' && val !== null) {
+                            queryParams.append(key, JSON.stringify(val));
+                        } else {
+                            queryParams.append(key, val);
+                        }
+                    }
+                    const queryString = queryParams.toString();
                     if (queryString) url += `?${queryString}`;
                 } else {
                     options.body = JSON.stringify(params);
@@ -536,7 +605,13 @@ export class AutoElementGenerator {
                     try {
                         const errorData = await response.json();
                         // Intentar obtener mensaje legible o stringify completo
-                        errorMsg = errorData.detail || JSON.stringify(errorData);
+                        if (errorData.detail) {
+                            errorMsg = typeof errorData.detail === 'string' 
+                                ? errorData.detail 
+                                : JSON.stringify(errorData.detail, null, 2);
+                        } else {
+                            errorMsg = JSON.stringify(errorData, null, 2);
+                        }
                     } catch {
                         errorMsg = response.statusText || errorMsg;
                     }
@@ -547,6 +622,8 @@ export class AutoElementGenerator {
                 return data.result !== undefined ? data.result : data;
             }
 
+            // ... (resto de métodos auxiliares UI, setStatus, etc.)
+            
             showResult(content, isError = false) {
                 const resultContainer = this.querySelector('[data-ref="resultContainer"]');
                 if (!resultContainer) return;
@@ -614,7 +691,7 @@ export class AutoElementGenerator {
             }
 
             updateReadonly() {
-                const inputs = this.querySelectorAll('input, select');
+                const inputs = this.querySelectorAll('input, select, textarea');
                 const executeBtn = this.querySelector('[data-ref="executeBtn"]');
                 
                 inputs.forEach(input => {
@@ -636,14 +713,22 @@ export class AutoElementGenerator {
             setParam(paramName, value) {
                 const input = this.querySelector(`[name="${paramName}"]`);
                 if (input) {
-                    input.value = value;
+                    if (input.type === 'checkbox') {
+                        input.checked = !!value;
+                    } else if (input.tagName === 'TEXTAREA' && typeof value === 'object') {
+                        input.value = JSON.stringify(value, null, 2);
+                    } else {
+                        input.value = value;
+                    }
                     input.dispatchEvent(new Event('change', { bubbles: true }));
                 }
             }
 
             getParam(paramName) {
                 const input = this.querySelector(`[name="${paramName}"]`);
-                return input ? input.value : null;
+                if (!input) return null;
+                if (input.type === 'checkbox') return input.checked;
+                return input.value;
             }
         };
     }

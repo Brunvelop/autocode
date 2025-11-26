@@ -5,9 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Chat Components - Unit Tests</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-        .test-container { margin: 20px 0; padding: 10px; border: 1px solid #ddd; border-radius: 8px; }
-    </style>
 </head>
 <body class="p-8 bg-gray-100 min-h-screen">
     <div class="flex items-center gap-4 mb-2">
@@ -18,509 +15,413 @@
     
     <div id="summary" class="mb-6 p-4 bg-white rounded-lg shadow"></div>
     <div id="results" class="space-y-2"></div>
-    
-    <!-- Contenedores para tests visuales -->
-    <div class="mt-8 grid grid-cols-2 gap-4">
-        <div class="test-container">
-            <h3 class="font-bold mb-2">ChatInput Test Area</h3>
-            <div id="test-chat-input"></div>
-        </div>
-        <div class="test-container">
-            <h3 class="font-bold mb-2">ChatMessages Test Area</h3>
-            <div id="test-chat-messages"></div>
-        </div>
-        <div class="test-container">
-            <h3 class="font-bold mb-2">ContextBar Test Area</h3>
-            <div id="test-context-bar"></div>
-        </div>
-        <div class="test-container">
-            <h3 class="font-bold mb-2">ChatWindow Test Area</h3>
-            <div id="test-chat-window" class="h-64"></div>
-        </div>
-    </div>
 
     <script type="module">
-        // ============================================
-        // TEST RUNNER
-        // ============================================
-        const results = document.getElementById('results');
-        const summary = document.getElementById('summary');
-        let passed = 0, failed = 0, pending = 0;
-        const testResults = [];
-
-        function test(name, fn) {
-            testResults.push({ name, fn });
-        }
-
-        function assertEqual(actual, expected, msg = '') {
-            if (actual !== expected) {
-                throw new Error(`Expected "${expected}", got "${actual}". ${msg}`);
-            }
-        }
-
-        function assertTrue(value, msg = '') {
-            if (!value) throw new Error(`Expected truthy value. ${msg}`);
-        }
-
-        function assertFalse(value, msg = '') {
-            if (value) throw new Error(`Expected falsy value. ${msg}`);
-        }
-
-        async function runTests() {
-            for (const { name, fn } of testResults) {
-                try {
-                    await fn();
-                    results.innerHTML += `<div class="p-2 bg-green-100 text-green-800 rounded flex items-center gap-2">
-                        <span class="text-lg">✅</span> <span class="font-medium">${name}</span>
-                    </div>`;
-                    passed++;
-                } catch (e) {
-                    if (e.message === 'PENDING') {
-                        results.innerHTML += `<div class="p-2 bg-yellow-100 text-yellow-800 rounded flex items-center gap-2">
-                            <span class="text-lg">⏳</span> <span class="font-medium">${name}</span> <span class="text-sm">(pendiente)</span>
-                        </div>`;
-                        pending++;
-                    } else {
-                        results.innerHTML += `<div class="p-2 bg-red-100 text-red-800 rounded">
-                            <div class="flex items-center gap-2">
-                                <span class="text-lg">❌</span> <span class="font-medium">${name}</span>
-                            </div>
-                            <div class="text-sm mt-1 ml-6">${e.message}</div>
-                        </div>`;
-                        failed++;
-                    }
-                }
-            }
-            
-            const total = passed + failed + pending;
-            summary.innerHTML = `
-                <div class="flex gap-6 items-center">
-                    <span class="text-2xl font-bold">${total} tests</span>
-                    <span class="text-green-600 font-medium">✅ ${passed} passed</span>
-                    <span class="text-red-600 font-medium">❌ ${failed} failed</span>
-                    <span class="text-yellow-600 font-medium">⏳ ${pending} pending</span>
-                </div>
-            `;
-        }
-
-        function pend() {
-            throw new Error('PENDING');
-        }
-
-        // Esperar a que los custom elements se definan
-        async function waitForElement(tagName, timeout = 2000) {
-            const start = Date.now();
-            while (!customElements.get(tagName)) {
-                if (Date.now() - start > timeout) {
-                    throw new Error(`Timeout waiting for <${tagName}> to be defined`);
-                }
-                await new Promise(r => setTimeout(r, 50));
-            }
-        }
+        import { TestRunner } from '../integration/_shared/test-runner.js';
+        
+        const runner = new TestRunner();
 
         // ============================================
         // TESTS: chat-input
         // ============================================
         
-        test('ChatInput: se registra como custom element', async () => {
-            await waitForElement('chat-input');
-            assertTrue(customElements.get('chat-input'));
-        });
-
-        test('ChatInput: renderiza input y botón', async () => {
-            await waitForElement('chat-input');
-            const el = document.createElement('chat-input');
-            document.getElementById('test-chat-input').appendChild(el);
-            
-            const input = el.querySelector('input') || el.shadowRoot?.querySelector('input');
-            const button = el.querySelector('button') || el.shadowRoot?.querySelector('button');
-            
-            assertTrue(input, 'Debe tener un input');
-            assertTrue(button, 'Debe tener un botón');
-        });
-
-        test('ChatInput: placeholder configurable via atributo', async () => {
-            await waitForElement('chat-input');
-            const el = document.createElement('chat-input');
-            el.setAttribute('placeholder', 'Test placeholder');
-            document.getElementById('test-chat-input').appendChild(el);
-            
-            const input = el.querySelector('input') || el.shadowRoot?.querySelector('input');
-            assertEqual(input.placeholder, 'Test placeholder');
-        });
-
-        test('ChatInput: emite evento submit con mensaje al hacer click', async () => {
-            await waitForElement('chat-input');
-            const el = document.createElement('chat-input');
-            document.getElementById('test-chat-input').appendChild(el);
-            
-            let receivedMessage = null;
-            el.addEventListener('submit', (e) => {
-                receivedMessage = e.detail.message;
+        runner.group('ChatInput', () => {
+            runner.test('ChatInput: se registra como custom element', async () => {
+                await runner.waitForElement('chat-input');
+                runner.assertTrue(customElements.get('chat-input'));
             });
-            
-            const input = el.querySelector('input') || el.shadowRoot?.querySelector('input');
-            const button = el.querySelector('button') || el.shadowRoot?.querySelector('button');
-            
-            input.value = 'Test message';
-            button.click();
-            
-            assertEqual(receivedMessage, 'Test message');
-        });
 
-        test('ChatInput: emite evento submit con Enter', async () => {
-            await waitForElement('chat-input');
-            const el = document.createElement('chat-input');
-            document.getElementById('test-chat-input').appendChild(el);
-            
-            let receivedMessage = null;
-            el.addEventListener('submit', (e) => {
-                receivedMessage = e.detail.message;
+            runner.test('ChatInput: renderiza input y botón', async (stage) => {
+                await runner.waitForElement('chat-input');
+                const el = document.createElement('chat-input');
+                stage.appendChild(el);
+                
+                const input = el.querySelector('input') || el.shadowRoot?.querySelector('input');
+                const button = el.querySelector('button') || el.shadowRoot?.querySelector('button');
+                
+                runner.assertTrue(input, 'Debe tener un input');
+                runner.assertTrue(button, 'Debe tener un botón');
             });
-            
-            const input = el.querySelector('input') || el.shadowRoot?.querySelector('input');
-            input.value = 'Enter test';
-            input.dispatchEvent(new KeyboardEvent('keypress', { key: 'Enter', bubbles: true }));
-            
-            assertEqual(receivedMessage, 'Enter test');
-        });
 
-        test('ChatInput: clear() limpia el input', async () => {
-            await waitForElement('chat-input');
-            const el = document.createElement('chat-input');
-            document.getElementById('test-chat-input').appendChild(el);
-            
-            const input = el.querySelector('input') || el.shadowRoot?.querySelector('input');
-            input.value = 'Some text';
-            
-            el.clear();
-            assertEqual(input.value, '');
-        });
+            runner.test('ChatInput: placeholder configurable via atributo', async (stage) => {
+                await runner.waitForElement('chat-input');
+                const el = document.createElement('chat-input');
+                el.setAttribute('placeholder', 'Test placeholder');
+                stage.appendChild(el);
+                
+                const input = el.querySelector('input') || el.shadowRoot?.querySelector('input');
+                runner.assertEqual(input.placeholder, 'Test placeholder');
+            });
 
-        test('ChatInput: focus() enfoca el input', async () => {
-            await waitForElement('chat-input');
-            const el = document.createElement('chat-input');
-            document.getElementById('test-chat-input').appendChild(el);
-            
-            el.focus();
-            const input = el.querySelector('input') || el.shadowRoot?.querySelector('input');
-            assertEqual(document.activeElement, input);
-        });
+            runner.test('ChatInput: emite evento submit con mensaje al hacer click', async (stage) => {
+                await runner.waitForElement('chat-input');
+                const el = document.createElement('chat-input');
+                stage.appendChild(el);
+                
+                let receivedMessage = null;
+                el.addEventListener('submit', (e) => {
+                    receivedMessage = e.detail.message;
+                });
+                
+                const input = el.querySelector('input') || el.shadowRoot?.querySelector('input');
+                const button = el.querySelector('button') || el.shadowRoot?.querySelector('button');
+                
+                input.value = 'Test message';
+                button.click();
+                
+                runner.assertEqual(receivedMessage, 'Test message');
+            });
 
-        test('ChatInput: disabled desactiva input y botón', async () => {
-            await waitForElement('chat-input');
-            const el = document.createElement('chat-input');
-            el.setAttribute('disabled', '');
-            document.getElementById('test-chat-input').appendChild(el);
-            
-            const input = el.querySelector('input') || el.shadowRoot?.querySelector('input');
-            const button = el.querySelector('button') || el.shadowRoot?.querySelector('button');
-            
-            assertTrue(input.disabled, 'Input debe estar disabled');
-            assertTrue(button.disabled, 'Botón debe estar disabled');
+            runner.test('ChatInput: emite evento submit con Enter', async (stage) => {
+                await runner.waitForElement('chat-input');
+                const el = document.createElement('chat-input');
+                stage.appendChild(el);
+                
+                let receivedMessage = null;
+                el.addEventListener('submit', (e) => {
+                    receivedMessage = e.detail.message;
+                });
+                
+                const input = el.querySelector('input') || el.shadowRoot?.querySelector('input');
+                input.value = 'Enter test';
+                input.dispatchEvent(new KeyboardEvent('keypress', { key: 'Enter', bubbles: true }));
+                
+                runner.assertEqual(receivedMessage, 'Enter test');
+            });
+
+            runner.test('ChatInput: clear() limpia el input', async (stage) => {
+                await runner.waitForElement('chat-input');
+                const el = document.createElement('chat-input');
+                stage.appendChild(el);
+                
+                const input = el.querySelector('input') || el.shadowRoot?.querySelector('input');
+                input.value = 'Some text';
+                
+                el.clear();
+                runner.assertEqual(input.value, '');
+            });
+
+            runner.test('ChatInput: focus() enfoca el input', async (stage) => {
+                await runner.waitForElement('chat-input');
+                const el = document.createElement('chat-input');
+                stage.appendChild(el);
+                
+                el.focus();
+                const input = el.querySelector('input') || el.shadowRoot?.querySelector('input');
+                runner.assertEqual(document.activeElement, input);
+            });
+
+            runner.test('ChatInput: disabled desactiva input y botón', async (stage) => {
+                await runner.waitForElement('chat-input');
+                const el = document.createElement('chat-input');
+                el.setAttribute('disabled', '');
+                stage.appendChild(el);
+                
+                const input = el.querySelector('input') || el.shadowRoot?.querySelector('input');
+                const button = el.querySelector('button') || el.shadowRoot?.querySelector('button');
+                
+                runner.assertTrue(input.disabled, 'Input debe estar disabled');
+                runner.assertTrue(button.disabled, 'Botón debe estar disabled');
+            });
         });
 
         // ============================================
         // TESTS: chat-messages
         // ============================================
         
-        test('ChatMessages: se registra como custom element', async () => {
-            await waitForElement('chat-messages');
-            assertTrue(customElements.get('chat-messages'));
-        });
+        runner.group('ChatMessages', () => {
+            runner.test('ChatMessages: se registra como custom element', async () => {
+                await runner.waitForElement('chat-messages');
+                runner.assertTrue(customElements.get('chat-messages'));
+            });
 
-        test('ChatMessages: addMessage() añade mensaje de usuario', async () => {
-            await waitForElement('chat-messages');
-            const el = document.createElement('chat-messages');
-            document.getElementById('test-chat-messages').appendChild(el);
-            
-            el.addMessage('user', 'Hola mundo');
-            
-            const messages = el.querySelectorAll('[data-role="user"]');
-            assertEqual(messages.length, 1);
-            assertTrue(messages[0].textContent.includes('Hola mundo'));
-        });
+            runner.test('ChatMessages: addMessage() añade mensaje de usuario', async (stage) => {
+                await runner.waitForElement('chat-messages');
+                const el = document.createElement('chat-messages');
+                stage.appendChild(el);
+                
+                el.addMessage('user', 'Hola mundo');
+                
+                const messages = el.querySelectorAll('[data-role="user"]');
+                runner.assertEqual(messages.length, 1);
+                runner.assertTrue(messages[0].textContent.includes('Hola mundo'));
+            });
 
-        test('ChatMessages: addMessage() añade mensaje de asistente', async () => {
-            await waitForElement('chat-messages');
-            const el = document.createElement('chat-messages');
-            document.getElementById('test-chat-messages').appendChild(el);
-            
-            el.addMessage('assistant', 'Respuesta AI');
-            
-            const messages = el.querySelectorAll('[data-role="assistant"]');
-            assertEqual(messages.length, 1);
-            assertTrue(messages[0].textContent.includes('Respuesta AI'));
-        });
+            runner.test('ChatMessages: addMessage() añade mensaje de asistente', async (stage) => {
+                await runner.waitForElement('chat-messages');
+                const el = document.createElement('chat-messages');
+                stage.appendChild(el);
+                
+                el.addMessage('assistant', 'Respuesta AI');
+                
+                const messages = el.querySelectorAll('[data-role="assistant"]');
+                runner.assertEqual(messages.length, 1);
+                runner.assertTrue(messages[0].textContent.includes('Respuesta AI'));
+            });
 
-        test('ChatMessages: addMessage() añade mensaje de error', async () => {
-            await waitForElement('chat-messages');
-            const el = document.createElement('chat-messages');
-            document.getElementById('test-chat-messages').appendChild(el);
-            
-            el.addMessage('error', 'Algo salió mal');
-            
-            const messages = el.querySelectorAll('[data-role="error"]');
-            assertEqual(messages.length, 1);
-        });
+            runner.test('ChatMessages: addMessage() añade mensaje de error', async (stage) => {
+                await runner.waitForElement('chat-messages');
+                const el = document.createElement('chat-messages');
+                stage.appendChild(el);
+                
+                el.addMessage('error', 'Algo salió mal');
+                
+                const messages = el.querySelectorAll('[data-role="error"]');
+                runner.assertEqual(messages.length, 1);
+            });
 
-        test('ChatMessages: clear() elimina todos los mensajes', async () => {
-            await waitForElement('chat-messages');
-            const el = document.createElement('chat-messages');
-            document.getElementById('test-chat-messages').appendChild(el);
-            
-            el.addMessage('user', 'Mensaje 1');
-            el.addMessage('assistant', 'Mensaje 2');
-            el.clear();
-            
-            const messages = el.querySelectorAll('[data-role]');
-            assertEqual(messages.length, 0);
-        });
+            runner.test('ChatMessages: clear() elimina todos los mensajes', async (stage) => {
+                await runner.waitForElement('chat-messages');
+                const el = document.createElement('chat-messages');
+                stage.appendChild(el);
+                
+                el.addMessage('user', 'Mensaje 1');
+                el.addMessage('assistant', 'Mensaje 2');
+                el.clear();
+                
+                const messages = el.querySelectorAll('[data-role]');
+                runner.assertEqual(messages.length, 0);
+            });
 
-        test('ChatMessages: auto-scroll al añadir mensaje', async () => {
-            await waitForElement('chat-messages');
-            const el = document.createElement('chat-messages');
-            el.style.height = '100px';
-            el.style.overflow = 'auto';
-            document.getElementById('test-chat-messages').appendChild(el);
-            
-            // El contenedor interno es el que tiene scroll
-            const container = el.querySelector('[data-ref="container"]');
-            if (container) {
-                container.style.height = '100px';
-                container.style.overflow = 'auto';
-            }
-            
-            // Añadir varios mensajes para forzar scroll
-            for (let i = 0; i < 10; i++) {
-                el.addMessage('user', `Mensaje largo ${i} que ocupa espacio`);
-            }
-            
-            // Esperar que requestAnimationFrame procese el scroll
-            await new Promise(r => setTimeout(r, 150));
-            
-            // Verificar que hay contenido con scroll (scrollHeight > clientHeight)
-            const scrollContainer = container || el;
-            assertTrue(scrollContainer.scrollHeight > scrollContainer.clientHeight, 'Debe tener contenido scrolleable');
+            runner.test('ChatMessages: auto-scroll al añadir mensaje', async (stage) => {
+                await runner.waitForElement('chat-messages');
+                const el = document.createElement('chat-messages');
+                el.style.height = '100px';
+                el.style.overflow = 'auto';
+                stage.appendChild(el);
+                
+                // El contenedor interno es el que tiene scroll
+                const container = el.querySelector('[data-ref="container"]');
+                if (container) {
+                    container.style.height = '100px';
+                    container.style.overflow = 'auto';
+                }
+                
+                // Añadir varios mensajes para forzar scroll
+                for (let i = 0; i < 10; i++) {
+                    el.addMessage('user', `Mensaje largo ${i} que ocupa espacio`);
+                }
+                
+                // Esperar que requestAnimationFrame procese el scroll
+                await runner.sleep(150);
+                
+                // Verificar que hay contenido con scroll (scrollHeight > clientHeight)
+                const scrollContainer = container || el;
+                runner.assertTrue(scrollContainer.scrollHeight > scrollContainer.clientHeight, 'Debe tener contenido scrolleable');
+            });
         });
 
         // ============================================
         // TESTS: context-bar
         // ============================================
         
-        test('ContextBar: se registra como custom element', async () => {
-            await waitForElement('context-bar');
-            assertTrue(customElements.get('context-bar'));
-        });
+        runner.group('ContextBar', () => {
+            runner.test('ContextBar: se registra como custom element', async () => {
+                await runner.waitForElement('context-bar');
+                runner.assertTrue(customElements.get('context-bar'));
+            });
 
-        test('ContextBar: muestra current/max correctamente', async () => {
-            await waitForElement('context-bar');
-            const el = document.createElement('context-bar');
-            el.setAttribute('current', '5000');
-            el.setAttribute('max', '10000');
-            document.getElementById('test-context-bar').appendChild(el);
-            
-            const stats = el.querySelector('[data-ref="stats"]') || el.shadowRoot?.querySelector('[data-ref="stats"]');
-            // Verificar formato "X / Y" (independiente del locale para separadores de miles)
-            assertTrue(stats.textContent.includes('/'), 'Debe mostrar formato current / max');
-            assertTrue(stats.textContent.includes('5'), 'Debe contener el valor 5000');
-            assertTrue(stats.textContent.includes('10'), 'Debe contener el valor 10000');
-        });
+            runner.test('ContextBar: muestra current/max correctamente', async (stage) => {
+                await runner.waitForElement('context-bar');
+                const el = document.createElement('context-bar');
+                el.setAttribute('current', '5000');
+                el.setAttribute('max', '10000');
+                stage.appendChild(el);
+                
+                const stats = el.querySelector('[data-ref="stats"]') || el.shadowRoot?.querySelector('[data-ref="stats"]');
+                // Verificar formato "X / Y"
+                runner.assertTrue(stats.textContent.includes('/'), 'Debe mostrar formato current / max');
+                runner.assertTrue(stats.textContent.includes('5'), 'Debe contener el valor 5000');
+                runner.assertTrue(stats.textContent.includes('10'), 'Debe contener el valor 10000');
+            });
 
-        test('ContextBar: barra verde cuando < 70%', async () => {
-            await waitForElement('context-bar');
-            const el = document.createElement('context-bar');
-            el.setAttribute('current', '3000');
-            el.setAttribute('max', '10000');
-            document.getElementById('test-context-bar').appendChild(el);
-            
-            const bar = el.querySelector('[data-ref="bar"]') || el.shadowRoot?.querySelector('[data-ref="bar"]');
-            assertTrue(bar.classList.contains('bg-green-500'), 'Debe ser verde bajo 70%');
-        });
+            runner.test('ContextBar: barra verde cuando < 70%', async (stage) => {
+                await runner.waitForElement('context-bar');
+                const el = document.createElement('context-bar');
+                el.setAttribute('current', '3000');
+                el.setAttribute('max', '10000');
+                stage.appendChild(el);
+                
+                const bar = el.querySelector('[data-ref="bar"]') || el.shadowRoot?.querySelector('[data-ref="bar"]');
+                runner.assertTrue(bar.classList.contains('bg-green-500'), 'Debe ser verde bajo 70%');
+            });
 
-        test('ContextBar: barra amarilla cuando 70-90%', async () => {
-            await waitForElement('context-bar');
-            const el = document.createElement('context-bar');
-            el.setAttribute('current', '8000');
-            el.setAttribute('max', '10000');
-            document.getElementById('test-context-bar').appendChild(el);
-            
-            const bar = el.querySelector('[data-ref="bar"]') || el.shadowRoot?.querySelector('[data-ref="bar"]');
-            assertTrue(bar.classList.contains('bg-yellow-500'), 'Debe ser amarillo entre 70-90%');
-        });
+            runner.test('ContextBar: barra amarilla cuando 70-90%', async (stage) => {
+                await runner.waitForElement('context-bar');
+                const el = document.createElement('context-bar');
+                el.setAttribute('current', '8000');
+                el.setAttribute('max', '10000');
+                stage.appendChild(el);
+                
+                const bar = el.querySelector('[data-ref="bar"]') || el.shadowRoot?.querySelector('[data-ref="bar"]');
+                runner.assertTrue(bar.classList.contains('bg-yellow-500'), 'Debe ser amarillo entre 70-90%');
+            });
 
-        test('ContextBar: barra roja cuando > 90%', async () => {
-            await waitForElement('context-bar');
-            const el = document.createElement('context-bar');
-            el.setAttribute('current', '9500');
-            el.setAttribute('max', '10000');
-            document.getElementById('test-context-bar').appendChild(el);
-            
-            const bar = el.querySelector('[data-ref="bar"]') || el.shadowRoot?.querySelector('[data-ref="bar"]');
-            assertTrue(bar.classList.contains('bg-red-500'), 'Debe ser rojo sobre 90%');
-        });
+            runner.test('ContextBar: barra roja cuando > 90%', async (stage) => {
+                await runner.waitForElement('context-bar');
+                const el = document.createElement('context-bar');
+                el.setAttribute('current', '9500');
+                el.setAttribute('max', '10000');
+                stage.appendChild(el);
+                
+                const bar = el.querySelector('[data-ref="bar"]') || el.shadowRoot?.querySelector('[data-ref="bar"]');
+                runner.assertTrue(bar.classList.contains('bg-red-500'), 'Debe ser rojo sobre 90%');
+            });
 
-        test('ContextBar: actualiza al cambiar atributos', async () => {
-            await waitForElement('context-bar');
-            const el = document.createElement('context-bar');
-            el.setAttribute('current', '1000');
-            el.setAttribute('max', '10000');
-            document.getElementById('test-context-bar').appendChild(el);
-            
-            el.setAttribute('current', '9000');
-            
-            await new Promise(r => setTimeout(r, 50)); // Esperar actualización
-            const bar = el.querySelector('[data-ref="bar"]') || el.shadowRoot?.querySelector('[data-ref="bar"]');
-            assertTrue(bar.classList.contains('bg-yellow-500') || bar.classList.contains('bg-red-500'));
-        });
-
-        // ============================================
-        // TESTS: chat-window (usa Shadow DOM)
-        // ============================================
-        
-        test('ChatWindow: se registra como custom element', async () => {
-            await waitForElement('chat-window');
-            assertTrue(customElements.get('chat-window'));
-        });
-
-        test('ChatWindow: tiene shadowRoot', async () => {
-            await waitForElement('chat-window');
-            const el = document.createElement('chat-window');
-            document.getElementById('test-chat-window').appendChild(el);
-            
-            assertTrue(el.shadowRoot, 'Debe tener shadowRoot');
-        });
-
-        test('ChatWindow: toggle abre/cierra ventana', async () => {
-            await waitForElement('chat-window');
-            const el = document.createElement('chat-window');
-            document.getElementById('test-chat-window').appendChild(el);
-            
-            const panel = el.shadowRoot.querySelector('[data-ref="panel"]');
-            
-            assertTrue(panel.classList.contains('hidden'), 'Debe empezar cerrado');
-            
-            el.toggle();
-            assertFalse(panel.classList.contains('hidden'), 'Debe abrirse con toggle');
-            
-            el.toggle();
-            assertTrue(panel.classList.contains('hidden'), 'Debe cerrarse con toggle');
-        });
-
-        test('ChatWindow: open/close métodos funcionan', async () => {
-            await waitForElement('chat-window');
-            const el = document.createElement('chat-window');
-            document.getElementById('test-chat-window').appendChild(el);
-            
-            const panel = el.shadowRoot.querySelector('[data-ref="panel"]');
-            
-            el.open();
-            assertFalse(panel.classList.contains('hidden'), 'open() debe abrir');
-            
-            el.close();
-            assertTrue(panel.classList.contains('hidden'), 'close() debe cerrar');
-        });
-
-        test('ChatWindow: emite evento close al cerrar', async () => {
-            await waitForElement('chat-window');
-            const el = document.createElement('chat-window');
-            document.getElementById('test-chat-window').appendChild(el);
-            
-            let closeEmitted = false;
-            el.addEventListener('close', () => closeEmitted = true);
-            
-            el.open();
-            el.close();
-            
-            assertTrue(closeEmitted, 'Debe emitir evento close');
-        });
-
-        test('ChatWindow: title configurable via atributo', async () => {
-            await waitForElement('chat-window');
-            const el = document.createElement('chat-window');
-            el.setAttribute('title', 'Mi Chat');
-            document.getElementById('test-chat-window').appendChild(el);
-            
-            const title = el.shadowRoot.querySelector('[data-ref="title"]');
-            assertTrue(title.textContent.includes('Mi Chat'));
-        });
-
-        test('ChatWindow: acepta elementos hijos con atributos slot', async () => {
-            await waitForElement('chat-window');
-            const el = document.createElement('chat-window');
-            el.innerHTML = `
-                <span slot="header-actions">Custom Action</span>
-                <div slot="content">Custom Content</div>
-                <div slot="footer">Custom Footer</div>
-            `;
-            document.getElementById('test-chat-window').appendChild(el);
-            
-            // En Light DOM, los elementos con slot existen como hijos del host
-            assertTrue(el.querySelector('[slot="content"]'), 'Debe contener elemento con slot content');
-            assertTrue(el.querySelector('[slot="header-actions"]'), 'Debe contener elemento con slot header-actions');
-            assertTrue(el.querySelector('[slot="footer"]'), 'Debe contener elemento con slot footer');
+            runner.test('ContextBar: actualiza al cambiar atributos', async (stage) => {
+                await runner.waitForElement('context-bar');
+                const el = document.createElement('context-bar');
+                el.setAttribute('current', '1000');
+                el.setAttribute('max', '10000');
+                stage.appendChild(el);
+                
+                el.setAttribute('current', '9000');
+                
+                await runner.sleep(50); // Esperar actualización
+                const bar = el.querySelector('[data-ref="bar"]') || el.shadowRoot?.querySelector('[data-ref="bar"]');
+                runner.assertTrue(bar.classList.contains('bg-yellow-500') || bar.classList.contains('bg-red-500'));
+            });
         });
 
         // ============================================
-        // TESTS: chat-window con contenido slotted
+        // TESTS: chat-window
         // ============================================
         
-        test('ChatWindow: preserva contenido slotted después de render', async () => {
-            await waitForElement('chat-window');
-            const el = document.createElement('chat-window');
-            
-            // Simular lo que hace autocode-chat: poner contenido con slots
-            el.innerHTML = `
-                <button slot="header-actions">Test Action</button>
-                <div slot="content" data-test="content">Content Area</div>
-                <div slot="footer" data-test="footer">
-                    <input type="text" placeholder="Test input">
-                </div>
-            `;
-            
-            document.getElementById('test-chat-window').appendChild(el);
-            
-            // Esperar a que connectedCallback termine
-            await new Promise(r => setTimeout(r, 50));
-            
-            // El contenido slotted debe existir y ser accesible
-            const footerContent = el.querySelector('[data-test="footer"]');
-            const inputInFooter = el.querySelector('[slot="footer"] input');
-            
-            assertTrue(footerContent, 'El footer slotted debe existir después del render');
-            assertTrue(inputInFooter, 'El input dentro del footer slot debe existir');
-        });
+        runner.group('ChatWindow', () => {
+            runner.test('ChatWindow: se registra como custom element', async () => {
+                await runner.waitForElement('chat-window');
+                runner.assertTrue(customElements.get('chat-window'));
+            });
 
-        test('ChatWindow: slots proyectan contenido correctamente', async () => {
-            await waitForElement('chat-window');
-            const el = document.createElement('chat-window');
-            el.innerHTML = `
-                <span slot="header-actions">Custom Button</span>
-                <chat-messages slot="content"></chat-messages>
-                <div slot="footer">
-                    <chat-input placeholder="Test"></chat-input>
-                </div>
-            `;
-            
-            document.getElementById('test-chat-window').appendChild(el);
-            el.open();
-            
-            await new Promise(r => setTimeout(r, 50));
-            
-            // Verificar que chat-input está visible y funcional
-            const chatInput = el.querySelector('chat-input');
-            assertTrue(chatInput, 'chat-input debe existir en el slot footer');
-            
-            // Verificar que el input interno existe
-            const input = chatInput?.querySelector('input');
-            assertTrue(input, 'El input interno de chat-input debe existir');
-        });
+            runner.test('ChatWindow: tiene shadowRoot', async (stage) => {
+                await runner.waitForElement('chat-window');
+                const el = document.createElement('chat-window');
+                stage.appendChild(el);
+                
+                runner.assertTrue(el.shadowRoot, 'Debe tener shadowRoot');
+            });
 
-        // ============================================
-        // NOTA: Tests de autocode-chat están en tests/e2e/
-        // porque requieren el servidor corriendo (auto-chat 
-        // es generado dinámicamente por auto-element-generator)
-        // ============================================
+            runner.test('ChatWindow: toggle abre/cierra ventana', async (stage) => {
+                await runner.waitForElement('chat-window');
+                const el = document.createElement('chat-window');
+                stage.appendChild(el);
+                
+                const panel = el.shadowRoot.querySelector('[data-ref="panel"]');
+                
+                runner.assertTrue(panel.classList.contains('hidden'), 'Debe empezar cerrado');
+                
+                el.toggle();
+                runner.assertFalse(panel.classList.contains('hidden'), 'Debe abrirse con toggle');
+                
+                el.toggle();
+                runner.assertTrue(panel.classList.contains('hidden'), 'Debe cerrarse con toggle');
+            });
+
+            runner.test('ChatWindow: open/close métodos funcionan', async (stage) => {
+                await runner.waitForElement('chat-window');
+                const el = document.createElement('chat-window');
+                stage.appendChild(el);
+                
+                const panel = el.shadowRoot.querySelector('[data-ref="panel"]');
+                
+                el.open();
+                runner.assertFalse(panel.classList.contains('hidden'), 'open() debe abrir');
+                
+                el.close();
+                runner.assertTrue(panel.classList.contains('hidden'), 'close() debe cerrar');
+            });
+
+            runner.test('ChatWindow: emite evento close al cerrar', async (stage) => {
+                await runner.waitForElement('chat-window');
+                const el = document.createElement('chat-window');
+                stage.appendChild(el);
+                
+                let closeEmitted = false;
+                el.addEventListener('close', () => closeEmitted = true);
+                
+                el.open();
+                el.close();
+                
+                runner.assertTrue(closeEmitted, 'Debe emitir evento close');
+            });
+
+            runner.test('ChatWindow: title configurable via atributo', async (stage) => {
+                await runner.waitForElement('chat-window');
+                const el = document.createElement('chat-window');
+                el.setAttribute('title', 'Mi Chat');
+                stage.appendChild(el);
+                
+                const title = el.shadowRoot.querySelector('[data-ref="title"]');
+                runner.assertTrue(title.textContent.includes('Mi Chat'));
+            });
+
+            runner.test('ChatWindow: acepta elementos hijos con atributos slot', async (stage) => {
+                await runner.waitForElement('chat-window');
+                const el = document.createElement('chat-window');
+                el.innerHTML = `
+                    <span slot="header-actions">Custom Action</span>
+                    <div slot="content">Custom Content</div>
+                    <div slot="footer">Custom Footer</div>
+                `;
+                stage.appendChild(el);
+                
+                // En Light DOM, los elementos con slot existen como hijos del host
+                runner.assertTrue(el.querySelector('[slot="content"]'), 'Debe contener elemento con slot content');
+                runner.assertTrue(el.querySelector('[slot="header-actions"]'), 'Debe contener elemento con slot header-actions');
+                runner.assertTrue(el.querySelector('[slot="footer"]'), 'Debe contener elemento con slot footer');
+            });
+
+            runner.test('ChatWindow: preserva contenido slotted después de render', async (stage) => {
+                await runner.waitForElement('chat-window');
+                const el = document.createElement('chat-window');
+                
+                // Simular lo que hace autocode-chat: poner contenido con slots
+                el.innerHTML = `
+                    <button slot="header-actions">Test Action</button>
+                    <div slot="content" data-test="content">Content Area</div>
+                    <div slot="footer" data-test="footer">
+                        <input type="text" placeholder="Test input">
+                    </div>
+                `;
+                
+                stage.appendChild(el);
+                
+                // Esperar a que connectedCallback termine
+                await runner.sleep(50);
+                
+                // El contenido slotted debe existir y ser accesible
+                const footerContent = el.querySelector('[data-test="footer"]');
+                const inputInFooter = el.querySelector('[slot="footer"] input');
+                
+                runner.assertTrue(footerContent, 'El footer slotted debe existir después del render');
+                runner.assertTrue(inputInFooter, 'El input dentro del footer slot debe existir');
+            });
+
+            runner.test('ChatWindow: slots proyectan contenido correctamente', async (stage) => {
+                await runner.waitForElement('chat-window');
+                const el = document.createElement('chat-window');
+                el.innerHTML = `
+                    <span slot="header-actions">Custom Button</span>
+                    <chat-messages slot="content"></chat-messages>
+                    <div slot="footer">
+                        <chat-input placeholder="Test"></chat-input>
+                    </div>
+                `;
+                
+                stage.appendChild(el);
+                el.open();
+                
+                await runner.sleep(50);
+                
+                // Verificar que chat-input está visible y funcional
+                const chatInput = el.querySelector('chat-input');
+                runner.assertTrue(chatInput, 'chat-input debe existir en el slot footer');
+                
+                // Verificar que el input interno existe
+                const input = chatInput?.querySelector('input');
+                runner.assertTrue(input, 'El input interno de chat-input debe existir');
+            });
+        });
 
         // ============================================
         // IMPORTAR COMPONENTES Y EJECUTAR TESTS
@@ -550,12 +451,9 @@
         } catch (e) {
             console.warn('chat-window.js no encontrado:', e.message);
         }
-        
-        // autocode-chat.js no se importa aquí porque depende de auto-chat
-        // que es generado por auto-element-generator cuando hay servidor
 
         // Ejecutar todos los tests
-        await runTests();
+        await runner.run();
     </script>
 </body>
 </html>

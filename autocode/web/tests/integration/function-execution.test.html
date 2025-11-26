@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Function Execution - Integration Tests</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="p-8 bg-gray-100 min-h-screen">
+    <div class="flex items-center gap-4 mb-2">
+        <a href="/tests" class="text-indigo-600 hover:text-indigo-800">← Tests</a>
+        <h1 class="text-3xl font-bold">⚡ Function Execution - Integration Tests</h1>
+    </div>
+    <p class="text-gray-600 mb-4">
+        Tests auto-generados para <strong>todos</strong> los auto-* elements basados en /functions/details.
+    </p>
+
+    <!-- Server Status -->
+    <div id="serverStatus" class="mb-6 p-4 bg-yellow-100 border border-yellow-300 rounded-lg">
+        <span class="text-yellow-800">⏳ Verificando conexión con el servidor...</span>
+    </div>
+
+    <div id="summary" class="mb-6 p-4 bg-white rounded-lg shadow"></div>
+    <div id="results" class="space-y-2"></div>
+
+    <script type="module">
+        import { TestRunner } from './_shared/test-runner.js';
+        import { generateAutoElementTests } from './_shared/auto-element-tests.js';
+
+        const runner = new TestRunner();
+
+        // Importar auto-element-generator para registrar los custom elements
+        try {
+            await import('/elements/auto-element-generator.js');
+        } catch (e) {
+            console.warn('auto-element-generator.js no cargado:', e.message);
+        }
+
+        // Esperar a que se registren los elementos
+        await runner.sleep(500);
+
+        // Generar tests automáticamente para TODAS las funciones (ya no requiere ID de contenedor)
+        await generateAutoElementTests(runner);
+
+        // Ejecutar todos los tests
+        await runner.run();
+    </script>
+</body>
+</html>

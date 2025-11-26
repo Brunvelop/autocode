@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AutoElementGenerator - Integration Tests</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="p-8 bg-gray-100 min-h-screen">
+    <div class="flex items-center gap-4 mb-2">
+        <a href="/tests" class="text-indigo-600 hover:text-indigo-800">← Tests</a>
+        <h1 class="text-3xl font-bold">⚙️ AutoElementGenerator - Integration Tests</h1>
+    </div>
+    <p class="text-gray-600 mb-4">Tests del generador automático de custom elements.</p>
+    
+    <!-- Server Status -->
+    <div id="serverStatus" class="mb-6 p-4 bg-yellow-100 border border-yellow-300 rounded-lg">
+        <span class="text-yellow-800">⏳ Verificando conexión con el servidor...</span>
+    </div>
+    
+    <div id="summary" class="mb-6 p-4 bg-white rounded-lg shadow"></div>
+    <div id="results" class="space-y-2"></div>
+    
+    <!-- (Eliminado Test Area global, ahora cada test gestiona su UI) -->
+
+    <script type="module">
+        import { TestRunner } from './_shared/test-runner.js';
+        
+        const runner = new TestRunner();
+
+        // ============================================
+        // TESTS: Inicialización
+        // ============================================
+        
+        runner.test('AutoElementGenerator existe en window', async () => {
+            runner.assertTrue(window.autoElementGenerator, 'autoElementGenerator debe existir en window');
+        }, { requiresServer: true });
+
+        runner.test('AutoElementGenerator tiene método init()', async () => {
+            const gen = window.autoElementGenerator;
+            runner.assertTrue(typeof gen.init === 'function', 'init debe ser una función');
+        }, { requiresServer: true });
+
+        runner.test('AutoElementGenerator tiene método loadFunctions()', async () => {
+            const gen = window.autoElementGenerator;
+            runner.assertTrue(typeof gen.loadFunctions === 'function', 'loadFunctions debe ser una función');
+        }, { requiresServer: true });
+
+        // ============================================
+        // TESTS: Carga de funciones
+        // ============================================
+
+        runner.test('Carga funciones desde /functions/details', async () => {
+            const gen = window.autoElementGenerator;
+            runner.assertTrue(Object.keys(gen.functions).length > 0, 'Debe tener funciones cargadas');
+        }, { requiresServer: true });
+
+        runner.test('Cada función tiene estructura correcta', async () => {
+            const gen = window.autoElementGenerator;
+            const funcNames = Object.keys(gen.functions);
+            runner.assertTrue(funcNames.length > 0, 'Debe tener al menos una función');
+            
+            const firstFunc = gen.functions[funcNames[0]];
+            runner.assertTrue(firstFunc.name !== undefined, 'Función debe tener name');
+            runner.assertTrue(firstFunc.parameters !== undefined, 'Función debe tener parameters');
+            runner.assertTrue(firstFunc.http_methods !== undefined, 'Función debe tener http_methods');
+        }, { requiresServer: true });
+
+        // ============================================
+        // TESTS: Registro de elementos
+        // ============================================
+
+        runner.test('Registra custom elements para cada función', async () => {
+            const gen = window.autoElementGenerator;
+            runner.assertTrue(gen.registeredElements.size > 0, 'Debe tener elementos registrados');
+        }, { requiresServer: true });
+
+        runner.test('Todos los elementos registrados empiezan con auto-', async () => {
+            const gen = window.autoElementGenerator;
+            const allStartWithAuto = Array.from(gen.registeredElements).every(name => 
+                name.startsWith('auto-')
+            );
+            runner.assertTrue(allStartWithAuto, 'Todos los elementos deben empezar con auto-');
+        }, { requiresServer: true });
+
+        runner.test('Elementos están definidos en customElements', async () => {
+            const gen = window.autoElementGenerator;
+            const firstElement = Array.from(gen.registeredElements)[0];
+            runner.assertTrue(customElements.get(firstElement), `${firstElement} debe estar definido en customElements`);
+        }, { requiresServer: true });
+
+        // ============================================
+        // TESTS: Generación de elementos
+        // ============================================
+
+        runner.test('Elemento generado tiene funcInfo', async (stage) => {
+            const gen = window.autoElementGenerator;
+            const elementName = Array.from(gen.registeredElements)[0];
+            
+            await runner.waitForElement(elementName);
+            const el = document.createElement(elementName);
+            if (stage) stage.appendChild(el);
+            
+            runner.assertTrue(el.funcInfo, 'Elemento debe tener funcInfo');
+        }, { requiresServer: true });
+
+        runner.test('Elemento generado tiene funcName', async (stage) => {
+            const gen = window.autoElementGenerator;
+            const elementName = Array.from(gen.registeredElements)[0];
+            
+            await runner.waitForElement(elementName);
+            const el = document.createElement(elementName);
+            if (stage) stage.appendChild(el);
+            
+            runner.assertTrue(el.funcName, 'Elemento debe tener funcName');
+            runner.assertEqual(el.funcName, elementName.replace('auto-', ''));
+        }, { requiresServer: true });
+
+        runner.test('Elemento generado renderiza UI', async (stage) => {
+            const gen = window.autoElementGenerator;
+            const elementName = Array.from(gen.registeredElements)[0];
+            
+            await runner.waitForElement(elementName);
+            const el = document.createElement(elementName);
+            if (stage) stage.appendChild(el);
+            
+            await runner.sleep(50);
+            
+            // Debe tener el contenedor principal
+            const container = el.querySelector('[data-part="container"]');
+            runner.assertTrue(container, 'Debe renderizar el contenedor principal');
+        }, { requiresServer: true });
+
+        runner.test('Elemento generado tiene botón de ejecutar', async (stage) => {
+            const gen = window.autoElementGenerator;
+            const elementName = Array.from(gen.registeredElements)[0];
+            
+            await runner.waitForElement(elementName);
+            const el = document.createElement(elementName);
+            if (stage) stage.appendChild(el);
+            
+            await runner.sleep(50);
+            
+            const executeBtn = el.querySelector('[data-ref="executeBtn"]');
+            runner.assertTrue(executeBtn, 'Debe tener botón de ejecutar');
+        }, { requiresServer: true });
+
+        runner.test('Elemento dispara evento function-connected', async (stage) => {
+            const gen = window.autoElementGenerator;
+            const elementName = Array.from(gen.registeredElements)[0];
+            
+            await runner.waitForElement(elementName);
+            
+            let eventFired = false;
+            const el = document.createElement(elementName);
+            el.addEventListener('function-connected', () => eventFired = true);
+            if (stage) stage.appendChild(el);
+            
+            await runner.sleep(50);
+            
+            runner.assertTrue(eventFired, 'Debe disparar evento function-connected al conectarse');
+        }, { requiresServer: true });
+
+        // ============================================
+        // IMPORTAR Y EJECUTAR
+        // ============================================
+        
+        try {
+            await import('/elements/auto-element-generator.js');
+        } catch (e) {
+            console.warn('auto-element-generator.js no cargado:', e.message);
+        }
+
+        await runner.sleep(1000);
+        await runner.run();
+    </script>
+</body>
+</html>
