@@ -243,6 +243,7 @@ def load_core_functions():
         import autocode.core.hello.hello_world
         import autocode.core.math.calculator
         import autocode.core.ai.pipelines
+        import autocode.core.utils.git_utils
         
         _functions_loaded = True
         logger.info(f"Loaded {len(FUNCTION_REGISTRY)} functions into registry")

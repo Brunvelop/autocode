@@ -128,41 +128,6 @@
             </div>
         </div>
 
-        <!-- Static Info Section -->
-        <div class="mt-16 grid gap-6 md:grid-cols-2">
-            <!-- E2E Tests Info -->
-            <div class="p-6 bg-white rounded-2xl shadow border border-gray-100">
-                <div class="flex items-start gap-4">
-                    <div class="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center text-2xl">
-                        🎭
-                    </div>
-                    <div class="flex-1">
-                        <h2 class="text-xl font-bold text-gray-800 mb-1">E2E Tests (Playwright)</h2>
-                        <p class="text-gray-500 text-sm mb-3">Tests automatizados fuera del navegador</p>
-                        <div class="p-3 bg-gray-50 rounded-lg">
-                            <code class="text-xs text-gray-600 font-mono">uv run pytest tests/e2e/ -v</code>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Python Unit Tests Info -->
-            <div class="p-6 bg-white rounded-2xl shadow border border-gray-100">
-                <div class="flex items-start gap-4">
-                    <div class="w-12 h-12 bg-yellow-100 rounded-xl flex items-center justify-center text-2xl">
-                        🐍
-                    </div>
-                    <div class="flex-1">
-                        <h2 class="text-xl font-bold text-gray-800 mb-1">Python Tests</h2>
-                        <p class="text-gray-500 text-sm mb-3">Tests unitarios del backend</p>
-                        <div class="p-3 bg-gray-50 rounded-lg">
-                            <code class="text-xs text-gray-600 font-mono">uv run pytest tests/unit/ -v</code>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
         <!-- Hidden Iframe for Runner -->
         <iframe id="testRunnerFrame" class="hidden w-0 h-0"></iframe>
     </div>
