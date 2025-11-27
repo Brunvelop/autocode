@@ -15,6 +15,7 @@ class GitNode(BaseModel):
     """Node representing a file or directory in the git tree."""
     name: str = Field(description="Name of the file or directory")
     type: Literal["file", "directory"] = Field(description="Type of the node")
+    size: Optional[int] = Field(default=0, description="Size in bytes (files only)")
     children: Optional[List['GitNode']] = Field(default=None, description="List of children nodes if directory")
 
 class GitTreeOutput(GenericOutput):
@@ -24,7 +25,7 @@ class GitTreeOutput(GenericOutput):
 @register_function(http_methods=["GET"])
 def get_git_tree() -> GitTreeOutput:
     """
-    Retrieves the project structure from git index.
+    Retrieves the project structure from git index including file sizes.
     
     Returns:
         GitTreeOutput containing the file tree structure.
@@ -32,8 +33,9 @@ def get_git_tree() -> GitTreeOutput:
     try:
         # Get all files tracked by git
         # -r: recursive
-        # --name-only: show only filenames
-        cmd = ["git", "ls-tree", "-r", "HEAD", "--name-only"]
+        # -l: long format (shows size)
+        # HEAD: current commit
+        cmd = ["git", "ls-tree", "-r", "-l", "HEAD"]
         
         result = subprocess.run(
             cmd,
@@ -42,42 +44,65 @@ def get_git_tree() -> GitTreeOutput:
             check=True
         )
         
-        files = result.stdout.strip().split('\n')
-        files = [f for f in files if f] # Filter empty strings
+        lines = result.stdout.strip().split('\n')
+        lines = [line for line in lines if line] # Filter empty strings
         
         # Build tree structure
-        # We use a dict initially for easy construction, then convert to GitNode
         tree_dict = {
             "name": "root",
             "type": "directory",
-            "children": []
+            "children": [],
+            "size": 0
         }
         
-        for file_path in files:
-            parts = file_path.split('/')
-            current_level = tree_dict["children"]
-            
-            for i, part in enumerate(parts):
-                is_file = (i == len(parts) - 1)
-                
-                # Check if this part already exists in current level
-                existing_node = next((node for node in current_level if node["name"] == part), None)
-                
-                if existing_node:
-                    if not is_file:
-                        current_level = existing_node["children"]
+        for line in lines:
+            try:
+                # Format: "100644 blob <sha> <size_padded>\t<path>"
+                # Split by tab to separate metadata from path (handles spaces in path)
+                if '\t' in line:
+                    metadata, file_path = line.split('\t', 1)
                 else:
-                    new_node = {
-                        "name": part,
-                        "type": "file" if is_file else "directory"
-                    }
-                    if not is_file:
-                        new_node["children"] = []
+                    # Fallback for weird output, splitting by spaces
+                    parts = line.split()
+                    file_path = parts[-1]
+                    metadata = " ".join(parts[:-1])
+
+                meta_parts = metadata.split()
+                # 4th element is size (after mode, type, sha)
+                # It might be "-" for some objects, treat as 0
+                size_str = meta_parts[3] if len(meta_parts) > 3 else "0"
+                size = int(size_str) if size_str.isdigit() else 0
+                
+                parts = file_path.split('/')
+                current_level = tree_dict["children"]
+                
+                for i, part in enumerate(parts):
+                    is_file = (i == len(parts) - 1)
                     
-                    current_level.append(new_node)
+                    # Check if this part already exists in current level
+                    existing_node = next((node for node in current_level if node["name"] == part), None)
                     
-                    if not is_file:
-                        current_level = new_node["children"]
+                    if existing_node:
+                        if not is_file:
+                            current_level = existing_node["children"]
+                            # Accumulate directory size logic could be placed here if we wanted
+                            # but usually visualization calculates it.
+                    else:
+                        new_node = {
+                            "name": part,
+                            "type": "file" if is_file else "directory",
+                            "size": size if is_file else 0
+                        }
+                        if not is_file:
+                            new_node["children"] = []
+                        
+                        current_level.append(new_node)
+                        
+                        if not is_file:
+                            current_level = new_node["children"]
+            except Exception as loop_e:
+                logger.warning(f"Error parsing line '{line}': {loop_e}")
+                continue
         
         # Convert dict to Pydantic model
         root_node = GitNode(**tree_dict)

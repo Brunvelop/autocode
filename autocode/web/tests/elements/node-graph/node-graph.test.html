@@ -3,13 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tree Layout - Unit Tests</title>
+    <title>Node Graph - Unit Tests</title>
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="p-8 bg-gray-100 min-h-screen">
     <div class="flex items-center gap-4 mb-2">
         <a href="/tests" class="text-indigo-600 hover:text-indigo-800">← Tests</a>
-        <h1 class="text-3xl font-bold">🌲 Tree Layout - Unit Tests</h1>
+        <h1 class="text-3xl font-bold">🌲 Node Graph - Unit Tests</h1>
     </div>
 
     <div id="summary" class="mb-6 p-4 bg-white rounded-lg shadow"></div>
@@ -19,9 +19,9 @@
         import { TestRunner } from '../../utils/test-runner.js';
 
         // Intentar importar dependencias
-        try { await import('/elements/graph/graph-node.js'); } catch {}
-        try { await import('/elements/graph/tree-layout.js'); } catch (e) {
-            console.warn('tree-layout.js no encontrado:', e.message);
+        try { await import('/elements/node-graph/graph-node.js'); } catch {}
+        try { await import('/elements/node-graph/node-graph.js'); } catch (e) {
+            console.warn('node-graph.js no encontrado:', e.message);
         }
 
         const runner = new TestRunner();
@@ -44,15 +44,15 @@
             ]
         };
 
-        runner.group('TreeLayout', () => {
+        runner.group('NodeGraph', () => {
             runner.test('Se registra como custom element', async () => {
-                await runner.waitForElement('tree-layout');
-                runner.assertTrue(customElements.get('tree-layout'));
+                await runner.waitForElement('node-graph');
+                runner.assertTrue(customElements.get('node-graph'));
             });
 
             runner.test('Renderiza nodos recursivamente (graph-node)', async (stage) => {
-                await runner.waitForElement('tree-layout');
-                const el = document.createElement('tree-layout');
+                await runner.waitForElement('node-graph');
+                const el = document.createElement('node-graph');
                 stage.appendChild(el);
 
                 el.data = mockData;
@@ -67,8 +67,8 @@
             });
 
             runner.test('Crea estructura DOM jerárquica (wrappers y children-container)', async (stage) => {
-                await runner.waitForElement('tree-layout');
-                const el = document.createElement('tree-layout');
+                await runner.waitForElement('node-graph');
+                const el = document.createElement('node-graph');
                 stage.appendChild(el);
                 el.data = mockData;
                 await runner.sleep(50);
@@ -87,8 +87,8 @@
             });
 
             runner.test('Genera contenedor SVG para conexiones', async (stage) => {
-                await runner.waitForElement('tree-layout');
-                const el = document.createElement('tree-layout');
+                await runner.waitForElement('node-graph');
+                const el = document.createElement('node-graph');
                 stage.appendChild(el);
                 el.data = mockData;
                 await runner.sleep(50);

@@ -1,14 +1,14 @@
 import './graph-node.js';
 
 /**
- * TreeLayout
+ * NodeGraph
  * Visualizador de estructuras de árbol jerárquico.
  * Organiza los nodos visualmente y dibuja conexiones.
  * 
  * Propiedades:
  * - data: Objeto con la estructura del árbol
  */
-export class TreeLayout extends HTMLElement {
+export class NodeGraph extends HTMLElement {
     constructor() {
         super();
         this._data = null;
@@ -50,7 +50,7 @@ export class TreeLayout extends HTMLElement {
                 <!-- Paths will be injected here -->
             </svg>
             
-            <div id="tree-root" class="flex flex-col-reverse items-center justify-center min-h-full w-full z-10 relative pb-20 pt-10">
+            <div id="graph-root" class="flex flex-col-reverse items-center justify-center min-h-full w-full z-10 relative pb-20 pt-10">
                 ${this._data ? this._buildNodeHTML(this._data) : ''}
             </div>
         `;
@@ -94,9 +94,9 @@ export class TreeLayout extends HTMLElement {
 
     drawConnections() {
         const svg = this.querySelector('#connections');
-        const treeRoot = this.querySelector('#tree-root');
+        const rootContainer = this.querySelector('#graph-root');
         
-        if (!svg || !treeRoot) return;
+        if (!svg || !rootContainer) return;
 
         svg.innerHTML = '';
         
@@ -143,9 +143,9 @@ export class TreeLayout extends HTMLElement {
             }
         };
 
-        const rootWrapper = treeRoot.querySelector('.node-wrapper');
+        const rootWrapper = rootContainer.querySelector('.node-wrapper');
         if (rootWrapper) drawLines(rootWrapper);
     }
 }
 
-customElements.define('tree-layout', TreeLayout);
+customElements.define('node-graph', NodeGraph);

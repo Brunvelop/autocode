@@ -68,12 +68,12 @@
                 const viewport = el.querySelector('graph-viewport');
                 runner.assertTrue(viewport, 'Debe contener graph-viewport');
                 
-                // Verificar que tree-layout está DENTRO del transform-layer del viewport
+                // Verificar que node-graph está DENTRO del transform-layer del viewport
                 // gracias a la proyección manual que arreglamos
                 const transformLayer = viewport.querySelector('#transform-layer');
-                const layout = transformLayer ? transformLayer.querySelector('tree-layout') : null;
+                const layout = transformLayer ? transformLayer.querySelector('node-graph') : null;
                 
-                runner.assertTrue(layout, 'tree-layout debe estar proyectado dentro del transform-layer');
+                runner.assertTrue(layout, 'node-graph debe estar proyectado dentro del transform-layer');
             });
 
             runner.test('Carga datos y oculta loader', async (stage) => {
@@ -89,9 +89,59 @@
                 runner.assertTrue(loader.classList.contains('opacity-0'), 'Loader debe ocultarse tras cargar');
                 
                 // Verificar datos en layout
-                const layout = el.querySelector('tree-layout');
+                const layout = el.querySelector('node-graph');
                 runner.assertTrue(layout.data, 'El layout debe tener datos asignados');
                 runner.assertEqual(layout.data.data.label, 'root', 'El root debe ser correcto');
+            });
+
+            runner.test('Toggle View: switch entre Graph y Treemap', async (stage) => {
+                await runner.waitForElement('git-visualizer');
+                const el = document.createElement('git-visualizer');
+                stage.appendChild(el);
+                
+                await runner.sleep(50); // wait init
+
+                // Busca boton de toggle (asumiremos que tiene id o data-ref)
+                // Vamos a mockear la existencia del botón si aún no está en el código
+                // Pero como es TDD, el test fallará primero.
+                const toggleBtn = el.querySelector('#view-toggle');
+                runner.assertTrue(toggleBtn, 'Debe existir botón de toggle de vista');
+                
+                // Estado inicial: Graph
+                runner.assertTrue(el.querySelector('node-graph'), 'Inicialmente debe ser Node Graph');
+                runner.assertFalse(el.querySelector('treemap-layout'), 'Inicialmente NO debe estar Treemap');
+                
+                // Click -> Treemap
+                toggleBtn.click();
+                await runner.sleep(10);
+                
+                runner.assertFalse(el.querySelector('node-graph'), 'Tras toggle, Node Graph debe desaparecer');
+                runner.assertTrue(el.querySelector('treemap-layout'), 'Tras toggle, Treemap debe aparecer');
+                
+                // Click -> Graph
+                toggleBtn.click();
+                await runner.sleep(10);
+                runner.assertTrue(el.querySelector('node-graph'), 'Debe volver a Node Graph');
+            });
+
+            runner.test('Metric Selector: visible solo en Treemap', async (stage) => {
+                await runner.waitForElement('git-visualizer');
+                const el = document.createElement('git-visualizer');
+                stage.appendChild(el);
+                await runner.sleep(50);
+
+                const controls = el.querySelector('#metric-controls');
+                
+                // Graph mode (default) -> Hidden
+                runner.assertTrue(controls.classList.contains('hidden'), 'Debe estar oculto en Graph');
+                
+                // Switch to Treemap
+                const mapBtn = el.querySelector('#view-treemap');
+                mapBtn.click();
+                await runner.sleep(10);
+                
+                // Treemap mode -> Visible
+                runner.assertFalse(controls.classList.contains('hidden'), 'Debe estar visible en Treemap');
             });
         });
 

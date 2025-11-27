@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Treemap - Unit Tests</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="p-8 bg-gray-100 min-h-screen">
+    <div class="flex items-center gap-4 mb-2">
+        <a href="/tests" class="text-indigo-600 hover:text-indigo-800">← Tests</a>
+        <h1 class="text-3xl font-bold">🗺️ Treemap - Unit Tests</h1>
+    </div>
+
+    <div id="summary" class="mb-6 p-4 bg-white rounded-lg shadow"></div>
+    <div id="results" class="space-y-2"></div>
+
+    <script type="module">
+        import { TestRunner } from '../../utils/test-runner.js';
+
+        try { await import('/elements/treemap/treemap-node.js'); } catch {}
+        try {
+            // Cache busting para asegurar que se carga la última versión
+            await import('/elements/treemap/treemap.js?t=' + Date.now());
+        } catch (e) {
+            console.warn('treemap.js no encontrado:', e.message);
+        }
+
+        const runner = new TestRunner();
+
+        const mockData = {
+            id: 'root',
+            data: { label: 'root', type: 'directory' },
+            size: 0, 
+            children: [
+                {
+                    id: 'f1',
+                    data: { label: 'big.file', type: 'file' },
+                    size: 1000
+                },
+                {
+                    id: 'f2',
+                    data: { label: 'small.file', type: 'file' },
+                    size: 100
+                },
+                {
+                    id: 'd1',
+                    data: { label: 'src', type: 'directory' },
+                    children: [
+                        { id: 'f3', data: { label: 'script.js', type: 'file' }, size: 500 }
+                    ]
+                }
+            ]
+        };
+
+        const createSizedWrapper = (stage) => {
+            const wrapper = document.createElement('div');
+            wrapper.style.width = '800px';
+            wrapper.style.height = '600px';
+            wrapper.style.position = 'relative';
+            stage.appendChild(wrapper);
+            return wrapper;
+        };
+
+        runner.group('Treemap', () => {
+            runner.test('Se registra como custom element', async () => {
+                await runner.waitForElement('treemap-layout');
+                runner.assertTrue(customElements.get('treemap-layout'));
+            });
+
+            runner.test('Calcula sumas de tamaños correctamente', async (stage) => {
+                await runner.waitForElement('treemap-layout');
+                const wrapper = createSizedWrapper(stage);
+                const el = document.createElement('treemap-layout');
+                wrapper.appendChild(el);
+                
+                el.data = mockData;
+                await runner.sleep(50);
+                
+                runner.assertEqual(el._processedData.value, 1600, 'Root value debe ser la suma de hijos');
+                
+                const srcDir = el._processedData.children.find(c => c.data.label === 'src');
+                runner.assertEqual(srcDir.value, 500, 'Subdirectory value debe ser suma de sus hijos');
+            });
+
+            runner.test('Renderiza estructura Flex anidada', async (stage) => {
+                await runner.waitForElement('treemap-layout');
+                const wrapper = createSizedWrapper(stage);
+                const el = document.createElement('treemap-layout');
+                wrapper.appendChild(el);
+                
+                el.data = mockData;
+                await runner.sleep(50);
+                
+                const nodes = el.querySelectorAll('treemap-node');
+                const bigFile = Array.from(nodes).find(n => n.getAttribute('label') === 'big.file');
+                runner.assertTrue(bigFile, 'Debe renderizar nodo hoja');
+                runner.assertTrue(bigFile.style.flexGrow === '1000', 'Debe asignar flex-grow proporcional al size');
+            });
+
+            runner.test('Alterna direcciones (Row/Col) por profundidad', async (stage) => {
+                await runner.waitForElement('treemap-layout');
+                const wrapper = createSizedWrapper(stage);
+                const el = document.createElement('treemap-layout');
+                wrapper.appendChild(el);
+                el.data = mockData;
+                await runner.sleep(50);
+                
+                // Root container (Depth 0) -> Row
+                let rootContainer = el.querySelector('.depth-0');
+                
+                // Fallback debug: check first child
+                if (!rootContainer) {
+                    console.log('DEBUG: .depth-0 not found via querySelector. Checking firstElementChild...');
+                    const firstChild = el.firstElementChild;
+                    if (firstChild) {
+                         console.log('First child classes:', firstChild.className);
+                         console.log('First child HTML:', firstChild.outerHTML.substring(0, 100) + '...');
+                         if (firstChild.classList.contains('depth-0')) {
+                             console.log('WTF: Class list contains depth-0 but querySelector failed?');
+                             rootContainer = firstChild;
+                         }
+                    } else {
+                        console.log('DEBUG HTML (Empty innerHTML):', el.innerHTML);
+                    }
+                }
+
+                runner.assertTrue(rootContainer, 'Debe existir contenedor raíz con clase depth-0');
+                runner.assertTrue(rootContainer.classList.contains('flex-row') || rootContainer.classList.contains('flex-col'), 'Debe tener clase flex direction');
+                
+                // Child container (Depth 1) -> Opposite
+                const childContainer = el.querySelector('.depth-1'); 
+                runner.assertTrue(childContainer, 'Debe existir contenedor de profundidad 1');
+            });
+
+            runner.test('Renderiza cabeceras de directorio (profundidad > 0)', async (stage) => {
+                await runner.waitForElement('treemap-layout');
+                const wrapper = createSizedWrapper(stage);
+                const el = document.createElement('treemap-layout');
+                wrapper.appendChild(el);
+                el.data = mockData;
+                await runner.sleep(50);
+                
+                const headers = Array.from(el.querySelectorAll('div')).filter(d => d.textContent.includes('src') && d.textContent.includes('📂'));
+                runner.assertTrue(headers.length > 0, 'Debe existir header explícito para "src"');
+            });
+
+             runner.test('Ordena visualmente por tamaño descendente', async (stage) => {
+                await runner.waitForElement('treemap-layout');
+                const wrapper = createSizedWrapper(stage);
+                const el = document.createElement('treemap-layout');
+                wrapper.appendChild(el);
+                
+                el.data = mockData;
+                await runner.sleep(50);
+                
+                const rootContainer = el.querySelector('.depth-0');
+                const children = Array.from(rootContainer.children);
+                
+                const grows = children.map(c => parseInt(c.style.flexGrow));
+                
+                // Expected order: Big(1000) -> Src(500) -> Small(100)
+                runner.assertEqual(grows[0], 1000, 'El primer elemento debe ser el más grande (1000)');
+                runner.assertEqual(grows[1], 500, 'El segundo elemento debe ser el mediano (500)');
+                runner.assertEqual(grows[2], 100, 'El tercer elemento debe ser el más pequeño (100)');
+            });
+
+            runner.test('Asigna colores semánticos por extensión', async (stage) => {
+                await runner.waitForElement('treemap-layout');
+                const wrapper = createSizedWrapper(stage);
+                const el = document.createElement('treemap-layout');
+                wrapper.appendChild(el);
+                
+                const colorData = {
+                    id: 'root',
+                    data: { label: 'root', type: 'directory' },
+                    children: [
+                        { id: '1', data: { label: 'test.py', type: 'file' }, size: 10 },
+                        { id: '2', data: { label: 'index.js', type: 'file' }, size: 10 },
+                        { id: '3', data: { label: 'style.css', type: 'file' }, size: 10 }
+                    ]
+                };
+                
+                el.data = colorData;
+                await runner.sleep(50);
+                
+                const pyNode = el.querySelector('treemap-node[label="test.py"]');
+                const jsNode = el.querySelector('treemap-node[label="index.js"]');
+                const cssNode = el.querySelector('treemap-node[label="style.css"]');
+                
+                runner.assertTrue(pyNode.getAttribute('color-class').includes('blue'), 'Python debe ser azul');
+                runner.assertTrue(jsNode.getAttribute('color-class').includes('yellow'), 'JS debe ser amarillo');
+                runner.assertTrue(cssNode.getAttribute('color-class').includes('orange'), 'CSS debe ser naranja');
+            });
+            
+             runner.test('Maneja estructura profunda (3 niveles)', async (stage) => {
+                await runner.waitForElement('treemap-layout');
+                const wrapper = createSizedWrapper(stage);
+                const el = document.createElement('treemap-layout');
+                wrapper.appendChild(el);
+                
+                const deepData = {
+                    id: 'root', data: { label: 'root' }, children: [
+                        { id: 'd1', data: { label: 'level1' }, children: [
+                             { id: 'd2', data: { label: 'level2' }, children: [
+                                  { id: 'f1', data: { label: 'deep.txt' }, size: 100 }
+                             ]}
+                        ]}
+                    ]
+                };
+                
+                el.data = deepData;
+                await runner.sleep(50);
+                
+                const d0 = el.querySelector('.depth-0');
+                const d1 = el.querySelector('.depth-1');
+                const d2 = el.querySelector('.depth-2');
+                
+                runner.assertTrue(d0 && d1 && d2, 'Deben existir contenedores para profundidad 0, 1 y 2');
+                
+                runner.assertTrue(el.querySelectorAll('.depth-0, .depth-1, .depth-2').length >= 3, 'Deben renderizarse todos los niveles');
+            });
+        });
+
+        runner.run();
+    </script>
+</body>
+</html>

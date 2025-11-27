@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Treemap Node - Unit Tests</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="p-8 bg-gray-100 min-h-screen">
+    <div class="flex items-center gap-4 mb-2">
+        <a href="/tests" class="text-indigo-600 hover:text-indigo-800">← Tests</a>
+        <h1 class="text-3xl font-bold">📦 Treemap Node - Unit Tests</h1>
+    </div>
+
+    <div id="summary" class="mb-6 p-4 bg-white rounded-lg shadow"></div>
+    <div id="results" class="space-y-2"></div>
+    
+    <script type="module">
+        import { TestRunner } from '../../utils/test-runner.js';
+
+        // Load component (will fail if not created yet)
+        try {
+            await import('/elements/treemap/treemap-node.js');
+        } catch (e) {
+            console.warn('treemap-node.js no encontrado:', e.message);
+        }
+
+        const runner = new TestRunner();
+
+        runner.group('TreemapNode (Dumb Component)', () => {
+            runner.test('Se registra como custom element', async () => {
+                await runner.waitForElement('treemap-node');
+                runner.assertTrue(customElements.get('treemap-node'));
+            });
+
+            runner.test('Renderiza label y valor proporcionados directamente', async (stage) => {
+                await runner.waitForElement('treemap-node');
+                const wrapper = document.createElement('div');
+                wrapper.className = 'w-full h-24 relative'; // Contenedor con altura
+
+                const el = document.createElement('treemap-node');
+                // Ahora pasamos los valores ya procesados
+                el.setAttribute('label', 'main.py');
+                el.setAttribute('display-value', '1024 KB'); 
+                
+                wrapper.appendChild(el);
+                stage.appendChild(wrapper);
+                
+                await runner.sleep(10);
+                
+                const label = el.querySelector('.label');
+                const size = el.querySelector('.size');
+                
+                runner.assertTrue(label.textContent.includes('main.py'), 'Label debe mostrar nombre');
+                runner.assertTrue(size.textContent.includes('1024 KB'), 'Debe mostrar el texto exacto pasado en display-value');
+            });
+
+            runner.test('Aplica clases de color pasadas explícitamente', async (stage) => {
+                await runner.waitForElement('treemap-node');
+                const wrapper = document.createElement('div');
+                wrapper.className = 'w-full h-24 relative';
+
+                const el = document.createElement('treemap-node');
+                el.setAttribute('label', 'script.js');
+                // Simulamos que el padre calculó que esto debe ser rojo
+                el.setAttribute('color-class', 'bg-red-500 text-white');
+                
+                wrapper.appendChild(el);
+                stage.appendChild(wrapper);
+                
+                await runner.sleep(10);
+                
+                runner.assertTrue(el.className.includes('bg-red-500'), 'Debe aplicar la clase de fondo pasada');
+                runner.assertTrue(el.className.includes('text-white'), 'Debe aplicar la clase de texto pasada');
+            });
+            
+            runner.test('Oculta sección de valor si display-value está vacío', async (stage) => {
+                await runner.waitForElement('treemap-node');
+                const wrapper = document.createElement('div');
+                wrapper.className = 'w-full h-24 relative';
+
+                const el = document.createElement('treemap-node');
+                el.setAttribute('label', 'test.js');
+                // No pasamos display-value
+                
+                wrapper.appendChild(el);
+                stage.appendChild(wrapper);
+                
+                await runner.sleep(10);
+                
+                const sizeContainer = el.querySelector('.size').parentNode;
+                // El contenedor padre del span .size tiene la clase hidden si no hay valor
+                runner.assertTrue(sizeContainer.classList.contains('hidden'), 'El contenedor del valor debe estar oculto');
+            });
+
+            runner.test('Reactividad: Actualiza vista al cambiar atributos', async (stage) => {
+                await runner.waitForElement('treemap-node');
+                const wrapper = document.createElement('div');
+                wrapper.className = 'w-full h-24 relative';
+
+                const el = document.createElement('treemap-node');
+                el.setAttribute('label', 'old.js');
+                el.setAttribute('display-value', '10 KB');
+                
+                wrapper.appendChild(el);
+                stage.appendChild(wrapper);
+                
+                await runner.sleep(10);
+                runner.assertTrue(el.querySelector('.label').textContent.includes('old.js'), 'Valor inicial correcto');
+
+                // Cambiamos atributo
+                el.setAttribute('label', 'updated.js');
+                await runner.sleep(10); // Esperar re-render
+
+                runner.assertTrue(el.querySelector('.label').textContent.includes('updated.js'), 'Debe actualizarse el label');
+            });
+
+            runner.test('Responsive: Oculta VALOR en altura media (< 35px)', async (stage) => {
+                await runner.waitForElement('treemap-node');
+                const wrapper = document.createElement('div');
+                wrapper.className = 'w-40 h-[30px] relative inline-block align-top'; 
+
+                const el = document.createElement('treemap-node');
+                el.setAttribute('label', 'media.js');
+                el.setAttribute('display-value', '500 KB');
+                
+                wrapper.appendChild(el);
+                stage.appendChild(wrapper);
+                
+                await runner.sleep(10);
+                
+                // Simulamos la detección del ResizeObserver manualmente para probar la lógica
+                el._updateVisibility({ height: 30, width: 160 });
+                
+                const labelEl = el.querySelector('.label').parentElement;
+                const valueContainer = el.querySelector('.size').parentElement;
+
+                runner.assertTrue(!labelEl.classList.contains('hidden'), 'Label debe ser VISIBLE');
+                runner.assertTrue(valueContainer.classList.contains('hidden'), 'Valor debe estar OCULTO');
+            });
+
+            runner.test('Responsive: Oculta TODO en altura crítica (< 20px)', async (stage) => {
+                await runner.waitForElement('treemap-node');
+                const wrapper = document.createElement('div');
+                wrapper.className = 'w-40 h-[15px] relative inline-block align-top bg-red-100'; 
+
+                const el = document.createElement('treemap-node');
+                el.setAttribute('label', 'tiny.js');
+                el.setAttribute('display-value', '1 KB');
+                
+                wrapper.appendChild(el);
+                stage.appendChild(wrapper);
+                
+                await runner.sleep(10);
+                
+                // Simulamos la detección del ResizeObserver manualmente
+                el._updateVisibility({ height: 15, width: 160 });
+                
+                const labelEl = el.querySelector('.label').parentElement;
+                runner.assertTrue(labelEl.classList.contains('hidden'), 'Label debe estar OCULTO en espacios muy pequeños');
+            });
+
+            runner.test('Responsive: Muestra TODO en altura normal (> 35px)', async (stage) => {
+                await runner.waitForElement('treemap-node');
+                const wrapper = document.createElement('div');
+                wrapper.className = 'w-40 h-[50px] relative inline-block align-top'; 
+
+                const el = document.createElement('treemap-node');
+                el.setAttribute('label', 'normal.js');
+                el.setAttribute('display-value', '10 MB');
+                
+                wrapper.appendChild(el);
+                stage.appendChild(wrapper);
+                
+                await runner.sleep(10);
+                
+                // Simulamos la detección del ResizeObserver manualmente
+                el._updateVisibility({ height: 50, width: 160 });
+                
+                const labelEl = el.querySelector('.label').parentElement;
+                const valueContainer = el.querySelector('.size').parentElement;
+
+                runner.assertTrue(!labelEl.classList.contains('hidden'), 'Label debe ser VISIBLE');
+                runner.assertTrue(!valueContainer.classList.contains('hidden'), 'Valor debe ser VISIBLE');
+            });
+
+            runner.test('Genera tooltip nativo (title) correctamente', async (stage) => {
+                await runner.waitForElement('treemap-node');
+                const wrapper = document.createElement('div');
+                wrapper.className = 'w-full h-24 relative';
+
+                const el = document.createElement('treemap-node');
+                el.setAttribute('label', 'app.config.ts');
+                el.setAttribute('display-value', '2 KB');
+                
+                wrapper.appendChild(el);
+                stage.appendChild(wrapper);
+                
+                await runner.sleep(10);
+                
+                const title = el.querySelector('title');
+                runner.assertTrue(title, 'Debe existir etiqueta title');
+                runner.assertTrue(title.textContent === 'app.config.ts (2 KB)', 'El tooltip debe combinar label y valor');
+            });
+        });
+
+        runner.run();
+    </script>
+</body>
+</html>

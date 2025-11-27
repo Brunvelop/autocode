@@ -28,10 +28,15 @@ class TestGitUtils:
 
         # Mock git output
         # Simulating:
-        # root.txt
-        # src/main.py
-        # src/utils/helper.py
-        mock_output = "root.txt\nsrc/main.py\nsrc/utils/helper.py\n"
+        # root.txt (100 bytes)
+        # src/main.py (200 bytes)
+        # src/utils/helper.py (300 bytes)
+        # Format: mode type sha size path
+        mock_output = (
+            "100644 blob aaaaaa   100\troot.txt\n"
+            "100644 blob bbbbbb   200\tsrc/main.py\n"
+            "100644 blob cccccc   300\tsrc/utils/helper.py\n"
+        )
         
         mock_process = Mock()
         mock_process.stdout = mock_output
@@ -53,6 +58,7 @@ class TestGitUtils:
         root_txt = next((c for c in tree.children if c.name == 'root.txt'), None)
         assert root_txt is not None
         assert root_txt.type == 'file'
+        assert root_txt.size == 100
         
         # Check src/
         src = next((c for c in tree.children if c.name == 'src'), None)
@@ -63,6 +69,7 @@ class TestGitUtils:
         main_py = next((c for c in src.children if c.name == 'main.py'), None)
         assert main_py is not None
         assert main_py.type == 'file'
+        assert main_py.size == 200
         
         # Check src/utils/
         utils = next((c for c in src.children if c.name == 'utils'), None)
@@ -73,10 +80,11 @@ class TestGitUtils:
         helper = next((c for c in utils.children if c.name == 'helper.py'), None)
         assert helper is not None
         assert helper.type == 'file'
+        assert helper.size == 300
         
         # Verify git command call
         mock_run.assert_called_with(
-            ['git', 'ls-tree', '-r', 'HEAD', '--name-only'],
+            ['git', 'ls-tree', '-r', '-l', 'HEAD'],
             capture_output=True,
             text=True,
             check=True

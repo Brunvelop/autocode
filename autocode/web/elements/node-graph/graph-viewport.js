@@ -168,7 +168,7 @@ export class GraphViewport extends HTMLElement {
         // Vamos a intentar obtener el primer elemento hijo efectivo.
         
         let contentRect = { width: 0, height: 0, top: 0, left: 0 };
-        const content = this.querySelector('tree-layout') || this.children[0];
+        const content = this.querySelector('node-graph') || this.children[0];
         
         if (content && content.getBoundingClientRect) {
             contentRect = content.getBoundingClientRect(); 
@@ -186,7 +186,7 @@ export class GraphViewport extends HTMLElement {
         // El garden-tree original tenía su propio centro.
         // Vamos a centrar el (0,0) del transform layer en el centro del viewport.
         
-        // Si el tree-layout tiene un tamaño fijo min-w-[800px], queremos centrar ese bloque.
+        // Si el node-graph tiene un tamaño fijo min-w-[800px], queremos centrar ese bloque.
         
         // Estrategia simplificada:
         // Centrar: pointX = (ContainerW - ContentW) / 2
