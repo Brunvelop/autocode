@@ -184,3 +184,6 @@ Thumbs.db
 
 dspy_docs/
 reports/
+.clinerules/
+lm_scripts/
+.clineignore
