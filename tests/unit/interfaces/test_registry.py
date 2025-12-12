@@ -6,6 +6,7 @@ API endpoints, and MCP tools through function registration and parameter inferen
 """
 import pytest
 import inspect
+import importlib
 from typing import Any
 from unittest.mock import patch, Mock
 
@@ -13,7 +14,7 @@ from autocode.interfaces.registry import (
     FUNCTION_REGISTRY, _generate_function_info, register_function,
     get_function, get_function_info, get_all_function_schemas, list_functions,
     clear_registry, get_registry_stats, load_core_functions,
-    RegistryError, _functions_loaded
+    RegistryError, _functions_loaded, _has_register_decorator
 )
 from autocode.interfaces.models import FunctionInfo, ExplicitParam, GenericOutput, FunctionSchema
 
@@ -355,25 +356,86 @@ class TestLoadCoreFunctions:
             registry._functions_loaded = original_loaded
     
     def test_load_core_functions_import_error(self):
-        """Test handling of import errors during loading."""
+        """Test handling of import errors during autocode.core package import."""
         from autocode.interfaces import registry
         original_loaded = registry._functions_loaded
         
         try:
             registry._functions_loaded = False
             
-            # Mock the import by patching __import__ to simulate ImportError
-            def mock_import(name, *args, **kwargs):
-                if 'hello_world' in name:
-                    raise ImportError("Mock import error")
-                return __import__(name, *args, **kwargs)
-            
-            with patch('builtins.__import__', side_effect=mock_import):
-                with pytest.raises(RegistryError, match="Failed to load core functions"):
-                    load_core_functions()
+            # Mock the autocode.core package import to fail
+            # This tests the critical path where the core package itself fails to import
+            with patch.dict('sys.modules', {'autocode.core': None}):
+                with patch('importlib.import_module', side_effect=ImportError("Mock import error")):
+                    with pytest.raises(RegistryError, match="Failed to import autocode.core"):
+                        load_core_functions()
             
         finally:
             registry._functions_loaded = original_loaded
+
+    def test_load_core_functions_partial_failure_continues(self):
+        """Test that autodiscovery continues loading other modules when one fails.
+        
+        This test verifies that when a single module fails to import during autodiscovery,
+        the system continues to load other modules and does NOT raise an exception.
+        """
+        from autocode.interfaces import registry
+        import sys
+        original_loaded = registry._functions_loaded
+        original_registry = dict(FUNCTION_REGISTRY)
+        
+        # Save original modules state to restore later
+        modules_to_remove = [m for m in sys.modules if m.startswith('autocode.core.')]
+        original_modules = {m: sys.modules[m] for m in modules_to_remove}
+        
+        try:
+            registry._functions_loaded = False
+            clear_registry()
+            
+            # Remove cached core modules to force re-import
+            for m in modules_to_remove:
+                del sys.modules[m]
+            
+            original_import = importlib.import_module
+            
+            def mock_import_with_partial_failure(name):
+                """Mock that fails for calculator module but succeeds for others."""
+                if 'calculator' in name:
+                    raise ImportError("Mock calculator import error")
+                return original_import(name)
+            
+            # Patch importlib.import_module directly since it's imported inside load_core_functions
+            with patch.object(importlib, 'import_module', 
+                              side_effect=mock_import_with_partial_failure):
+                # Should NOT raise an exception - partial failures are tolerated
+                load_core_functions()
+            
+            # The registry should have been marked as loaded
+            assert registry._functions_loaded is True
+            
+            # Functions from calculator module should NOT be in registry
+            # (because we mocked calculator to fail)
+            assert 'add' not in FUNCTION_REGISTRY
+            assert 'subtract' not in FUNCTION_REGISTRY
+            assert 'multiply' not in FUNCTION_REGISTRY
+            assert 'divide' not in FUNCTION_REGISTRY
+            
+            # Functions from other modules SHOULD be in registry
+            # (hello_world, git_utils, pipelines, etc. - they all loaded successfully)
+            function_names = list(FUNCTION_REGISTRY.keys())
+            assert len(function_names) > 0, "At least some functions should have loaded"
+            
+            # Verify some specific functions that should have loaded
+            assert 'hello_world' in FUNCTION_REGISTRY, "hello_world should be registered"
+            
+        finally:
+            # Restore original state
+            registry._functions_loaded = original_loaded
+            clear_registry()
+            FUNCTION_REGISTRY.update(original_registry)
+            # Restore original modules
+            for m, mod in original_modules.items():
+                sys.modules[m] = mod
 
 
 class TestRegistryIntegration:
@@ -426,3 +488,195 @@ class TestRegistryIntegration:
         
         with pytest.raises(RegistryError):
             get_function_info("does_not_exist")
+
+
+class TestDecoratorDetection:
+    """Tests for @register_function decorator detection in source files using AST."""
+    
+    def test_has_register_decorator_true(self, tmp_path):
+        """Test detection of @register_function() in source file."""
+        # Create a temporary file with the decorator
+        module_file = tmp_path / "test_module.py"
+        module_file.write_text('''
+from autocode.interfaces.registry import register_function
+from autocode.interfaces.models import GenericOutput
+
+@register_function()
+def my_func() -> GenericOutput:
+    return GenericOutput(result="test", success=True)
+''')
+        
+        assert _has_register_decorator(str(module_file)) is True
+    
+    def test_has_register_decorator_without_parens(self, tmp_path):
+        """Test detection of @register_function without parentheses."""
+        module_file = tmp_path / "test_module_no_parens.py"
+        module_file.write_text('''
+from autocode.interfaces.registry import register_function
+from autocode.interfaces.models import GenericOutput
+
+@register_function
+def my_func() -> GenericOutput:
+    return GenericOutput(result="test", success=True)
+''')
+        
+        assert _has_register_decorator(str(module_file)) is True
+    
+    def test_has_register_decorator_with_module_prefix(self, tmp_path):
+        """Test detection of @registry.register_function() with module prefix."""
+        module_file = tmp_path / "test_module_prefix.py"
+        module_file.write_text('''
+from autocode.interfaces import registry
+from autocode.interfaces.models import GenericOutput
+
+@registry.register_function()
+def my_func() -> GenericOutput:
+    return GenericOutput(result="test", success=True)
+''')
+        
+        assert _has_register_decorator(str(module_file)) is True
+    
+    def test_has_register_decorator_false(self, tmp_path):
+        """Test that modules without decorator are correctly identified."""
+        # Create a temporary file without the decorator
+        module_file = tmp_path / "utility_module.py"
+        module_file.write_text('''
+def helper_function(x, y):
+    """A utility function without registration."""
+    return x + y
+
+class UtilityClass:
+    pass
+''')
+        
+        assert _has_register_decorator(str(module_file)) is False
+    
+    def test_has_register_decorator_in_comment_false(self, tmp_path):
+        """Test that @register_function in comments is NOT detected (AST ignores comments)."""
+        module_file = tmp_path / "module_with_comment.py"
+        module_file.write_text('''
+# This file uses @register_function decorator for functions
+# @register_function should be used like this:
+
+def helper_function(x, y):
+    """
+    Example with @register_function decorator.
+    """
+    return x + y
+''')
+        
+        assert _has_register_decorator(str(module_file)) is False
+    
+    def test_has_register_decorator_in_docstring_false(self, tmp_path):
+        """Test that @register_function in docstrings is NOT detected (AST accuracy)."""
+        module_file = tmp_path / "module_with_docstring.py"
+        module_file.write_text('''
+def helper_function(x, y):
+    """
+    This function shows how to use @register_function decorator.
+    Use @register_function() to register functions in the registry.
+    """
+    return x + y
+''')
+        
+        assert _has_register_decorator(str(module_file)) is False
+    
+    def test_has_register_decorator_invalid_path(self):
+        """Test handling of invalid/non-existent file paths."""
+        assert _has_register_decorator("/nonexistent/path/module.py") is False
+        assert _has_register_decorator(None) is False
+        assert _has_register_decorator("") is False
+    
+    def test_has_register_decorator_invalid_syntax(self, tmp_path):
+        """Test handling of files with invalid Python syntax."""
+        module_file = tmp_path / "invalid_syntax.py"
+        module_file.write_text('''
+def broken_function(
+    # Missing closing parenthesis
+''')
+        
+        # Should return False when AST parsing fails
+        assert _has_register_decorator(str(module_file)) is False
+
+
+class TestStrictMode:
+    """Tests for strict mode in load_core_functions."""
+    
+    def test_load_core_functions_strict_raises_on_failure(self):
+        """Test that strict=True raises RegistryError when modules fail to import."""
+        from autocode.interfaces import registry
+        import sys
+        original_loaded = registry._functions_loaded
+        original_registry = dict(FUNCTION_REGISTRY)
+        
+        # Save original modules state
+        modules_to_remove = [m for m in sys.modules if m.startswith('autocode.core.')]
+        original_modules = {m: sys.modules[m] for m in modules_to_remove}
+        
+        try:
+            registry._functions_loaded = False
+            clear_registry()
+            
+            # Remove cached core modules
+            for m in modules_to_remove:
+                del sys.modules[m]
+            
+            original_import = importlib.import_module
+            
+            def mock_import_with_failure(name):
+                """Mock that fails for calculator module."""
+                if 'calculator' in name:
+                    raise ImportError("Mock calculator import error")
+                return original_import(name)
+            
+            with patch.object(importlib, 'import_module', 
+                              side_effect=mock_import_with_failure):
+                # With strict=True, should raise RegistryError
+                with pytest.raises(RegistryError, match="Failed to load modules in strict mode"):
+                    load_core_functions(strict=True)
+            
+        finally:
+            registry._functions_loaded = original_loaded
+            clear_registry()
+            FUNCTION_REGISTRY.update(original_registry)
+            for m, mod in original_modules.items():
+                sys.modules[m] = mod
+    
+    def test_load_core_functions_strict_false_tolerates_failures(self):
+        """Test that strict=False (default) tolerates import failures."""
+        from autocode.interfaces import registry
+        import sys
+        original_loaded = registry._functions_loaded
+        original_registry = dict(FUNCTION_REGISTRY)
+        
+        modules_to_remove = [m for m in sys.modules if m.startswith('autocode.core.')]
+        original_modules = {m: sys.modules[m] for m in modules_to_remove}
+        
+        try:
+            registry._functions_loaded = False
+            clear_registry()
+            
+            for m in modules_to_remove:
+                del sys.modules[m]
+            
+            original_import = importlib.import_module
+            
+            def mock_import_with_failure(name):
+                if 'calculator' in name:
+                    raise ImportError("Mock calculator import error")
+                return original_import(name)
+            
+            with patch.object(importlib, 'import_module', 
+                              side_effect=mock_import_with_failure):
+                # With strict=False (default), should NOT raise
+                load_core_functions(strict=False)
+            
+            # Should have completed loading
+            assert registry._functions_loaded is True
+            
+        finally:
+            registry._functions_loaded = original_loaded
+            clear_registry()
+            FUNCTION_REGISTRY.update(original_registry)
+            for m, mod in original_modules.items():
+                sys.modules[m] = mod

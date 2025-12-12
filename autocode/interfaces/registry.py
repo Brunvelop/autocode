@@ -221,36 +221,160 @@ def get_registry_stats() -> Dict[str, Any]:
 # LOADING AND INITIALIZATION
 # ============================================================================
 
-def load_core_functions():
-    """Load all core functions into the registry.
+def _get_module_file_path(module_name: str) -> str | None:
+    """Get the file path for a module using importlib.util.find_spec.
     
-    This function imports all modules containing registered functions,
-    which triggers the @register_function decorator and populates the registry.
+    Uses the standard importlib.util approach with the full module name,
+    which is more robust than using the importer's find_spec with short names.
+    
+    Args:
+        module_name: Full module name (e.g., 'autocode.core.hello.hello_world')
+        
+    Returns:
+        The file path to the module, or None if not found
+    """
+    import importlib.util
+    try:
+        spec = importlib.util.find_spec(module_name)
+        if spec and spec.origin:
+            return spec.origin
+    except Exception:
+        pass
+    return None
+
+
+def _has_register_decorator(module_path: str) -> bool:
+    """Check if a module file contains the @register_function decorator using AST.
+    
+    Parses the module's source code with AST to accurately detect functions
+    decorated with @register_function. This approach eliminates false positives
+    (e.g., decorator mentioned in comments) and false negatives (e.g., unusual
+    formatting or aliases).
+    
+    Args:
+        module_path: Path to the Python module file
+        
+    Returns:
+        True if the module contains a function with @register_function, False otherwise
+    """
+    import ast
+    
+    if not module_path:
+        return False
+    try:
+        with open(module_path, 'r', encoding='utf-8') as f:
+            source = f.read()
+        
+        tree = ast.parse(source, filename=module_path)
+        
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                for decorator in node.decorator_list:
+                    # Handle @register_function (Name node)
+                    if isinstance(decorator, ast.Name) and decorator.id == 'register_function':
+                        return True
+                    # Handle @register_function() (Call node)
+                    if isinstance(decorator, ast.Call):
+                        func = decorator.func
+                        if isinstance(func, ast.Name) and func.id == 'register_function':
+                            return True
+                        # Handle module.register_function() (Attribute node)
+                        if isinstance(func, ast.Attribute) and func.attr == 'register_function':
+                            return True
+                    # Handle module.register_function (Attribute without call)
+                    if isinstance(decorator, ast.Attribute) and decorator.attr == 'register_function':
+                        return True
+        return False
+    except Exception:
+        return False
+
+
+def load_core_functions(strict: bool = False):
+    """Autodiscover and load modules with @register_function decorator in autocode/core/.
+    
+    Automatically scans the autocode.core package and imports Python modules that
+    contain the @register_function decorator, which populates the registry.
+    
+    Uses decorator detection instead of hardcoded exclusion patterns:
+    - Only modules containing '@register_function' in source are imported
+    - Avoids importing utility modules, models, etc. without explicit exclusions
     
     Called automatically by _ensure_functions_loaded() on first registry access.
     Safe to call multiple times (will only load once).
     
+    Args:
+        strict: If True, raises RegistryError when any module fails to import.
+                Useful for CI/production environments. Default: False (tolerant mode).
+    
     Raises:
-        RegistryError: If module imports fail
+        RegistryError: If autocode.core package cannot be imported, or if strict=True
+                       and any module fails to import.
     """
     global _functions_loaded
     if _functions_loaded:
         return
-        
+    
+    import pkgutil
+    import importlib
+    
     try:
-        # Import modules to trigger decorator registration
-        # The decorators will automatically register the functions
-        import autocode.core.hello.hello_world
-        import autocode.core.math.calculator
-        import autocode.core.ai.pipelines
-        import autocode.core.utils.git_utils
-        
-        _functions_loaded = True
-        logger.info(f"Loaded {len(FUNCTION_REGISTRY)} functions into registry")
-        
+        import autocode.core
     except ImportError as e:
-        logger.error(f"Failed to load core functions: {e}")
-        raise RegistryError(f"Failed to load core functions: {e}") from e
+        logger.error(f"Failed to import autocode.core package: {e}", exc_info=True)
+        raise RegistryError(f"Failed to import autocode.core package: {e}") from e
+    
+    package_path = autocode.core.__path__
+    prefix = autocode.core.__name__ + "."
+    
+    discovered_modules = []
+    skipped_modules = []
+    failed_modules = []
+    
+    # Sort modules for deterministic order (reproducibility)
+    modules = sorted(
+        pkgutil.walk_packages(package_path, prefix),
+        key=lambda x: x[1]  # Sort by module_name
+    )
+    
+    for importer, module_name, is_pkg in modules:
+        # Skip package __init__ files (is_pkg=True means it's a package)
+        if is_pkg:
+            continue
+        
+        # Get module file path for decorator detection
+        module_path = _get_module_file_path(module_name)
+        
+        # Only import modules that have @register_function decorator
+        if not _has_register_decorator(module_path):
+            skipped_modules.append(module_name)
+            logger.debug(f"Skipping module without @register_function: {module_name}")
+            continue
+        
+        try:
+            importlib.import_module(module_name)
+            discovered_modules.append(module_name)
+            logger.debug(f"Autodiscovered module: {module_name}")
+        except ImportError as e:
+            failed_modules.append((module_name, str(e)))
+            logger.warning(f"Could not import {module_name}: {e}", exc_info=True)
+        except Exception as e:
+            failed_modules.append((module_name, str(e)))
+            logger.error(f"Error loading {module_name}: {e}", exc_info=True)
+    
+    _functions_loaded = True
+    
+    if failed_modules:
+        logger.warning(f"Some modules failed to load: {failed_modules}")
+        if strict:
+            raise RegistryError(
+                f"Failed to load modules in strict mode: {[m[0] for m in failed_modules]}"
+            )
+    
+    logger.info(
+        f"Autodiscovered {len(FUNCTION_REGISTRY)} functions from "
+        f"{len(discovered_modules)} modules in autocode.core "
+        f"(skipped {len(skipped_modules)} modules without @register_function)"
+    )
 
 
 def _ensure_functions_loaded():

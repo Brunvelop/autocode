@@ -33,6 +33,7 @@ dependencies = [
     "docstring-parser>=0.17.0",
     "dspy-ai>=3.0.3",
     "mcp>=1.0.0",
+    "litellm>=1.80.9",
 ]
 
 [project.optional-dependencies]

@@ -12,6 +12,13 @@ from autocode.interfaces.registry import FUNCTION_REGISTRY, clear_registry
 # Configure logging for tests
 logging.basicConfig(level=logging.DEBUG)
 
+# Silence LiteLLM and asyncio logging to prevent cleanup errors at test exit
+# LiteLLM's async client cleanup tries to log after streams are closed
+logging.getLogger('LiteLLM').setLevel(logging.CRITICAL)
+logging.getLogger('litellm').setLevel(logging.CRITICAL)
+logging.getLogger('httpcore').setLevel(logging.WARNING)
+logging.getLogger('asyncio').setLevel(logging.WARNING)
+
 
 @pytest.fixture(autouse=True)
 def cleanup_registry():
