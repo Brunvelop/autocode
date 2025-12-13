@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>File Explorer - Unit Tests</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="p-8 bg-gray-100 min-h-screen">
+    <div class="flex items-center gap-4 mb-2">
+        <a href="/tests" class="text-indigo-600 hover:text-indigo-800">← Tests</a>
+        <h1 class="text-3xl font-bold">🗂️ File Explorer - Unit Tests</h1>
+    </div>
+
+    <div id="summary" class="mb-6 p-4 bg-white rounded-lg shadow"></div>
+    <div id="results" class="space-y-2"></div>
+
+    <script type="module">
+        import { TestRunner } from '../../utils/test-runner.js';
+
+        // Importar componente
+        try {
+            await import('/elements/file-explorer/index.js');
+        } catch (e) {
+            console.warn('file-explorer/index.js no encontrado:', e.message);
+        }
+
+        const runner = new TestRunner();
+
+        runner.group('FileExplorer', () => {
+            runner.test('FileExplorer: se registra como custom element', async () => {
+                await runner.waitForElement('file-explorer');
+                runner.assertTrue(customElements.get('file-explorer'));
+            });
+
+            runner.test('FileExplorer: muestra estado loading inicial', async (stage) => {
+                await runner.waitForElement('file-explorer');
+
+                // Mock fetch para que no resuelva rápido y nos deje ver el loading
+                const originalFetch = window.fetch;
+                window.fetch = () => new Promise(() => {});
+
+                try {
+                    const el = document.createElement('file-explorer');
+                    stage.appendChild(el);
+                    await runner.sleep(20);
+
+                    const loading = el.querySelector('.loading-state');
+                    runner.assertTrue(loading, 'Debe existir .loading-state');
+                    runner.assertContains(loading.textContent, 'Cargando', 'Debe mostrar texto de carga');
+                } finally {
+                    window.fetch = originalFetch;
+                }
+            });
+
+            runner.test('FileExplorer: renderiza árbol con fetch mockeado', async (stage) => {
+                await runner.waitForElement('file-explorer');
+
+                const mockTree = {
+                    success: true,
+                    result: {
+                        name: 'root',
+                        type: 'directory',
+                        children: [
+                            {
+                                name: 'src',
+                                type: 'directory',
+                                children: [
+                                    { name: 'main.py', type: 'file', size: 12 }
+                                ]
+                            },
+                            { name: 'README.md', type: 'file', size: 2048 }
+                        ]
+                    }
+                };
+
+                const originalFetch = window.fetch;
+                window.fetch = async (url) => {
+                    if (url === '/get_git_tree') {
+                        return {
+                            ok: true,
+                            json: async () => mockTree
+                        };
+                    }
+                    return originalFetch(url);
+                };
+
+                try {
+                    const el = document.createElement('file-explorer');
+                    stage.appendChild(el);
+
+                    await runner.sleep(50);
+
+                    // Root folder box
+                    const rootHeader = Array.from(el.querySelectorAll('.folder-header'))
+                        .find(h => h.textContent.includes('Proyecto'));
+                    runner.assertTrue(rootHeader, 'Debe renderizar el header del root (📁 Proyecto)');
+
+                    // Folder src
+                    const srcHeader = Array.from(el.querySelectorAll('.folder-header'))
+                        .find(h => h.textContent.includes('src'));
+                    runner.assertTrue(srcHeader, 'Debe renderizar carpeta src');
+
+                    // File chips
+                    const chips = Array.from(el.querySelectorAll('.file-chip'));
+                    runner.assertTrue(chips.length >= 2, 'Debe renderizar al menos 2 file-chip');
+
+                    const readmeChip = chips.find(c => c.textContent.includes('README.md'));
+                    runner.assertTrue(readmeChip, 'Debe renderizar chip de README.md');
+
+                    const mainChip = chips.find(c => c.textContent.includes('main.py'));
+                    runner.assertTrue(mainChip, 'Debe renderizar chip de main.py');
+                } finally {
+                    window.fetch = originalFetch;
+                }
+            });
+
+            runner.test('FileExplorer: muestra error y permite Reintentar', async (stage) => {
+                await runner.waitForElement('file-explorer');
+
+                let callCount = 0;
+                const originalFetch = window.fetch;
+
+                window.fetch = async (url) => {
+                    if (url === '/get_git_tree') {
+                        callCount++;
+                        if (callCount === 1) {
+                            // Primera llamada falla
+                            throw new Error('network down');
+                        }
+                        // Segunda llamada ok
+                        return {
+                            ok: true,
+                            json: async () => ({
+                                success: true,
+                                result: { name: 'root', type: 'directory', children: [] }
+                            })
+                        };
+                    }
+                    return originalFetch(url);
+                };
+
+                try {
+                    const el = document.createElement('file-explorer');
+                    stage.appendChild(el);
+
+                    await runner.sleep(50);
+
+                    const err = el.querySelector('.error-state');
+                    runner.assertTrue(err, 'Debe mostrar estado error');
+
+                    const btn = el.querySelector('button.retry-btn');
+                    runner.assertTrue(btn, 'Debe existir botón Reintentar');
+
+                    btn.click();
+                    await runner.sleep(50);
+
+                    // Tras reintento debe haber al menos un folder
+                    const headers = el.querySelectorAll('.folder-header');
+                    runner.assertTrue(headers.length >= 1, 'Tras reintentar debe renderizar el árbol');
+
+                    runner.assertTrue(callCount >= 2, 'Debe haber reintentado el fetch');
+                } finally {
+                    window.fetch = originalFetch;
+                }
+            });
+        });
+
+        runner.run();
+    </script>
+</body>
+</html>
