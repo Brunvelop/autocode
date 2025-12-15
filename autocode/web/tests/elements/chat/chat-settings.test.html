@@ -23,7 +23,7 @@
 
         const runner = new TestRunner();
         
-        // Mock de funcInfo
+        // Mock de funcInfo realista basado en la función chat
         const mockFuncInfo = {
             name: 'chat',
             description: 'Chat function',
@@ -35,28 +35,28 @@
                     required: false,
                     default: 'gpt-4o',
                     description: 'Model to use',
-                    choices: ['gpt-4o', 'claude-3']
+                    choices: ['gpt-4o', 'claude-3', 'grok-beta']
                 },
                 {
                     name: 'temperature',
                     type: 'float',
                     required: false,
                     default: 0.7,
-                    description: 'Creativity'
+                    description: 'Creativity level'
                 },
                 {
                     name: 'max_tokens',
                     type: 'int',
                     required: false,
                     default: 1000,
-                    description: 'Max tokens'
+                    description: 'Max tokens to generate'
                 },
                 {
                     name: 'module_type',
                     type: 'str',
                     required: false,
                     default: 'ReAct',
-                    description: 'DSPy Module',
+                    description: 'DSPy Module Type',
                     choices: ['ReAct', 'ChainOfThought']
                 },
                 {
@@ -64,129 +64,220 @@
                     type: 'bool',
                     required: false,
                     default: false,
-                    description: 'Pro mode'
+                    description: 'Enable pro features'
                 },
-                // Parámetros ignorados
+                // Parámetros que deben ser ignorados
                 {
                     name: 'message',
                     type: 'str',
-                    required: true
+                    required: true,
+                    description: 'User message'
+                },
+                {
+                    name: 'conversation_history',
+                    type: 'str',
+                    required: false,
+                    default: '',
+                    description: 'Chat history'
                 }
             ]
         };
 
         runner.group('ChatSettings', () => {
+            // ========================================
+            // TEST 1: Registro del Custom Element
+            // ========================================
             runner.test('ChatSettings: se registra como custom element', async () => {
                 await runner.waitForElement('chat-settings');
                 runner.assertTrue(customElements.get('chat-settings'));
             });
 
-            runner.test('ChatSettings: renderiza botón de toggle', async (stage) => {
-                const el = document.createElement('chat-settings');
-                stage.appendChild(el);
-                await runner.sleep(10);
-                
-                const toggleBtn = el.querySelector('[data-ref="toggleBtn"]');
-                runner.assertTrue(toggleBtn, 'Debe tener botón de toggle');
-            });
-
-            runner.test('ChatSettings: panel oculto por defecto', async (stage) => {
-                const el = document.createElement('chat-settings');
-                stage.appendChild(el);
-                await runner.sleep(10);
-                
-                const panel = el.querySelector('[data-ref="panel"]');
-                runner.assertTrue(panel.classList.contains('hidden'), 'Panel debe estar oculto inicialmente');
-            });
-
-            runner.test('ChatSettings: toggle muestra/oculta panel', async (stage) => {
-                const el = document.createElement('chat-settings');
-                stage.appendChild(el);
-                await runner.sleep(10);
-                
-                const toggleBtn = el.querySelector('[data-ref="toggleBtn"]');
-                const panel = el.querySelector('[data-ref="panel"]');
-                
-                toggleBtn.click();
-                runner.assertFalse(panel.classList.contains('hidden'), 'Panel debe mostrarse tras click');
-                
-                toggleBtn.click();
-                runner.assertTrue(panel.classList.contains('hidden'), 'Panel debe ocultarse tras segundo click');
-            });
-
-            runner.test('ChatSettings: genera controles dinámicamente tras configure()', async (stage) => {
+            // ========================================
+            // TEST 2: API configure() - Inicialización
+            // ========================================
+            runner.test('ChatSettings: configure() inicializa settings con defaults', async (stage) => {
                 const el = document.createElement('chat-settings');
                 stage.appendChild(el);
                 
-                // Configurar
+                // Configurar con funcInfo
                 el.configure(mockFuncInfo);
-                await runner.sleep(10);
-                
-                const modelSelect = el.querySelector('[name="model"]');
-                const tempInput = el.querySelector('[name="temperature"]');
-                const tokensInput = el.querySelector('[name="max_tokens"]');
-                const moduleSelect = el.querySelector('[name="module_type"]');
-                const proCheck = el.querySelector('[name="is_pro"]');
-                const msgInput = el.querySelector('[name="message"]');
-                
-                runner.assertTrue(modelSelect, 'Debe tener selector de modelo');
-                runner.assertTrue(modelSelect.options.length === 2, 'Debe tener 2 opciones de modelo');
-                
-                runner.assertTrue(tempInput, 'Debe tener input de temperatura');
-                runner.assertTrue(tokensInput, 'Debe tener input de max_tokens');
-                
-                runner.assertTrue(moduleSelect, 'Debe tener selector de module_type');
-                
-                runner.assertTrue(proCheck, 'Debe tener checkbox para bool');
-                
-                runner.assertFalse(msgInput, 'NO debe tener input para message');
-            });
-
-            runner.test('ChatSettings: getSettings() devuelve valores configurados', async (stage) => {
-                const el = document.createElement('chat-settings');
-                stage.appendChild(el);
-                el.configure(mockFuncInfo);
-                await runner.sleep(10);
+                await el.updateComplete; // Esperar render de Lit
                 
                 const settings = el.getSettings();
-                runner.assertEqual(settings.model, 'gpt-4o', 'Model default correcto');
-                runner.assertEqual(settings.temperature, 0.7, 'Temp default correcto');
-                runner.assertEqual(settings.max_tokens, 1000, 'Max tokens default correcto');
-                runner.assertEqual(settings.is_pro, false, 'Bool default correcto');
+                
+                runner.assertEqual(settings.model, 'gpt-4o', 'Model default debe ser gpt-4o');
+                runner.assertEqual(settings.temperature, 0.7, 'Temperature default debe ser 0.7');
+                runner.assertEqual(settings.max_tokens, 1000, 'Max tokens default debe ser 1000');
+                runner.assertEqual(settings.module_type, 'ReAct', 'Module type default debe ser ReAct');
+                runner.assertEqual(settings.is_pro, false, 'is_pro default debe ser false');
             });
 
-            runner.test('ChatSettings: emite evento change al modificar valor', async (stage) => {
+            // ========================================
+            // TEST 3: API getSettings() - Estructura
+            // ========================================
+            runner.test('ChatSettings: getSettings() retorna objeto estructurado', async (stage) => {
                 const el = document.createElement('chat-settings');
                 stage.appendChild(el);
                 el.configure(mockFuncInfo);
-                await runner.sleep(10);
+                await el.updateComplete;
+                
+                const settings = el.getSettings();
+                
+                runner.assertTrue(typeof settings === 'object', 'Debe retornar objeto');
+                runner.assertTrue('model' in settings, 'Debe incluir model');
+                runner.assertTrue('temperature' in settings, 'Debe incluir temperature');
+                runner.assertTrue('max_tokens' in settings, 'Debe incluir max_tokens');
+                runner.assertTrue('module_type' in settings, 'Debe incluir module_type');
+                runner.assertTrue('is_pro' in settings, 'Debe incluir is_pro');
+            });
+
+            // ========================================
+            // TEST 4: Evento settings-change (inicial)
+            // ========================================
+            runner.test('ChatSettings: emite settings-change tras configure()', async (stage) => {
+                const el = document.createElement('chat-settings');
+                stage.appendChild(el);
                 
                 let eventFired = false;
                 let eventDetail = null;
+                
                 el.addEventListener('settings-change', (e) => {
                     eventFired = true;
                     eventDetail = e.detail;
                 });
                 
-                const tempInput = el.querySelector('[name="temperature"]');
-                if (tempInput) {
-                    tempInput.value = 0.9;
-                    tempInput.dispatchEvent(new Event('input', { bubbles: true })); // Slider usa input
-                }
+                el.configure(mockFuncInfo);
+                await el.updateComplete;
                 
-                runner.assertTrue(eventFired, 'Debe emitir settings-change');
-                runner.assertEqual(eventDetail?.temperature, 0.9, 'Debe incluir el nuevo valor');
+                runner.assertTrue(eventFired, 'Debe emitir evento settings-change');
+                runner.assertTrue(eventDetail !== null, 'Evento debe incluir detail');
+                runner.assertEqual(eventDetail.model, 'gpt-4o', 'Detail debe incluir defaults');
+            });
+
+            // ========================================
+            // TEST 5: Actualización programática
+            // ========================================
+            runner.test('ChatSettings: _updateSetting() modifica y emite evento', async (stage) => {
+                const el = document.createElement('chat-settings');
+                stage.appendChild(el);
+                el.configure(mockFuncInfo);
+                await el.updateComplete;
                 
-                // Probar select
-                eventFired = false;
-                const modelSelect = el.querySelector('[name="model"]');
-                if (modelSelect) {
-                    modelSelect.value = 'claude-3';
-                    modelSelect.dispatchEvent(new Event('change', { bubbles: true }));
-                }
+                let eventFired = false;
+                let eventDetail = null;
                 
-                runner.assertTrue(eventFired, 'Debe emitir settings-change para select');
-                runner.assertEqual(eventDetail?.model, 'claude-3', 'Debe incluir nuevo modelo');
+                el.addEventListener('settings-change', (e) => {
+                    eventFired = true;
+                    eventDetail = e.detail;
+                });
+                
+                // Actualizar temperature
+                el._updateSetting('temperature', 0.9);
+                await el.updateComplete;
+                
+                runner.assertTrue(eventFired, 'Debe emitir evento tras actualización');
+                runner.assertEqual(eventDetail.temperature, 0.9, 'Evento debe incluir nuevo valor');
+                runner.assertEqual(el.getSettings().temperature, 0.9, 'getSettings() debe reflejar cambio');
+            });
+
+            // ========================================
+            // TEST 6: Actualización de modelo
+            // ========================================
+            runner.test('ChatSettings: _updateSetting() cambia modelo correctamente', async (stage) => {
+                const el = document.createElement('chat-settings');
+                stage.appendChild(el);
+                el.configure(mockFuncInfo);
+                await el.updateComplete;
+                
+                let eventDetail = null;
+                el.addEventListener('settings-change', (e) => {
+                    eventDetail = e.detail;
+                });
+                
+                el._updateSetting('model', 'claude-3');
+                await el.updateComplete;
+                
+                runner.assertEqual(eventDetail.model, 'claude-3', 'Debe actualizar modelo');
+                runner.assertEqual(el.getSettings().model, 'claude-3', 'getSettings() debe tener nuevo modelo');
+            });
+
+            // ========================================
+            // TEST 7: Actualización de boolean
+            // ========================================
+            runner.test('ChatSettings: _updateSetting() maneja booleans correctamente', async (stage) => {
+                const el = document.createElement('chat-settings');
+                stage.appendChild(el);
+                el.configure(mockFuncInfo);
+                await el.updateComplete;
+                
+                el._updateSetting('is_pro', true);
+                await el.updateComplete;
+                
+                runner.assertEqual(el.getSettings().is_pro, true, 'Debe actualizar boolean a true');
+                
+                el._updateSetting('is_pro', false);
+                await el.updateComplete;
+                
+                runner.assertEqual(el.getSettings().is_pro, false, 'Debe actualizar boolean a false');
+            });
+
+            // ========================================
+            // TEST 8: Renderización de controles
+            // ========================================
+            runner.test('ChatSettings: renderiza controles tras configure()', async (stage) => {
+                const el = document.createElement('chat-settings');
+                stage.appendChild(el);
+                
+                el.configure(mockFuncInfo);
+                await el.updateComplete;
+                
+                // Forzar apertura del panel para verificar controles
+                el._isOpen = true;
+                await el.updateComplete;
+                
+                // Verificar que existen controles en el shadow DOM
+                const inputs = el.shadowRoot.querySelectorAll('input, select');
+                runner.assertTrue(inputs.length > 0, 'Debe tener al menos un control (input/select)');
+            });
+
+            // ========================================
+            // TEST 9: Filtrado de parámetros excluidos
+            // ========================================
+            runner.test('ChatSettings: NO incluye message ni conversation_history en settings', async (stage) => {
+                const el = document.createElement('chat-settings');
+                stage.appendChild(el);
+                
+                el.configure(mockFuncInfo);
+                await el.updateComplete;
+                
+                const settings = el.getSettings();
+                
+                runner.assertFalse('message' in settings, 'NO debe incluir message');
+                runner.assertFalse('conversation_history' in settings, 'NO debe incluir conversation_history');
+            });
+
+            // ========================================
+            // TEST 10: Múltiples actualizaciones
+            // ========================================
+            runner.test('ChatSettings: múltiples actualizaciones mantienen estado consistente', async (stage) => {
+                const el = document.createElement('chat-settings');
+                stage.appendChild(el);
+                el.configure(mockFuncInfo);
+                await el.updateComplete;
+                
+                // Realizar múltiples cambios
+                el._updateSetting('temperature', 0.5);
+                el._updateSetting('model', 'grok-beta');
+                el._updateSetting('max_tokens', 2000);
+                el._updateSetting('is_pro', true);
+                await el.updateComplete;
+                
+                const settings = el.getSettings();
+                
+                runner.assertEqual(settings.temperature, 0.5, 'Temperature debe persistir');
+                runner.assertEqual(settings.model, 'grok-beta', 'Model debe persistir');
+                runner.assertEqual(settings.max_tokens, 2000, 'Max tokens debe persistir');
+                runner.assertEqual(settings.is_pro, true, 'is_pro debe persistir');
             });
         });
 

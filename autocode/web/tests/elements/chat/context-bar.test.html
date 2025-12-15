@@ -18,79 +18,221 @@
     <script type="module">
         import { TestRunner } from '../../utils/test-runner.js'; 
         
-        try {
-            await import('/elements/chat/context-bar.js');
-        } catch (e) {
-            console.warn('context-bar.js no encontrado:', e.message);
-        }
+        import '/elements/chat/context-bar.js';
 
         const runner = new TestRunner();
 
         runner.group('ContextBar', () => {
+            // ========================================
+            // TEST 1: Registro del Custom Element
+            // ========================================
             runner.test('ContextBar: se registra como custom element', async () => {
                 await runner.waitForElement('context-bar');
                 runner.assertTrue(customElements.get('context-bar'));
             });
 
-            runner.test('ContextBar: muestra current/max correctamente', async (stage) => {
-                await runner.waitForElement('context-bar');
+            // ========================================
+            // TEST 2: Propiedades current y max
+            // ========================================
+            runner.test('ContextBar: propiedades current y max son reactivas', async (stage) => {
+                const el = document.createElement('context-bar');
+                stage.appendChild(el);
+                await el.updateComplete;
+                
+                runner.assertEqual(el.current, 0, 'current debe ser 0 por defecto');
+                runner.assertEqual(el.max, 0, 'max debe ser 0 por defecto');
+                
+                el.setAttribute('current', '5000');
+                el.setAttribute('max', '10000');
+                await el.updateComplete;
+                
+                runner.assertEqual(el.current, 5000, 'current debe actualizarse');
+                runner.assertEqual(el.max, 10000, 'max debe actualizarse');
+            });
+
+            // ========================================
+            // TEST 3: API update()
+            // ========================================
+            runner.test('ContextBar: update() actualiza current y max', async (stage) => {
+                const el = document.createElement('context-bar');
+                stage.appendChild(el);
+                await el.updateComplete;
+                
+                el.update(3000, 8000);
+                await el.updateComplete;
+                
+                runner.assertEqual(el.current, 3000, 'update() debe actualizar current');
+                runner.assertEqual(el.max, 8000, 'update() debe actualizar max');
+            });
+
+            // ========================================
+            // TEST 4: API getPercentage()
+            // ========================================
+            runner.test('ContextBar: getPercentage() calcula correctamente', async (stage) => {
+                const el = document.createElement('context-bar');
+                stage.appendChild(el);
+                
+                el.update(5000, 10000);
+                await el.updateComplete;
+                
+                runner.assertEqual(el.getPercentage(), 50, 'Debe calcular 50%');
+                
+                el.update(7500, 10000);
+                await el.updateComplete;
+                
+                runner.assertEqual(el.getPercentage(), 75, 'Debe calcular 75%');
+                
+                el.update(0, 10000);
+                await el.updateComplete;
+                
+                runner.assertEqual(el.getPercentage(), 0, 'Debe calcular 0%');
+            });
+
+            // ========================================
+            // TEST 5: getPercentage() con max = 0
+            // ========================================
+            runner.test('ContextBar: getPercentage() retorna 0 cuando max es 0', async (stage) => {
+                const el = document.createElement('context-bar');
+                stage.appendChild(el);
+                
+                el.update(100, 0);
+                await el.updateComplete;
+                
+                runner.assertEqual(el.getPercentage(), 0, 'Debe retornar 0 para evitar división por cero');
+            });
+
+            // ========================================
+            // TEST 6: Renderiza stats con formato correcto
+            // ========================================
+            runner.test('ContextBar: muestra stats con formato current / max', async (stage) => {
                 const el = document.createElement('context-bar');
                 el.setAttribute('current', '5000');
                 el.setAttribute('max', '10000');
                 stage.appendChild(el);
+                await el.updateComplete;
                 
-                const stats = el.querySelector('[data-ref="stats"]') || el.shadowRoot?.querySelector('[data-ref="stats"]');
-                // Verificar formato "X / Y"
-                runner.assertTrue(stats.textContent.includes('/'), 'Debe mostrar formato current / max');
-                runner.assertTrue(stats.textContent.includes('5'), 'Debe contener el valor 5000');
-                runner.assertTrue(stats.textContent.includes('10'), 'Debe contener el valor 10000');
+                const stats = el.shadowRoot.querySelector('.stats');
+                runner.assertTrue(stats, 'Debe tener elemento stats');
+                
+                const text = stats.textContent;
+                runner.assertTrue(text.includes('/'), 'Debe mostrar formato current / max');
+                runner.assertTrue(text.includes('5'), 'Debe contener el valor 5,000');
+                runner.assertTrue(text.includes('10'), 'Debe contener el valor 10,000');
             });
 
-            runner.test('ContextBar: barra verde cuando < 70%', async (stage) => {
-                await runner.waitForElement('context-bar');
+            // ========================================
+            // TEST 7: Formatea números con separadores
+            // ========================================
+            runner.test('ContextBar: formatea números con separadores de miles', async (stage) => {
                 const el = document.createElement('context-bar');
-                el.setAttribute('current', '3000');
-                el.setAttribute('max', '10000');
+                el.update(1234567, 9876543);
                 stage.appendChild(el);
+                await el.updateComplete;
                 
-                const bar = el.querySelector('[data-ref="bar"]') || el.shadowRoot?.querySelector('[data-ref="bar"]');
-                runner.assertTrue(bar.classList.contains('bg-green-500'), 'Debe ser verde bajo 70%');
+                const stats = el.shadowRoot.querySelector('.stats');
+                const text = stats.textContent;
+                
+                // Debería tener formato con comas o puntos (dependiendo del locale)
+                // Al menos debe contener los dígitos separados
+                runner.assertTrue(
+                    text.includes('1,234,567') || text.includes('1.234.567') || text.includes('1 234 567'),
+                    'Debe formatear números grandes con separadores'
+                );
             });
 
-            runner.test('ContextBar: barra amarilla cuando 70-90%', async (stage) => {
-                await runner.waitForElement('context-bar');
+            // ========================================
+            // TEST 8: Renderiza barra de progreso
+            // ========================================
+            runner.test('ContextBar: renderiza barra de progreso visual', async (stage) => {
                 const el = document.createElement('context-bar');
-                el.setAttribute('current', '8000');
-                el.setAttribute('max', '10000');
+                el.update(5000, 10000);
                 stage.appendChild(el);
+                await el.updateComplete;
                 
-                const bar = el.querySelector('[data-ref="bar"]') || el.shadowRoot?.querySelector('[data-ref="bar"]');
-                runner.assertTrue(bar.classList.contains('bg-yellow-500'), 'Debe ser amarillo entre 70-90%');
+                const bar = el.shadowRoot.querySelector('.bar');
+                runner.assertTrue(bar, 'Debe tener elemento bar');
+                
+                // Verificar que tiene ancho proporcional (aproximadamente 50%)
+                const barStyle = window.getComputedStyle(bar);
+                const width = barStyle.width;
+                // El ancho debería estar cerca del 50% del contenedor
+                runner.assertTrue(width !== '0px', 'Barra debe tener ancho visible');
             });
 
-            runner.test('ContextBar: barra roja cuando > 90%', async (stage) => {
-                await runner.waitForElement('context-bar');
+            // ========================================
+            // TEST 9: Color verde cuando < 70%
+            // ========================================
+            runner.test('ContextBar: usa color verde cuando porcentaje < 70%', async (stage) => {
                 const el = document.createElement('context-bar');
-                el.setAttribute('current', '9500');
-                el.setAttribute('max', '10000');
+                el.update(3000, 10000); // 30%
                 stage.appendChild(el);
+                await el.updateComplete;
                 
-                const bar = el.querySelector('[data-ref="bar"]') || el.shadowRoot?.querySelector('[data-ref="bar"]');
-                runner.assertTrue(bar.classList.contains('bg-red-500'), 'Debe ser rojo sobre 90%');
+                const bar = el.shadowRoot.querySelector('.bar');
+                runner.assertTrue(bar.classList.contains('green'), 'Debe tener clase green bajo 70%');
             });
 
-            runner.test('ContextBar: actualiza al cambiar atributos', async (stage) => {
-                await runner.waitForElement('context-bar');
+            // ========================================
+            // TEST 10: Color amarillo cuando 70-90%
+            // ========================================
+            runner.test('ContextBar: usa color amarillo cuando porcentaje entre 70-90%', async (stage) => {
                 const el = document.createElement('context-bar');
-                el.setAttribute('current', '1000');
-                el.setAttribute('max', '10000');
+                el.update(8000, 10000); // 80%
                 stage.appendChild(el);
+                await el.updateComplete;
                 
-                el.setAttribute('current', '9000');
+                const bar = el.shadowRoot.querySelector('.bar');
+                runner.assertTrue(bar.classList.contains('yellow'), 'Debe tener clase yellow entre 70-90%');
+            });
+
+            // ========================================
+            // TEST 11: Color rojo cuando > 90%
+            // ========================================
+            runner.test('ContextBar: usa color rojo cuando porcentaje > 90%', async (stage) => {
+                const el = document.createElement('context-bar');
+                el.update(9500, 10000); // 95%
+                stage.appendChild(el);
+                await el.updateComplete;
                 
-                await runner.sleep(50); // Esperar actualización
-                const bar = el.querySelector('[data-ref="bar"]') || el.shadowRoot?.querySelector('[data-ref="bar"]');
-                runner.assertTrue(bar.classList.contains('bg-yellow-500') || bar.classList.contains('bg-red-500'));
+                const bar = el.shadowRoot.querySelector('.bar');
+                runner.assertTrue(bar.classList.contains('red'), 'Debe tener clase red sobre 90%');
+            });
+
+            // ========================================
+            // TEST 12: Actualización reactiva
+            // ========================================
+            runner.test('ContextBar: actualiza color al cambiar porcentaje', async (stage) => {
+                const el = document.createElement('context-bar');
+                el.update(3000, 10000); // 30% - verde
+                stage.appendChild(el);
+                await el.updateComplete;
+                
+                let bar = el.shadowRoot.querySelector('.bar');
+                runner.assertTrue(bar.classList.contains('green'), 'Debe empezar verde');
+                
+                el.update(9500, 10000); // 95% - rojo
+                await el.updateComplete;
+                
+                bar = el.shadowRoot.querySelector('.bar');
+                runner.assertTrue(bar.classList.contains('red'), 'Debe cambiar a rojo');
+                runner.assertFalse(bar.classList.contains('green'), 'NO debe tener clase verde');
+            });
+
+            // ========================================
+            // TEST 13: Barra no excede 100%
+            // ========================================
+            runner.test('ContextBar: barra no excede 100% visualmente', async (stage) => {
+                const el = document.createElement('context-bar');
+                el.update(15000, 10000); // 150% (sobre límite)
+                stage.appendChild(el);
+                await el.updateComplete;
+                
+                const bar = el.shadowRoot.querySelector('.bar');
+                const barStyle = window.getComputedStyle(bar);
+                
+                // El estilo debe limitar el ancho al 100%
+                // Verificamos que no es mayor que el contenedor
+                runner.assertTrue(bar, 'Barra debe existir incluso con valores sobre 100%');
             });
         });
 

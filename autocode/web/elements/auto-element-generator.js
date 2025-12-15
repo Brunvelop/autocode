@@ -2,739 +2,601 @@
  * auto-element-generator.js
  * Generador automático de Custom Elements para funciones del registry
  * 
- * CARACTERÍSTICAS:
- * - Auto-detección de funciones via /functions/details
- * - Creación dinámica de Web Components (e.g., <auto-multiply>)
- * - Encapsulación completa de lógica funcional básica
- * - UI mínima con Tailwind CSS
- * - Slots para personalización completa de UI
- * - Atributos observados para configuración
- * - Eventos para hooks externos
- * - Métodos públicos para extensión programática
- * 
- * EXTENSIBILIDAD:
- * - Slots: header, toolbar, params-ui, execute-button, result-ui, status, footer
- * - Atributos: auto-execute, show-result, show-params, readonly
- * - Eventos: function-connected, before-execute, after-execute, execute-error, params-changed
- * - Métodos: execute(), getResult(), setParam(), getParam(), getParams(), validate()
- * - Métodos DOM (para subclases): createParamElement(param), createExecuteButton()
+ * ARQUITECTURA:
+ * - AutoFunctionController: Clase base con toda la lógica (estado, validación, API) pero sin UI.
+ * - AutoFunctionElement: Implementación con UI tipo "Tarjeta" (Shadow DOM).
+ * - AutoElementGenerator: Fábrica que crea elementos dinámicos basados en AutoFunctionElement.
  */
 
+import { LitElement, html, css } from 'https://cdn.jsdelivr.net/gh/lit/dist@3/core/lit-core.min.js';
+
+/**
+ * CONTROLADOR BASE (LÓGICA PURA)
+ * Maneja el estado, la validación y la comunicación con la API.
+ * Desacoplado de la presentación visual.
+ */
+export class AutoFunctionController extends LitElement {
+    static properties = {
+        // Configuración
+        funcName: { type: String, attribute: 'func-name' },
+        funcInfo: { type: Object, state: true },
+        
+        // Estado
+        params: { type: Object, state: true }, // Valores actuales de los parámetros
+        result: { type: Object, state: true },
+        errors: { type: Object, state: true },
+        
+        // UI Status
+        _status: { type: String, state: true },
+        _statusMessage: { type: String, state: true },
+        _errorMessage: { type: String, state: true },
+        _isExecuting: { type: Boolean, state: true }
+    };
+
+    constructor() {
+        super();
+        this.funcName = '';
+        this.funcInfo = null;
+        this.params = {}; // { paramName: value }
+        this.result = null;
+        this.errors = {};
+        
+        this._status = 'default';
+        this._statusMessage = 'Listo';
+        this._errorMessage = '';
+        this._isExecuting = false;
+    }
+
+    async connectedCallback() {
+        super.connectedCallback();
+        
+        // 1. Si tengo nombre pero no info, cargarla del registry
+        if (this.funcName && !this.funcInfo) {
+            try {
+                await this.loadFunctionInfo();
+            } catch (error) {
+                this._errorMessage = error.message;
+                this._setStatus('error', 'Error cargando función');
+            }
+        }
+
+        // 2. Inicializar params con defaults si funcInfo ya está cargado
+        if (this.funcInfo && Object.keys(this.params).length === 0) {
+            this._initParamsWithDefaults();
+        }
+        
+        this.dispatchEvent(new CustomEvent('function-connected', {
+            detail: { funcName: this.funcName, funcInfo: this.funcInfo },
+            bubbles: true,
+            composed: true
+        }));
+    }
+
+    async loadFunctionInfo() {
+        const response = await fetch('/functions/details');
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
+        
+        if (!data.functions[this.funcName]) {
+            throw new Error(`Function "${this.funcName}" not found in registry`);
+        }
+        
+        this.funcInfo = data.functions[this.funcName];
+    }
+
+    // Si funcInfo cambia, reinicializar defaults
+    updated(changedProperties) {
+        if (changedProperties.has('funcInfo') && this.funcInfo) {
+            this._initParamsWithDefaults();
+        }
+    }
+
+    _initParamsWithDefaults() {
+        const newParams = { ...this.params };
+        this.funcInfo?.parameters?.forEach(p => {
+            if (newParams[p.name] === undefined && p.default !== null) {
+                newParams[p.name] = p.default;
+            }
+        });
+        this.params = newParams;
+    }
+
+    // ========================================================================
+    // LOGIC API (STATE MANAGEMENT)
+    // ========================================================================
+
+    /**
+     * Establece el valor de un parámetro y actualiza el estado.
+     */
+    setParam(name, value) {
+        // Actualización inmutable para disparar reactividad de Lit
+        this.params = {
+            ...this.params,
+            [name]: value
+        };
+
+        // Limpiar error asociado si existe
+        if (this.errors[name]) {
+            const newErrors = { ...this.errors };
+            delete newErrors[name];
+            this.errors = newErrors;
+        }
+
+        this.dispatchEvent(new CustomEvent('params-changed', {
+            detail: { params: this.params },
+            bubbles: true,
+            composed: true
+        }));
+    }
+
+    getParam(name) {
+        return this.params[name];
+    }
+
+    getParams() {
+        return this.params;
+    }
+
+    getResult() {
+        return this.result;
+    }
+
+    // ========================================================================
+    // EXECUTION LOGIC
+    // ========================================================================
+
+    async execute() {
+        // 1. Validar estado (params vs funcInfo)
+        if (!this.validate()) {
+            this._errorMessage = 'Por favor, completa todos los campos requeridos y corrige los errores.';
+            this._setStatus('error', 'Error de validación');
+            return;
+        }
+
+        // 2. Pre-execution hook
+        const preEvent = new CustomEvent('before-execute', {
+            detail: { funcName: this.funcName, params: this.params },
+            bubbles: true,
+            composed: true,
+            cancelable: true
+        });
+
+        if (!this.dispatchEvent(preEvent)) {
+            console.log('Ejecución cancelada por before-execute handler');
+            return;
+        }
+
+        // 3. Setup execution state
+        this._isExecuting = true;
+        this._setStatus('loading', 'Ejecutando...');
+        this._errorMessage = '';
+        
+        try {
+            // 4. Call API
+            const result = await this.callAPI(this.params);
+            this.result = result;
+            this._setStatus('success', 'Ejecutado correctamente');
+
+            this.dispatchEvent(new CustomEvent('after-execute', {
+                detail: { funcName: this.funcName, params: this.params, result },
+                bubbles: true,
+                composed: true
+            }));
+
+            return result;
+        } catch (error) {
+            this.result = { _isError: true, _message: `Error: ${error.message}` };
+            this._setStatus('error', 'Error en ejecución');
+
+            this.dispatchEvent(new CustomEvent('execute-error', {
+                detail: { funcName: this.funcName, params: this.params, error },
+                bubbles: true,
+                composed: true
+            }));
+
+            throw error;
+        } finally {
+            this._isExecuting = false;
+        }
+    }
+
+    /**
+     * Valida los parámetros actuales contra la definición (funcInfo).
+     * NO depende del DOM.
+     */
+    validate() {
+        let isValid = true;
+        const newErrors = {};
+
+        this.funcInfo?.parameters?.forEach(param => {
+            const value = this.params[param.name];
+            let error = null;
+
+            // Required check
+            if (param.required) {
+                if (value === undefined || value === null || (typeof value === 'string' && value.trim() === '')) {
+                    // Checkbox/Boolean required usually ignored unless specified true needed
+                    if (param.type !== 'bool') {
+                        error = 'Campo requerido';
+                    }
+                }
+            }
+
+            // Type check (basic)
+            if (!error && value !== undefined && value !== null && value !== '') {
+                if (param.type === 'int') {
+                    if (!Number.isInteger(Number(value))) error = 'Debe ser un número entero';
+                } else if (param.type === 'float') {
+                    if (isNaN(parseFloat(value))) error = 'Debe ser un número decimal';
+                } else if (this._isComplexType(param.type)) {
+                    // Si es string (desde textarea), intentar parsear
+                    if (typeof value === 'string') {
+                        try {
+                            JSON.parse(value);
+                        } catch (e) {
+                            error = 'JSON inválido';
+                        }
+                    }
+                }
+            }
+
+            if (error) {
+                isValid = false;
+                newErrors[param.name] = error;
+            }
+        });
+
+        this.errors = newErrors;
+        return isValid;
+    }
+
+    async callAPI(params) {
+        const method = this.funcInfo.http_methods[0];
+        let url = `/${this.funcName}`;
+        let options = {
+            method: method.toUpperCase(),
+            headers: { 'Content-Type': 'application/json' }
+        };
+
+        // Procesar params para envío
+        const processedParams = {};
+        Object.entries(params).forEach(([key, val]) => {
+            // Parsear JSON strings si es necesario (para complex types que vengan de textareas)
+            const paramDef = this.funcInfo.parameters.find(p => p.name === key);
+            if (paramDef && this._isComplexType(paramDef.type) && typeof val === 'string') {
+                try {
+                    processedParams[key] = JSON.parse(val);
+                } catch {
+                    processedParams[key] = val; // Fallback
+                }
+            } else if (paramDef && paramDef.type === 'int') {
+                processedParams[key] = parseInt(val);
+            } else if (paramDef && paramDef.type === 'float') {
+                processedParams[key] = parseFloat(val);
+            } else {
+                processedParams[key] = val;
+            }
+        });
+
+        if (method.toUpperCase() === 'GET') {
+            const queryParams = new URLSearchParams();
+            for (const [key, val] of Object.entries(processedParams)) {
+                if (typeof val === 'object' && val !== null) {
+                    queryParams.append(key, JSON.stringify(val));
+                } else {
+                    queryParams.append(key, val);
+                }
+            }
+            const queryString = queryParams.toString();
+            if (queryString) url += `?${queryString}`;
+        } else {
+            options.body = JSON.stringify(processedParams);
+        }
+
+        const response = await fetch(url, options);
+        if (!response.ok) {
+            let errorMsg = `HTTP ${response.status}`;
+            try {
+                const errorData = await response.json();
+                errorMsg = errorData.detail 
+                    ? (typeof errorData.detail === 'string' ? errorData.detail : JSON.stringify(errorData.detail)) 
+                    : JSON.stringify(errorData);
+            } catch {
+                errorMsg = response.statusText || errorMsg;
+            }
+            throw new Error(errorMsg);
+        }
+
+        const data = await response.json();
+        return data.result !== undefined ? data.result : data;
+    }
+
+    /**
+     * Helper estático para ejecutar funciones sin crear elementos en el DOM.
+     * Útil para llamadas inter-funciones (ej: chat llamando a calculate_context_usage).
+     * 
+     * @param {string} funcName - Nombre de la función registrada
+     * @param {object} params - Parámetros para la función
+     * @returns {Promise<any>} - Resultado de la ejecución
+     * @throws {Error} - Si la función no existe o falla la ejecución
+     * 
+     * @example
+     * const result = await AutoFunctionController.executeFunction(
+     *     'calculate_context_usage',
+     *     { model: 'gpt-4', messages: [...] }
+     * );
+     */
+    static async executeFunction(funcName, params) {
+        const controller = new AutoFunctionController();
+        controller.funcName = funcName;
+        
+        try {
+            // Cargar metadata de la función
+            await controller.loadFunctionInfo();
+            
+            // Establecer parámetros
+            Object.entries(params).forEach(([key, value]) => {
+                controller.setParam(key, value);
+            });
+            
+            // Ejecutar y retornar resultado
+            const result = await controller.execute();
+            return result;
+        } catch (error) {
+            console.error(`❌ Error executing function "${funcName}":`, error);
+            throw error;
+        }
+    }
+
+    // Helpers internos
+    _isComplexType(type) {
+        if (!type) return false;
+        return /\b(dict|list)\b|json/i.test(type);
+    }
+    
+    _setStatus(type, message) {
+        this._status = type;
+        this._statusMessage = message;
+    }
+
+    // Default render: nada visual, solo slot
+    render() {
+        return html`<slot></slot>`;
+    }
+}
+
+
+/**
+ * UI GENÉRICA (TARJETA)
+ * Implementación visual estándar de AutoFunctionController.
+ * Usa Shadow DOM.
+ * NO DISEÑADA PARA SER EXTENDIDA.
+ */
+export class AutoFunctionElement extends AutoFunctionController {
+    static styles = css`
+        :host { display: block; font-family: system-ui, sans-serif; }
+        .container { 
+            display: flex; flex-direction: column; gap: 1rem; padding: 1rem; 
+            border: 1px solid #e5e7eb; border-radius: 0.5rem; background: #ffffff; 
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1); 
+        }
+        .header { display: flex; flex-direction: column; gap: 0.5rem; }
+        .header-row { display: flex; justify-content: space-between; align-items: center; }
+        .title { font-size: 1.25rem; font-weight: 600; margin: 0; color: #1f2937; }
+        .description { font-size: 0.875rem; color: #6b7280; font-style: italic; margin: 0; }
+        
+        .error-banner { 
+            padding: 0.75rem; background: #fee2e2; border: 1px solid #fca5a5; 
+            border-radius: 0.5rem; color: #991b1b; font-size: 0.875rem;
+        }
+        
+        /* Inputs */
+        .params { display: flex; flex-direction: column; gap: 0.75rem; }
+        .param-group { display: flex; flex-direction: column; gap: 0.25rem; }
+        .param-label { font-size: 0.875rem; font-weight: 600; color: #374151; }
+        .param-required { color: #ef4444; }
+        .param-desc { font-size: 0.75rem; color: #6b7280; margin: 0; }
+        .field-error { font-size: 0.75rem; color: #ef4444; }
+
+        input, select, textarea { 
+            padding: 0.5rem; border: 1px solid #d1d5db; border-radius: 0.5rem; 
+            font-size: 0.875rem; width: 100%; box-sizing: border-box;
+            background: #fff; color: #1f2937;
+        }
+        input:focus, select:focus, textarea:focus {
+            outline: none; border-color: #6366f1; box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
+        }
+        input.error, select.error, textarea.error { border-color: #ef4444; background: #fef2f2; }
+        
+        .checkbox-wrapper { display: flex; align-items: center; gap: 0.5rem; }
+        input[type="checkbox"] { width: 1rem; height: 1rem; accent-color: #6366f1; }
+
+        /* Button */
+        .execute-btn {
+            padding: 0.5rem 1rem; background: linear-gradient(to right, #4f46e5, #7c3aed); 
+            color: white; border: none; border-radius: 0.5rem; font-weight: 500; cursor: pointer;
+            transition: opacity 0.2s;
+        }
+        .execute-btn:hover:not(:disabled) { opacity: 0.9; }
+        .execute-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        
+        /* Result */
+        .result { 
+            padding: 0.75rem; border-radius: 0.5rem; font-family: monospace; 
+            font-size: 0.875rem; white-space: pre-wrap; word-break: break-word;
+        }
+        .result-success { background: #dcfce7; border: 1px solid #86efac; color: #166534; }
+        .result-error { background: #fee2e2; border: 1px solid #fca5a5; color: #991b1b; }
+
+        /* Status */
+        .status { display: flex; align-items: center; gap: 0.5rem; font-size: 0.75rem; color: #6b7280; }
+        .status-indicator { width: 0.5rem; height: 0.5rem; border-radius: 50%; background: #d1d5db; }
+        .status-indicator.success { background: #22c55e; }
+        .status-indicator.error { background: #ef4444; }
+        .status-indicator.loading { background: #eab308; }
+    `;
+
+    render() {
+        if (!this.funcInfo) {
+            return html`<div class="container">Cargando...</div>`;
+        }
+
+        return html`
+            <div class="container">
+                <div class="header">
+                    <div class="header-row">
+                        <h3 class="title">🔧 ${this.funcInfo.name}</h3>
+                    </div>
+                    ${this.funcInfo.description ? html`<p class="description">${this.funcInfo.description}</p>` : ''}
+                </div>
+
+                ${this._errorMessage ? html`<div class="error-banner">${this._errorMessage}</div>` : ''}
+
+                ${this.funcInfo.parameters?.length ? html`
+                    <div class="params">
+                        ${this.funcInfo.parameters.map(p => this.renderParam(p))}
+                    </div>
+                ` : ''}
+
+                <button class="execute-btn" ?disabled=${this._isExecuting} @click=${this.execute}>
+                    ${this._isExecuting ? 'Ejecutando...' : `Ejecutar ⚡`}
+                </button>
+
+                ${this.result !== null ? this.renderResult() : ''}
+
+                <div class="status">
+                    <div class="status-indicator ${this._status}"></div>
+                    <span>${this._statusMessage}</span>
+                </div>
+            </div>
+        `;
+    }
+
+    renderParam(param) {
+        const hasError = this.errors[param.name];
+        const errorClass = hasError ? 'error' : '';
+        const currentValue = this.params[param.name] ?? '';
+
+        let inputHtml;
+        
+        if (param.choices?.length > 0) {
+            inputHtml = html`
+                <select name="${param.name}" class="${errorClass}" ?required=${param.required}
+                    @change=${e => this.setParam(param.name, e.target.value)}>
+                    ${param.choices.map(c => html`<option value="${c}" ?selected=${c === currentValue}>${c}</option>`)}
+                </select>
+            `;
+        } else if (this._isComplexType(param.type)) {
+            const displayValue = typeof currentValue === 'object' ? JSON.stringify(currentValue, null, 2) : currentValue;
+            inputHtml = html`
+                <textarea name="${param.name}" class="${errorClass}" rows="3" .value=${displayValue}
+                    ?required=${param.required}
+                    @change=${e => this.setParam(param.name, e.target.value)}></textarea>
+            `;
+        } else if (param.type === 'bool') {
+            inputHtml = html`
+                <div class="checkbox-wrapper">
+                    <input type="checkbox" name="${param.name}" ?checked=${!!currentValue}
+                        @change=${e => this.setParam(param.name, e.target.checked)}>
+                    <span>Activar</span>
+                </div>
+            `;
+        } else {
+            const isNumber = param.type === 'int' || param.type === 'float';
+            inputHtml = html`
+                <input type="${isNumber ? 'number' : 'text'}" name="${param.name}" class="${errorClass}" 
+                    .value=${String(currentValue)} ?required=${param.required}
+                    step="${param.type === 'float' ? 'any' : param.type === 'int' ? '1' : ''}"
+                    @change=${e => this.setParam(param.name, e.target.value)}>
+            `;
+        }
+
+        return html`
+            <div class="param-group">
+                <label class="param-label">
+                    ${param.name} ${param.required ? html`<span class="param-required">*</span>` : ''}
+                </label>
+                <p class="param-desc">${param.description} (${param.type})</p>
+                ${inputHtml}
+                ${hasError ? html`<span class="field-error">${this.errors[param.name]}</span>` : ''}
+            </div>
+        `;
+    }
+
+    renderResult() {
+        const isError = this.result?._isError;
+        const content = typeof this.result === 'object' && !isError
+            ? JSON.stringify(this.result, null, 2)
+            : this.result?._message || this.result;
+
+        return html`
+            <div class="result ${isError ? 'result-error' : 'result-success'}">
+                ${content}
+            </div>
+        `;
+    }
+}
+
+// Registrar clases base
+if (!customElements.get('auto-function-controller')) {
+    customElements.define('auto-function-controller', AutoFunctionController);
+}
+if (!customElements.get('auto-function-element')) {
+    customElements.define('auto-function-element', AutoFunctionElement);
+}
+
+/**
+ * GENERADOR DINÁMICO
+ */
 export class AutoElementGenerator {
     constructor() {
         this.functions = {};
         this.registeredElements = new Set();
     }
 
-    /**
-     * Inicializar: cargar funciones y generar elementos
-     */
     async init() {
         try {
             await this.loadFunctions();
             this.generateAllElements();
-            console.log(`✅ ${this.registeredElements.size} custom elements generados:`, 
-                       Array.from(this.registeredElements));
+            console.log(`✅ ${this.registeredElements.size} custom elements generados`);
         } catch (error) {
             console.error('❌ Error inicializando auto-element-generator:', error);
             throw error;
         }
     }
 
-    /**
-     * Cargar funciones desde /functions/details
-     */
     async loadFunctions() {
         const response = await fetch('/functions/details');
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const data = await response.json();
         this.functions = data.functions;
-        console.log(`📦 Cargadas ${Object.keys(this.functions).length} funciones`);
     }
 
-    /**
-     * Generar custom elements para todas las funciones
-     */
     generateAllElements() {
         for (const [funcName, funcInfo] of Object.entries(this.functions)) {
             this.generateElement(funcName, funcInfo);
         }
     }
 
-    /**
-     * Generar un custom element para una función específica
-     */
     generateElement(funcName, funcInfo) {
         const elementName = `auto-${funcName}`;
-        
-        // Evitar registros duplicados
-        if (customElements.get(elementName)) {
-            console.warn(`⚠️ Custom element ${elementName} ya está registrado`);
-            return;
-        }
+        if (customElements.get(elementName)) return;
 
-        // Crear clase dinámica que extiende AutoFunctionElement
-        const ElementClass = this.createElementClass(funcName, funcInfo);
-        
-        // Registrar el custom element
-        customElements.define(elementName, ElementClass);
-        this.registeredElements.add(elementName);
-        
-        console.log(`✨ Registrado: <${elementName}>`);
-    }
-
-    /**
-     * Crear clase de custom element para una función
-     */
-    createElementClass(funcName, funcInfo) {
-        return class extends HTMLElement {
-            static get observedAttributes() {
-                return [
-                    'auto-execute',    // true/false (ejecuta al cargar)
-                    'show-result',     // true/false (muestra resultado)
-                    'show-params',     // true/false (muestra formulario)
-                    'readonly'         // true/false (modo solo lectura)
-                ];
-            }
-
+        // IMPORTANTE: Ahora extendemos de AutoFunctionElement (que extiende del Controller)
+        const ElementClass = class extends AutoFunctionElement {
             constructor() {
                 super();
                 this.funcName = funcName;
                 this.funcInfo = funcInfo;
-                this.result = null;
-                this.errors = {};
-                
-                // Config desde atributos
-                this._autoExecute = false;
-                this._showResult = true;
-                this._showParams = true;
-                this._readonly = false;
-            }
-
-            connectedCallback() {
-                this.loadAttributeDefaults();
-                this.render();
-                // setupEventListeners ya no es necesario globalmente si asignamos eventos al crear elementos,
-                // pero lo mantenemos para lógica general si fuera necesaria.
-                
-                if (this._autoExecute) {
-                    this.executeWithDefaults();
-                }
-                
-                // Dispatch evento de conexión
-                this.dispatchEvent(new CustomEvent('function-connected', {
-                    detail: { funcName, funcInfo },
-                    bubbles: true,
-                    composed: true
-                }));
-            }
-
-            attributeChangedCallback(name, oldValue, newValue) {
-                if (oldValue === newValue) return;
-                
-                switch (name) {
-                    case 'auto-execute':
-                        this._autoExecute = newValue === 'true';
-                        break;
-                    case 'show-result':
-                        this._showResult = newValue !== 'false';
-                        this.updateResultVisibility();
-                        break;
-                    case 'show-params':
-                        this._showParams = newValue !== 'false';
-                        this.updateParamsVisibility();
-                        break;
-                    case 'readonly':
-                        this._readonly = newValue === 'true';
-                        this.updateReadonly();
-                        break;
-                }
-            }
-
-            loadAttributeDefaults() {
-                this._autoExecute = this.getAttribute('auto-execute') === 'true';
-                this._showResult = this.getAttribute('show-result') !== 'false';
-                this._showParams = this.getAttribute('show-params') !== 'false';
-                this._readonly = this.getAttribute('readonly') === 'true';
-            }
-
-            render() {
-                this.innerHTML = '';
-                const layout = this.buildDefaultLayout();
-                this.appendChild(layout);
-            }
-
-            /**
-             * Construye el layout por defecto usando métodos granulares
-             * Puede ser usado por subclases para obtener la estructura base
-             */
-            buildDefaultLayout() {
-                const container = document.createElement('div');
-                container.className = "flex flex-col gap-4 p-4 border border-gray-200 rounded-lg bg-white shadow-sm";
-                container.dataset.part = "container";
-
-                // 1. Header Slot
-                const headerSlot = document.createElement('slot');
-                headerSlot.name = "header";
-                
-                // Default Header Content
-                const defaultHeader = document.createElement('div');
-                defaultHeader.className = "flex flex-col gap-2";
-                defaultHeader.innerHTML = `
-                    <div class="flex justify-between items-center gap-4">
-                        <slot name="title">
-                            <h3 class="text-xl font-semibold text-gray-800 m-0" data-part="title">
-                                🔧 ${this.funcInfo.name}
-                            </h3>
-                        </slot>
-                        <div class="flex gap-2 items-center">
-                            <slot name="toolbar"></slot>
-                        </div>
-                    </div>
-                    ${this.funcInfo.description ? `
-                        <p class="text-sm text-gray-600 italic m-0">
-                            ${this.funcInfo.description}
-                        </p>
-                    ` : ''}
-                    <div class="flex gap-2 flex-wrap">
-                        ${this.funcInfo.http_methods.map(method => 
-                            `<span class="px-2 py-0.5 rounded-full text-xs font-bold ${method === 'GET' ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'}">${method}</span>`
-                        ).join('')}
-                    </div>
-                `;
-                headerSlot.appendChild(defaultHeader);
-                container.appendChild(headerSlot);
-
-                // 2. Error Message
-                const errorDiv = document.createElement('div');
-                errorDiv.dataset.ref = "error";
-                errorDiv.className = "hidden p-3 bg-red-100 border border-red-300 rounded-lg text-red-800 text-sm";
-                errorDiv.dataset.part = "error-message";
-                container.appendChild(errorDiv);
-
-                // 3. Params UI Slot
-                const paramsSlot = document.createElement('slot');
-                paramsSlot.name = "params-ui";
-                
-                const defaultParams = document.createElement('div');
-                defaultParams.dataset.ref = "defaultParams";
-                defaultParams.className = `${!this._showParams ? 'hidden' : ''} flex flex-col gap-3`;
-                
-                // Generar inputs para cada parámetro
-                this.funcInfo.parameters.forEach(param => {
-                    defaultParams.appendChild(this.createParamElement(param));
-                });
-                
-                paramsSlot.appendChild(defaultParams);
-                container.appendChild(paramsSlot);
-
-                // 4. Execute Button Slot
-                const buttonSlot = document.createElement('slot');
-                buttonSlot.name = "execute-button";
-                buttonSlot.appendChild(this.createExecuteButton());
-                container.appendChild(buttonSlot);
-
-                // 5. Result UI Slot
-                const resultSlot = document.createElement('slot');
-                resultSlot.name = "result-ui";
-                
-                const resultContainer = document.createElement('div');
-                resultContainer.dataset.ref = "resultContainer";
-                resultContainer.className = `${!this._showResult ? 'hidden' : ''} hidden p-3 rounded-lg font-mono text-sm whitespace-pre-wrap break-words`;
-                resultContainer.dataset.part = "result-container";
-                
-                resultSlot.appendChild(resultContainer);
-                container.appendChild(resultSlot);
-
-                // 6. Status Slot
-                const statusSlot = document.createElement('slot');
-                statusSlot.name = "status";
-                statusSlot.innerHTML = `
-                    <div class="flex gap-2 items-center text-xs text-gray-600" data-part="status">
-                        <div data-ref="indicator" class="w-2 h-2 rounded-full bg-gray-300" data-part="status-indicator"></div>
-                        <span data-ref="statusText">Listo</span>
-                    </div>
-                `;
-                container.appendChild(statusSlot);
-
-                // 7. Footer Slot
-                const footerSlot = document.createElement('slot');
-                footerSlot.name = "footer";
-                container.appendChild(footerSlot);
-
-                return container;
-            }
-
-            /**
-             * Crea un elemento DOM para un parámetro
-             * @param {Object} param Info del parámetro
-             * @returns {HTMLElement} Div contenedor con label e input
-             */
-            createParamElement(param) {
-                const container = document.createElement('div');
-                container.className = "flex flex-col gap-1";
-                container.dataset.param = param.name;
-
-                // Label
-                const label = document.createElement('label');
-                label.className = "text-sm font-semibold text-gray-700";
-                label.innerHTML = `${param.name} ${param.required ? '<span class="text-red-500">*</span>' : ''}`;
-                container.appendChild(label);
-
-                // Description
-                const desc = document.createElement('p');
-                desc.className = "text-xs text-gray-500 m-0";
-                desc.textContent = `${param.description} (${param.type})`;
-                container.appendChild(desc);
-
-                let input;
-                const defaultValue = param.default !== null ? param.default : '';
-
-                // Determinar tipo de input
-                if (param.choices && Array.isArray(param.choices) && param.choices.length > 0) {
-                    input = document.createElement('select');
-                    input.className = "p-2 border border-gray-300 rounded-lg text-sm bg-white text-gray-900 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200 disabled:bg-gray-100 disabled:cursor-not-allowed";
-                    
-                    param.choices.forEach(choice => {
-                        const option = document.createElement('option');
-                        option.value = choice;
-                        option.textContent = choice;
-                        if (choice === defaultValue) option.selected = true;
-                        input.appendChild(option);
-                    });
-                } 
-                else if (this.isComplexType(param.type)) {
-                    // Tipos complejos (dict, list) usan Textarea
-                    input = document.createElement('textarea');
-                    input.rows = 3;
-                    input.className = "p-2 border border-gray-300 rounded-lg text-sm bg-white text-gray-900 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200 disabled:bg-gray-100 disabled:cursor-not-allowed font-mono";
-                    input.placeholder = param.type.includes('list') ? '["item1", "item2"]' : '{"key": "value"}';
-                    input.value = defaultValue ? JSON.stringify(defaultValue, null, 2) : '';
-                } 
-                else if (param.type === 'bool') {
-                    // Boolean usa Checkbox (envuelto en un div para alineación)
-                    const wrapper = document.createElement('div');
-                    wrapper.className = "flex items-center gap-2";
-                    input = document.createElement('input');
-                    input.type = 'checkbox';
-                    input.className = "w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500";
-                    if (defaultValue === true) input.checked = true;
-                    wrapper.appendChild(input);
-                    
-                    const boolLabel = document.createElement('span');
-                    boolLabel.className = "text-sm text-gray-700";
-                    boolLabel.textContent = "Activar";
-                    wrapper.appendChild(boolLabel);
-                    
-                    // El input real es el checkbox, pero retornamos el input para el resto del código
-                    // Ajuste: container.appendChild necesita el input directamente o el wrapper
-                    // Para simplificar lógica posterior, asignamos name al input
-                    input.name = param.name;
-                    container.appendChild(wrapper); // Special case for bool
-                    // input variable still points to the checkbox element
-                }
-                else {
-                    input = document.createElement('input');
-                    const isNumber = param.type === 'int' || param.type === 'float';
-                    input.type = isNumber ? 'number' : 'text';
-                    input.value = defaultValue;
-                    if (param.type === 'float') input.step = "any";
-                    if (param.type === 'int') input.step = "1";
-                    input.placeholder = param.description;
-                    input.className = "p-2 border border-gray-300 rounded-lg text-sm bg-white text-gray-900 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200 disabled:bg-gray-100 disabled:cursor-not-allowed";
-                }
-
-                if (param.type !== 'bool') {
-                    input.name = param.name;
-                    container.appendChild(input);
-                }
-
-                if (param.required) input.required = true;
-                if (this._readonly) input.disabled = true;
-
-                // Event Listener para cambios
-                input.addEventListener('change', () => {
-                    this.clearFieldError(input); // Limpiar error al editar
-                    this.dispatchEvent(new CustomEvent('params-changed', {
-                        detail: { params: this.getParams() },
-                        bubbles: true,
-                        composed: true
-                    }));
-                });
-                
-                input.addEventListener('input', () => this.clearFieldError(input));
-                
-                // Field error message container
-                const errorMsg = document.createElement('span');
-                errorMsg.className = "text-xs text-red-500 hidden";
-                errorMsg.dataset.errorFor = param.name;
-                container.appendChild(errorMsg);
-                
-                return container;
-            }
-
-            isComplexType(type) {
-                if (!type) return false;
-                // Detectar dict/list/json de forma flexible pero segura (word boundaries para evitar 'predict')
-                return /\b(dict|list)\b|json/i.test(type);
-            }
-
-            clearFieldError(input) {
-                input.classList.remove('border-red-500', 'bg-red-50');
-                if (input.type !== 'checkbox') input.classList.add('border-gray-300');
-                
-                const container = input.closest('div[data-param]');
-                if (container) {
-                    const errorMsg = container.querySelector(`span[data-error-for="${input.name}"]`);
-                    if (errorMsg) {
-                        errorMsg.textContent = '';
-                        errorMsg.classList.add('hidden');
-                    }
-                }
-            }
-
-            setFieldError(input, message) {
-                input.classList.add('border-red-500', 'bg-red-50');
-                if (input.type !== 'checkbox') input.classList.remove('border-gray-300');
-                
-                const container = input.closest('div[data-param]');
-                if (container) {
-                    const errorMsg = container.querySelector(`span[data-error-for="${input.name}"]`);
-                    if (errorMsg) {
-                        errorMsg.textContent = message;
-                        errorMsg.classList.remove('hidden');
-                    }
-                }
-            }
-
-            createExecuteButton() {
-                const btn = document.createElement('button');
-                btn.dataset.ref = "executeBtn";
-                btn.className = "px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-indigo-600 to-purple-600 rounded-lg hover:from-indigo-700 hover:to-purple-700 transition-all duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed";
-                btn.dataset.part = "execute-button";
-                btn.textContent = `Ejecutar ${this.funcInfo.name} ⚡`;
-                
-                if (this._readonly) btn.disabled = true;
-
-                btn.addEventListener('click', () => this.execute());
-                
-                return btn;
-            }
-
-            async execute() {
-                // Validar antes de ejecutar
-                if (!this.validate()) {
-                    this.showError('Por favor, completa todos los campos requeridos y corrige los errores.');
-                    return;
-                }
-                
-                const params = this.getParams();
-                
-                // Dispatch evento pre-ejecución (permite cancelar)
-                const preEvent = new CustomEvent('before-execute', {
-                    detail: { funcName: this.funcName, params },
-                    bubbles: true,
-                    composed: true,
-                    cancelable: true
-                });
-                
-                if (!this.dispatchEvent(preEvent)) {
-                    console.log('Ejecución cancelada por before-execute handler');
-                    return;
-                }
-                
-                const executeBtn = this.querySelector('[data-ref="executeBtn"]');
-                if (executeBtn) {
-                    executeBtn.disabled = true;
-                    executeBtn.textContent = 'Ejecutando...';
-                }
-                
-                this.setStatus('loading', 'Ejecutando...');
-                this.hideError();
-                
-                try {
-                    const result = await this.callAPI(params);
-                    this.result = result;
-                    this.showResult(result, false);
-                    this.setStatus('success', 'Ejecutado correctamente');
-                    
-                    // Dispatch evento post-ejecución
-                    this.dispatchEvent(new CustomEvent('after-execute', {
-                        detail: { funcName: this.funcName, params, result },
-                        bubbles: true,
-                        composed: true
-                    }));
-                    return result; // Retornar resultado para uso programático
-                } catch (error) {
-                    this.showResult(`Error: ${error.message}`, true);
-                    this.setStatus('error', 'Error en ejecución');
-                    
-                    this.dispatchEvent(new CustomEvent('execute-error', {
-                        detail: { funcName: this.funcName, params, error },
-                        bubbles: true,
-                        composed: true
-                    }));
-                    throw error;
-                } finally {
-                    if (executeBtn) {
-                        executeBtn.disabled = this._readonly; // Restaurar estado readonly
-                        executeBtn.textContent = `Ejecutar ${this.funcInfo.name} ⚡`;
-                    }
-                }
-            }
-
-            async executeWithDefaults() {
-                await this.execute();
-            }
-
-            validate() {
-                let isValid = true;
-                this.errors = {};
-                
-                // Iterar sobre definicion de parámetros para validación completa
-                this.funcInfo.parameters.forEach(param => {
-                    const input = this.querySelector(`[name="${param.name}"]`);
-                    if (!input) return;
-
-                    const value = input.type === 'checkbox' ? input.checked : input.value;
-                    let error = null;
-
-                    // 1. Validar Required
-                    if (param.required) {
-                        if (input.type === 'checkbox') {
-                            // Checkbox required usually means it must be checked (e.g. Terms & Conditions)
-                            // But for boolean parameters, required usually just means present.
-                            // Assuming here required bool doesn't mean must be true.
-                        } else if (!value || value.trim() === '') {
-                            error = 'Campo requerido';
-                        }
-                    }
-                    
-                    // 2. Validar Tipos y formatos
-                    if (!error && value && typeof value === 'string' && value.trim() !== '') {
-                        if (param.type === 'int') {
-                            const num = Number(value);
-                            if (!Number.isInteger(num)) error = 'Debe ser un número entero';
-                        } else if (param.type === 'float') {
-                            if (isNaN(parseFloat(value))) error = 'Debe ser un número decimal';
-                        } else if (this.isComplexType(param.type)) {
-                            try {
-                                JSON.parse(value);
-                            } catch (e) {
-                                error = 'JSON inválido';
-                            }
-                        }
-                    }
-
-                    if (error) {
-                        isValid = false;
-                        this.errors[param.name] = error;
-                        this.setFieldError(input, error);
-                    } else {
-                        this.clearFieldError(input);
-                    }
-                });
-                
-                return isValid;
-            }
-
-            getParams() {
-                const params = {};
-                // Busca inputs en todo el elemento (incluyendo los que haya movido el hijo)
-                const inputs = this.querySelectorAll('input, select, textarea');
-                
-                inputs.forEach(input => {
-                    const value = input.value;
-                    // Solo incluimos si el input corresponde a un parámetro conocido
-                    const param = this.funcInfo.parameters.find(p => p.name === input.name);
-                    if (param) {
-                        if (param.type === 'bool') {
-                            params[input.name] = input.checked;
-                            return;
-                        }
-
-                        // Si está vacío y no es required, no lo enviamos para que use el default del backend
-                        if (value === '' && !param.required) return;
-
-                        if (param.type === 'int') params[input.name] = value ? parseInt(value) : 0;
-                        else if (param.type === 'float') params[input.name] = value ? parseFloat(value) : 0.0;
-                        else if (this.isComplexType(param.type)) {
-                            try {
-                                params[input.name] = value ? JSON.parse(value) : null;
-                            } catch (e) {
-                                console.error(`Error parsing JSON for ${input.name}`, e);
-                                params[input.name] = null; // O dejar string si fallamos? Mejor null para que backend falle si es strict
-                            }
-                        }
-                        else params[input.name] = value;
-                    }
-                });
-                
-                return params;
-            }
-
-            async callAPI(params) {
-                const method = this.funcInfo.http_methods[0];
-                let url = `/${this.funcName}`;
-                let options = { 
-                    method: method.toUpperCase(), 
-                    headers: { 'Content-Type': 'application/json' } 
-                };
-                
-                if (method.toUpperCase() === 'GET') {
-                    // Para GET, necesitamos serializar params. Si hay objetos complejos, json stringify
-                    const queryParams = new URLSearchParams();
-                    for (const [key, val] of Object.entries(params)) {
-                        if (typeof val === 'object' && val !== null) {
-                            queryParams.append(key, JSON.stringify(val));
-                        } else {
-                            queryParams.append(key, val);
-                        }
-                    }
-                    const queryString = queryParams.toString();
-                    if (queryString) url += `?${queryString}`;
-                } else {
-                    options.body = JSON.stringify(params);
-                }
-                
-                const response = await fetch(url, options);
-                if (!response.ok) {
-                    let errorMsg = `HTTP ${response.status}`;
-                    try {
-                        const errorData = await response.json();
-                        // Intentar obtener mensaje legible o stringify completo
-                        if (errorData.detail) {
-                            errorMsg = typeof errorData.detail === 'string' 
-                                ? errorData.detail 
-                                : JSON.stringify(errorData.detail, null, 2);
-                        } else {
-                            errorMsg = JSON.stringify(errorData, null, 2);
-                        }
-                    } catch {
-                        errorMsg = response.statusText || errorMsg;
-                    }
-                    throw new Error(errorMsg);
-                }
-                
-                const data = await response.json();
-                return data.result !== undefined ? data.result : data;
-            }
-
-            // ... (resto de métodos auxiliares UI, setStatus, etc.)
-            
-            showResult(content, isError = false) {
-                const resultContainer = this.querySelector('[data-ref="resultContainer"]');
-                if (!resultContainer) return;
-                
-                resultContainer.textContent = typeof content === 'object' 
-                    ? JSON.stringify(content, null, 2) 
-                    : content;
-                    
-                resultContainer.classList.remove('bg-green-100', 'border-green-300', 'text-green-800', 'bg-red-100', 'border-red-300', 'text-red-800', 'hidden');
-                
-                if (isError) {
-                    resultContainer.classList.add('bg-red-100', 'border', 'border-red-300', 'text-red-800');
-                } else {
-                    resultContainer.classList.add('bg-green-100', 'border', 'border-green-300', 'text-green-800');
-                }
-                // Si show-result es false, lo volvemos a ocultar (aunque hayamos actualizado el contenido)
-                if (!this._showResult) resultContainer.classList.add('hidden');
-            }
-
-            setStatus(type, message) {
-                const indicator = this.querySelector('[data-ref="indicator"]');
-                const statusText = this.querySelector('[data-ref="statusText"]');
-                
-                if (!indicator || !statusText) return;
-                
-                indicator.classList.remove('bg-gray-300', 'bg-green-500', 'bg-red-500', 'bg-yellow-500');
-                
-                switch(type) {
-                    case 'success': indicator.classList.add('bg-green-500'); break;
-                    case 'error': indicator.classList.add('bg-red-500'); break;
-                    case 'loading': indicator.classList.add('bg-yellow-500'); break;
-                    default: indicator.classList.add('bg-gray-300');
-                }
-                
-                statusText.textContent = message;
-            }
-
-            showError(message) {
-                const error = this.querySelector('[data-ref="error"]');
-                if (!error) return;
-                error.textContent = message;
-                error.classList.remove('hidden');
-            }
-
-            hideError() {
-                const error = this.querySelector('[data-ref="error"]');
-                if (!error) return;
-                error.classList.add('hidden');
-            }
-
-            updateResultVisibility() {
-                const resultContainer = this.querySelector('[data-ref="resultContainer"]');
-                if (resultContainer) {
-                    if (this._showResult) resultContainer.classList.remove('hidden');
-                    else resultContainer.classList.add('hidden');
-                }
-            }
-
-            updateParamsVisibility() {
-                const defaultParams = this.querySelector('[data-ref="defaultParams"]');
-                if (defaultParams) {
-                    if (this._showParams) defaultParams.classList.remove('hidden');
-                    else defaultParams.classList.add('hidden');
-                }
-            }
-
-            updateReadonly() {
-                const inputs = this.querySelectorAll('input, select, textarea');
-                const executeBtn = this.querySelector('[data-ref="executeBtn"]');
-                
-                inputs.forEach(input => {
-                    input.disabled = this._readonly;
-                });
-                
-                if (executeBtn) {
-                    executeBtn.disabled = this._readonly;
-                }
-                
-                if (this._readonly) {
-                    this.setStatus('default', 'Modo solo lectura');
-                }
-            }
-
-            // API pública para uso externo
-            getResult() { return this.result; }
-
-            setParam(paramName, value) {
-                const input = this.querySelector(`[name="${paramName}"]`);
-                if (input) {
-                    if (input.type === 'checkbox') {
-                        input.checked = !!value;
-                    } else if (input.tagName === 'TEXTAREA' && typeof value === 'object') {
-                        input.value = JSON.stringify(value, null, 2);
-                    } else {
-                        input.value = value;
-                    }
-                    input.dispatchEvent(new Event('change', { bubbles: true }));
-                }
-            }
-
-            getParam(paramName) {
-                const input = this.querySelector(`[name="${paramName}"]`);
-                if (!input) return null;
-                if (input.type === 'checkbox') return input.checked;
-                return input.value;
             }
         };
+
+        customElements.define(elementName, ElementClass);
+        this.registeredElements.add(elementName);
     }
 }
 
-// Auto-inicializar cuando el DOM esté listo
+// Inicialización
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', async () => {
         window.autoElementGenerator = new AutoElementGenerator();

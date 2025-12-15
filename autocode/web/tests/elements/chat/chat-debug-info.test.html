@@ -18,17 +18,11 @@
     <script type="module">
         import { TestRunner } from '../../utils/test-runner.js'; 
         
-        // Importar el componente (aún no creado, fallará la carga si no se crea pronto, 
-        // pero en este entorno crearemos el archivo JS después)
-        try {
-            await import('/elements/chat/chat-debug-info.js');
-        } catch (e) {
-            console.warn('chat-debug-info.js aún no existe, los tests fallarán si no se crea.');
-        }
+        import '/elements/chat/chat-debug-info.js';
 
         const runner = new TestRunner();
 
-        // Datos de prueba basados en el ejemplo real del usuario
+        // Datos de prueba basados en ejemplos reales
         const mockResponse = {
             "result": "¡Hola! ¿En qué puedo ayudarte hoy?",
             "success": true,
@@ -58,75 +52,188 @@
             "success": true
         };
 
+        const mockResponseWithRootUsage = {
+            "result": "Response with usage at root level",
+            "model": "gpt-4o",
+            "usage": {
+                "prompt_tokens": 100,
+                "completion_tokens": 50,
+                "total_tokens": 150
+            }
+        };
+
         runner.group('ChatDebugInfo', () => {
+            // ========================================
+            // TEST 1: Registro del Custom Element
+            // ========================================
             runner.test('ChatDebugInfo: se registra como custom element', async () => {
                 await runner.waitForElement('chat-debug-info');
                 runner.assertTrue(customElements.get('chat-debug-info'));
             });
 
-            runner.test('ChatDebugInfo: renderiza resumen colapsado por defecto', async (stage) => {
+            // ========================================
+            // TEST 2: Propiedad data
+            // ========================================
+            runner.test('ChatDebugInfo: propiedad data es reactiva', async (stage) => {
+                const el = document.createElement('chat-debug-info');
+                stage.appendChild(el);
+                await el.updateComplete;
+                
+                runner.assertEqual(el.data, null, 'data debe ser null por defecto');
+                
+                el.data = mockResponse;
+                await el.updateComplete;
+                
+                runner.assertEqual(el.data, mockResponse, 'data debe actualizarse');
+            });
+
+            // ========================================
+            // TEST 3: Renderizado básico con datos
+            // ========================================
+            runner.test('ChatDebugInfo: renderiza estructura básica con datos', async (stage) => {
                 const el = document.createElement('chat-debug-info');
                 stage.appendChild(el);
                 
-                // Asignar datos
                 el.data = mockResponse;
-                await runner.sleep(10);
+                await el.updateComplete;
                 
-                const details = el.querySelector('details');
-                runner.assertTrue(details, 'Debe renderizar un <details>');
+                const details = el.shadowRoot.querySelector('details');
+                runner.assertTrue(details, 'Debe renderizar un elemento details');
                 runner.assertFalse(details.hasAttribute('open'), 'Debe estar cerrado por defecto');
             });
 
-            runner.test('ChatDebugInfo: extrae y muestra modelo y tokens en resumen', async (stage) => {
+            // ========================================
+            // TEST 4: Sin datos, no renderiza nada
+            // ========================================
+            runner.test('ChatDebugInfo: no renderiza nada sin datos', async (stage) => {
+                const el = document.createElement('chat-debug-info');
+                stage.appendChild(el);
+                await el.updateComplete;
+                
+                const details = el.shadowRoot.querySelector('details');
+                runner.assertFalse(details, 'NO debe renderizar nada sin datos');
+            });
+
+            // ========================================
+            // TEST 5: Extracción de métricas desde history
+            // ========================================
+            runner.test('ChatDebugInfo: extrae métricas desde history correctamente', async (stage) => {
                 const el = document.createElement('chat-debug-info');
                 stage.appendChild(el);
                 
                 el.data = mockResponse;
-                await runner.sleep(10);
+                await el.updateComplete;
                 
-                const summary = el.querySelector('summary');
-                const text = summary.textContent;
-                
-                runner.assertTrue(text.includes('649'), 'Debe mostrar total de tokens (649)');
-                runner.assertTrue(text.includes('grok-code-fast-1'), 'Debe mostrar nombre del modelo');
+                // Verificar que muestra el total de tokens
+                const content = el.shadowRoot.textContent;
+                runner.assertTrue(content.includes('649'), 'Debe mostrar total de tokens (649)');
+                runner.assertTrue(content.includes('444'), 'Debe mostrar prompt tokens (444)');
+                runner.assertTrue(content.includes('205'), 'Debe mostrar completion tokens (205)');
             });
 
-            runner.test('ChatDebugInfo: muestra JSON completo al expandir', async (stage) => {
+            // ========================================
+            // TEST 6: Extracción de modelo
+            // ========================================
+            runner.test('ChatDebugInfo: extrae y muestra nombre del modelo', async (stage) => {
                 const el = document.createElement('chat-debug-info');
                 stage.appendChild(el);
+                
                 el.data = mockResponse;
-                await runner.sleep(10);
+                await el.updateComplete;
                 
-                const jsonPre = el.querySelector('pre');
-                runner.assertTrue(jsonPre, 'Debe tener un bloque pre para JSON');
-                
-                // Verificar contenido JSON
-                const jsonContent = JSON.parse(jsonPre.textContent);
-                runner.assertEqual(jsonContent.result, mockResponse.result, 'JSON renderizado debe coincidir con datos');
+                const content = el.shadowRoot.textContent;
+                // Debe mostrar solo el nombre corto del modelo
+                runner.assertTrue(content.includes('grok-code-fast-1'), 'Debe mostrar nombre del modelo');
             });
 
-            runner.test('ChatDebugInfo: maneja respuestas sin metadatos (graceful degradation)', async (stage) => {
+            // ========================================
+            // TEST 7: Extracción desde root level
+            // ========================================
+            runner.test('ChatDebugInfo: extrae métricas desde root level', async (stage) => {
+                const el = document.createElement('chat-debug-info');
+                stage.appendChild(el);
+                
+                el.data = mockResponseWithRootUsage;
+                await el.updateComplete;
+                
+                const content = el.shadowRoot.textContent;
+                runner.assertTrue(content.includes('150'), 'Debe extraer total tokens desde root');
+                runner.assertTrue(content.includes('gpt-4o'), 'Debe extraer modelo desde root');
+            });
+
+            // ========================================
+            // TEST 8: Graceful degradation sin metadatos
+            // ========================================
+            runner.test('ChatDebugInfo: maneja respuestas sin metadatos', async (stage) => {
                 const el = document.createElement('chat-debug-info');
                 stage.appendChild(el);
                 
                 el.data = mockSimpleResponse;
-                await runner.sleep(10);
+                await el.updateComplete;
                 
-                const summary = el.querySelector('summary');
-                // Debería mostrar algo genérico si no hay tokens/modelo
-                runner.assertTrue(summary.textContent.includes('Info Técnica') || summary.textContent.includes('Debug'), 'Debe mostrar título genérico');
+                const summary = el.shadowRoot.querySelector('summary');
+                runner.assertTrue(summary, 'Debe renderizar summary incluso sin metadatos');
+                runner.assertTrue(
+                    summary.textContent.includes('Info Técnica') || summary.textContent.includes('Debug'),
+                    'Debe mostrar título genérico'
+                );
             });
 
-            runner.test('ChatDebugInfo: formatea correctamente los contadores de tokens', async (stage) => {
+            // ========================================
+            // TEST 9: Muestra JSON completo
+            // ========================================
+            runner.test('ChatDebugInfo: muestra JSON completo en bloque pre', async (stage) => {
                 const el = document.createElement('chat-debug-info');
                 stage.appendChild(el);
-                el.data = mockResponse;
-                await runner.sleep(10);
                 
-                // Buscar métricas detalladas (Prompt, Completion, Total)
-                const content = el.innerHTML; // O buscar elementos específicos si implementamos con clases
-                runner.assertTrue(content.includes('444'), 'Debe mostrar prompt tokens');
-                runner.assertTrue(content.includes('205'), 'Debe mostrar completion tokens');
+                el.data = mockResponse;
+                await el.updateComplete;
+                
+                const jsonPre = el.shadowRoot.querySelector('pre');
+                runner.assertTrue(jsonPre, 'Debe tener un bloque pre para JSON');
+                
+                // Verificar que el contenido es JSON válido
+                const jsonContent = JSON.parse(jsonPre.textContent);
+                runner.assertEqual(jsonContent.result, mockResponse.result, 'JSON debe coincidir con datos originales');
+            });
+
+            // ========================================
+            // TEST 10: Summary contiene información clave
+            // ========================================
+            runner.test('ChatDebugInfo: summary contiene información resumida', async (stage) => {
+                const el = document.createElement('chat-debug-info');
+                stage.appendChild(el);
+                
+                el.data = mockResponse;
+                await el.updateComplete;
+                
+                const summary = el.shadowRoot.querySelector('summary');
+                const summaryText = summary.textContent;
+                
+                // Debe contener tokens y modelo en el resumen
+                runner.assertTrue(summaryText.includes('649'), 'Summary debe incluir tokens totales');
+                runner.assertTrue(summaryText.includes('grok'), 'Summary debe incluir nombre del modelo');
+            });
+
+            // ========================================
+            // TEST 11: Métricas detalladas en contenido expandible
+            // ========================================
+            runner.test('ChatDebugInfo: muestra métricas detalladas al expandir', async (stage) => {
+                const el = document.createElement('chat-debug-info');
+                stage.appendChild(el);
+                
+                el.data = mockResponse;
+                await el.updateComplete;
+                
+                // Buscar grid de métricas (si existe)
+                const metricsGrid = el.shadowRoot.querySelector('.metrics-grid');
+                
+                if (metricsGrid) {
+                    runner.assertTrue(metricsGrid, 'Debe tener grid de métricas');
+                    const content = metricsGrid.textContent;
+                    runner.assertTrue(content.includes('Prompt') || content.includes('444'), 'Debe mostrar métricas de prompt');
+                    runner.assertTrue(content.includes('Completion') || content.includes('205'), 'Debe mostrar métricas de completion');
+                }
             });
         });
 

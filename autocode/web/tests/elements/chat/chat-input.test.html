@@ -19,115 +19,207 @@
         import { TestRunner } from '../../utils/test-runner.js'; 
         
         // Importar componente
-        try {
-            await import('/elements/chat/chat-input.js');
-        } catch (e) {
-            console.warn('chat-input.js no encontrado:', e.message);
-        }
+        import '/elements/chat/chat-input.js';
 
         const runner = new TestRunner();
 
         runner.group('ChatInput', () => {
+            // ========================================
+            // TEST 1: Registro del Custom Element
+            // ========================================
             runner.test('ChatInput: se registra como custom element', async () => {
                 await runner.waitForElement('chat-input');
                 runner.assertTrue(customElements.get('chat-input'));
             });
 
-            runner.test('ChatInput: renderiza input y botón', async (stage) => {
-                await runner.waitForElement('chat-input');
-                const el = document.createElement('chat-input');
-                stage.appendChild(el);
-                
-                const input = el.querySelector('input') || el.shadowRoot?.querySelector('input');
-                const button = el.querySelector('button') || el.shadowRoot?.querySelector('button');
-                
-                runner.assertTrue(input, 'Debe tener un input');
-                runner.assertTrue(button, 'Debe tener un botón');
-            });
-
+            // ========================================
+            // TEST 2: Propiedad placeholder
+            // ========================================
             runner.test('ChatInput: placeholder configurable via atributo', async (stage) => {
-                await runner.waitForElement('chat-input');
                 const el = document.createElement('chat-input');
                 el.setAttribute('placeholder', 'Test placeholder');
                 stage.appendChild(el);
+                await el.updateComplete;
                 
-                const input = el.querySelector('input') || el.shadowRoot?.querySelector('input');
-                runner.assertEqual(input.placeholder, 'Test placeholder');
+                const input = el.shadowRoot.querySelector('input');
+                runner.assertEqual(input.placeholder, 'Test placeholder', 'Placeholder debe ser configurable');
             });
 
-            runner.test('ChatInput: emite evento submit con mensaje al hacer click', async (stage) => {
-                await runner.waitForElement('chat-input');
+            // ========================================
+            // TEST 3: Propiedad disabled
+            // ========================================
+            runner.test('ChatInput: disabled desactiva input y botón', async (stage) => {
+                const el = document.createElement('chat-input');
+                el.setAttribute('disabled', '');
+                stage.appendChild(el);
+                await el.updateComplete;
+                
+                const input = el.shadowRoot.querySelector('input');
+                const button = el.shadowRoot.querySelector('button');
+                
+                runner.assertTrue(input.disabled, 'Input debe estar disabled');
+                runner.assertTrue(button.disabled, 'Botón debe estar disabled');
+            });
+
+            // ========================================
+            // TEST 4: API getValue()
+            // ========================================
+            runner.test('ChatInput: getValue() retorna el valor actual', async (stage) => {
                 const el = document.createElement('chat-input');
                 stage.appendChild(el);
+                await el.updateComplete;
                 
-                let receivedMessage = null;
-                el.addEventListener('submit', (e) => {
-                    receivedMessage = e.detail.message;
-                });
+                const input = el.shadowRoot.querySelector('input');
+                input.value = 'Test value';
                 
-                const input = el.querySelector('input') || el.shadowRoot?.querySelector('input');
-                const button = el.querySelector('button') || el.shadowRoot?.querySelector('button');
-                
-                input.value = 'Test message';
-                button.click();
-                
-                runner.assertEqual(receivedMessage, 'Test message');
+                runner.assertEqual(el.getValue(), 'Test value', 'getValue() debe retornar el valor del input');
             });
 
-            runner.test('ChatInput: emite evento submit con Enter', async (stage) => {
-                await runner.waitForElement('chat-input');
-                const el = document.createElement('chat-input');
-                stage.appendChild(el);
-                
-                let receivedMessage = null;
-                el.addEventListener('submit', (e) => {
-                    receivedMessage = e.detail.message;
-                });
-                
-                const input = el.querySelector('input') || el.shadowRoot?.querySelector('input');
-                input.value = 'Enter test';
-                input.dispatchEvent(new KeyboardEvent('keypress', { key: 'Enter', bubbles: true }));
-                
-                runner.assertEqual(receivedMessage, 'Enter test');
-            });
-
+            // ========================================
+            // TEST 5: API clear()
+            // ========================================
             runner.test('ChatInput: clear() limpia el input', async (stage) => {
-                await runner.waitForElement('chat-input');
                 const el = document.createElement('chat-input');
                 stage.appendChild(el);
+                await el.updateComplete;
                 
-                const input = el.querySelector('input') || el.shadowRoot?.querySelector('input');
+                const input = el.shadowRoot.querySelector('input');
                 input.value = 'Some text';
                 
                 el.clear();
-                runner.assertEqual(input.value, '');
+                
+                runner.assertEqual(input.value, '', 'Input debe estar vacío tras clear()');
+                runner.assertEqual(el.getValue(), '', 'getValue() debe retornar string vacío tras clear()');
             });
 
+            // ========================================
+            // TEST 6: API focus()
+            // ========================================
             runner.test('ChatInput: focus() enfoca el input', async (stage) => {
-                await runner.waitForElement('chat-input');
                 const el = document.createElement('chat-input');
                 stage.appendChild(el);
+                await el.updateComplete;
                 
                 el.focus();
                 await runner.sleep(50);
                 
-                const input = el.querySelector('input') || el.shadowRoot?.querySelector('input');
-                if (document.activeElement !== document.body) {
-                     runner.assertEqual(document.activeElement, input);
-                }
+                const input = el.shadowRoot.querySelector('input');
+                runner.assertEqual(document.activeElement, el, 'El host debe tener focus');
+                runner.assertEqual(el.shadowRoot.activeElement, input, 'El input en shadow DOM debe tener focus');
             });
 
-            runner.test('ChatInput: disabled desactiva input y botón', async (stage) => {
-                await runner.waitForElement('chat-input');
+            // ========================================
+            // TEST 7: Evento submit (click en botón)
+            // ========================================
+            runner.test('ChatInput: emite evento submit al hacer click en botón', async (stage) => {
                 const el = document.createElement('chat-input');
-                el.setAttribute('disabled', '');
                 stage.appendChild(el);
+                await el.updateComplete;
                 
-                const input = el.querySelector('input') || el.shadowRoot?.querySelector('input');
-                const button = el.querySelector('button') || el.shadowRoot?.querySelector('button');
+                let eventFired = false;
+                let eventDetail = null;
+                el.addEventListener('submit', (e) => {
+                    eventFired = true;
+                    eventDetail = e.detail;
+                });
                 
-                runner.assertTrue(input.disabled, 'Input debe estar disabled');
-                runner.assertTrue(button.disabled, 'Botón debe estar disabled');
+                const input = el.shadowRoot.querySelector('input');
+                const button = el.shadowRoot.querySelector('button');
+                
+                input.value = 'Test message';
+                button.click();
+                
+                runner.assertTrue(eventFired, 'Debe emitir evento submit');
+                runner.assertEqual(eventDetail.message, 'Test message', 'Detail debe incluir el mensaje');
+            });
+
+            // ========================================
+            // TEST 8: Evento submit (Enter key)
+            // ========================================
+            runner.test('ChatInput: emite evento submit al presionar Enter', async (stage) => {
+                const el = document.createElement('chat-input');
+                stage.appendChild(el);
+                await el.updateComplete;
+                
+                let eventFired = false;
+                let eventDetail = null;
+                el.addEventListener('submit', (e) => {
+                    eventFired = true;
+                    eventDetail = e.detail;
+                });
+                
+                const input = el.shadowRoot.querySelector('input');
+                input.value = 'Enter test';
+                
+                // Simular presionar Enter
+                const enterEvent = new KeyboardEvent('keypress', { 
+                    key: 'Enter', 
+                    bubbles: true,
+                    cancelable: true 
+                });
+                input.dispatchEvent(enterEvent);
+                
+                runner.assertTrue(eventFired, 'Debe emitir evento submit con Enter');
+                runner.assertEqual(eventDetail.message, 'Enter test', 'Detail debe incluir el mensaje');
+            });
+
+            // ========================================
+            // TEST 9: No emite submit con mensaje vacío
+            // ========================================
+            runner.test('ChatInput: NO emite submit si el mensaje está vacío', async (stage) => {
+                const el = document.createElement('chat-input');
+                stage.appendChild(el);
+                await el.updateComplete;
+                
+                let eventFired = false;
+                el.addEventListener('submit', () => {
+                    eventFired = true;
+                });
+                
+                const button = el.shadowRoot.querySelector('button');
+                
+                // Intentar submit sin valor
+                button.click();
+                
+                runner.assertFalse(eventFired, 'NO debe emitir evento con input vacío');
+            });
+
+            // ========================================
+            // TEST 10: No emite submit con solo espacios
+            // ========================================
+            runner.test('ChatInput: NO emite submit con solo espacios en blanco', async (stage) => {
+                const el = document.createElement('chat-input');
+                stage.appendChild(el);
+                await el.updateComplete;
+                
+                let eventFired = false;
+                el.addEventListener('submit', () => {
+                    eventFired = true;
+                });
+                
+                const input = el.shadowRoot.querySelector('input');
+                const button = el.shadowRoot.querySelector('button');
+                
+                input.value = '   ';
+                button.click();
+                
+                runner.assertFalse(eventFired, 'NO debe emitir evento con solo espacios');
+            });
+
+            // ========================================
+            // TEST 11: Renderiza elementos esenciales
+            // ========================================
+            runner.test('ChatInput: renderiza input y botón en shadow DOM', async (stage) => {
+                const el = document.createElement('chat-input');
+                stage.appendChild(el);
+                await el.updateComplete;
+                
+                const input = el.shadowRoot.querySelector('input');
+                const button = el.shadowRoot.querySelector('button');
+                
+                runner.assertTrue(input, 'Debe tener un input en shadow DOM');
+                runner.assertTrue(button, 'Debe tener un botón en shadow DOM');
+                runner.assertEqual(input.type, 'text', 'Input debe ser de tipo text');
             });
         });
 

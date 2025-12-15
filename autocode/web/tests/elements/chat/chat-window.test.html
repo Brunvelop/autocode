@@ -18,88 +18,174 @@
     <script type="module">
         import { TestRunner } from '../../utils/test-runner.js'; 
         
-        try {
-            await import('/elements/chat/chat-window.js');
-        } catch (e) {
-            console.warn('chat-window.js no encontrado:', e.message);
-        }
+        import '/elements/chat/chat-window.js';
         
-        // Dependencias (necesarias para tests de proyección de slots)
+        // Dependencias para tests de slots
         try { await import('/elements/chat/chat-input.js'); } catch {}
         try { await import('/elements/chat/chat-messages.js'); } catch {}
 
         const runner = new TestRunner();
 
         runner.group('ChatWindow', () => {
+            // ========================================
+            // TEST 1: Registro del Custom Element
+            // ========================================
             runner.test('ChatWindow: se registra como custom element', async () => {
                 await runner.waitForElement('chat-window');
                 runner.assertTrue(customElements.get('chat-window'));
             });
 
+            // ========================================
+            // TEST 2: Shadow DOM
+            // ========================================
             runner.test('ChatWindow: tiene shadowRoot', async (stage) => {
-                await runner.waitForElement('chat-window');
                 const el = document.createElement('chat-window');
                 stage.appendChild(el);
+                await el.updateComplete;
                 
                 runner.assertTrue(el.shadowRoot, 'Debe tener shadowRoot');
             });
 
-            runner.test('ChatWindow: toggle abre/cierra ventana', async (stage) => {
-                await runner.waitForElement('chat-window');
+            // ========================================
+            // TEST 3: Propiedad open (inicial)
+            // ========================================
+            runner.test('ChatWindow: open es false por defecto', async (stage) => {
                 const el = document.createElement('chat-window');
                 stage.appendChild(el);
+                await el.updateComplete;
                 
-                const panel = el.shadowRoot.querySelector('[data-ref="panel"]');
-                
-                runner.assertTrue(panel.classList.contains('hidden'), 'Debe empezar cerrado');
-                
-                el.toggle();
-                runner.assertFalse(panel.classList.contains('hidden'), 'Debe abrirse con toggle');
-                
-                el.toggle();
-                runner.assertTrue(panel.classList.contains('hidden'), 'Debe cerrarse con toggle');
+                runner.assertFalse(el.open, 'Propiedad open debe ser false por defecto');
             });
 
-            runner.test('ChatWindow: open/close métodos funcionan', async (stage) => {
-                await runner.waitForElement('chat-window');
+            // ========================================
+            // TEST 4: API toggle()
+            // ========================================
+            runner.test('ChatWindow: toggle() cambia propiedad open', async (stage) => {
                 const el = document.createElement('chat-window');
                 stage.appendChild(el);
+                await el.updateComplete;
                 
-                const panel = el.shadowRoot.querySelector('[data-ref="panel"]');
+                runner.assertFalse(el.open, 'Debe empezar cerrado');
                 
-                el.open();
-                runner.assertFalse(panel.classList.contains('hidden'), 'open() debe abrir');
+                el.toggle();
+                await el.updateComplete;
+                runner.assertTrue(el.open, 'Debe abrirse tras primer toggle');
+                
+                el.toggle();
+                await el.updateComplete;
+                runner.assertFalse(el.open, 'Debe cerrarse tras segundo toggle');
+            });
+
+            // ========================================
+            // TEST 5: API openWindow()
+            // ========================================
+            runner.test('ChatWindow: openWindow() abre la ventana', async (stage) => {
+                const el = document.createElement('chat-window');
+                stage.appendChild(el);
+                await el.updateComplete;
+                
+                el.openWindow();
+                await el.updateComplete;
+                
+                runner.assertTrue(el.open, 'Propiedad open debe ser true');
+            });
+
+            // ========================================
+            // TEST 6: API close()
+            // ========================================
+            runner.test('ChatWindow: close() cierra la ventana', async (stage) => {
+                const el = document.createElement('chat-window');
+                stage.appendChild(el);
+                el.openWindow();
+                await el.updateComplete;
+                
+                runner.assertTrue(el.open, 'Debe estar abierto');
                 
                 el.close();
-                runner.assertTrue(panel.classList.contains('hidden'), 'close() debe cerrar');
+                await el.updateComplete;
+                
+                runner.assertFalse(el.open, 'Debe estar cerrado tras close()');
             });
 
+            // ========================================
+            // TEST 7: Evento toggle
+            // ========================================
+            runner.test('ChatWindow: emite evento toggle con detail.open', async (stage) => {
+                const el = document.createElement('chat-window');
+                stage.appendChild(el);
+                await el.updateComplete;
+                
+                let toggleEventFired = false;
+                let toggleDetail = null;
+                el.addEventListener('toggle', (e) => {
+                    toggleEventFired = true;
+                    toggleDetail = e.detail;
+                });
+                
+                el.toggle();
+                
+                runner.assertTrue(toggleEventFired, 'Debe emitir evento toggle');
+                runner.assertTrue(toggleDetail.open, 'Detail debe incluir open=true');
+            });
+
+            // ========================================
+            // TEST 8: Evento close
+            // ========================================
             runner.test('ChatWindow: emite evento close al cerrar', async (stage) => {
-                await runner.waitForElement('chat-window');
                 const el = document.createElement('chat-window');
                 stage.appendChild(el);
+                el.openWindow();
+                await el.updateComplete;
                 
-                let closeEmitted = false;
-                el.addEventListener('close', () => closeEmitted = true);
+                let closeEventFired = false;
+                el.addEventListener('close', () => {
+                    closeEventFired = true;
+                });
                 
-                el.open();
                 el.close();
                 
-                runner.assertTrue(closeEmitted, 'Debe emitir evento close');
+                runner.assertTrue(closeEventFired, 'Debe emitir evento close');
             });
 
+            // ========================================
+            // TEST 9: Propiedad title
+            // ========================================
             runner.test('ChatWindow: title configurable via atributo', async (stage) => {
-                await runner.waitForElement('chat-window');
                 const el = document.createElement('chat-window');
-                el.setAttribute('title', 'Mi Chat');
+                el.setAttribute('title', 'Mi Chat Personalizado');
                 stage.appendChild(el);
+                await el.updateComplete;
                 
-                const title = el.shadowRoot.querySelector('[data-ref="title"]');
-                runner.assertTrue(title.textContent.includes('Mi Chat'));
+                runner.assertEqual(el.title, 'Mi Chat Personalizado', 'Propiedad title debe reflejar atributo');
+                
+                // Verificar renderización
+                const titleEl = el.shadowRoot.querySelector('.header-title');
+                runner.assertTrue(titleEl.textContent.includes('Mi Chat Personalizado'), 'Debe renderizar el título');
             });
 
-            runner.test('ChatWindow: acepta elementos hijos con atributos slot', async (stage) => {
-                await runner.waitForElement('chat-window');
+            // ========================================
+            // TEST 10: Visibilidad del panel
+            // ========================================
+            runner.test('ChatWindow: panel se muestra/oculta según propiedad open', async (stage) => {
+                const el = document.createElement('chat-window');
+                stage.appendChild(el);
+                await el.updateComplete;
+                
+                // Cerrado: panel debe tener clase hidden
+                let panel = el.shadowRoot.querySelector('.panel');
+                runner.assertTrue(panel.classList.contains('hidden'), 'Panel debe tener clase hidden cuando open=false');
+                
+                // Abrir
+                el.openWindow();
+                await el.updateComplete;
+                panel = el.shadowRoot.querySelector('.panel');
+                runner.assertFalse(panel.classList.contains('hidden'), 'Panel NO debe tener clase hidden cuando open=true');
+            });
+
+            // ========================================
+            // TEST 11: Slots - Light DOM
+            // ========================================
+            runner.test('ChatWindow: acepta elementos con atributos slot en Light DOM', async (stage) => {
                 const el = document.createElement('chat-window');
                 el.innerHTML = `
                     <span slot="header-actions">Custom Action</span>
@@ -107,43 +193,49 @@
                     <div slot="footer">Custom Footer</div>
                 `;
                 stage.appendChild(el);
+                await el.updateComplete;
                 
-                // En Light DOM, los elementos con slot existen como hijos del host
-                runner.assertTrue(el.querySelector('[slot="content"]'), 'Debe contener elemento con slot content');
-                runner.assertTrue(el.querySelector('[slot="header-actions"]'), 'Debe contener elemento con slot header-actions');
-                runner.assertTrue(el.querySelector('[slot="footer"]'), 'Debe contener elemento con slot footer');
+                // Los elementos slotted permanecen en Light DOM del host
+                runner.assertTrue(el.querySelector('[slot="header-actions"]'), 'Debe contener slot header-actions');
+                runner.assertTrue(el.querySelector('[slot="content"]'), 'Debe contener slot content');
+                runner.assertTrue(el.querySelector('[slot="footer"]'), 'Debe contener slot footer');
             });
 
-            runner.test('ChatWindow: preserva contenido slotted después de render', async (stage) => {
-                await runner.waitForElement('chat-window');
+            // ========================================
+            // TEST 12: Slots - Proyección en Shadow DOM
+            // ========================================
+            runner.test('ChatWindow: slots proyectan contenido correctamente', async (stage) => {
                 const el = document.createElement('chat-window');
-                
                 el.innerHTML = `
-                    <button slot="header-actions">Test Action</button>
-                    <div slot="content" data-test="content">Content Area</div>
-                    <div slot="footer" data-test="footer">
+                    <button slot="header-actions" id="test-btn">Test Action</button>
+                    <div slot="content" id="test-content">Content Area</div>
+                    <div slot="footer" id="test-footer">
                         <input type="text" placeholder="Test input">
                     </div>
                 `;
-                
                 stage.appendChild(el);
+                await el.updateComplete;
                 
-                // Esperar a que connectedCallback termine
-                await runner.sleep(50);
+                // Verificar que los slots en shadow DOM existen
+                const headerSlot = el.shadowRoot.querySelector('slot[name="header-actions"]');
+                const contentSlot = el.shadowRoot.querySelector('slot[name="content"]');
+                const footerSlot = el.shadowRoot.querySelector('slot[name="footer"]');
                 
-                // El contenido slotted debe existir y ser accesible
-                const footerContent = el.querySelector('[data-test="footer"]');
-                const inputInFooter = el.querySelector('[slot="footer"] input');
+                runner.assertTrue(headerSlot, 'Debe tener slot header-actions en shadow DOM');
+                runner.assertTrue(contentSlot, 'Debe tener slot content en shadow DOM');
+                runner.assertTrue(footerSlot, 'Debe tener slot footer en shadow DOM');
                 
-                runner.assertTrue(footerContent, 'El footer slotted debe existir después del render');
-                runner.assertTrue(inputInFooter, 'El input dentro del footer slot debe existir');
+                // Verificar que el contenido slotted es accesible desde Light DOM
+                runner.assertTrue(el.querySelector('#test-btn'), 'Botón debe existir en Light DOM');
+                runner.assertTrue(el.querySelector('#test-footer input'), 'Input debe existir en Light DOM');
             });
 
-            runner.test('ChatWindow: slots proyectan contenido correctamente', async (stage) => {
-                await runner.waitForElement('chat-window');
+            // ========================================
+            // TEST 13: Slots con componentes web
+            // ========================================
+            runner.test('ChatWindow: proyecta componentes web en slots', async (stage) => {
                 const el = document.createElement('chat-window');
                 el.innerHTML = `
-                    <span slot="header-actions">Custom Button</span>
                     <chat-messages slot="content"></chat-messages>
                     <div slot="footer">
                         <chat-input placeholder="Test"></chat-input>
@@ -151,25 +243,54 @@
                 `;
                 
                 stage.appendChild(el);
-                el.open();
-                
+                el.openWindow();
+                await el.updateComplete;
                 await runner.sleep(50);
                 
-                // Verificar que chat-input está visible y funcional
+                // Verificar que los componentes existen en Light DOM
+                const chatMessages = el.querySelector('chat-messages');
                 const chatInput = el.querySelector('chat-input');
-                runner.assertTrue(chatInput, 'chat-input debe existir en el slot footer');
                 
-                // Verificar que el input interno existe
-                const input = chatInput?.querySelector('input');
-                // Nota: chat-input puede tardar en renderizar su shadow DOM
-                // pero su light DOM (el tag <chat-input>) ya está ahí.
-                // Si chat-input usa shadowDOM, 'input' estará en su shadowRoot.
-                if (chatInput.shadowRoot) {
-                     const shadowInput = chatInput.shadowRoot.querySelector('input');
-                     runner.assertTrue(shadowInput, 'El input interno de chat-input (shadow) debe existir');
-                } else {
-                     runner.assertTrue(input, 'El input interno de chat-input (light) debe existir');
-                }
+                runner.assertTrue(chatMessages, 'chat-messages debe existir');
+                runner.assertTrue(chatInput, 'chat-input debe existir');
+                
+                // Verificar que chat-input tiene su shadow DOM funcional
+                await chatInput.updateComplete;
+                const inputInShadow = chatInput.shadowRoot.querySelector('input');
+                runner.assertTrue(inputInShadow, 'chat-input debe tener input funcional en su shadow DOM');
+            });
+
+            // ========================================
+            // TEST 14: Botón de toggle flotante
+            // ========================================
+            runner.test('ChatWindow: renderiza botón de toggle flotante', async (stage) => {
+                const el = document.createElement('chat-window');
+                stage.appendChild(el);
+                await el.updateComplete;
+                
+                const toggleBtn = el.shadowRoot.querySelector('.toggle-btn');
+                runner.assertTrue(toggleBtn, 'Debe tener botón de toggle');
+            });
+
+            // ========================================
+            // TEST 15: Click en botón de toggle
+            // ========================================
+            runner.test('ChatWindow: click en botón de toggle abre/cierra ventana', async (stage) => {
+                const el = document.createElement('chat-window');
+                stage.appendChild(el);
+                await el.updateComplete;
+                
+                const toggleBtn = el.shadowRoot.querySelector('.toggle-btn');
+                
+                runner.assertFalse(el.open, 'Debe empezar cerrado');
+                
+                toggleBtn.click();
+                await el.updateComplete;
+                runner.assertTrue(el.open, 'Debe abrirse al hacer click');
+                
+                toggleBtn.click();
+                await el.updateComplete;
+                runner.assertFalse(el.open, 'Debe cerrarse al hacer click de nuevo');
             });
         });
 

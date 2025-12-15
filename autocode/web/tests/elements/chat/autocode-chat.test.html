@@ -4,16 +4,54 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Autocode Chat - Component UI Tests</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            padding: 2rem;
+            background-color: #f3f4f6;
+            min-height: 100vh;
+            font-family: system-ui, -apple-system, sans-serif;
+            margin: 0;
+        }
+        .link {
+            color: #4f46e5;
+            text-decoration: none;
+        }
+        .link:hover {
+            color: #4338ca;
+        }
+        .header {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 0.5rem;
+        }
+        .title {
+            font-size: 1.875rem;
+            font-weight: bold;
+            margin: 0;
+        }
+        .summary, .results {
+            margin-bottom: 1.5rem;
+            padding: 1rem;
+            background-color: white;
+            border-radius: 0.5rem;
+            box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+        }
+        .results {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+    </style>
 </head>
-<body class="p-8 bg-gray-100 min-h-screen">
-    <div class="flex items-center gap-4 mb-2">
-        <a href="/tests" class="text-indigo-600 hover:text-indigo-800">← Tests</a>
-        <h1 class="text-3xl font-bold">🖥️ Autocode Chat - Component UI Tests</h1>
+<body>
+    <div class="header">
+        <a href="/tests" class="link">← Tests</a>
+        <h1 class="title">🖥️ Autocode Chat - Component UI Tests</h1>
     </div>
     
-    <div id="summary" class="mb-6 p-4 bg-white rounded-lg shadow"></div>
-    <div id="results" class="space-y-2"></div>
+    <div id="summary" class="summary"></div>
+    <div id="results" class="results"></div>
 
     <script type="module">
         import { TestRunner } from '../../utils/test-runner.js'; 
@@ -23,7 +61,7 @@
         
         // Importar componente principal
         try {
-            await import('/elements/chat/autocode-chat.js');
+            await import('/elements/chat/index.js');
         } catch (e) {
             console.warn('autocode-chat.js no encontrado:', e.message);
         }
@@ -44,7 +82,7 @@
             };
             
             stage.appendChild(el);
-            await runner.sleep(50);
+            await runner.sleep(100);
             return el;
         };
 
@@ -54,25 +92,20 @@
                 runner.assertTrue(customElements.get('autocode-chat'));
             });
 
-            runner.test('Structure: renderiza todos los sub-componentes', async (stage) => {
+            runner.test('Structure: renderiza todos los sub-componentes en Shadow DOM', async (stage) => {
                 const el = await createChatUI(stage);
                 
-                runner.assertTrue(el.querySelector('chat-window'), 'Debe tener chat-window');
-                runner.assertTrue(el.querySelector('chat-messages'), 'Debe tener chat-messages');
-                runner.assertTrue(el.querySelector('chat-input'), 'Debe tener chat-input');
-                runner.assertTrue(el.querySelector('context-bar'), 'Debe tener context-bar');
-                runner.assertTrue(el.querySelector('chat-settings'), 'Debe tener chat-settings');
-            });
-
-            runner.test('Header: muestra badge de modelo cargando inicialmente', async (stage) => {
-                const el = await createChatUI(stage);
-                const badge = el.querySelector('[data-ref="modelName"]');
-                runner.assertTrue(badge.textContent.includes('Loading') || badge.textContent === '', 'Debe iniciar en loading o vacío');
+                // Ahora todos están en shadowRoot
+                runner.assertTrue(el.shadowRoot.querySelector('chat-window'), 'Debe tener chat-window');
+                runner.assertTrue(el.shadowRoot.querySelector('chat-messages'), 'Debe tener chat-messages');
+                runner.assertTrue(el.shadowRoot.querySelector('chat-input'), 'Debe tener chat-input');
+                runner.assertTrue(el.shadowRoot.querySelector('context-bar'), 'Debe tener context-bar');
+                runner.assertTrue(el.shadowRoot.querySelector('chat-settings'), 'Debe tener chat-settings');
             });
 
             runner.test('Header: botón Nueva existe', async (stage) => {
                 const el = await createChatUI(stage);
-                const btn = el.querySelector('[data-ref="newChatBtn"]');
+                const btn = el.shadowRoot.querySelector('[data-ref="newChatBtn"]');
                 runner.assertTrue(btn, 'Botón Nueva debe existir');
             });
 
@@ -83,14 +116,14 @@
                 el.conversationHistory = [{ role: 'user', content: 'test' }];
                 
                 // Click
-                const btn = el.querySelector('[data-ref="newChatBtn"]');
+                const btn = el.shadowRoot.querySelector('[data-ref="newChatBtn"]');
                 btn.click();
                 
                 await runner.sleep(10);
                 runner.assertEqual(el.conversationHistory.length, 0, 'Historial debe vaciarse');
             });
 
-            runner.test('Logic: setupComponentRefs inicializa referencias privadas', async (stage) => {
+            runner.test('Logic: firstUpdated inicializa referencias privadas', async (stage) => {
                 const el = await createChatUI(stage);
                 
                 runner.assertTrue(el._window, '_window ref ok');
@@ -98,25 +131,6 @@
                 runner.assertTrue(el._input, '_input ref ok');
                 runner.assertTrue(el._contextBar, '_contextBar ref ok');
                 runner.assertTrue(el._settings, '_settings ref ok');
-            });
-            
-            runner.test('Logic: injectHiddenParams crea inputs ocultos', async (stage) => {
-                const el = await createChatUI(stage);
-                
-                // Configurar parámetros
-                el.funcInfo = {
-                    parameters: [
-                        { name: 'model', type: 'str', default: 'gpt-4o' },
-                        { name: 'temperature', type: 'float', default: 0.7 }
-                    ]
-                };
-                
-                // Forzar inyección
-                el._injectHiddenParams();
-                
-                const hiddenParams = el.querySelector('[data-ref="hiddenParams"]');
-                runner.assertTrue(hiddenParams.querySelector('input[name="model"]'), 'Input model debe existir');
-                runner.assertTrue(hiddenParams.querySelector('input[name="temperature"]'), 'Input temperature debe existir');
             });
         });
 

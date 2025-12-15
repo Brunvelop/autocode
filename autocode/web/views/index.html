@@ -4,35 +4,114 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Autocode - Code Garden</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            background-color: #f9fafb;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            font-family: system-ui, -apple-system, sans-serif;
+        }
+        nav {
+            background-color: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(12px);
+            border-bottom: 1px solid #e5e7eb;
+            z-index: 50;
+            flex: none;
+        }
+        .nav-container {
+            max-width: 100%;
+            padding: 0 1rem;
+        }
+        .nav-content {
+            display: flex;
+            justify-content: space-between;
+            height: 3.5rem;
+        }
+        .nav-left {
+            display: flex;
+            align-items: center;
+        }
+        .logo {
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            text-decoration: none;
+        }
+        .logo-icon {
+            font-size: 1.5rem;
+        }
+        .logo-text {
+            font-weight: bold;
+            font-size: 1.25rem;
+            color: #1f2937;
+            letter-spacing: -0.025em;
+        }
+        .nav-right {
+            display: flex;
+            align-items: center;
+            gap: 1.5rem;
+        }
+        .nav-link {
+            color: #4b5563;
+            font-weight: 500;
+            transition: color 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 0.25rem;
+            font-size: 0.875rem;
+            text-decoration: none;
+        }
+        .nav-link:hover {
+            color: #4f46e5;
+        }
+        main {
+            flex-grow: 1;
+            position: relative;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+        main > * {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+    </style>
     
     <!-- Libraries -->
 
     <!-- Custom Elements -->
-    <script type="module" src="/elements/chat/autocode-chat.js"></script>
+    <script type="module" src="/elements/chat/index.js"></script>
     <script type="module" src="/elements/auto-element-generator.js"></script>
     <script type="module" src="/elements/file-explorer/index.js"></script>
 </head>
-<body class="bg-gray-50 h-screen flex flex-col overflow-hidden">
-    
+<body>
     <!-- Navbar -->
-    <nav class="bg-white/80 backdrop-blur-md border-b border-gray-200 z-50 flex-none">
-        <div class="max-w-full px-4 sm:px-6 lg:px-8">
-            <div class="flex justify-between h-14">
-                <div class="flex items-center">
-                    <a href="/" class="flex-shrink-0 flex items-center gap-2">
-                        <span class="text-2xl">🌳</span>
-                        <span class="font-bold text-xl text-gray-800 tracking-tight">Autocode</span>
+    <nav>
+        <div class="nav-container">
+            <div class="nav-content">
+                <div class="nav-left">
+                    <a href="/" class="logo">
+                        <span class="logo-icon">🌳</span>
+                        <span class="logo-text">Autocode</span>
                     </a>
                 </div>
-                <div class="flex items-center gap-6">
-                    <a href="/functions" class="text-gray-600 hover:text-indigo-600 font-medium transition-colors flex items-center gap-1 text-sm">
+                <div class="nav-right">
+                    <a href="/functions" class="nav-link">
                         <span>🚀</span> Functions
                     </a>
-                    <a href="/tests" class="text-gray-600 hover:text-purple-600 font-medium transition-colors flex items-center gap-1 text-sm">
+                    <a href="/tests" class="nav-link">
                         <span>🧪</span> Tests
                     </a>
-                    <a href="/health" class="text-gray-600 hover:text-green-600 font-medium transition-colors flex items-center gap-1 text-sm">
+                    <a href="/health" class="nav-link">
                         <span>💚</span> Health
                     </a>
                 </div>
@@ -41,8 +120,8 @@
     </nav>
 
     <!-- Main Content: Fullscreen Garden -->
-    <main class="flex-grow relative w-full h-full overflow-hidden">
-        <file-explorer class="w-full h-full block"></file-explorer>
+    <main>
+        <file-explorer></file-explorer>
     </main>
 
     <!-- Chat Element (Global) -->

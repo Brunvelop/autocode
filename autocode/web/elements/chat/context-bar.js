@@ -1,8 +1,9 @@
 /**
  * context-bar.js
  * Barra de progreso para mostrar uso de la ventana de contexto
+ * Refactorizado: Lógica pura separada de estilos
  * 
- * Atributos:
+ * Propiedades:
  * - current: Tokens actuales usados
  * - max: Tokens máximos disponibles
  * 
@@ -12,94 +13,76 @@
  * - Rojo: > 90%
  */
 
-class ContextBar extends HTMLElement {
-    static get observedAttributes() {
-        return ['current', 'max'];
-    }
+import { LitElement, html } from 'https://cdn.jsdelivr.net/gh/lit/dist@3/core/lit-core.min.js';
+import { contextBarStyles } from './styles/context-bar.styles.js';
+import { themeTokens } from './styles/theme.js';
+
+export class ContextBar extends LitElement {
+    static properties = {
+        current: { type: Number },
+        max: { type: Number }
+    };
+
+    static styles = [themeTokens, contextBarStyles];
 
     constructor() {
         super();
-        this._current = 0;
-        this._max = 0;
-    }
-
-    connectedCallback() {
-        this.render();
-        this._updateDisplay();
-    }
-
-    attributeChangedCallback(name, oldValue, newValue) {
-        if (oldValue === newValue) return;
-        
-        if (name === 'current') {
-            this._current = parseInt(newValue) || 0;
-        }
-        if (name === 'max') {
-            this._max = parseInt(newValue) || 0;
-        }
-        
-        this._updateDisplay();
+        this.current = 0;
+        this.max = 0;
     }
 
     render() {
-        this.innerHTML = `
-            <div class="w-full">
-                <div class="flex items-center justify-between text-xs text-gray-600 mb-1">
+        const percentage = this._getPercentage();
+        const colorClass = this._getColorClass(percentage);
+        
+        return html`
+            <div class="container">
+                <div class="header">
                     <span>Ventana de contexto</span>
-                    <span data-ref="stats" class="font-mono">0 / 0</span>
+                    <span class="stats">${this._formatNumber(this.current)} / ${this._formatNumber(this.max)}</span>
                 </div>
-                <div class="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+                <div class="track">
                     <div 
-                        data-ref="bar" 
-                        class="h-full bg-green-500 transition-all duration-300" 
-                        style="width: 0%"
+                        class="bar ${colorClass}" 
+                        style="width: ${Math.min(percentage, 100)}%"
                     ></div>
                 </div>
             </div>
         `;
     }
 
-    _updateDisplay() {
-        const stats = this.querySelector('[data-ref="stats"]');
-        const bar = this.querySelector('[data-ref="bar"]');
-        
-        if (!stats || !bar) return;
+    // ========================================================================
+    // API PÚBLICA
+    // ========================================================================
 
-        // Formatear números con separador de miles
-        const currentFormatted = this._current.toLocaleString();
-        const maxFormatted = this._max.toLocaleString();
-        stats.textContent = `${currentFormatted} / ${maxFormatted}`;
-
-        // Calcular porcentaje
-        const percentage = this._max > 0 ? (this._current / this._max) * 100 : 0;
-        bar.style.width = `${Math.min(percentage, 100)}%`;
-
-        // Actualizar color según porcentaje
-        bar.classList.remove('bg-green-500', 'bg-yellow-500', 'bg-red-500');
-        
-        if (percentage < 70) {
-            bar.classList.add('bg-green-500');
-        } else if (percentage < 90) {
-            bar.classList.add('bg-yellow-500');
-        } else {
-            bar.classList.add('bg-red-500');
-        }
-    }
-
-    // API Pública
     update(current, max) {
-        this._current = current;
-        this._max = max;
-        this._updateDisplay();
+        this.current = current;
+        this.max = max;
     }
 
     getPercentage() {
-        return this._max > 0 ? (this._current / this._max) * 100 : 0;
+        return this._getPercentage();
+    }
+
+    // ========================================================================
+    // HELPERS INTERNOS
+    // ========================================================================
+
+    _getPercentage() {
+        return this.max > 0 ? (this.current / this.max) * 100 : 0;
+    }
+
+    _getColorClass(percentage) {
+        if (percentage < 70) return 'green';
+        if (percentage < 90) return 'yellow';
+        return 'red';
+    }
+
+    _formatNumber(num) {
+        return num.toLocaleString();
     }
 }
 
 if (!customElements.get('context-bar')) {
     customElements.define('context-bar', ContextBar);
 }
-
-export { ContextBar };

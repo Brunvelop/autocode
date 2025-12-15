@@ -2,6 +2,7 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
+    <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Chat Messages - Unit Tests</title>
     <script src="https://cdn.tailwindcss.com"></script>
@@ -18,130 +19,257 @@
     <script type="module">
         import { TestRunner } from '../../utils/test-runner.js'; 
         
-        try {
-            await import('/elements/chat/chat-messages.js');
-        } catch (e) {
-            console.warn('chat-messages.js no encontrado:', e.message);
-        }
+        import '/elements/chat/chat-messages.js';
 
         const runner = new TestRunner();
 
         runner.group('ChatMessages', () => {
+            // ========================================
+            // TEST 1: Registro del Custom Element
+            // ========================================
             runner.test('ChatMessages: se registra como custom element', async () => {
                 await runner.waitForElement('chat-messages');
                 runner.assertTrue(customElements.get('chat-messages'));
             });
 
+            // ========================================
+            // TEST 2: API addMessage() - Usuario
+            // ========================================
             runner.test('ChatMessages: addMessage() añade mensaje de usuario', async (stage) => {
-                await runner.waitForElement('chat-messages');
                 const el = document.createElement('chat-messages');
                 stage.appendChild(el);
+                await el.updateComplete;
                 
                 el.addMessage('user', 'Hola mundo');
+                await el.updateComplete;
                 
-                const messages = el.querySelectorAll('[data-role="user"]');
-                runner.assertEqual(messages.length, 1);
-                runner.assertTrue(messages[0].textContent.includes('Hola mundo'));
+                // Verificar usando la API pública
+                const messages = el.getMessages();
+                runner.assertEqual(messages.length, 1, 'Debe tener 1 mensaje');
+                runner.assertEqual(messages[0].role, 'user', 'Rol debe ser user');
+                runner.assertEqual(messages[0].content, 'Hola mundo', 'Contenido debe coincidir');
+                
+                // Verificar renderización en Shadow DOM
+                const userMessages = el.shadowRoot.querySelectorAll('[data-role="user"]');
+                runner.assertEqual(userMessages.length, 1, 'Debe renderizar 1 mensaje de usuario');
+                runner.assertTrue(userMessages[0].textContent.includes('Hola mundo'), 'Debe contener el texto');
             });
 
+            // ========================================
+            // TEST 3: API addMessage() - Asistente
+            // ========================================
             runner.test('ChatMessages: addMessage() añade mensaje de asistente', async (stage) => {
-                await runner.waitForElement('chat-messages');
                 const el = document.createElement('chat-messages');
                 stage.appendChild(el);
+                await el.updateComplete;
                 
                 el.addMessage('assistant', 'Respuesta AI');
+                await el.updateComplete;
                 
-                const messages = el.querySelectorAll('[data-role="assistant"]');
+                const messages = el.getMessages();
                 runner.assertEqual(messages.length, 1);
-                runner.assertTrue(messages[0].textContent.includes('Respuesta AI'));
+                runner.assertEqual(messages[0].role, 'assistant');
+                
+                const assistantMessages = el.shadowRoot.querySelectorAll('[data-role="assistant"]');
+                runner.assertEqual(assistantMessages.length, 1);
+                runner.assertTrue(assistantMessages[0].textContent.includes('Respuesta AI'));
             });
 
+            // ========================================
+            // TEST 4: API addMessage() - Error
+            // ========================================
             runner.test('ChatMessages: addMessage() añade mensaje de error', async (stage) => {
-                await runner.waitForElement('chat-messages');
                 const el = document.createElement('chat-messages');
                 stage.appendChild(el);
+                await el.updateComplete;
                 
                 el.addMessage('error', 'Algo salió mal');
+                await el.updateComplete;
                 
-                const messages = el.querySelectorAll('[data-role="error"]');
+                const messages = el.getMessages();
                 runner.assertEqual(messages.length, 1);
+                runner.assertEqual(messages[0].role, 'error');
+                
+                const errorMessages = el.shadowRoot.querySelectorAll('[data-role="error"]');
+                runner.assertEqual(errorMessages.length, 1);
             });
 
+            // ========================================
+            // TEST 5: API clear()
+            // ========================================
             runner.test('ChatMessages: clear() elimina todos los mensajes', async (stage) => {
-                await runner.waitForElement('chat-messages');
                 const el = document.createElement('chat-messages');
                 stage.appendChild(el);
+                await el.updateComplete;
                 
                 el.addMessage('user', 'Mensaje 1');
                 el.addMessage('assistant', 'Mensaje 2');
+                el.addMessage('error', 'Mensaje 3');
+                await el.updateComplete;
+                
+                runner.assertEqual(el.getMessages().length, 3, 'Debe tener 3 mensajes antes de clear');
+                
                 el.clear();
+                await el.updateComplete;
                 
-                const messages = el.querySelectorAll('[data-role]');
-                runner.assertEqual(messages.length, 0);
+                runner.assertEqual(el.getMessages().length, 0, 'Debe tener 0 mensajes después de clear');
+                
+                const allMessages = el.shadowRoot.querySelectorAll('[data-role]');
+                runner.assertEqual(allMessages.length, 0, 'No debe haber mensajes renderizados');
             });
 
-            runner.test('ChatMessages: auto-scroll al añadir mensaje', async (stage) => {
-                await runner.waitForElement('chat-messages');
+            // ========================================
+            // TEST 6: API getMessages()
+            // ========================================
+            runner.test('ChatMessages: getMessages() retorna array de mensajes', async (stage) => {
                 const el = document.createElement('chat-messages');
-                el.style.height = '100px';
-                el.style.overflow = 'auto';
                 stage.appendChild(el);
+                await el.updateComplete;
                 
-                // El contenedor interno es el que tiene scroll
-                const container = el.querySelector('[data-ref="container"]');
-                if (container) {
-                    container.style.height = '100px';
-                    container.style.overflow = 'auto';
-                }
+                el.addMessage('user', 'Msg 1');
+                el.addMessage('assistant', 'Msg 2');
+                await el.updateComplete;
                 
-                // Añadir varios mensajes para forzar scroll
-                for (let i = 0; i < 10; i++) {
-                    el.addMessage('user', `Mensaje largo ${i} que ocupa espacio`);
-                }
+                const messages = el.getMessages();
                 
-                // Esperar que requestAnimationFrame procese el scroll
-                await runner.sleep(150);
-                
-                // Verificar que hay contenido con scroll (scrollHeight > clientHeight)
-                const scrollContainer = container || el;
-                runner.assertTrue(scrollContainer.scrollHeight > scrollContainer.clientHeight, 'Debe tener contenido scrolleable');
+                runner.assertTrue(Array.isArray(messages), 'Debe retornar un array');
+                runner.assertEqual(messages.length, 2, 'Debe tener 2 mensajes');
+                runner.assertTrue('timestamp' in messages[0], 'Cada mensaje debe tener timestamp');
             });
 
+            // ========================================
+            // TEST 7: Múltiples mensajes
+            // ========================================
+            runner.test('ChatMessages: maneja múltiples mensajes correctamente', async (stage) => {
+                const el = document.createElement('chat-messages');
+                stage.appendChild(el);
+                await el.updateComplete;
+                
+                el.addMessage('user', 'Pregunta 1');
+                el.addMessage('assistant', 'Respuesta 1');
+                el.addMessage('user', 'Pregunta 2');
+                el.addMessage('assistant', 'Respuesta 2');
+                await el.updateComplete;
+                
+                const messages = el.getMessages();
+                runner.assertEqual(messages.length, 4);
+                
+                // Verificar orden
+                runner.assertEqual(messages[0].content, 'Pregunta 1');
+                runner.assertEqual(messages[1].content, 'Respuesta 1');
+                runner.assertEqual(messages[2].content, 'Pregunta 2');
+                runner.assertEqual(messages[3].content, 'Respuesta 2');
+            });
+
+            // ========================================
+            // TEST 8: Objeto complejo con reasoning
+            // ========================================
             runner.test('ChatMessages: soporta objeto complejo con reasoning', async (stage) => {
-                await runner.waitForElement('chat-messages');
                 const el = document.createElement('chat-messages');
                 stage.appendChild(el);
+                await el.updateComplete;
                 
                 const complexResponse = {
-                    result: { response: 'Respuesta final' },
-                    reasoning: 'Paso 1: Pensar...'
+                    result: 'Respuesta final',
+                    reasoning: 'Paso 1: Analizar\nPaso 2: Pensar\nPaso 3: Responder'
                 };
                 
                 el.addMessage('assistant', complexResponse);
+                await el.updateComplete;
                 
                 // Verificar que se renderiza el reasoning
-                const reasoningEl = el.querySelector('[data-type="reasoning"]');
+                const reasoningEl = el.shadowRoot.querySelector('[data-type="reasoning"]');
                 runner.assertTrue(reasoningEl, 'Debe existir el elemento de reasoning');
-                runner.assertTrue(reasoningEl.textContent.includes('Paso 1: Pensar'), 'Debe contener el texto del reasoning');
+                runner.assertTrue(reasoningEl.textContent.includes('Paso 1'), 'Debe contener el texto del reasoning');
             });
 
+            // ========================================
+            // TEST 9: Objeto complejo con trajectory
+            // ========================================
             runner.test('ChatMessages: soporta objeto complejo con trajectory', async (stage) => {
-                await runner.waitForElement('chat-messages');
                 const el = document.createElement('chat-messages');
                 stage.appendChild(el);
+                await el.updateComplete;
                 
                 const complexResponse = {
-                    result: { response: 'Respuesta final' },
+                    result: 'Respuesta final',
                     trajectory: [
-                        { thought: 'Pensar', tool_name: 'test_tool', tool_input: '{}', observation: 'Resultado' }
+                        { 
+                            thought: 'Necesito buscar información', 
+                            tool_name: 'search_tool', 
+                            tool_input: '{"query": "test"}', 
+                            observation: 'Resultado encontrado' 
+                        }
                     ]
                 };
                 
                 el.addMessage('assistant', complexResponse);
+                await el.updateComplete;
                 
-                // Buscar el texto de la herramienta en el contenido
-                const content = el.textContent || el.innerText;
-                runner.assertTrue(content.includes('test_tool'), 'Debe mostrar nombre de herramienta');
+                // Buscar el nombre de la herramienta en el contenido renderizado
+                const content = el.shadowRoot.textContent;
+                runner.assertTrue(content.includes('search_tool'), 'Debe mostrar nombre de herramienta');
+                runner.assertTrue(content.includes('Necesito buscar información'), 'Debe mostrar pensamiento');
+            });
+
+            // ========================================
+            // TEST 10: Objeto con result anidado
+            // ========================================
+            runner.test('ChatMessages: extrae texto de objetos result anidados', async (stage) => {
+                const el = document.createElement('chat-messages');
+                stage.appendChild(el);
+                await el.updateComplete;
+                
+                const nestedResponse = {
+                    result: {
+                        response: 'Texto de respuesta anidado'
+                    }
+                };
+                
+                el.addMessage('assistant', nestedResponse);
+                await el.updateComplete;
+                
+                const content = el.shadowRoot.textContent;
+                runner.assertTrue(content.includes('Texto de respuesta anidado'), 'Debe extraer texto anidado');
+            });
+
+            // ========================================
+            // TEST 11: Estado inicial vacío
+            // ========================================
+            runner.test('ChatMessages: muestra estado vacío cuando no hay mensajes', async (stage) => {
+                const el = document.createElement('chat-messages');
+                stage.appendChild(el);
+                await el.updateComplete;
+                
+                const emptyState = el.shadowRoot.querySelector('.empty-state');
+                runner.assertTrue(emptyState, 'Debe mostrar estado vacío');
+                runner.assertTrue(emptyState.textContent.includes('conversación'), 'Debe tener texto de prompt');
+            });
+
+            // ========================================
+            // TEST 12: Auto-scroll tras añadir mensaje
+            // ========================================
+            runner.test('ChatMessages: auto-scroll al añadir mensaje', async (stage) => {
+                const el = document.createElement('chat-messages');
+                el.style.height = '200px';
+                stage.appendChild(el);
+                await el.updateComplete;
+                
+                // Añadir muchos mensajes para forzar scroll
+                for (let i = 0; i < 20; i++) {
+                    el.addMessage('user', `Mensaje largo número ${i} con contenido extenso para ocupar espacio vertical`);
+                }
+                
+                await el.updateComplete;
+                await runner.sleep(100);
+                
+                // Verificar que el container interno tiene scroll
+                const container = el.shadowRoot.querySelector('#container');
+                runner.assertTrue(container.scrollHeight > container.clientHeight, 'Debe tener contenido scrolleable');
+                
+                // El scroll debe estar al final (con pequeño margen de error)
+                const scrollDiff = container.scrollHeight - container.scrollTop - container.clientHeight;
+                runner.assertTrue(scrollDiff < 10, 'Debe estar scrolleado al final (diff < 10px)');
             });
         });
 
