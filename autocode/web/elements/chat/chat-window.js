@@ -39,15 +39,18 @@ export class ChatWindow extends LitElement {
             <!-- Panel de la ventana -->
             <div class="panel ${this.open ? '' : 'hidden'}" part="panel">
                 <div class="window" part="window" id="window">
-                    <!-- Header con drag handle -->
-                    <div class="header" @pointerdown=${this._startDrag}>
-                        <div class="header-left">
+                    <!-- Header con zonas separadas -->
+                    <div class="header">
+                        <!-- Zona draggable: Solo icono y título -->
+                        <div class="drag-handle" @pointerdown=${this._startDrag}>
                             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="white">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
                             </svg>
                             <h2 class="header-title">${this.title}</h2>
                         </div>
-                        <div class="header-right">
+                        
+                        <!-- Zona interactiva: Botones y acciones -->
+                        <div class="header-actions">
                             <slot name="header-actions"></slot>
                             <button class="close-btn" @click=${this.close} title="Cerrar">
                                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -83,9 +86,6 @@ export class ChatWindow extends LitElement {
     // ========================================================================
 
     _startDrag(e) {
-        // Ignorar si el click fue en un botón o input dentro del header
-        if (e.target.closest('button') || e.target.closest('input')) return;
-
         const windowEl = this.shadowRoot.getElementById('window');
         if (!windowEl) return;
 

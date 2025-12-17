@@ -75,19 +75,23 @@ export const chatWindowStyles = css`
         display: flex;
         align-items: center;
         justify-content: space-between;
-        cursor: grab;
         user-select: none;
         flex-shrink: 0;
+        gap: var(--chat-spacing-md, 0.75rem);
     }
 
-    .header:active {
-        cursor: grabbing;
-    }
-
-    .header-left {
+    /* Zona draggable: Solo icono y título */
+    .drag-handle {
+        flex: 1;
         display: flex;
         align-items: center;
         gap: var(--chat-spacing-md, 0.75rem);
+        cursor: move;
+        min-width: 0; /* Permite que el texto se trunque si es necesario */
+    }
+
+    .drag-handle:active {
+        cursor: grabbing;
     }
 
     .header-title {
@@ -95,12 +99,17 @@ export const chatWindowStyles = css`
         font-weight: var(--chat-font-weight-bold, bold);
         font-size: var(--chat-font-size-xl, 1.25rem);
         margin: 0;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
     }
 
-    .header-right {
+    /* Zona interactiva: Botones sin drag */
+    .header-actions {
         display: flex;
         align-items: center;
         gap: var(--chat-spacing-sm, 0.5rem);
+        flex-shrink: 0; /* Nunca se comprimen los botones */
     }
 
     .close-btn {
