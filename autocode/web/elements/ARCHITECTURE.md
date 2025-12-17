@@ -129,6 +129,58 @@ Para interfaces complejas como `AutocodeChat`, se recomienda un enfoque de compo
 
 Este patrón permite mantener la lógica de negocio centralizada en el controlador (reutilizando validaciones y conexión API) mientras se construye una UI rica y modular.
 
+### Opción C: Componentes Standalone (Ejemplo: Screen Recorder)
+Para componentes que **no necesitan backend**, el patrón recomendado es extender directamente `LitElement` sin heredar de `AutoFunctionController`.
+
+**Ejemplo: Screen Recorder**
+```javascript
+import { LitElement, html } from 'lit';
+
+export class ScreenRecorder extends LitElement {
+    constructor() {
+        super();
+        this._service = new RecorderService(); // Lógica pura
+    }
+    
+    render() {
+        return html`
+            <recorder-controls .isRecording=${this._isRecording}>
+            </recorder-controls>
+            ${this._showPlayer ? html`
+                <video-player .blob=${this._recordingBlob}>
+                </video-player>
+            ` : ''}
+        `;
+    }
+}
+```
+
+**Características Clave:**
+1.  **Sin Backend**: No hace llamadas API, toda la lógica está en el navegador.
+2.  **Servicios Puros**: La lógica compleja (ej: `RecorderService`) se encapsula en clases separadas.
+3.  **Composición**: Usa sub-componentes especializados (similar al chat).
+4.  **Reutiliza Estilos**: Importa tokens del sistema de diseño existente.
+5.  **API Programática**: Expone métodos públicos para control externo.
+
+**Estructura Típica:**
+```
+screen-recorder/
+├── index.js                 # Orquestador principal (LitElement)
+├── recorder-service.js      # Lógica pura (clase vanilla)
+├── recorder-controls.js     # UI de controles (LitElement)
+├── video-player.js          # UI del reproductor (LitElement)
+├── styles/
+│   ├── theme.js            # Importa tokens compartidos
+│   ├── recorder-controls.styles.js
+│   └── video-player.styles.js
+```
+
+**Cuándo usar este patrón:**
+- ✅ Componentes de UI pura (file explorer, media players)
+- ✅ Utilidades del navegador (grabación, clipboard, geolocation)
+- ✅ Visualizaciones que no requieren datos del servidor
+- ❌ Componentes que necesitan ejecutar funciones del registry
+
 ---
 
 ## 🔗 Comunicación Inter-Funciones
@@ -253,6 +305,18 @@ async _sendMessage(message) {
     this._processResult(this.result);
 }
 ```
+
+---
+
+## 📦 Comparación de Patrones
+
+| Aspecto | AutoFunctionElement | Compuesto (Chat) | Standalone (Recorder) |
+|---------|-------------------|------------------|----------------------|
+| **Herencia** | `AutoFunctionController` | `AutoFunctionController` | `LitElement` |
+| **Backend** | ✅ Sí (registry) | ✅ Sí (registry) | ❌ No |
+| **Composición** | No (monolítico) | Sí (multi-componente) | Sí (multi-componente) |
+| **Validación** | Automática | Automática | Manual |
+| **Ejemplo** | `<auto-calculator>` | `<autocode-chat>` | `<screen-recorder>` |
 
 ---
 
