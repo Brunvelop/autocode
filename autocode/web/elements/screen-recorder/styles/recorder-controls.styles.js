@@ -12,28 +12,28 @@ export const recorderControlsStyles = css`
         bottom: 24px;
         right: 24px;
         z-index: 1000;
-        font-family: var(--chat-font-family);
+        font-family: var(--design-font-family);
     }
 
     /* Botón FAB principal */
     .fab {
         width: 56px;
         height: 56px;
-        border-radius: var(--chat-radius-full);
+        border-radius: var(--design-radius-full);
         border: none;
         cursor: pointer;
         font-size: 24px;
         display: flex;
         align-items: center;
         justify-content: center;
-        box-shadow: var(--chat-shadow-lg);
-        transition: all var(--chat-transition-base);
+        box-shadow: var(--design-shadow-lg);
+        transition: all var(--design-transition-base);
         background: linear-gradient(135deg, #7c3aed 0%, #4f46e5 100%);
     }
 
     .fab:hover {
         transform: scale(1.05);
-        box-shadow: var(--chat-shadow-xl);
+        box-shadow: var(--design-shadow-xl);
     }
 
     .fab:active {
@@ -48,7 +48,7 @@ export const recorderControlsStyles = css`
 
     @keyframes pulse {
         0%, 100% {
-            box-shadow: var(--chat-shadow-lg);
+            box-shadow: var(--design-shadow-lg);
         }
         50% {
             box-shadow: 0 0 0 8px rgba(239, 68, 68, 0.3);
@@ -63,14 +63,14 @@ export const recorderControlsStyles = css`
         background: rgba(17, 24, 39, 0.95);
         backdrop-filter: blur(10px);
         padding: 8px 16px;
-        border-radius: var(--chat-radius-lg);
+        border-radius: var(--design-radius-lg);
         display: flex;
         align-items: center;
         gap: 8px;
         color: white;
-        font-size: var(--chat-font-size-sm);
-        font-weight: var(--chat-font-weight-medium);
-        box-shadow: var(--chat-shadow-md);
+        font-size: var(--design-font-size-sm);
+        font-weight: var(--design-font-weight-medium);
+        box-shadow: var(--design-shadow-md);
         animation: slideIn 0.3s ease-out;
     }
 
@@ -126,12 +126,12 @@ export const recorderControlsStyles = css`
         padding: 6px 12px;
         background: rgba(17, 24, 39, 0.95);
         color: white;
-        font-size: var(--chat-font-size-xs);
-        border-radius: var(--chat-radius-md);
+        font-size: var(--design-font-size-xs);
+        border-radius: var(--design-radius-md);
         white-space: nowrap;
         opacity: 0;
         pointer-events: none;
-        transition: opacity var(--chat-transition-base);
+        transition: opacity var(--design-transition-base);
     }
 
     .fab:hover::after {

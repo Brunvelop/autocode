@@ -39,9 +39,9 @@ export const videoPlayerStyles = css`
 
     /* Contenedor del player */
     .player-container {
-        background: var(--chat-bg-gray-900);
-        border-radius: var(--chat-radius-xl);
-        box-shadow: var(--chat-shadow-2xl);
+        background: var(--design-bg-gray-900);
+        border-radius: var(--design-radius-xl);
+        box-shadow: var(--design-shadow-2xl);
         max-width: 90vw;
         max-height: 90vh;
         display: flex;
@@ -73,8 +73,8 @@ export const videoPlayerStyles = css`
 
     .title {
         color: white;
-        font-size: var(--chat-font-size-lg);
-        font-weight: var(--chat-font-weight-semibold);
+        font-size: var(--design-font-size-lg);
+        font-weight: var(--design-font-weight-semibold);
         margin: 0;
         display: flex;
         align-items: center;
@@ -84,7 +84,7 @@ export const videoPlayerStyles = css`
     .close-btn {
         width: 32px;
         height: 32px;
-        border-radius: var(--chat-radius-md);
+        border-radius: var(--design-radius-md);
         border: none;
         background: rgba(255, 255, 255, 0.1);
         color: white;
@@ -92,7 +92,7 @@ export const videoPlayerStyles = css`
         display: flex;
         align-items: center;
         justify-content: center;
-        transition: background var(--chat-transition-base);
+        transition: background var(--design-transition-base);
     }
 
     .close-btn:hover {
@@ -127,16 +127,16 @@ export const videoPlayerStyles = css`
     .action-btn {
         flex: 1;
         padding: 12px 20px;
-        border-radius: var(--chat-radius-lg);
+        border-radius: var(--design-radius-lg);
         border: none;
-        font-size: var(--chat-font-size-base);
-        font-weight: var(--chat-font-weight-medium);
+        font-size: var(--design-font-size-base);
+        font-weight: var(--design-font-weight-medium);
         cursor: pointer;
         display: flex;
         align-items: center;
         justify-content: center;
         gap: 8px;
-        transition: all var(--chat-transition-base);
+        transition: all var(--design-transition-base);
     }
 
     .action-btn.primary {
@@ -146,7 +146,7 @@ export const videoPlayerStyles = css`
 
     .action-btn.primary:hover {
         transform: translateY(-2px);
-        box-shadow: var(--chat-shadow-lg);
+        box-shadow: var(--design-shadow-lg);
     }
 
     .action-btn.secondary {
@@ -168,7 +168,7 @@ export const videoPlayerStyles = css`
         background: rgba(17, 24, 39, 0.3);
         display: flex;
         gap: 20px;
-        font-size: var(--chat-font-size-sm);
+        font-size: var(--design-font-size-sm);
         color: rgba(255, 255, 255, 0.7);
         border-top: 1px solid rgba(255, 255, 255, 0.05);
     }

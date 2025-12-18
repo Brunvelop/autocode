@@ -13,10 +13,10 @@ export const buttonBase = css`
     button {
         border: none;
         cursor: pointer;
-        transition: opacity var(--chat-transition-base), 
-                    transform var(--chat-transition-fast),
-                    background-color var(--chat-transition-base);
-        font-family: var(--chat-font-family);
+        transition: opacity var(--design-transition-base), 
+                    transform var(--design-transition-fast),
+                    background-color var(--design-transition-base);
+        font-family: var(--design-font-family);
         outline: none;
     }
 
@@ -39,17 +39,17 @@ export const buttonBase = css`
  */
 export const primaryButton = css`
     button {
-        background: linear-gradient(to right, var(--chat-primary), var(--chat-secondary));
+        background: linear-gradient(to right, var(--design-primary), var(--design-secondary));
         color: white;
-        font-weight: var(--chat-font-weight-semibold);
-        padding: var(--chat-spacing-md) var(--chat-spacing-xl);
-        border-radius: var(--chat-radius-lg);
-        box-shadow: var(--chat-shadow-sm);
-        font-size: var(--chat-font-size-base);
+        font-weight: var(--design-font-weight-semibold);
+        padding: var(--design-spacing-md) var(--design-spacing-xl);
+        border-radius: var(--design-radius-lg);
+        box-shadow: var(--design-shadow-sm);
+        font-size: var(--design-font-size-base);
     }
 
     button:disabled {
-        background: var(--chat-border-gray-dark);
+        background: var(--design-border-gray-dark);
     }
 `;
 
@@ -59,12 +59,12 @@ export const primaryButton = css`
 export const ghostButton = css`
     button {
         background-color: rgba(255, 255, 255, 0.1);
-        color: var(--chat-text-light);
+        color: var(--design-text-light);
         border: 1px solid rgba(255, 255, 255, 0.2);
-        border-radius: var(--chat-radius-full);
-        padding: var(--chat-spacing-sm) var(--chat-spacing-md);
-        font-size: var(--chat-font-size-base);
-        font-weight: var(--chat-font-weight-semibold);
+        border-radius: var(--design-radius-full);
+        padding: var(--design-spacing-sm) var(--design-spacing-md);
+        font-size: var(--design-font-size-base);
+        font-weight: var(--design-font-weight-semibold);
     }
 
     button:hover:not(:disabled) {
@@ -78,14 +78,14 @@ export const ghostButton = css`
 export const iconButton = css`
     button {
         background: rgba(255, 255, 255, 0.1);
-        color: var(--chat-indigo-100);
+        color: var(--design-indigo-100);
         border: 1px solid rgba(255, 255, 255, 0.2);
-        border-radius: var(--chat-radius-full);
-        padding: var(--chat-spacing-sm);
+        border-radius: var(--design-radius-full);
+        padding: var(--design-spacing-sm);
         display: flex;
         align-items: center;
         justify-content: center;
-        transition: background-color var(--chat-transition-base), color var(--chat-transition-base);
+        transition: background-color var(--design-transition-base), color var(--design-transition-base);
     }
 
     button:hover:not(:disabled) {
@@ -102,32 +102,32 @@ export const inputBase = css`
     input[type="number"],
     select {
         width: 100%;
-        padding: var(--chat-spacing-md);
-        border: 1px solid var(--chat-border-gray-dark);
-        border-radius: var(--chat-radius-lg);
-        font-size: var(--chat-font-size-base);
-        line-height: var(--chat-line-height-tight);
-        box-shadow: var(--chat-shadow-xs);
+        padding: var(--design-spacing-md);
+        border: 1px solid var(--design-border-gray-dark);
+        border-radius: var(--design-radius-lg);
+        font-size: var(--design-font-size-base);
+        line-height: var(--design-line-height-tight);
+        box-shadow: var(--design-shadow-xs);
         outline: none;
-        transition: border-color var(--chat-transition-base), 
-                    box-shadow var(--chat-transition-base);
-        background: var(--chat-bg-white);
-        color: var(--chat-text-primary);
-        font-family: var(--chat-font-family);
+        transition: border-color var(--design-transition-base), 
+                    box-shadow var(--design-transition-base);
+        background: var(--design-bg-white);
+        color: var(--design-text-primary);
+        font-family: var(--design-font-family);
         box-sizing: border-box;
     }
 
     input:focus,
     select:focus {
-        border-color: var(--chat-primary-light);
+        border-color: var(--design-primary-light);
         box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
     }
 
     input:disabled,
     select:disabled {
-        background-color: var(--chat-bg-gray-100);
+        background-color: var(--design-bg-gray-100);
         cursor: not-allowed;
-        color: var(--chat-text-tertiary);
+        color: var(--design-text-tertiary);
     }
 `;
 
@@ -136,10 +136,10 @@ export const inputBase = css`
  */
 export const cardBase = css`
     .card {
-        background: var(--chat-bg-white);
-        border-radius: var(--chat-radius-xl);
-        box-shadow: var(--chat-shadow-sm);
-        border: 1px solid var(--chat-border-gray);
+        background: var(--design-bg-white);
+        border-radius: var(--design-radius-xl);
+        box-shadow: var(--design-shadow-sm);
+        border: 1px solid var(--design-border-gray);
         overflow: hidden;
     }
 `;
@@ -149,23 +149,23 @@ export const cardBase = css`
  */
 export const badgeBase = css`
     .badge {
-        font-family: var(--chat-font-mono);
-        padding: 0.125rem var(--chat-spacing-sm);
-        border-radius: var(--chat-radius-sm);
-        font-size: var(--chat-font-size-sm);
+        font-family: var(--design-font-mono);
+        padding: 0.125rem var(--design-spacing-sm);
+        border-radius: var(--design-radius-sm);
+        font-size: var(--design-font-size-sm);
         display: inline-block;
     }
 
     .badge-primary {
-        color: var(--chat-primary);
-        background-color: var(--chat-indigo-50);
-        border: 1px solid var(--chat-indigo-200);
+        color: var(--design-primary);
+        background-color: var(--design-indigo-50);
+        border: 1px solid var(--design-indigo-200);
     }
 
     .badge-secondary {
-        color: var(--chat-text-secondary);
-        background-color: var(--chat-bg-gray-100);
-        border: 1px solid var(--chat-border-gray);
+        color: var(--design-text-secondary);
+        background-color: var(--design-bg-gray-100);
+        border: 1px solid var(--design-border-gray);
     }
 `;
 
@@ -176,8 +176,8 @@ export const checkboxStyles = css`
     input[type="checkbox"] {
         width: 1rem;
         height: 1rem;
-        color: var(--chat-primary);
-        border-radius: var(--chat-radius-sm);
+        color: var(--design-primary);
+        border-radius: var(--design-radius-sm);
         cursor: pointer;
     }
 `;
@@ -189,8 +189,8 @@ export const rangeSliderStyles = css`
     input[type="range"] {
         width: 100%;
         height: 0.5rem;
-        background: var(--chat-border-gray);
-        border-radius: var(--chat-radius-md);
+        background: var(--design-border-gray);
+        border-radius: var(--design-radius-md);
         appearance: none;
         cursor: pointer;
     }
@@ -199,7 +199,7 @@ export const rangeSliderStyles = css`
         appearance: none;
         width: 1rem;
         height: 1rem;
-        background: var(--chat-primary);
+        background: var(--design-primary);
         border-radius: 50%;
         cursor: pointer;
     }
@@ -207,7 +207,7 @@ export const rangeSliderStyles = css`
     input[type="range"]::-moz-range-thumb {
         width: 1rem;
         height: 1rem;
-        background: var(--chat-primary);
+        background: var(--design-primary);
         border-radius: 50%;
         cursor: pointer;
         border: none;
@@ -223,15 +223,15 @@ export const scrollbarStyles = css`
     }
 
     *::-webkit-scrollbar-track {
-        background: var(--chat-bg-gray-50);
+        background: var(--design-bg-gray-50);
     }
 
     *::-webkit-scrollbar-thumb {
-        background: var(--chat-border-gray-dark);
-        border-radius: var(--chat-radius-full);
+        background: var(--design-border-gray-dark);
+        border-radius: var(--design-radius-full);
     }
 
     *::-webkit-scrollbar-thumb:hover {
-        background: var(--chat-text-tertiary);
+        background: var(--design-text-tertiary);
     }
 `;

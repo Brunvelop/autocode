@@ -66,6 +66,110 @@ classDiagram
     note for AutocodeChat "UI Compleja: Composición + Shadow DOM"
 ```
 
+## 🎨 Sistema de Diseño Compartido
+
+El proyecto utiliza un **sistema de tokens de diseño centralizado** para mantener consistencia visual en todos los componentes. Este sistema está ubicado en `shared/styles/` y es utilizado tanto por componentes generados automáticamente como por componentes personalizados.
+
+### Estructura
+
+```
+shared/
+└── styles/
+    ├── theme.js      # Tokens de diseño globales (colores, espaciado, tipografía, etc.)
+    └── common.js     # Utilidades CSS reutilizables (badges, botones, spinners)
+```
+
+### Tokens Disponibles (`theme.js`)
+
+El sistema exporta más de **100 variables CSS** organizadas en categorías:
+
+#### Colores
+- **Principales**: `--design-primary`, `--design-primary-light`, `--design-primary-dark`
+- **Texto**: `--design-text-primary`, `--design-text-secondary`, `--design-text-tertiary`
+- **Fondos**: `--design-bg-white`, `--design-bg-gray-50`, `--design-bg-gray-100`
+- **Estados**: `--design-success`, `--design-warning`, `--design-danger`, `--design-error-*`
+- **Dark Mode**: `--dark-bg-primary`, `--dark-bg-secondary`, `--dark-border`, `--dark-text-*`
+
+#### Espaciado
+- De `xs` a `3xl`: `--design-spacing-xs` (0.25rem) a `--design-spacing-3xl` (2rem)
+
+#### Border Radius
+- De `sm` a `full`: `--design-radius-sm` (0.25rem) a `--design-radius-full` (9999px)
+
+#### Sombras
+- 6 niveles: `--design-shadow-xs` a `--design-shadow-2xl`
+
+#### Tipografía
+- **Familias**: `--design-font-family`, `--design-font-mono`
+- **Tamaños**: `--design-font-size-xs` a `--design-font-size-xl`
+- **Pesos**: `--design-font-weight-normal` a `--design-font-weight-bold`
+- **Line Height**: `--design-line-height-tight`, `normal`, `relaxed`
+
+#### Transiciones
+- `--design-transition-fast` (0.1s), `base` (0.2s), `slow` (0.3s)
+
+#### Z-Index
+- `--design-z-dropdown` (50), `--design-z-modal` (100), `--design-z-tooltip` (110)
+
+### Utilidades CSS (`common.js`)
+
+Exporta estilos reutilizables como `css` template literals:
+
+- **`badgeBase`**: Estilos para badges/chips
+- **`ghostButton`**: Botón transparente con hover
+- **`spinnerStyles`**: Animación de loading circular
+
+### Patrón de Re-exportación
+
+Para mantener compatibilidad con componentes existentes, los módulos de estilos antiguos re-exportan desde `shared/styles/`:
+
+```javascript
+// chat/styles/theme.js
+export { themeTokens } from '../../shared/styles/theme.js';
+
+// screen-recorder/styles/theme.js
+export { themeTokens } from '../../shared/styles/theme.js';
+export { badgeBase, ghostButton } from '../../shared/styles/common.js';
+```
+
+### Uso en Componentes
+
+```javascript
+import { css } from 'lit';
+import { themeTokens } from '../../shared/styles/theme.js';
+import { spinnerStyles } from '../../shared/styles/common.js';
+
+export const myStyles = css`
+    ${themeTokens}    // ← Inyecta todas las variables CSS
+    ${spinnerStyles}  // ← Agrega utilidades específicas
+    
+    :host {
+        display: block;
+        padding: var(--design-spacing-md);
+        background: var(--dark-bg-primary);
+        border-radius: var(--design-radius-md);
+        color: var(--dark-text-primary);
+    }
+    
+    .my-button {
+        padding: var(--design-spacing-sm) var(--design-spacing-lg);
+        background: var(--design-primary);
+        border-radius: var(--design-radius-sm);
+        transition: opacity var(--design-transition-base);
+    }
+`;
+```
+
+### Beneficios
+
+1. **Consistencia visual**: Todos los componentes usan los mismos valores
+2. **Mantenibilidad**: Un solo lugar para actualizar el diseño
+3. **Theming**: Fácil implementar temas al cambiar variables CSS
+4. **Documentación implícita**: Los nombres de variables son auto-descriptivos
+5. **Reutilización**: Utilidades comunes (spinners, badges) no se duplican
+
+---
+
 ## 🧩 Componentes Core
 
 ### 1. `AutoFunctionController` (Lógica Pura)
@@ -104,10 +208,25 @@ Es el servicio que consulta el registro de funciones (`/functions/details`) y re
 Si necesitas crear un componente con una interfaz específica pero contenida en un solo elemento, extiende el controlador.
 
 ```javascript
-import { html } from 'lit';
+import { html, css } from 'lit';
 import { AutoFunctionController } from './auto-element-generator.js';
+import { themeTokens } from '../shared/styles/theme.js';
+import { spinnerStyles } from '../shared/styles/common.js';
 
 export class MyCustomElement extends AutoFunctionController {
+    static styles = [themeTokens, spinnerStyles, css`
+        :host {
+            display: block;
+            padding: var(--design-spacing-md);
+        }
+        
+        .container {
+            background: var(--design-bg-white);
+            border-radius: var(--design-radius-md);
+            box-shadow: var(--design-shadow-md);
+        }
+    `];
+    
     // ... implementación estándar
 }
 ```
@@ -306,6 +425,53 @@ async _sendMessage(message) {
 }
 ```
 
+### Importación de Estilos Compartidos
+
+Todos los componentes deben usar el sistema de diseño compartido para mantener consistencia visual:
+
+```javascript
+// archivo-de-estilos.styles.js
+import { css } from 'lit';
+import { themeTokens } from '../../shared/styles/theme.js';
+import { spinnerStyles, badgeBase } from '../../shared/styles/common.js';
+
+export const miComponenteStyles = css`
+    ${themeTokens}       // ← Variables CSS globales
+    ${spinnerStyles}     // ← Animación de spinner
+    ${badgeBase}         // ← Estilos de badges (opcional)
+    
+    :host {
+        /* Usar variables del sistema */
+        padding: var(--design-spacing-md);
+        background: var(--dark-bg-primary);
+        border-radius: var(--design-radius-md);
+        color: var(--dark-text-primary);
+        font-family: var(--design-font-family);
+    }
+    
+    .button {
+        padding: var(--design-spacing-sm) var(--design-spacing-lg);
+        background: var(--design-primary);
+        border-radius: var(--design-radius-sm);
+        transition: all var(--design-transition-base);
+        font-size: var(--design-font-size-base);
+        font-weight: var(--design-font-weight-medium);
+    }
+    
+    .button:hover {
+        background: var(--design-primary-light);
+    }
+`;
+```
+
+**Recomendaciones:**
+- ✅ Siempre importar `themeTokens` como primera línea de estilos
+- ✅ Usar variables CSS en lugar de valores hardcodeados
+- ✅ Importar solo las utilidades que necesites (`spinnerStyles`, `badgeBase`, etc.)
+- ✅ Mantener un archivo separado para estilos complejos (`component.styles.js`)
+- ❌ No redefinir variables que ya existen en el sistema
+- ❌ No usar valores absolutos para colores, espaciado o tipografía
+
 ---
 
 ## 📦 Comparación de Patrones
@@ -316,6 +482,7 @@ async _sendMessage(message) {
 | **Backend** | ✅ Sí (registry) | ✅ Sí (registry) | ❌ No |
 | **Composición** | No (monolítico) | Sí (multi-componente) | Sí (multi-componente) |
 | **Validación** | Automática | Automática | Manual |
+| **Estilos** | Sistema compartido | Sistema compartido | Sistema compartido |
 | **Ejemplo** | `<auto-calculator>` | `<autocode-chat>` | `<screen-recorder>` |
 
 ---
