@@ -77,6 +77,7 @@ def register_function(http_methods: List[str] = None):
         try:
             info = _generate_function_info(func, http_methods)
             FUNCTION_REGISTRY[info.name] = info
+            # Only log at DEBUG level, not INFO (reduces CLI noise)
             logger.debug(f"Registered function '{info.name}' with methods {info.http_methods}")
         except Exception as e:
             logger.error(f"Failed to register function '{func.__name__}': {e}")
@@ -347,12 +348,13 @@ def load_core_functions(strict: bool = False):
         # Only import modules that have @register_function decorator
         if not _has_register_decorator(module_path):
             skipped_modules.append(module_name)
-            logger.debug(f"Skipping module without @register_function: {module_name}")
+            # Don't log skipped modules at all - reduces noise significantly
             continue
         
         try:
             importlib.import_module(module_name)
             discovered_modules.append(module_name)
+            # Only log at DEBUG level
             logger.debug(f"Autodiscovered module: {module_name}")
         except ImportError as e:
             failed_modules.append((module_name, str(e)))
@@ -370,7 +372,8 @@ def load_core_functions(strict: bool = False):
                 f"Failed to load modules in strict mode: {[m[0] for m in failed_modules]}"
             )
     
-    logger.info(
+    # Only log summary at DEBUG level to reduce CLI noise
+    logger.debug(
         f"Autodiscovered {len(FUNCTION_REGISTRY)} functions from "
         f"{len(discovered_modules)} modules in autocode.core "
         f"(skipped {len(skipped_modules)} modules without @register_function)"

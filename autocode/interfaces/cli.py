@@ -25,6 +25,7 @@ from autocode.interfaces.registry import (
 )
 from autocode.interfaces.api import create_api_app
 from autocode.interfaces.mcp import create_mcp_app
+from autocode.interfaces.logging_config import configure_cli_logging
 
 
 # ============================================================================
@@ -45,14 +46,21 @@ TYPE_MAP: Dict[type, Any] = {
 # ============================================================================
 
 @click.group(help="Autocode CLI - Minimalistic framework for code quality tools")
-def app():
+@click.option('--verbose', '-v', is_flag=True, help='Enable verbose output (DEBUG level)')
+@click.pass_context
+def app(ctx, verbose):
     """Autocode CLI - Minimalistic framework for code quality tools.
     
     This CLI provides dynamic command generation from registered functions,
     allowing you to execute any registered function from the command line
     with automatically inferred parameters.
     """
-    pass
+    # Configure logging based on verbose flag
+    configure_cli_logging(verbose=verbose)
+    
+    # Store verbose flag in context for subcommands
+    ctx.ensure_object(dict)
+    ctx.obj['verbose'] = verbose
 
 
 # ============================================================================
@@ -367,8 +375,15 @@ def _initialize_cli():
     
     This function is called automatically when the module is imported,
     but kept separate for testability and explicit flow control.
+    
+    Note: We configure logging at INFO level by default during initialization.
+    The --verbose flag in app() will reconfigure it to DEBUG when requested.
     """
-    # Load core functions first
+    # Configure logging BEFORE loading functions to reduce noise
+    # Default to INFO level (quiet), verbose flag will change to DEBUG
+    configure_cli_logging(verbose=False)
+    
+    # Load core functions
     load_core_functions()
     
     # Then register all commands from registry
