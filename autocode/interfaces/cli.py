@@ -264,13 +264,21 @@ def _add_command_options(command_func: Callable, params: list) -> Callable:
         # Create option name (convert underscores to hyphens for CLI)
         option_name = f"--{param.name.replace('_', '-')}"
         
+        # Prepare option arguments
+        option_kwargs = {
+            "type": click_type,
+            "required": param.required,
+            "help": param.description
+        }
+        
+        # Only set default if not required (otherwise Click won't enforce requirement)
+        if not param.required:
+            option_kwargs["default"] = param.default
+            
         # Add the option to the command function
         command_func = click.option(
             option_name,
-            type=click_type,
-            default=param.default if not param.required else None,
-            required=param.required,
-            help=param.description
+            **option_kwargs
         )(command_func)
     
     return command_func

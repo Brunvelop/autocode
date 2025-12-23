@@ -34,8 +34,7 @@ class TestTypeMappingAndUtils:
     
     def test_add_command_options_basic(self):
         """Test adding basic Click options to a command function."""
-        @click.command()
-        def test_command():
+        def test_command(**kwargs):
             pass
         
         params = [
@@ -44,13 +43,14 @@ class TestTypeMappingAndUtils:
         ]
         
         decorated_func = _add_command_options(test_command, params)
+        command = click.command()(decorated_func)
         
         # Verify function is still callable
-        assert callable(decorated_func)
+        assert callable(command)
         
         # Test that options were added (indirectly through Click's mechanism)
         runner = CliRunner()
-        result = runner.invoke(decorated_func, ['--help'])
+        result = runner.invoke(command, ['--help'])
         assert "--count" in result.output
         assert "--name" in result.output
         assert "Number of items" in result.output
@@ -58,7 +58,6 @@ class TestTypeMappingAndUtils:
     
     def test_add_command_options_with_required(self):
         """Test adding required options."""
-        @click.command()
         def test_command(**kwargs):
             # Accept kwargs like real CLI handlers do
             pass
@@ -68,21 +67,21 @@ class TestTypeMappingAndUtils:
         ]
         
         decorated_func = _add_command_options(test_command, params)
+        command = click.command()(decorated_func)
         
         runner = CliRunner()
         
         # Test that required parameter is enforced
-        result = runner.invoke(decorated_func, [])
+        result = runner.invoke(command, [])
         assert result.exit_code != 0  # Should fail without required param
         
         # Test with required parameter
-        result = runner.invoke(decorated_func, ['--required-param', 'value'])
+        result = runner.invoke(command, ['--required-param', 'value'])
         assert result.exit_code == 0
     
     def test_add_command_options_type_mapping(self):
         """Test that different parameter types are mapped correctly."""
-        @click.command()
-        def test_command():
+        def test_command(**kwargs):
             pass
         
         params = [
@@ -92,9 +91,10 @@ class TestTypeMappingAndUtils:
         ]
         
         decorated_func = _add_command_options(test_command, params)
+        command = click.command()(decorated_func)
         
         runner = CliRunner()
-        result = runner.invoke(decorated_func, ['--help'])
+        result = runner.invoke(command, ['--help'])
         
         # Check that all parameters appear in help
         assert "--int-param" in result.output
@@ -483,14 +483,14 @@ class TestCLICommandRegistrationEdgeCases:
             params=[ExplicitParam(name="param_name", type=str, required=True, description="Param with underscore")]
         )
         
-        @click.command()
-        def test_command():
+        def test_command(**kwargs):
             pass
         
         decorated_func = _add_command_options(test_command, func_info.params)
+        command = click.command()(decorated_func)
         
         runner = CliRunner()
-        result = runner.invoke(decorated_func, ['--help'])
+        result = runner.invoke(command, ['--help'])
         
         # Should show hyphenated option name
         assert "--param-name" in result.output
@@ -505,14 +505,14 @@ class TestCLICommandRegistrationEdgeCases:
             ExplicitParam(name="boolean_flag", type=bool, default=False, required=False, description="Boolean flag"),
         ]
         
-        @click.command()
-        def complex_command():
+        def complex_command(**kwargs):
             pass
         
         decorated_func = _add_command_options(complex_command, params)
+        command = click.command()(decorated_func)
         
         runner = CliRunner()
-        result = runner.invoke(decorated_func, ['--help'])
+        result = runner.invoke(command, ['--help'])
         
         # All parameters should appear in help
         assert "--string-param" in result.output

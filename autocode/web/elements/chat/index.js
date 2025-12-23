@@ -23,7 +23,8 @@ import './session-manager.js';
 
 export class AutocodeChat extends AutoFunctionController {
     static properties = {
-        ...AutoFunctionController.properties
+        ...AutoFunctionController.properties,
+        _chatConfig: { state: true }
     };
 
     static styles = [themeTokens, badgeBase, ghostButton, autocodeChatStyles];
@@ -35,6 +36,7 @@ export class AutocodeChat extends AutoFunctionController {
         // Estado local del chat
         this.conversationHistory = [];
         this._pendingUserMessage = null;
+        this._chatConfig = null;
         
         // Inicializar params vacíos (se llenarán con defaults al cargar funcInfo)
         this.params = {
@@ -42,6 +44,11 @@ export class AutocodeChat extends AutoFunctionController {
             conversation_history: '',
             model: ''
         };
+    }
+
+    connectedCallback() {
+        super.connectedCallback();
+        this._loadChatConfig();
     }
 
     firstUpdated() {
@@ -90,7 +97,7 @@ export class AutocodeChat extends AutoFunctionController {
                         <span>${this._getSimpleModelName()}</span>
                     </div>
 
-                    <chat-settings></chat-settings>
+                    <chat-settings .chatConfig=${this._chatConfig}></chat-settings>
                     
                     <!-- Session Manager: Reemplaza toda la lógica de sesiones -->
                     <session-manager></session-manager>
@@ -148,6 +155,15 @@ export class AutocodeChat extends AutoFunctionController {
         
         if (this._messages) this._messages.clear();
         if (this._contextBar) this._contextBar.update(0, 0);
+    }
+
+    async _loadChatConfig() {
+        try {
+            const result = await AutoFunctionController.executeFunction('get_chat_config', {});
+            this._chatConfig = result;
+        } catch (error) {
+            console.warn('⚠️ Error loading chat config:', error);
+        }
     }
 
     // ========================================================================

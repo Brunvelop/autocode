@@ -4,9 +4,11 @@ DSPy utilities for AI operations.
 This module provides reusable utilities for working with DSPy,
 including setup functions and generic generators.
 """
+import inspect
+import json
 import logging
 import os
-from typing import Any, Dict, Literal, Optional, Type
+from typing import Any, Dict, List, Literal, Optional, Type, Union
 
 import dspy
 from autocode.core.ai.models import DspyOutput
@@ -334,3 +336,175 @@ def generate_with_dspy(
         trajectory=trajectory,
         history=history
     )
+
+
+# ============================================================================
+# MODULE INTROSPECTION FUNCTIONS
+# ============================================================================
+
+# Parámetros a excluir de la introspección (internos de DSPy)
+_EXCLUDED_MODULE_PARAMS = {'self', 'signature', 'tools'}
+
+# Descripciones amigables para parámetros conocidos
+_PARAM_DESCRIPTIONS = {
+    'n': 'Número de completions a generar',
+    'max_iters': 'Máximo de iteraciones del agente',
+    'num_comparisons': 'Número de cadenas a comparar',
+    'tools': 'Herramientas disponibles para el agente',
+    'temperature': 'Creatividad de la generación (0=determinista, 1=creativo)',
+    'max_tokens': 'Máximo de tokens a generar',
+}
+
+
+def _get_type_name(annotation: Any) -> str:
+    """
+    Obtiene el nombre legible del tipo de una anotación.
+    
+    Args:
+        annotation: Anotación de tipo de Python
+        
+    Returns:
+        String con el nombre del tipo
+    """
+    if annotation == inspect.Parameter.empty:
+        return 'any'
+    if hasattr(annotation, '__name__'):
+        return annotation.__name__
+    return str(annotation).replace('typing.', '')
+
+
+def get_module_kwargs_schema(module_type: ModuleType) -> Dict[str, Any]:
+    """
+    Inspecciona la clase DSPy del módulo y extrae sus parámetros del __init__.
+    
+    Esta función usa introspección en runtime para descubrir automáticamente
+    qué kwargs acepta cada módulo DSPy, sin necesidad de hardcodear schemas.
+    
+    Args:
+        module_type: Tipo de módulo DSPy a inspeccionar
+        
+    Returns:
+        Diccionario con:
+        - params: Lista de definiciones de parámetros
+        - supports_tools: Booleano indicando si el módulo acepta 'tools'
+        
+    Example:
+        >>> schema = get_module_kwargs_schema('ReAct')
+        >>> print(schema['supports_tools'])
+        True
+    """
+    if module_type not in MODULE_MAP:
+        logger.warning(f"Module type '{module_type}' not found in MODULE_MAP")
+        return {'params': [], 'supports_tools': False}
+    
+    module_class = MODULE_MAP[module_type]
+    
+    try:
+        sig = inspect.signature(module_class.__init__)
+    except (ValueError, TypeError) as e:
+        logger.warning(f"Could not inspect {module_type}.__init__: {e}")
+        return {'params': [], 'supports_tools': False}
+    
+    params = []
+    
+    # Detect if 'tools' is in signature (before excluding it from params list)
+    supports_tools = 'tools' in sig.parameters
+    
+    for name, param in sig.parameters.items():
+        # Excluir parámetros internos
+        if name in _EXCLUDED_MODULE_PARAMS:
+            continue
+        # Excluir *args y **kwargs
+        if param.kind in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD):
+            continue
+        
+        param_type = _get_type_name(param.annotation)
+        has_default = param.default != inspect.Parameter.empty
+        default_value = param.default if has_default else None
+        
+        # Sanitize default value for JSON serialization
+        if has_default:
+            try:
+                json.dumps(default_value)
+            except (TypeError, OverflowError):
+                # If not serializable (e.g. type, function, complex object), convert to string representation
+                if hasattr(default_value, '__name__'):
+                    default_value = default_value.__name__
+                else:
+                    default_value = str(default_value)
+        
+        # Obtener descripción amigable
+        description = _PARAM_DESCRIPTIONS.get(
+            name, 
+            f"Parámetro {name} del módulo {module_type}"
+        )
+        
+        params.append({
+            'name': name,
+            'type': param_type,
+            'default': default_value,
+            'required': not has_default,
+            'description': description
+        })
+    
+    return {
+        'params': params,
+        'supports_tools': supports_tools
+    }
+
+
+def get_all_module_kwargs_schemas() -> Dict[str, Dict[str, Any]]:
+    """
+    Obtiene los schemas de kwargs para todos los módulos DSPy disponibles.
+    
+    Returns:
+        Diccionario mapeando module_type a su configuración (params, supports_tools)
+        
+    Example:
+        >>> schemas = get_all_module_kwargs_schemas()
+        >>> print(schemas['ReAct']['supports_tools'])
+        True
+    """
+    return {
+        module_type: get_module_kwargs_schema(module_type)
+        for module_type in MODULE_MAP.keys()
+    }
+
+
+def get_available_tools_info() -> List[Dict[str, Any]]:
+    """
+    Obtiene información de las funciones del registry que pueden usarse como tools.
+    
+    Excluye automáticamente la función 'chat' para evitar recursión.
+    
+    Returns:
+        Lista de diccionarios con información de cada tool:
+        - name: Nombre de la función
+        - description: Descripción de la función
+        - enabled_by_default: Si está habilitada por defecto
+        
+    Example:
+        >>> tools = get_available_tools_info()
+        >>> print([t['name'] for t in tools])
+        ['generate_code', 'generate_design', 'generate_answer', ...]
+    """
+    # Import aquí para evitar importación circular
+    from autocode.interfaces.registry import FUNCTION_REGISTRY, _ensure_functions_loaded
+    
+    _ensure_functions_loaded()
+    
+    # Funciones a excluir de tools (evitar recursión y funciones no útiles como tools)
+    excluded_functions = {'chat'}
+    
+    tools = []
+    for func_name, func_info in FUNCTION_REGISTRY.items():
+        if func_name in excluded_functions:
+            continue
+        
+        tools.append({
+            'name': func_name,
+            'description': func_info.description,
+            'enabled_by_default': True  # Por defecto todas habilitadas
+        })
+    
+    return sorted(tools, key=lambda t: t['name'])

@@ -4,7 +4,7 @@ High-level pipelines for AI operations.
 This module contains orchestration functions that combine file I/O
 with DSPy generation for complete workflows.
 """
-from typing import Literal, Dict, Any, Optional, List
+from typing import Literal, Dict, Any, Optional, List, get_args
 import litellm
 from autocode.interfaces.registry import register_function
 from autocode.interfaces.models import GenericOutput
@@ -15,14 +15,21 @@ from autocode.core.utils.file_utils import (
     read_file,
     write_file
 )
-from autocode.core.ai.dspy_utils import generate_with_dspy, ModelType, ModuleType
+from autocode.core.utils.openrouter import fetch_models_info
+from autocode.core.ai.dspy_utils import (
+    generate_with_dspy, 
+    ModelType, 
+    ModuleType,
+    get_all_module_kwargs_schemas,
+    get_available_tools_info
+)
 from autocode.core.ai.signatures import (
     CodeGenerationSignature,
     DesignDocumentSignature,
     QASignature,
     ChatSignature
 )
-from autocode.interfaces.registry import FUNCTION_REGISTRY
+from autocode.interfaces.registry import FUNCTION_REGISTRY, _ensure_functions_loaded
 
 
 # Available signature types for UI selection
@@ -461,13 +468,15 @@ def chat(
     max_tokens: int = 16000,
     temperature: float = 0.7,
     module_type: ModuleType = 'ReAct',
-    module_kwargs: Optional[Dict[str, Any]] = None
+    module_kwargs: Optional[Dict[str, Any]] = None,
+    enabled_tools: Optional[List[str]] = None,
+    lm_kwargs: Optional[Dict[str, Any]] = None
 ) -> DspyOutput:
     """
     Chat conversacional con acceso a herramientas MCP.
     
     Este endpoint usa DSPy con el módulo configurado para:
-    - Acceder a todas las funciones registradas como herramientas con schemas completos
+    - Acceder a las funciones registradas como herramientas con schemas completos
     - Razonar sobre qué herramientas usar para responder (con ReAct)
     - Retornar un DspyOutput completo con trajectory, reasoning, history, etc.
     
@@ -479,6 +488,8 @@ def chat(
         temperature: Temperature para generación (default: 0.7)
         module_type: Tipo de módulo DSPy (Predict, ChainOfThought, ReAct, etc.) (default: ReAct)
         module_kwargs: Parámetros adicionales del módulo (ej: max_iters para ReAct)
+        enabled_tools: Lista de nombres de funciones a habilitar como tools (si None, usa todas)
+        lm_kwargs: Parámetros avanzados adicionales para el LLM (top_p, etc.)
         
     Returns:
         DspyOutput con:
@@ -491,11 +502,16 @@ def chat(
     import dspy
     
     try:
+        _ensure_functions_loaded()
         # Crear tools con schemas detallados del registry
         tools = []
         for func_name, func_info in FUNCTION_REGISTRY.items():
             # Excluir la función chat de los tools para evitar recursión
             if func_name == 'chat':
+                continue
+            
+            # Filtrar por enabled_tools si se especificó
+            if enabled_tools is not None and func_name not in enabled_tools:
                 continue
             
             # Crear wrapper de tool con schema enriquecido
@@ -549,7 +565,7 @@ def chat(
                 module_kwargs['max_iters'] = 5
         
         # Generar respuesta usando el módulo configurado
-        # generate_with_dspy ya retorna DspyOutput completo con todo lo necesario
+        kwargs = lm_kwargs or {}
         return generate_with_dspy(
             signature_class=ChatSignature,
             inputs={
@@ -560,7 +576,8 @@ def chat(
             module_type=module_type,
             module_kwargs=module_kwargs,
             max_tokens=max_tokens,
-            temperature=temperature
+            temperature=temperature,
+            **kwargs
         )
         
     except Exception as e:
@@ -569,4 +586,60 @@ def chat(
             success=False,
             result={"error": f"Error en chat: {str(e)}"},
             message=f"Error en chat: {str(e)}"
+        )
+
+
+@register_function(http_methods=["GET"])
+def get_chat_config() -> GenericOutput:
+    """
+    Obtiene la configuración disponible para el chat.
+    
+    Retorna información sobre:
+    - module_kwargs_schemas: Parámetros disponibles por cada module_type
+    - available_tools: Lista de tools disponibles con nombre y descripción
+    - models: Lista de modelos disponibles con metadata de OpenRouter
+    
+    Esta información permite a la UI renderizar controles dinámicos
+    según el module_type seleccionado y el modelo.
+    
+    Returns:
+        GenericOutput con:
+        - result.module_kwargs_schemas: Dict[module_type, {params, supports_tools}]
+        - result.available_tools: List[{name, description, enabled_by_default}]
+        - result.models: List[Dict] con info de cada modelo
+    """
+    try:
+        # Obtener lista base de modelos definidos en el sistema
+        base_models = list(get_args(ModelType))
+        
+        # Enriquecer con metadata de OpenRouter (sync)
+        openrouter_info = fetch_models_info(base_models)
+        
+        models_data = []
+        for model_id in base_models:
+            info = openrouter_info.get(model_id, {})
+            # Fusionar ID con la info obtenida (o defaults si falla fetch)
+            models_data.append({
+                "id": model_id,
+                "name": info.get("name", model_id.split("/")[-1]),
+                "context_length": info.get("context_length"),
+                "top_provider": info.get("top_provider", {}),
+                "pricing": info.get("pricing"),
+                "supported_parameters": info.get("supported_parameters", [])
+            })
+
+        return GenericOutput(
+            success=True,
+            result={
+                "module_kwargs_schemas": get_all_module_kwargs_schemas(),
+                "available_tools": get_available_tools_info(),
+                "models": models_data
+            },
+            message="Configuración de chat obtenida exitosamente"
+        )
+    except Exception as e:
+        return GenericOutput(
+            success=False,
+            result={},
+            message=f"Error obteniendo configuración: {str(e)}"
         )
