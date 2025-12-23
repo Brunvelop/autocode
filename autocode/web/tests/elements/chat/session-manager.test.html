@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test: Session Manager</title>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            max-width: 1200px;
+            margin: 40px auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        
+        .test-container {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        }
+        
+        h1 {
+            color: #4f46e5;
+            margin-bottom: 10px;
+        }
+        
+        .subtitle {
+            color: #6b7280;
+            margin-bottom: 30px;
+        }
+        
+        .test-section {
+            margin-bottom: 30px;
+            padding: 20px;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+        }
+        
+        .test-section h2 {
+            color: #1f2937;
+            margin-top: 0;
+            margin-bottom: 15px;
+            font-size: 1.25rem;
+        }
+        
+        .test-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+        
+        button {
+            padding: 8px 16px;
+            border-radius: 6px;
+            border: 1px solid #d1d5db;
+            background: white;
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+        
+        button:hover {
+            background: #f3f4f6;
+        }
+        
+        button.primary {
+            background: #4f46e5;
+            color: white;
+            border-color: #4f46e5;
+        }
+        
+        button.primary:hover {
+            background: #4338ca;
+        }
+        
+        .output {
+            margin-top: 15px;
+            padding: 15px;
+            background: #f9fafb;
+            border-left: 3px solid #4f46e5;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 0.875rem;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+        
+        .event-log {
+            margin-top: 20px;
+            padding: 15px;
+            background: #fffbeb;
+            border-left: 3px solid #f59e0b;
+            border-radius: 4px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        
+        .event-log h3 {
+            margin-top: 0;
+            color: #92400e;
+            font-size: 1rem;
+        }
+        
+        .event-item {
+            padding: 8px;
+            margin: 5px 0;
+            background: white;
+            border-radius: 4px;
+            font-size: 0.875rem;
+        }
+        
+        .event-time {
+            color: #6b7280;
+            font-size: 0.75rem;
+        }
+        
+        session-manager {
+            display: block;
+            margin: 20px 0;
+            padding: 20px;
+            background: #f3f4f6;
+            border-radius: 8px;
+        }
+    </style>
+</head>
+<body>
+    <div class="test-container">
+        <h1>🧪 Test: Session Manager</h1>
+        <p class="subtitle">Prueba unitaria del componente session-manager</p>
+        
+        <!-- Test 1: Renderizado básico -->
+        <div class="test-section">
+            <h2>1️⃣ Renderizado del Componente</h2>
+            <p>El componente debe renderizarse correctamente con los botones de gestión de sesión.</p>
+            <session-manager id="testManager"></session-manager>
+        </div>
+        
+        <!-- Test 2: Estado inicial -->
+        <div class="test-section">
+            <h2>2️⃣ Estado Inicial</h2>
+            <p>Verificar que el componente inicia sin sesión activa.</p>
+            <div class="test-actions">
+                <button class="primary" onclick="checkInitialState()">Verificar Estado</button>
+            </div>
+            <div id="stateOutput" class="output" style="display: none;"></div>
+        </div>
+        
+        <!-- Test 3: API Calls -->
+        <div class="test-section">
+            <h2>3️⃣ Llamadas a la API</h2>
+            <p>Probar la interacción con las funciones de sesión del backend.</p>
+            <div class="test-actions">
+                <button onclick="testCheckSession()">Check Current Session</button>
+                <button onclick="testListSessions()">List All Sessions</button>
+            </div>
+            <div id="apiOutput" class="output" style="display: none;"></div>
+        </div>
+        
+        <!-- Test 4: Eventos -->
+        <div class="test-section">
+            <h2>4️⃣ Emisión de Eventos</h2>
+            <p>El componente debe emitir eventos cuando cambia el estado de la sesión.</p>
+            <div class="event-log">
+                <h3>📡 Event Log</h3>
+                <div id="eventLog">
+                    <p style="color: #6b7280; font-size: 0.875rem;">Esperando eventos...</p>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Test 5: Public API -->
+        <div class="test-section">
+            <h2>5️⃣ API Pública</h2>
+            <p>Probar los métodos públicos del componente.</p>
+            <div class="test-actions">
+                <button onclick="testHasActiveSession()">hasActiveSession()</button>
+                <button onclick="testGetCurrentSession()">getCurrentSession()</button>
+                <button onclick="testSaveConversation()">saveConversation()</button>
+            </div>
+            <div id="publicApiOutput" class="output" style="display: none;"></div>
+        </div>
+    </div>
+
+    <!-- Importar el componente -->
+    <script type="module">
+        import '../../../elements/chat/session-manager.js';
+        
+        // Setup event listeners
+        const manager = document.getElementById('testManager');
+        const eventLog = document.getElementById('eventLog');
+        
+        function logEvent(eventName, detail) {
+            const time = new Date().toLocaleTimeString();
+            const eventItem = document.createElement('div');
+            eventItem.className = 'event-item';
+            eventItem.innerHTML = `
+                <div style="font-weight: 600; color: #4f46e5;">${eventName}</div>
+                <div style="margin-top: 4px;">${JSON.stringify(detail, null, 2)}</div>
+                <div class="event-time">${time}</div>
+            `;
+            
+            // Limpiar "Esperando eventos..." si existe
+            const waiting = eventLog.querySelector('p');
+            if (waiting) waiting.remove();
+            
+            eventLog.insertBefore(eventItem, eventLog.firstChild);
+        }
+        
+        manager.addEventListener('session-changed', (e) => {
+            logEvent('session-changed', e.detail);
+        });
+        
+        manager.addEventListener('session-started', (e) => {
+            logEvent('session-started', e.detail);
+        });
+        
+        manager.addEventListener('session-ended', (e) => {
+            logEvent('session-ended', e.detail);
+        });
+        
+        // Exponer manager globalmente para los tests
+        window.testManager = manager;
+    </script>
+    
+    <script>
+        function showOutput(elementId, content) {
+            const output = document.getElementById(elementId);
+            output.textContent = typeof content === 'string' ? content : JSON.stringify(content, null, 2);
+            output.style.display = 'block';
+        }
+        
+        function checkInitialState() {
+            const manager = window.testManager;
+            const state = {
+                hasActiveSession: manager.hasActiveSession(),
+                currentSession: manager.getCurrentSession(),
+                element: {
+                    tagName: manager.tagName,
+                    connected: manager.isConnected
+                }
+            };
+            showOutput('stateOutput', state);
+        }
+        
+        async function testCheckSession() {
+            try {
+                // Simular la llamada que hace el componente internamente
+                const response = await fetch('/api/functions/get_current_session/execute', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({})
+                });
+                const result = await response.json();
+                showOutput('apiOutput', { endpoint: 'get_current_session', result });
+            } catch (error) {
+                showOutput('apiOutput', { error: error.message });
+            }
+        }
+        
+        async function testListSessions() {
+            try {
+                const response = await fetch('/api/functions/list_ai_sessions/execute', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({})
+                });
+                const result = await response.json();
+                showOutput('apiOutput', { endpoint: 'list_ai_sessions', result });
+            } catch (error) {
+                showOutput('apiOutput', { error: error.message });
+            }
+        }
+        
+        function testHasActiveSession() {
+            const manager = window.testManager;
+            const result = manager.hasActiveSession();
+            showOutput('publicApiOutput', { 
+                method: 'hasActiveSession()',
+                result 
+            });
+        }
+        
+        function testGetCurrentSession() {
+            const manager = window.testManager;
+            const result = manager.getCurrentSession();
+            showOutput('publicApiOutput', { 
+                method: 'getCurrentSession()',
+                result 
+            });
+        }
+        
+        async function testSaveConversation() {
+            const manager = window.testManager;
+            const mockMessages = [
+                { role: 'user', content: 'Hola, ¿cómo estás?' },
+                { role: 'assistant', content: 'Bien, gracias. ¿En qué puedo ayudarte?' }
+            ];
+            
+            try {
+                const result = await manager.saveConversation(mockMessages);
+                showOutput('publicApiOutput', { 
+                    method: 'saveConversation(messages)',
+                    messages: mockMessages,
+                    result 
+                });
+            } catch (error) {
+                showOutput('publicApiOutput', { 
+                    method: 'saveConversation(messages)',
+                    error: error.message 
+                });
+            }
+        }
+    </script>
+</body>
+</html>

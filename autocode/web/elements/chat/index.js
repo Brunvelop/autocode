@@ -19,8 +19,13 @@ import './chat-messages.js';
 import './chat-window.js';
 import './context-bar.js';
 import './chat-settings.js';
+import './session-manager.js';
 
 export class AutocodeChat extends AutoFunctionController {
+    static properties = {
+        ...AutoFunctionController.properties
+    };
+
     static styles = [themeTokens, badgeBase, ghostButton, autocodeChatStyles];
 
     constructor() {
@@ -39,12 +44,6 @@ export class AutocodeChat extends AutoFunctionController {
         };
     }
 
-    connectedCallback() {
-        super.connectedCallback();
-        // La carga de metadata ahora la maneja el Controller automáticamente
-        // porque tenemos this.funcName = 'chat' en el constructor
-    }
-
     firstUpdated() {
         // Crear referencias a sub-componentes usando shadowRoot
         this._window = this.shadowRoot.querySelector('chat-window');
@@ -52,11 +51,14 @@ export class AutocodeChat extends AutoFunctionController {
         this._input = this.shadowRoot.querySelector('chat-input');
         this._contextBar = this.shadowRoot.querySelector('context-bar');
         this._settings = this.shadowRoot.querySelector('chat-settings');
+        this._sessionManager = this.shadowRoot.querySelector('session-manager');
         
         // Setup event listeners
         this.shadowRoot.addEventListener('submit', this._handleInputSubmit.bind(this));
         this.shadowRoot.addEventListener('settings-change', this._handleSettingsChange.bind(this));
         this.shadowRoot.addEventListener('toggle', this._handleWindowToggle.bind(this));
+        this.shadowRoot.addEventListener('session-changed', this._handleSessionChange.bind(this));
+        this.shadowRoot.addEventListener('session-started', this._handleSessionStarted.bind(this));
         
         // Click en botón Nueva
         const newBtn = this.shadowRoot.querySelector('[data-ref="newChatBtn"]');
@@ -89,6 +91,10 @@ export class AutocodeChat extends AutoFunctionController {
                     </div>
 
                     <chat-settings></chat-settings>
+                    
+                    <!-- Session Manager: Reemplaza toda la lógica de sesiones -->
+                    <session-manager></session-manager>
+                    
                     <button 
                         data-ref="newChatBtn"
                         class="new-chat-btn"
@@ -142,43 +148,6 @@ export class AutocodeChat extends AutoFunctionController {
         
         if (this._messages) this._messages.clear();
         if (this._contextBar) this._contextBar.update(0, 0);
-    }
-
-    async _sendMessage(message) {
-        if (!message?.trim()) return;
-
-        this._pendingUserMessage = message;
-        
-        // 1. UI Optimista
-        if (this._messages) {
-            this._messages.addMessage('user', message);
-        }
-
-        // 2. Actualizar Params (State)
-        this.setParam('message', message);
-        
-        // Sincronizar settings actuales por si acaso
-        if (this._settings) {
-            const settings = this._settings.getSettings();
-            Object.entries(settings).forEach(([key, value]) => {
-                this.setParam(key, value);
-            });
-        }
-
-        // 3. Ejecutar (usa this.execute del Controller)
-        try {
-            await this.execute();
-            // El resultado se maneja en 'after-execute' o chequeando result
-            this._processResult(this.result);
-        } catch (error) {
-            if (this._messages) {
-                this._messages.addMessage('error', error.message || 'Error desconocido');
-            }
-        }
-
-        // 4. Limpieza
-        if (this._input) this._input.clear();
-        this._updateContext();
     }
 
     // ========================================================================
@@ -266,6 +235,62 @@ export class AutocodeChat extends AutoFunctionController {
             console.warn('⚠️ Error calculating context:', e);
             // No es crítico, solo log del error
         }
+    }
+
+    // ========================================================================
+    // SESSION MANAGEMENT (Delegado a session-manager)
+    // ========================================================================
+
+    _handleSessionChange(e) {
+        // El session-manager notifica cambios en la sesión
+        console.log('📊 Sesión cambió:', e.detail.session);
+    }
+
+    _handleSessionStarted(e) {
+        console.log('✅ Sesión iniciada:', e.detail.session);
+        // Aquí podrías agregar lógica adicional si es necesario
+    }
+
+    async _sendMessage(message) {
+        if (!message?.trim()) return;
+
+        this._pendingUserMessage = message;
+        
+        // 1. UI Optimista
+        if (this._messages) {
+            this._messages.addMessage('user', message);
+        }
+
+        // 2. Actualizar Params (State)
+        this.setParam('message', message);
+        
+        // Sincronizar settings actuales por si acaso
+        if (this._settings) {
+            const settings = this._settings.getSettings();
+            Object.entries(settings).forEach(([key, value]) => {
+                this.setParam(key, value);
+            });
+        }
+
+        // 3. Ejecutar (usa this.execute del Controller)
+        try {
+            await this.execute();
+            // El resultado se maneja en 'after-execute' o chequeando result
+            this._processResult(this.result);
+            
+            // 4. Auto-save si estamos en sesión (después de respuesta del asistente)
+            if (this._sessionManager?.hasActiveSession() && this.result && !this.result._isError) {
+                await this._sessionManager.saveConversation(this.conversationHistory);
+            }
+        } catch (error) {
+            if (this._messages) {
+                this._messages.addMessage('error', error.message || 'Error desconocido');
+            }
+        }
+
+        // 5. Limpieza
+        if (this._input) this._input.clear();
+        this._updateContext();
     }
 }
 

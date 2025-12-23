@@ -169,6 +169,9 @@ git_changes.json
 logs/
 outputs/
 
+# AI Session context (only in session branches)
+.ai-context/
+
 # OpenCode configuration (contains API keys)
 .opencode.json
 .opencode/
