@@ -21,7 +21,7 @@ class TestGitUtils:
 
     @patch('subprocess.run')
     def test_get_git_tree_success(self, mock_run):
-        """Test parsing of git ls-tree output into a hierarchical tree."""
+        """Test parsing of git ls-tree output into a non-recursive graph."""
         # Skip if module not implemented yet (to allow running this test file progressively)
         if git_utils is None:
             pytest.fail("Module git_utils not implemented")
@@ -45,42 +45,46 @@ class TestGitUtils:
         
         result = git_utils.get_git_tree()
         
-        # Verify result structure (D3-friendly format)
+        # Verify result structure
         assert result.success is True
-        tree = result.result
-        
-        # Pydantic model validation instead of dict access
-        assert tree.name == 'root'
-        assert tree.type == 'directory'
-        assert len(tree.children) == 2  # root.txt and src/
-        
-        # Check root.txt
-        root_txt = next((c for c in tree.children if c.name == 'root.txt'), None)
-        assert root_txt is not None
-        assert root_txt.type == 'file'
-        assert root_txt.size == 100
-        
-        # Check src/
-        src = next((c for c in tree.children if c.name == 'src'), None)
-        assert src is not None
-        assert src.type == 'directory'
-        
-        # Check src/main.py
-        main_py = next((c for c in src.children if c.name == 'main.py'), None)
-        assert main_py is not None
-        assert main_py.type == 'file'
-        assert main_py.size == 200
-        
-        # Check src/utils/
-        utils = next((c for c in src.children if c.name == 'utils'), None)
-        assert utils is not None
-        assert utils.type == 'directory'
-        
-        # Check src/utils/helper.py
-        helper = next((c for c in utils.children if c.name == 'helper.py'), None)
-        assert helper is not None
-        assert helper.type == 'file'
-        assert helper.size == 300
+        graph = result.result
+        assert graph is not None
+        assert graph.root_id == ""
+        assert len(graph.nodes) >= 1
+
+        nodes = {n.id: n for n in graph.nodes}
+        assert "" in nodes
+        assert nodes[""].type == "directory"
+        assert nodes[""].parent_id is None
+        assert nodes[""].name == "root"
+
+        # root.txt
+        assert "root.txt" in nodes
+        assert nodes["root.txt"].type == "file"
+        assert nodes["root.txt"].size == 100
+        assert nodes["root.txt"].parent_id == ""
+
+        # src directory
+        assert "src" in nodes
+        assert nodes["src"].type == "directory"
+        assert nodes["src"].parent_id == ""
+
+        # src/main.py
+        assert "src/main.py" in nodes
+        assert nodes["src/main.py"].type == "file"
+        assert nodes["src/main.py"].size == 200
+        assert nodes["src/main.py"].parent_id == "src"
+
+        # src/utils directory
+        assert "src/utils" in nodes
+        assert nodes["src/utils"].type == "directory"
+        assert nodes["src/utils"].parent_id == "src"
+
+        # src/utils/helper.py
+        assert "src/utils/helper.py" in nodes
+        assert nodes["src/utils/helper.py"].type == "file"
+        assert nodes["src/utils/helper.py"].size == 300
+        assert nodes["src/utils/helper.py"].parent_id == "src/utils"
         
         # Verify git command call
         mock_run.assert_called_with(
@@ -119,6 +123,8 @@ class TestGitUtils:
         result = git_utils.get_git_tree()
         
         assert result.success is True
-        tree = result.result
-        assert tree.name == 'root'
-        assert tree.children == []
+        graph = result.result
+        assert graph is not None
+        assert graph.root_id == ""
+        assert len(graph.nodes) == 1
+        assert graph.nodes[0].id == ""

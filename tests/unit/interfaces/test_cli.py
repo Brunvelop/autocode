@@ -14,7 +14,7 @@ from autocode.interfaces.cli import (
     list_functions, serve_api, serve_mcp, serve, TYPE_MAP
 )
 from autocode.interfaces.registry import FUNCTION_REGISTRY
-from autocode.interfaces.models import ExplicitParam, FunctionInfo
+from autocode.interfaces.models import ExplicitParam, FunctionInfo, GenericOutput
 
 
 class TestTypeMappingAndUtils:
@@ -151,12 +151,13 @@ class TestCreateHandler:
         # Create function that raises an error
         def error_func(x: int, y: int = 1) -> int:
             raise ValueError("Test error")
-        
+
         func_info = FunctionInfo(
             name="error_func",
             func=error_func,
-            description="Function that errors",
-            params=sample_function_info.params
+            description="Error function",
+            params=sample_function_info.params,
+            return_type=GenericOutput
         )
         
         handler = _create_handler("error_func", func_info)
@@ -429,7 +430,8 @@ class TestCLIErrorScenarios:
             name="always_fails",
             func=always_fails,
             description="Function that always fails",
-            params=[ExplicitParam(name="x", type=int, required=True, description="Input")]
+            params=[],
+            return_type=GenericOutput
         )
         
         # Temporarily add to registry
@@ -480,7 +482,8 @@ class TestCLICommandRegistrationEdgeCases:
             name="underscore_func",
             func=func_with_underscore,
             description="Function with underscore param",
-            params=[ExplicitParam(name="param_name", type=str, required=True, description="Param with underscore")]
+            params=[ExplicitParam(name="param_name", type=str, required=True, description="Param with underscore")],
+            return_type=GenericOutput
         )
         
         def test_command(**kwargs):

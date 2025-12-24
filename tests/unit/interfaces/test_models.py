@@ -76,9 +76,11 @@ class TestFunctionInfo:
         func_info = FunctionInfo(
             name="test_func",
             func=sample_function,
-            description="Test function"
+            description="Test function",
+            params=[],
+            return_type=GenericOutput
         )
-        
+
         assert func_info.name == "test_func"
         assert func_info.func == sample_function
         assert func_info.description == "Test function"
@@ -97,7 +99,8 @@ class TestFunctionInfo:
             func=sample_function,
             description="Complete test function",
             params=params,
-            http_methods=["GET", "POST", "PUT"]
+            http_methods=["GET", "POST", "PUT"],
+            return_type=GenericOutput
         )
         
         assert func_info.name == "complete_func"
@@ -114,7 +117,9 @@ class TestFunctionInfo:
         func_info = FunctionInfo(
             name="test",
             func=lambda x: x,
-            description="Test lambda"
+            description="Test",
+            params=[],
+            return_type=GenericOutput
         )
         assert callable(func_info.func)
         
@@ -125,7 +130,9 @@ class TestFunctionInfo:
         func_info = FunctionInfo(
             name="test",
             func=test_func,
-            description="Test function"
+            description="Test",
+            params=[],
+            return_type=GenericOutput
         )
         assert callable(func_info.func)
     
@@ -239,8 +246,9 @@ class TestModelsIntegration:
         func_info = FunctionInfo(
             name="integrated_test",
             func=sample_function,
-            description="Integration test function",
-            params=params
+            description="Integrated test",
+            params=params,
+            return_type=GenericOutput
         )
         
         # Verify the integration

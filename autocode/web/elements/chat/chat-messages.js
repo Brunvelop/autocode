@@ -72,13 +72,11 @@ export class ChatMessages extends LitElement {
 
     _renderContent(role, content) {
         if (typeof content === 'object' && content !== null) {
+            // Toda la info técnica (reasoning, trajectory, etc) se delega al chat-debug-info
             return html`
-                ${content.reasoning ? this._renderReasoning(content.reasoning) : ''}
-                ${content.trajectory ? this._renderTrajectory(content.trajectory) : ''}
-                
                 <div class="text-content">${this._extractMainText(content)}</div>
 
-                ${role === 'assistant' 
+                ${(role === 'assistant' || role === 'error') 
                     ? html`<chat-debug-info .data=${content}></chat-debug-info>` 
                     : ''}
             `;
@@ -87,59 +85,20 @@ export class ChatMessages extends LitElement {
         return html`<div class="text-content">${content}</div>`;
     }
 
-    _renderReasoning(reasoning) {
-        return html`
-            <details class="reasoning" data-type="reasoning">
-                <summary>
-                    <span style="margin-right: 0.5rem">🧠</span> Ver proceso de pensamiento
-                </summary>
-                <div class="content">${reasoning}</div>
-            </details>
-        `;
-    }
-
-    _renderTrajectory(trajectory) {
-        let steps = Array.isArray(trajectory) ? trajectory : [trajectory];
-        if (!trajectory || (Array.isArray(trajectory) && trajectory.length === 0)) return '';
-
-        return html`
-            <div class="trajectory">
-                <div class="trajectory-title">
-                    <span>🛠️ Uso de Herramientas</span>
-                </div>
-                ${steps.map(step => this._renderStep(step))}
-            </div>
-        `;
-    }
-
-    _renderStep(step) {
-        const toolName = step.tool_name || step.tool || 'Unknown Tool';
-        const toolInput = step.tool_input || step.input || step.args || '';
-        const thought = step.thought || '';
-        const observation = step.observation || step.result || '';
-
-        return html`
-            <div class="step">
-                ${thought ? html`<div class="step-thought">💭 ${thought}</div>` : ''}
-                
-                <div class="tool-call">
-                    ${toolName}(${typeof toolInput === 'string' ? toolInput : JSON.stringify(toolInput)})
-                </div>
-                
-                ${observation ? html`
-                    <details class="observation">
-                        <summary>Ver resultado</summary>
-                        <div class="observation-content">${typeof observation === 'string' ? observation : JSON.stringify(observation, null, 2)}</div>
-                    </details>
-                ` : ''}
-            </div>
-        `;
-    }
-
     _extractMainText(content) {
+        // Estrategias de extracción del texto principal:
+        // 1) Priorizar el payload si existe (GenericOutput/DspyOutput: result)
         if (content.result && typeof content.result === 'string') return content.result;
         if (content.result && content.result.response) return content.result.response;
         if (content.response) return content.response;
+
+        // 2) Errores explícitos
+        if (content.error) return content.error;
+
+        // 3) Mensaje (message) suele ser metadata del envelope; usarlo como fallback
+        if (content.message) return content.message;
+        
+        // 4) Fallback a JSON string
         return JSON.stringify(content.result || content, null, 2);
     }
 

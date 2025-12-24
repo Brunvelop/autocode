@@ -260,8 +260,7 @@ def generate_with_dspy(
         logger.error(error_msg, exc_info=True)
         return DspyOutput(success=False, result={}, message=error_msg)
     
-    # Extracción simplificada con getattr
-    result = getattr(response, 'response', {})
+    # Extracción de metadatos
     reasoning = getattr(response, 'reasoning', None)
     completions = getattr(response, 'completions', None)
     trajectory = getattr(response, 'trajectory', None)
@@ -281,13 +280,8 @@ def generate_with_dspy(
             else:
                 normalized_completions.append(str(c))
         completions = normalized_completions
-    
-    if not result:
-        error_msg = "No se encontraron campos de output en la response de DSPy"
-        logger.warning(error_msg)
-        return DspyOutput(success=False, result={}, message=error_msg)
-    
-    # Convertir campos complejos a formatos serializables para API
+
+    # Convertir campos complejos a formatos serializables para API (ANTES de retornar error)
     # History: Convertir ModelResponse y otros objetos a dicts
     if history:
         serialized_history = []
@@ -325,6 +319,45 @@ def generate_with_dspy(
     else:
         # Si no es dict ni lista (ej: Mock, objeto extraño), forzar a None para evitar error de validación
         trajectory = None
+
+    # Extracción dinámica de outputs basada en la signature
+    result = {}
+    
+    # 1. Intentar obtener campos definidos en la signature
+    for field_name in signature_class.output_fields:
+        val = getattr(response, field_name, None)
+        if val is not None:
+            result[field_name] = val
+            
+    # 2. Fallback: Si no se encontraron campos, revisar si 'response' existe (comportamiento legacy/chat)
+    if not result and hasattr(response, 'response'):
+        raw_response = getattr(response, 'response')
+        if raw_response:
+             # Si response es un dict y no tenemos resultado, asumimos que es el resultado
+            if isinstance(raw_response, dict):
+                result = raw_response
+            # Si es string y la signature tiene un campo 'response', ya debería haberlo capturado el loop.
+            # Pero si la signature espera otra cosa y dspy devolvió todo en .response, esto podría ayudar.
+            elif isinstance(raw_response, str) and 'response' not in result:
+                 # Solo si no tenemos nada más, lo guardamos como 'response' (aunque la signature no lo espere?)
+                 # Mejor no inventar campos.
+                 pass
+
+    if not result:
+        expected_fields = list(signature_class.output_fields.keys())
+        error_msg = f"No se encontraron campos de output en la response de DSPy. Esperados: {expected_fields}"
+        logger.warning(error_msg)
+        
+        # Retornamos el DspyOutput fallido PERO con history y trajectory para debugging
+        return DspyOutput(
+            success=False, 
+            result={}, 
+            message=error_msg,
+            reasoning=reasoning,
+            completions=completions,
+            trajectory=trajectory,
+            history=history
+        )
     
     logger.info(f"Generación exitosa con {len(result)} campos de output")
     return DspyOutput(

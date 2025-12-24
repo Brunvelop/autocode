@@ -3,7 +3,7 @@ FastAPI server with dynamic endpoints from registry and static file serving.
 """
 import logging
 import os
-from typing import Any, Dict, Type, Union
+from typing import Any, Dict, Type
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse
@@ -11,7 +11,6 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, create_model
 
 from autocode.interfaces.models import FunctionInfo, GenericOutput, FunctionDetailsResponse
-from autocode.core.ai.models import DspyOutput
 from autocode.interfaces.registry import FUNCTION_REGISTRY, load_core_functions, get_all_function_schemas
 
 # Setup logging with custom filter to exclude noisy third-party libraries
@@ -260,11 +259,15 @@ def register_dynamic_endpoints(app: FastAPI):
     for func_name, func_info in FUNCTION_REGISTRY.items():
         for method in func_info.http_methods:
             handler, input_model = create_handler(func_info, method)
+
+            # Usar el return type real declarado por la función para response_model.
+            # Esto mejora OpenAPI y evita el Union genérico.
+            response_model = func_info.return_type or GenericOutput
             app.add_api_route(
                 f"/{func_name}",
                 handler,
                 methods=[method.upper()],
-                response_model=Union[GenericOutput, DspyOutput],
+                response_model=response_model,
                 operation_id=f"{func_name}_{method.lower()}",
                 summary=func_info.description
             )

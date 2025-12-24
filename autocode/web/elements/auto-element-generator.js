@@ -24,6 +24,11 @@ export class AutoFunctionController extends LitElement {
         // Estado
         params: { type: Object, state: true }, // Valores actuales de los parámetros
         result: { type: Object, state: true },
+        // Respuesta completa del backend (envelope)
+        envelope: { type: Object, state: true },
+        // Metadata conveniente (derivada del envelope)
+        success: { type: Boolean, state: true },
+        message: { type: String, state: true },
         errors: { type: Object, state: true },
         
         // UI Status
@@ -39,6 +44,9 @@ export class AutoFunctionController extends LitElement {
         this.funcInfo = null;
         this.params = {}; // { paramName: value }
         this.result = null;
+        this.envelope = null;
+        this.success = undefined;
+        this.message = '';
         this.errors = {};
         
         this._status = 'default';
@@ -141,6 +149,25 @@ export class AutoFunctionController extends LitElement {
         return this.result;
     }
 
+    /**
+     * Devuelve el envelope completo del backend.
+     * Útil para consumidores que necesiten metadata (reasoning/trajectory/history, etc.).
+     */
+    getEnvelope() {
+        return this.envelope;
+    }
+
+    /**
+     * Devuelve el payload real (alias de result).
+     */
+    getPayload() {
+        return this.result;
+    }
+
+    isSuccess() {
+        return this.success === true;
+    }
+
     // ========================================================================
     // EXECUTION LOGIC
     // ========================================================================
@@ -173,19 +200,47 @@ export class AutoFunctionController extends LitElement {
         
         try {
             // 4. Call API
-            const result = await this.callAPI(this.params);
-            this.result = result;
-            this._setStatus('success', 'Ejecutado correctamente');
+            const data = await this.callAPI(this.params);
+
+            // Guardar envelope completo
+            this.envelope = data;
+
+            // Derivar metadata + payload estandarizado
+            const hasEnvelopeShape = (data && typeof data === 'object' && Object.prototype.hasOwnProperty.call(data, 'result'));
+            this.result = hasEnvelopeShape ? data.result : data;
+
+            if (data && typeof data === 'object') {
+                this.success = data.success;
+                this.message = data.message;
+            } else {
+                this.success = undefined;
+                this.message = '';
+            }
+
+            // Si el backend devuelve success=false, lo tratamos como ejecución fallida
+            // (pero NO lanzamos excepción: queda a criterio del consumidor)
+            if (this.success === false) {
+                this._errorMessage = this.message || 'Error en ejecución';
+                this._setStatus('error', 'Error en ejecución');
+            } else {
+                this._errorMessage = '';
+                this._setStatus('success', 'Ejecutado correctamente');
+            }
+
+            const payload = this.result;
 
             this.dispatchEvent(new CustomEvent('after-execute', {
-                detail: { funcName: this.funcName, params: this.params, result },
+                detail: { funcName: this.funcName, params: this.params, result: payload, envelope: this.envelope },
                 bubbles: true,
                 composed: true
             }));
 
-            return result;
+            return payload;
         } catch (error) {
             this.result = { _isError: true, _message: `Error: ${error.message}` };
+            this.envelope = this.result;
+            this.success = false;
+            this.message = this.result._message;
             this._setStatus('error', 'Error en ejecución');
 
             this.dispatchEvent(new CustomEvent('execute-error', {
@@ -308,7 +363,7 @@ export class AutoFunctionController extends LitElement {
         }
 
         const data = await response.json();
-        return data.result !== undefined ? data.result : data;
+        return data;
     }
 
     /**

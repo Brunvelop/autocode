@@ -173,28 +173,41 @@ export class AutocodeChat extends AutoFunctionController {
     /**
      * Procesa el resultado de la ejecución y actualiza el historial y la UI
      */
-    _processResult(result) {
-        if (!result) return;
-        
-        const isError = result._isError || result.success === false;
+    _processResult(envelopeOrPayload) {
+        if (!envelopeOrPayload) return;
+
+        // A partir de ahora el Controller expone:
+        // - this.result: payload (data.result)
+        // - this.envelope: envelope completo (data)
+        // Preferimos procesar/mostrar el envelope para conservar metadatos.
+        const envelope = (envelopeOrPayload && typeof envelopeOrPayload === 'object' && Object.prototype.hasOwnProperty.call(envelopeOrPayload, 'result'))
+            ? envelopeOrPayload
+            : (this.envelope || envelopeOrPayload);
+
+        const isError = envelope?._isError || envelope?.success === false || this.success === false;
 
         if (isError) {
-            const msg = result._message || result.message || result.error || 'Error desconocido';
+            // Pasar el objeto completo si es posible para mantener metadatos (history, debug info)
+            // Si no es objeto, usar el string de error
+            const content = (typeof envelope === 'object' && envelope !== null)
+                ? envelope
+                : (envelope?._message || envelope?.message || envelope?.error || 'Error desconocido');
+
             if (this._messages) {
-                this._messages.addMessage('error', msg);
+                this._messages.addMessage('error', content);
             }
             return;
         }
 
         // Mostrar respuesta
         if (this._messages) {
-            this._messages.addMessage('assistant', result);
+            this._messages.addMessage('assistant', envelope);
         }
 
         // Actualizar historial interno
-        const responseText = result?.result?.response || 
-                           result?.response || 
-                           (typeof result === 'string' ? result : JSON.stringify(result, null, 2));
+        const responseText = envelope?.result?.response ||
+                           envelope?.response ||
+                           (typeof envelope === 'string' ? envelope : JSON.stringify(envelope?.result || envelope, null, 2));
 
         if (this._pendingUserMessage) {
             this.conversationHistory.push({ role: 'user', content: this._pendingUserMessage });
@@ -291,11 +304,11 @@ export class AutocodeChat extends AutoFunctionController {
         // 3. Ejecutar (usa this.execute del Controller)
         try {
             await this.execute();
-            // El resultado se maneja en 'after-execute' o chequeando result
-            this._processResult(this.result);
+            // Procesar siempre el envelope para conservar success/message + metadata DSPy
+            this._processResult(this.envelope || this.result);
             
             // 4. Auto-save si estamos en sesión (después de respuesta del asistente)
-            if (this._sessionManager?.hasActiveSession() && this.result && !this.result._isError) {
+            if (this._sessionManager?.hasActiveSession() && this.envelope && this.envelope.success !== false && !this.envelope._isError) {
                 await this._sessionManager.saveConversation(this.conversationHistory);
             }
         } catch (error) {

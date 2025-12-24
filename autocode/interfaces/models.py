@@ -135,6 +135,8 @@ class FunctionInfo(BaseModel):
     description: str
     params: List[ExplicitParam] = Field(default_factory=list, description="Explicit parameter definitions")
     http_methods: List[str] = Field(default_factory=lambda: ["GET", "POST"])
+    # Return type annotation (GenericOutput o subclase). Útil para tipar el response_model en FastAPI.
+    return_type: Optional[Type[BaseModel]] = Field(default=None, description="Declared return type annotation")
 
     def to_schema(self) -> FunctionSchema:
         """Convierte a schema serializable."""

@@ -68,7 +68,8 @@ def sample_function_info(sample_function):
             ExplicitParam(name="x", type=int, required=True, description="First number"),
             ExplicitParam(name="y", type=int, default=1, required=False, description="Second number")
         ],
-        http_methods=["GET", "POST"]
+        http_methods=["GET", "POST"],
+        return_type=GenericOutput
     )
 
 

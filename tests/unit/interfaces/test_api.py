@@ -85,7 +85,8 @@ class TestCreateDynamicModel:
             name="test_func",
             func=lambda x: x,
             description="Test",
-            params=[required_param]
+            params=[required_param],
+            return_type=GenericOutput
         )
         
         DynamicModel = create_dynamic_model(func_info, for_post=True)
@@ -140,7 +141,8 @@ class TestCreateDynamicModel:
             name="complex_func",
             func=lambda: None,
             description="Complex function",
-            params=params
+            params=params,
+            return_type=GenericOutput
         )
         
         DynamicModel = create_dynamic_model(func_info, for_post=True)
@@ -199,7 +201,8 @@ class TestExtractFunctionParams:
             name="test",
             func=lambda: None,
             description="Test",
-            params=params
+            params=params,
+            return_type=GenericOutput
         )
         
         request_params = {"required": "test"}
@@ -233,7 +236,8 @@ class TestExecuteFunctionWithParams:
             name="dict_func",
             func=dict_func,
             description="Returns dict",
-            params=[ExplicitParam(name="name", type=str, required=True, description="Name")]
+            params=[ExplicitParam(name="name", type=str, required=True, description="Name")],
+            return_type=GenericOutput
         )
         
         request_params = {"name": "World"}
@@ -253,7 +257,8 @@ class TestExecuteFunctionWithParams:
             name="failing_func",
             func=failing_func,
             description="Failing function",
-            params=[ExplicitParam(name="x", type=int, required=True, description="Integer param")]
+            params=[ExplicitParam(name="x", type=int, required=True, description="Integer param")],
+            return_type=GenericOutput
         )
         
         request_params = {"x": "not_an_int"}
@@ -273,7 +278,8 @@ class TestExecuteFunctionWithParams:
             name="error_func",
             func=error_func,
             description="Error function",
-            params=[ExplicitParam(name="x", type=int, required=True, description="Integer param")]
+            params=[ExplicitParam(name="x", type=int, required=True, description="Integer param")],
+            return_type=GenericOutput
         )
         
         request_params = {"x": 5}
@@ -407,7 +413,8 @@ class TestRegisterDynamicEndpoints:
             func=lambda x: x,
             description="Custom function",
             params=[ExplicitParam(name="x", type=str, required=True, description="Param")],
-            http_methods=["PUT", "DELETE"]
+            http_methods=["PUT", "DELETE"],
+            return_type=GenericOutput
         )
         FUNCTION_REGISTRY["custom_func"] = custom_func_info
         
@@ -616,7 +623,8 @@ class TestCreateDynamicModelExtended:
             name="list_func",
             func=lambda items, numbers: None,
             description="Function with list parameters",
-            params=params
+            params=params,
+            return_type=GenericOutput
         )
         
         DynamicModel = create_dynamic_model(func_info, for_post=True)
@@ -642,7 +650,8 @@ class TestCreateDynamicModelExtended:
             name="dict_func",
             func=lambda config, metadata: None,
             description="Function with dict parameters",
-            params=params
+            params=params,
+            return_type=GenericOutput
         )
         
         DynamicModel = create_dynamic_model(func_info, for_post=True)
@@ -672,7 +681,8 @@ class TestCreateDynamicModelExtended:
             name="all_optional_func",
             func=lambda opt1, opt2, opt3: None,
             description="Function with all optional params",
-            params=params
+            params=params,
+            return_type=GenericOutput
         )
         
         DynamicModel = create_dynamic_model(func_info, for_post=True)
@@ -695,7 +705,8 @@ class TestCreateDynamicModelExtended:
             name="no_params_func",
             func=lambda: "result",
             description="Function with no parameters",
-            params=[]
+            params=[],
+            return_type=GenericOutput
         )
         
         DynamicModel = create_dynamic_model(func_info, for_post=True)
@@ -723,7 +734,8 @@ class TestExtractFunctionParamsExtended:
             name="mixed_func",
             func=lambda: None,
             description="Function with mixed defaults",
-            params=params
+            params=params,
+            return_type=GenericOutput
         )
         
         request_params = {"required_str": "test"}
@@ -750,7 +762,8 @@ class TestExtractFunctionParamsExtended:
             name="partial_func",
             func=lambda: None,
             description="Function for partial override test",
-            params=params
+            params=params,
+            return_type=GenericOutput
         )
         
         # Override only param2
@@ -775,7 +788,8 @@ class TestExtractFunctionParamsExtended:
             name="complex_types_func",
             func=lambda: None,
             description="Function with complex types",
-            params=params
+            params=params,
+            return_type=GenericOutput
         )
         
         complex_list = [{"id": 1, "name": "item1"}, {"id": 2, "name": "item2"}]
@@ -807,7 +821,8 @@ class TestExecuteFunctionWithParamsExtended:
             params=[
                 ExplicitParam(name="x", type=int, required=True, description="Integer param"),
                 ExplicitParam(name="y", type=str, required=True, description="String param")
-            ]
+            ],
+            return_type=GenericOutput
         )
         
         # Pass wrong types that will cause TypeError in function
@@ -833,7 +848,8 @@ class TestExecuteFunctionWithParamsExtended:
             name="custom_error_func",
             func=custom_error_func,
             description="Function with custom exception",
-            params=[ExplicitParam(name="x", type=int, required=True, description="Positive integer")]
+            params=[ExplicitParam(name="x", type=int, required=True, description="Positive integer")],
+            return_type=GenericOutput
         )
         
         request_params = {"x": -5}
@@ -853,7 +869,8 @@ class TestExecuteFunctionWithParamsExtended:
             name="list_func",
             func=list_func,
             description="Returns list",
-            params=[ExplicitParam(name="count", type=int, required=True, description="Number of items")]
+            params=[ExplicitParam(name="count", type=int, required=True, description="Number of items")],
+            return_type=GenericOutput
         )
         
         request_params = {"count": 3}
@@ -874,7 +891,8 @@ class TestExecuteFunctionWithParamsExtended:
             name="none_func",
             func=none_func,
             description="Returns None result",
-            params=[ExplicitParam(name="message", type=str, required=True, description="Message")]
+            params=[ExplicitParam(name="message", type=str, required=True, description="Message")],
+            return_type=GenericOutput
         )
         
         request_params = {"message": "test"}
@@ -895,7 +913,8 @@ class TestExecuteFunctionWithParamsExtended:
             name="error_func",
             func=error_func,
             description="Error function for logging test",
-            params=[]
+            params=[],
+            return_type=GenericOutput
         )
         
         with pytest.raises(HTTPException):

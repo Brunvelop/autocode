@@ -414,6 +414,7 @@ def _generate_function_info(func: Callable, http_methods: List[str] = None) -> F
         http_methods = ["GET", "POST"]
     
     http_methods = _validate_http_methods(http_methods)
+    return_type = _get_return_type(func)
     _validate_return_type(func)
     
     # Parse docstring for parameter descriptions
@@ -434,8 +435,31 @@ def _generate_function_info(func: Callable, http_methods: List[str] = None) -> F
         func=func,
         description=doc.short_description or f"Execute {func.__name__}",
         params=params,
-        http_methods=http_methods
+        http_methods=http_methods,
+        return_type=return_type
     )
+
+
+def _get_return_type(func: Callable):
+    """Obtiene el tipo de retorno declarado (resolviendo Optional/Union).
+
+    El registry ya exige GenericOutput o subclase; guardamos el tipo para
+    que FastAPI pueda declarar response_model de forma precisa por endpoint.
+    """
+    sig = inspect.signature(func)
+    return_annotation = sig.return_annotation
+
+    if return_annotation == inspect.Parameter.empty:
+        return None
+
+    origin = get_origin(return_annotation)
+    if origin is Union:
+        args = get_args(return_annotation)
+        non_none = [a for a in args if a is not type(None)]
+        if len(non_none) == 1:
+            return_annotation = non_none[0]
+
+    return return_annotation
 
 
 def _validate_http_methods(http_methods: List[str]) -> List[str]:

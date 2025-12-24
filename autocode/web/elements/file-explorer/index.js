@@ -75,9 +75,76 @@ class FileExplorer extends AutoFunctionController {
         // Estado: Success - Renderizar árbol
         return html`
             <div class="file-explorer-root">
-                ${this._renderNode(this.result, 0)}
+                ${this._renderGraphOrNode(this.result)}
             </div>
         `;
+    }
+
+    /**
+     * Soporta ambos formatos:
+     * - Formato antiguo (árbol recursivo): { name, type, children: [...] }
+     * - Formato nuevo (graph / adjacency list): { root_id, nodes: [...] }
+     */
+    _renderGraphOrNode(result) {
+        if (!result) return html``;
+
+        // Nuevo formato (graph)
+        if (result.nodes && Array.isArray(result.nodes) && typeof result.root_id !== 'undefined') {
+            const rootNode = this._buildTreeFromGraph(result);
+            if (!rootNode) {
+                return html`<div class="error-state"><div>Sin datos disponibles</div></div>`;
+            }
+            return this._renderNode(rootNode, 0);
+        }
+
+        // Formato antiguo (nodo recursivo)
+        return this._renderNode(result, 0);
+    }
+
+    /**
+     * Reconstruye un árbol recursivo a partir de un grafo (adjacency list)
+     * con shape: { root_id, nodes: [{id,parent_id,name,type,size,path}] }
+     */
+    _buildTreeFromGraph(graph) {
+        const { root_id: rootId, nodes } = graph;
+        const byId = new Map();
+
+        // Crear nodos base
+        for (const n of nodes) {
+            byId.set(n.id, {
+                name: n.name,
+                type: n.type,
+                size: n.size || 0,
+                path: n.path,
+                children: []
+            });
+        }
+
+        // Enlazar parent -> children
+        for (const n of nodes) {
+            if (n.parent_id === null || typeof n.parent_id === 'undefined') continue;
+            const parent = byId.get(n.parent_id);
+            const child = byId.get(n.id);
+            if (parent && child) {
+                parent.children.push(child);
+            }
+        }
+
+        const root = byId.get(rootId);
+        if (!root) return null;
+
+        // Normalización: si algún directorio queda sin children, poner []
+        const normalize = (node) => {
+            if (node.type === 'directory') {
+                if (!Array.isArray(node.children)) node.children = [];
+                for (const c of node.children) normalize(c);
+            } else {
+                node.children = undefined;
+            }
+        };
+        normalize(root);
+
+        return root;
     }
 
     /**

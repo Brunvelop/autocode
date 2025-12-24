@@ -59,17 +59,12 @@
                 const mockTree = {
                     success: true,
                     result: {
-                        name: 'root',
-                        type: 'directory',
-                        children: [
-                            {
-                                name: 'src',
-                                type: 'directory',
-                                children: [
-                                    { name: 'main.py', type: 'file', size: 12 }
-                                ]
-                            },
-                            { name: 'README.md', type: 'file', size: 2048 }
+                        root_id: '',
+                        nodes: [
+                            { id: '', parent_id: null, name: 'root', path: '', type: 'directory', size: 0 },
+                            { id: 'src', parent_id: '', name: 'src', path: 'src', type: 'directory', size: 0 },
+                            { id: 'src/main.py', parent_id: 'src', name: 'main.py', path: 'src/main.py', type: 'file', size: 12 },
+                            { id: 'README.md', parent_id: '', name: 'README.md', path: 'README.md', type: 'file', size: 2048 }
                         ]
                     }
                 };
@@ -133,7 +128,12 @@
                             ok: true,
                             json: async () => ({
                                 success: true,
-                                result: { name: 'root', type: 'directory', children: [] }
+                                result: {
+                                    root_id: '',
+                                    nodes: [
+                                        { id: '', parent_id: null, name: 'root', path: '', type: 'directory', size: 0 }
+                                    ]
+                                }
                             })
                         };
                     }

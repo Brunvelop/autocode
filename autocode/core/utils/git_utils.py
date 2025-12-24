@@ -193,16 +193,28 @@ class GitOperations:
 # REGISTERED FUNCTIONS
 # ============================================================================
 
-class GitNode(BaseModel):
-    """Node representing a file or directory in the git tree."""
+class GitNodeEntry(BaseModel):
+    """Flat representation of a node in the git tree (non-recursive / adjacency list)."""
+
+    id: str = Field(description="Stable node id (we use full path; root is empty string)")
+    parent_id: Optional[str] = Field(default=None, description="Parent node id; None only for root")
     name: str = Field(description="Name of the file or directory")
+    path: str = Field(description="Full path from repository root")
     type: Literal["file", "directory"] = Field(description="Type of the node")
-    size: Optional[int] = Field(default=0, description="Size in bytes (files only)")
-    children: Optional[List['GitNode']] = Field(default=None, description="List of children nodes if directory")
+    size: int = Field(default=0, description="Size in bytes (files only)")
+
+
+class GitTreeGraph(BaseModel):
+    """Non-recursive tree representation as a graph."""
+
+    root_id: str = Field(description="Id of the root node")
+    nodes: List[GitNodeEntry] = Field(default_factory=list, description="All nodes in the tree")
+
 
 class GitTreeOutput(GenericOutput):
     """Specific output for git tree structure."""
-    result: Optional[GitNode] = Field(default=None, description="Root node of the git tree")
+
+    result: Optional[GitTreeGraph] = Field(default=None, description="Graph representation of the git tree")
 
 @register_function(http_methods=["GET"])
 def get_git_tree() -> GitTreeOutput:
@@ -229,63 +241,82 @@ def get_git_tree() -> GitTreeOutput:
         lines = result.stdout.strip().split('\n')
         lines = [line for line in lines if line]  # Filter empty strings
         
-        # Build tree structure from flat list
-        tree_dict = {
-            "name": "root",
-            "type": "directory",
-            "children": [],
-            "size": 0
+        # Build a non-recursive graph (adjacency list) to avoid recursive schemas in OpenAPI.
+        # We use id=path. Root is the empty path "".
+        root_id = ""
+        nodes_by_id = {
+            root_id: GitNodeEntry(
+                id=root_id,
+                parent_id=None,
+                name="root",
+                path=root_id,
+                type="directory",
+                size=0,
+            )
         }
-        
+
+        def ensure_dir(path: str) -> None:
+            """Ensure a directory node exists for a given path."""
+            if path in nodes_by_id:
+                return
+            parent = path.rsplit("/", 1)[0] if "/" in path else root_id
+            name = path.rsplit("/", 1)[-1] if path else "root"
+            nodes_by_id[path] = GitNodeEntry(
+                id=path,
+                parent_id=parent if parent != path else root_id,
+                name=name,
+                path=path,
+                type="directory",
+                size=0,
+            )
+            # Ensure parent exists too
+            if parent != root_id:
+                ensure_dir(parent)
+
         for line in lines:
             try:
                 # Output format: "100644 blob <sha> <size_padded>\t<path>"
                 # Split by tab to separate metadata from path (handles spaces in path)
-                if '\t' in line:
-                    metadata, file_path = line.split('\t', 1)
+                if "\t" in line:
+                    metadata, file_path = line.split("\t", 1)
                 else:
-                    # Fallback for unexpected output format
                     parts = line.split()
                     file_path = parts[-1]
                     metadata = " ".join(parts[:-1])
 
                 meta_parts = metadata.split()
-                # 4th element is size (after mode, type, sha)
-                # It might be "-" for some objects, treat as 0
                 size_str = meta_parts[3] if len(meta_parts) > 3 else "0"
                 size = int(size_str) if size_str.isdigit() else 0
-                
-                parts = file_path.split('/')
-                current_level = tree_dict["children"]
-                
-                for i, part in enumerate(parts):
-                    is_file = (i == len(parts) - 1)
-                    existing_node = next((node for node in current_level if node["name"] == part), None)
-                    
-                    if existing_node:
-                        if not is_file:
-                            current_level = existing_node["children"]
-                    else:
-                        new_node = {
-                            "name": part,
-                            "type": "file" if is_file else "directory",
-                            "size": size if is_file else 0
-                        }
-                        if not is_file:
-                            new_node["children"] = []
-                        
-                        current_level.append(new_node)
-                        if not is_file:
-                            current_level = new_node["children"]
+
+                # Ensure all directory segments exist
+                if "/" in file_path:
+                    dir_path = file_path.rsplit("/", 1)[0]
+                    ensure_dir(dir_path)
+                    parent_id = dir_path
+                else:
+                    parent_id = root_id
+
+                # Add file node
+                nodes_by_id[file_path] = GitNodeEntry(
+                    id=file_path,
+                    parent_id=parent_id,
+                    name=file_path.rsplit("/", 1)[-1],
+                    path=file_path,
+                    type="file",
+                    size=size,
+                )
             except Exception as loop_e:
                 logger.warning(f"Error parsing line '{line}': {loop_e}")
                 continue
-        
-        root_node = GitNode(**tree_dict)
-                        
+
+        graph = GitTreeGraph(
+            root_id=root_id,
+            nodes=list(nodes_by_id.values()),
+        )
+
         return GitTreeOutput(
             success=True,
-            result=root_node,
+            result=graph,
             message="Git tree retrieved successfully"
         )
         
