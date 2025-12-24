@@ -50,6 +50,12 @@ export class ChatDebugInfo extends LitElement {
                             </span>
                         ` : ''}
 
+                        ${info.total_cost ? html`
+                            <span class="cost-badge">
+                                $${info.total_cost.toFixed(4)}
+                            </span>
+                        ` : ''}
+
                         ${info.success !== undefined ? html`
                             <span class="status-badge" style="color: ${info.success ? 'green' : 'red'}">
                                 ${info.success ? '✔' : '✘'}
@@ -126,9 +132,12 @@ export class ChatDebugInfo extends LitElement {
                 ${info.reasoning ? html`
                     <div class="reasoning-box">
                         <div class="reasoning-label">
-                            <span>🧠</span> Proceso de Pensamiento
+                            <span>🧠</span> Razonamiento Final
                         </div>
                         <div class="reasoning-text">${info.reasoning}</div>
+                        <div class="reasoning-hint">
+                            💡 Los pensamientos de cada paso están en la pestaña "Trajectoria"
+                        </div>
                     </div>
                 ` : ''}
             </div>
@@ -177,18 +186,99 @@ export class ChatDebugInfo extends LitElement {
     _renderHistory(history) {
         return html`
             <div class="history-list">
-                ${history.map(msg => html`
-                    <div class="history-item ${msg.role}">
-                        <div class="history-role">${msg.role}</div>
-                        <div class="history-content">${msg.content}</div>
+                <div class="history-header">
+                    📡 Llamadas al LM (${history.length} total)
+                </div>
+                ${history.map((call, index) => html`
+                    <div class="history-item lm-call">
+                        <div class="history-call-header">
+                            <span class="call-number">Llamada ${index + 1}</span>
+                            ${call.model ? html`<span class="call-model">${call.model.split('/').pop()}</span>` : ''}
+                            ${this._getCallTokens(call) ? html`<span class="call-tokens">${this._getCallTokens(call)} tokens</span>` : ''}
+                            ${this._getCallCost(call) ? html`<span class="call-cost">$${this._getCallCost(call).toFixed(4)}</span>` : ''}
+                        </div>
+                        <details class="call-details">
+                            <summary>Ver prompt/respuesta</summary>
+                            <div class="call-content">
+                                ${this._renderCallMessages(call)}
+                                ${this._renderCallOutputs(call)}
+                            </div>
+                        </details>
                     </div>
                 `)}
             </div>
         `;
     }
 
+    _getCallCost(call) {
+        return call.cost 
+            || call.response_cost 
+            || call._hidden_params?.response_cost
+            || call.response?._hidden_params?.response_cost
+            || null;
+    }
+
+    _getCallTokens(call) {
+        const usage = call.usage || call.response?.usage || call.outputs?.[0]?.usage;
+        if (!usage) return null;
+        return usage.total_tokens || ((usage.prompt_tokens || 0) + (usage.completion_tokens || 0));
+    }
+
+    _renderCallMessages(call) {
+        // DSPy puede tener los mensajes en diferentes campos
+        const messages = call.messages || call.prompt || call.inputs;
+        if (!messages) return '';
+
+        if (Array.isArray(messages)) {
+            return html`
+                <div class="call-section">
+                    <div class="call-section-label">Prompt (${messages.length} msgs)</div>
+                    ${messages.map(msg => html`
+                        <div class="prompt-msg ${msg.role || 'unknown'}">
+                            <strong>${msg.role || 'msg'}:</strong> 
+                            ${typeof msg.content === 'string' 
+                                ? (msg.content.length > 300 ? msg.content.substring(0, 300) + '...' : msg.content)
+                                : JSON.stringify(msg.content).substring(0, 300)}
+                        </div>
+                    `)}
+                </div>
+            `;
+        }
+        
+        return html`
+            <div class="call-section">
+                <div class="call-section-label">Prompt</div>
+                <pre class="prompt-text">${typeof messages === 'string' ? messages : JSON.stringify(messages, null, 2)}</pre>
+            </div>
+        `;
+    }
+
+    _renderCallOutputs(call) {
+        // DSPy puede tener las respuestas en diferentes campos
+        const outputs = call.outputs || call.response?.choices || call.completions;
+        if (!outputs) return '';
+
+        return html`
+            <div class="call-section">
+                <div class="call-section-label">Respuesta</div>
+                ${Array.isArray(outputs) ? outputs.map((out, i) => html`
+                    <div class="output-item">
+                        ${outputs.length > 1 ? html`<span class="output-num">#${i + 1}</span>` : ''}
+                        <pre class="output-text">${
+                            typeof out === 'string' 
+                                ? out 
+                                : (out.message?.content || out.text || JSON.stringify(out, null, 2))
+                        }</pre>
+                    </div>
+                `) : html`
+                    <pre class="output-text">${typeof outputs === 'string' ? outputs : JSON.stringify(outputs, null, 2)}</pre>
+                `}
+            </div>
+        `;
+    }
+
     _renderMetricsGrid(info) {
-        if (!info.total_tokens && !info.model) return '';
+        if (!info.total_tokens && !info.model && !info.total_cost) return '';
 
         return html`
             <div class="metrics-grid">
@@ -205,6 +295,12 @@ export class ChatDebugInfo extends LitElement {
                     <div class="metric-value total">${info.total_tokens}</div>
                 </div>
                 <div class="metric-card">
+                    <div class="metric-label">Cost</div>
+                    <div class="metric-value cost">
+                        ${info.total_cost ? `$${info.total_cost.toFixed(4)}` : '-'}
+                    </div>
+                </div>
+                <div class="metric-card full-width">
                     <div class="metric-label">Model</div>
                     <div class="metric-value model" title="${info.model}">
                         ${info.model ? info.model.split('/').pop() : '-'}
@@ -229,6 +325,7 @@ export class ChatDebugInfo extends LitElement {
             prompt_tokens: 0,
             completion_tokens: 0,
             total_tokens: 0,
+            total_cost: 0,
             reasoning: null,
             trajectory: [],
             history: [],
@@ -251,7 +348,7 @@ export class ChatDebugInfo extends LitElement {
         if (data.success !== undefined) info.success = data.success;
 
         // 5. Extraer Metrics (Model & Tokens)
-        // Intentar sacar de la raíz
+        // Intentar sacar de la raíz primero
         if (data.model) info.model = data.model;
         if (data.usage) {
             info.prompt_tokens = data.usage.prompt_tokens || 0;
@@ -259,15 +356,50 @@ export class ChatDebugInfo extends LitElement {
             info.total_tokens = data.usage.total_tokens || 0;
         }
 
-        // Si no hay métricas, buscar en el historial (donde DSPy suele ponerlo)
-        if (!info.total_tokens && info.history && info.history.length > 0) {
-            // A veces el último paso del historial tiene info de uso si es un assistant message
-            // Pero en DSPy structures a veces está en un campo aparte o en el último 'turn'
-            // Por ahora nos quedamos con la lógica básica anterior
+        // Si no hay métricas en la raíz, extraerlas del historial de DSPy
+        // El history de DSPy contiene las llamadas al LM con usage info
+        if (info.history && info.history.length > 0) {
+            // Sumar tokens y costos de todas las llamadas al LM
+            let totalPrompt = 0;
+            let totalCompletion = 0;
+            let totalCost = 0;
+            let lastModel = null;
+
+            for (const call of info.history) {
+                // DSPy history puede tener diferentes estructuras
+                const usage = call.usage || call.response?.usage || call.outputs?.[0]?.usage;
+                if (usage) {
+                    totalPrompt += usage.prompt_tokens || usage.input_tokens || 0;
+                    totalCompletion += usage.completion_tokens || usage.output_tokens || 0;
+                }
+                
+                // Extraer costo de la llamada (LiteLLM puede ponerlo en varios lugares)
+                const cost = call.cost 
+                    || call.response_cost 
+                    || call._hidden_params?.response_cost
+                    || call.response?._hidden_params?.response_cost
+                    || 0;
+                totalCost += cost;
+                
+                // Extraer modelo de la llamada
+                if (call.model) lastModel = call.model;
+                else if (call.response?.model) lastModel = call.response.model;
+            }
+
+            if (!info.total_tokens && (totalPrompt || totalCompletion)) {
+                info.prompt_tokens = totalPrompt;
+                info.completion_tokens = totalCompletion;
+                info.total_tokens = totalPrompt + totalCompletion;
+            }
+
+            if (totalCost > 0) {
+                info.total_cost = totalCost;
+            }
+
+            if (!info.model && lastModel) {
+                info.model = lastModel;
+            }
         }
-        
-        // Buscar en trajectory si hay info de modelo
-        // (A veces no está explícito en la respuesta top-level)
 
         return info;
     }
