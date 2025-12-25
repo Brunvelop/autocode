@@ -116,6 +116,12 @@ class AISessionManager:
         session_data = self._load_json("session.json") or {}
         
         try:
+            # 0. Auto-guardado: Commitear cambios pendientes si los hay
+            if not self.git.is_repo_clean():
+                logger.info("Auto-guardando cambios pendientes en la sesión")
+                self.git.stage_all()
+                self.git.commit("AI: Auto-save session work")
+
             # 1. Marcar como completada en la rama de sesión
             session_data["status"] = "completed"
             session_data["completed_at"] = datetime.now().isoformat()

@@ -138,6 +138,15 @@ class GitOperations:
             logger.error(f"Error agregando paths: {e}")
             raise GitCommandError("Error en git add", 128) from e
     
+    def stage_all(self) -> None:
+        """Agrega todos los cambios (incluyendo untracked) al staging."""
+        try:
+            self.repo.git.add(A=True)
+            logger.debug("Todos los cambios agregados al staging")
+        except Exception as e:
+            logger.error(f"Error en git add -A: {e}")
+            raise GitCommandError("Error agregando todos los cambios", 128) from e
+
     def commit(self, message: str) -> None:
         """Crea un commit con los cambios staged."""
         try:
