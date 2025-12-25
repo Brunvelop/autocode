@@ -1,23 +1,18 @@
 """
-Utilities for interacting with Git.
+Git Operations - Wrapper para operaciones Git usando GitPython.
+
+Este módulo proporciona una API pythónica para operaciones git comunes,
+usando GitPython donde sea posible y subprocess para casos edge.
 """
 import subprocess
 import logging
-from typing import List, Literal, Optional
-from pathlib import Path
-from pydantic import BaseModel, Field
+from typing import List, Optional
+
 from git import Repo
 from git.exc import GitCommandError
 
-from autocode.interfaces.registry import register_function
-from autocode.interfaces.models import GenericOutput
-
 logger = logging.getLogger(__name__)
 
-
-# ============================================================================
-# GIT OPERATIONS CLASS (GitPython-based)
-# ============================================================================
 
 class GitOperations:
     """
@@ -42,7 +37,9 @@ class GitOperations:
         except Exception as e:
             raise GitCommandError(f"No es un repositorio git válido: {repo_path}", 128) from e
     
-    # ============== Status & Info ==============
+    # ========================================================================
+    # STATUS & INFO
+    # ========================================================================
     
     def is_repo_clean(self, untracked: bool = True) -> bool:
         """Verifica si el working directory está limpio."""
@@ -85,15 +82,15 @@ class GitOperations:
             Contenido del archivo como string, o None si no existe/error
         """
         try:
-            # Usar git show branch:path
-            # Nota: repo.git.show devuelve string
             content = self.repo.git.show(f"{branch}:{file_path}")
             return content
         except Exception as e:
             logger.debug(f"No se pudo leer {file_path} de {branch}: {e}")
             return None
     
-    # ============== Branch Operations ==============
+    # ========================================================================
+    # BRANCH OPERATIONS
+    # ========================================================================
     
     def create_and_checkout_branch(
         self, 
@@ -128,7 +125,9 @@ class GitOperations:
             logger.error(f"Error eliminando branch '{branch_name}': {e}")
             raise GitCommandError(f"No se pudo eliminar branch '{branch_name}'", 128) from e
     
-    # ============== Commit Operations ==============
+    # ========================================================================
+    # COMMIT OPERATIONS
+    # ========================================================================
     
     def add_paths(self, paths: List[str]) -> None:
         """Agrega archivos/directorios al staging area."""
@@ -153,7 +152,9 @@ class GitOperations:
         self.add_paths(paths)
         self.commit(message)
     
-    # ============== Merge Operations ==============
+    # ========================================================================
+    # MERGE OPERATIONS
+    # ========================================================================
     
     def merge_squash(
         self, 
@@ -187,152 +188,3 @@ class GitOperations:
             logger.debug(f"Paths reseteados: {paths}")
         except Exception as e:
             logger.warning(f"Error reseteando paths: {e}")
-
-
-# ============================================================================
-# REGISTERED FUNCTIONS
-# ============================================================================
-
-class GitNodeEntry(BaseModel):
-    """Flat representation of a node in the git tree (non-recursive / adjacency list)."""
-
-    id: str = Field(description="Stable node id (we use full path; root is empty string)")
-    parent_id: Optional[str] = Field(default=None, description="Parent node id; None only for root")
-    name: str = Field(description="Name of the file or directory")
-    path: str = Field(description="Full path from repository root")
-    type: Literal["file", "directory"] = Field(description="Type of the node")
-    size: int = Field(default=0, description="Size in bytes (files only)")
-
-
-class GitTreeGraph(BaseModel):
-    """Non-recursive tree representation as a graph."""
-
-    root_id: str = Field(description="Id of the root node")
-    nodes: List[GitNodeEntry] = Field(default_factory=list, description="All nodes in the tree")
-
-
-class GitTreeOutput(GenericOutput):
-    """Specific output for git tree structure."""
-
-    result: Optional[GitTreeGraph] = Field(default=None, description="Graph representation of the git tree")
-
-@register_function(http_methods=["GET"])
-def get_git_tree() -> GitTreeOutput:
-    """
-    Retrieves the project structure from git index including file sizes.
-    
-    Returns:
-        GitTreeOutput containing the file tree structure.
-    """
-    try:
-        # Get all files tracked by git
-        # -r: recursive (list files in subdirectories)
-        # -l: long format (includes file size)
-        # HEAD: current commit reference
-        cmd = ["git", "ls-tree", "-r", "-l", "HEAD"]
-        
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            check=True
-        )
-        
-        lines = result.stdout.strip().split('\n')
-        lines = [line for line in lines if line]  # Filter empty strings
-        
-        # Build a non-recursive graph (adjacency list) to avoid recursive schemas in OpenAPI.
-        # We use id=path. Root is the empty path "".
-        root_id = ""
-        nodes_by_id = {
-            root_id: GitNodeEntry(
-                id=root_id,
-                parent_id=None,
-                name="root",
-                path=root_id,
-                type="directory",
-                size=0,
-            )
-        }
-
-        def ensure_dir(path: str) -> None:
-            """Ensure a directory node exists for a given path."""
-            if path in nodes_by_id:
-                return
-            parent = path.rsplit("/", 1)[0] if "/" in path else root_id
-            name = path.rsplit("/", 1)[-1] if path else "root"
-            nodes_by_id[path] = GitNodeEntry(
-                id=path,
-                parent_id=parent if parent != path else root_id,
-                name=name,
-                path=path,
-                type="directory",
-                size=0,
-            )
-            # Ensure parent exists too
-            if parent != root_id:
-                ensure_dir(parent)
-
-        for line in lines:
-            try:
-                # Output format: "100644 blob <sha> <size_padded>\t<path>"
-                # Split by tab to separate metadata from path (handles spaces in path)
-                if "\t" in line:
-                    metadata, file_path = line.split("\t", 1)
-                else:
-                    parts = line.split()
-                    file_path = parts[-1]
-                    metadata = " ".join(parts[:-1])
-
-                meta_parts = metadata.split()
-                size_str = meta_parts[3] if len(meta_parts) > 3 else "0"
-                size = int(size_str) if size_str.isdigit() else 0
-
-                # Ensure all directory segments exist
-                if "/" in file_path:
-                    dir_path = file_path.rsplit("/", 1)[0]
-                    ensure_dir(dir_path)
-                    parent_id = dir_path
-                else:
-                    parent_id = root_id
-
-                # Add file node
-                nodes_by_id[file_path] = GitNodeEntry(
-                    id=file_path,
-                    parent_id=parent_id,
-                    name=file_path.rsplit("/", 1)[-1],
-                    path=file_path,
-                    type="file",
-                    size=size,
-                )
-            except Exception as loop_e:
-                logger.warning(f"Error parsing line '{line}': {loop_e}")
-                continue
-
-        graph = GitTreeGraph(
-            root_id=root_id,
-            nodes=list(nodes_by_id.values()),
-        )
-
-        return GitTreeOutput(
-            success=True,
-            result=graph,
-            message="Git tree retrieved successfully"
-        )
-        
-    except subprocess.CalledProcessError as e:
-        error_msg = f"Git error: {e.stderr.strip() if e.stderr else str(e)}"
-        logger.error(error_msg)
-        return GitTreeOutput(
-            success=False,
-            result=None,
-            message=error_msg
-        )
-    except Exception as e:
-        error_msg = f"Unexpected error retrieving git tree: {str(e)}"
-        logger.error(error_msg)
-        return GitTreeOutput(
-            success=False,
-            result=None,
-            message=error_msg
-        )

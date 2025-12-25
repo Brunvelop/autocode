@@ -1,31 +1,19 @@
 """
-Unit tests for git_utils module.
+Unit tests for autocode.core.git.tree module (get_git_tree function).
 """
 import pytest
 from unittest.mock import Mock, patch
 from subprocess import CalledProcessError
 
-# We import the module to be tested (even if it doesn't exist yet, for TDD)
-# This will fail until we create the module
-try:
-    from autocode.core.utils import git_utils
-except ImportError:
-    git_utils = None
+from autocode.core.vcs import get_git_tree
 
 
-class TestGitUtils:
-    
-    def test_module_exists(self):
-        """Verify that the module can be imported."""
-        assert git_utils is not None, "autocode.core.utils.git_utils module should exist"
+class TestGetGitTree:
+    """Tests para la función get_git_tree."""
 
     @patch('subprocess.run')
     def test_get_git_tree_success(self, mock_run):
         """Test parsing of git ls-tree output into a non-recursive graph."""
-        # Skip if module not implemented yet (to allow running this test file progressively)
-        if git_utils is None:
-            pytest.fail("Module git_utils not implemented")
-
         # Mock git output
         # Simulating:
         # root.txt (100 bytes)
@@ -43,7 +31,7 @@ class TestGitUtils:
         mock_process.returncode = 0
         mock_run.return_value = mock_process
         
-        result = git_utils.get_git_tree()
+        result = get_git_tree()
         
         # Verify result structure
         assert result.success is True
@@ -97,13 +85,10 @@ class TestGitUtils:
     @patch('subprocess.run')
     def test_get_git_tree_error(self, mock_run):
         """Test handling of git command errors."""
-        if git_utils is None:
-            pytest.fail("Module git_utils not implemented")
-            
         # Simulate git error (e.g., not a git repo)
         mock_run.side_effect = CalledProcessError(128, ['git'], stderr="Not a git repository")
         
-        result = git_utils.get_git_tree()
+        result = get_git_tree()
         
         assert result.success is False
         assert "Not a git repository" in result.message
@@ -112,15 +97,12 @@ class TestGitUtils:
     @patch('subprocess.run')
     def test_get_git_tree_empty(self, mock_run):
         """Test handling of empty git repo."""
-        if git_utils is None:
-            pytest.fail("Module git_utils not implemented")
-            
         mock_process = Mock()
         mock_process.stdout = ""
         mock_process.returncode = 0
         mock_run.return_value = mock_process
         
-        result = git_utils.get_git_tree()
+        result = get_git_tree()
         
         assert result.success is True
         graph = result.result
@@ -128,3 +110,36 @@ class TestGitUtils:
         assert graph.root_id == ""
         assert len(graph.nodes) == 1
         assert graph.nodes[0].id == ""
+
+    @patch('subprocess.run')
+    def test_get_git_tree_deep_nesting(self, mock_run):
+        """Test handling of deeply nested directories."""
+        mock_output = (
+            "100644 blob aaa   100\ta/b/c/d/e/file.txt\n"
+        )
+        
+        mock_process = Mock()
+        mock_process.stdout = mock_output
+        mock_process.returncode = 0
+        mock_run.return_value = mock_process
+        
+        result = get_git_tree()
+        
+        assert result.success is True
+        nodes = {n.id: n for n in result.result.nodes}
+        
+        # All intermediate directories should exist
+        assert "a" in nodes
+        assert "a/b" in nodes
+        assert "a/b/c" in nodes
+        assert "a/b/c/d" in nodes
+        assert "a/b/c/d/e" in nodes
+        assert "a/b/c/d/e/file.txt" in nodes
+        
+        # Verify parent chain
+        assert nodes["a"].parent_id == ""
+        assert nodes["a/b"].parent_id == "a"
+        assert nodes["a/b/c"].parent_id == "a/b"
+        assert nodes["a/b/c/d"].parent_id == "a/b/c"
+        assert nodes["a/b/c/d/e"].parent_id == "a/b/c/d"
+        assert nodes["a/b/c/d/e/file.txt"].parent_id == "a/b/c/d/e"

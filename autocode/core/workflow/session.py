@@ -14,7 +14,7 @@ from git.exc import GitCommandError
 
 from autocode.interfaces.registry import register_function
 from autocode.interfaces.models import GenericOutput
-from autocode.core.utils.git_utils import GitOperations
+from autocode.core.vcs import GitOperations
 
 logger = logging.getLogger(__name__)
 

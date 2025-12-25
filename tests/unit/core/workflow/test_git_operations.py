@@ -6,7 +6,7 @@ import pytest
 from unittest.mock import Mock, patch, MagicMock
 import subprocess
 
-from autocode.core.utils.git_utils import GitOperations
+from autocode.core.vcs import GitOperations
 from git.exc import GitCommandError
 
 
@@ -17,7 +17,7 @@ from git.exc import GitCommandError
 @pytest.fixture
 def mock_repo():
     """Mock de Repo de GitPython."""
-    with patch('autocode.core.utils.git_utils.Repo') as MockRepo:
+    with patch('autocode.core.vcs.operations.Repo') as MockRepo:
         mock = MagicMock()
         mock.is_dirty.return_value = False
         mock.active_branch.name = "main"
@@ -49,7 +49,7 @@ class TestGitOperations:
 
     def test_init_invalid_repo_raises(self):
         """Lanza error si no es un repo git."""
-        with patch('autocode.core.utils.git_utils.Repo', side_effect=Exception("Not a repo")):
+        with patch('autocode.core.vcs.operations.Repo', side_effect=Exception("Not a repo")):
             with pytest.raises(GitCommandError):
                 GitOperations("/invalid/path")
 

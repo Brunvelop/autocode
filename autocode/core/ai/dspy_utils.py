@@ -24,6 +24,7 @@ logger = logging.getLogger(__name__)
 
 # Available models for inference
 ModelType = Literal[
+    'openrouter/nvidia/nemotron-3-nano-30b-a3b:free',
     'openrouter/openai/gpt-4o',
     'openrouter/x-ai/grok-4',
     'openrouter/x-ai/grok-code-fast-1',
@@ -31,7 +32,7 @@ ModelType = Literal[
     'openrouter/anthropic/claude-sonnet-4.5',
     'openrouter/openai/gpt-oss-20b',
     'openrouter/openai/gpt-5',
-    'openrouter/openai/gpt-5-codex'
+    'openrouter/openai/gpt-5-codex',
 ]
 
 
