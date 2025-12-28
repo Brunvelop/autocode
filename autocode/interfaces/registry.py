@@ -45,7 +45,7 @@ class RegistryError(Exception):
 # PUBLIC API - REGISTRATION
 # ============================================================================
 
-def register_function(http_methods: List[str] = None):
+def register_function(http_methods: List[str] = None, interfaces: List[str] = None):
     """Decorator to automatically register a function in the global registry.
     
     This is the main entry point for registering functions. Simply decorate
@@ -53,6 +53,8 @@ def register_function(http_methods: List[str] = None):
     
     Args:
         http_methods: List of HTTP methods to support (default: ["GET", "POST"])
+        interfaces: List of interfaces where the function should be exposed
+                    (default: ["api", "cli", "mcp"])
         
     Returns:
         Decorator function that registers the wrapped function
@@ -61,7 +63,7 @@ def register_function(http_methods: List[str] = None):
         RegistryError: If registration fails (e.g., invalid return type)
         
     Example:
-        @register_function(http_methods=["GET", "POST"])
+        @register_function(http_methods=["GET", "POST"], interfaces=["api", "cli"])
         def calculate(x: int, y: int, operation: str = "add") -> GenericOutput:
             '''Performs a mathematical operation.
             
@@ -75,10 +77,10 @@ def register_function(http_methods: List[str] = None):
     """
     def decorator(func: Callable) -> Callable:
         try:
-            info = _generate_function_info(func, http_methods)
+            info = _generate_function_info(func, http_methods, interfaces)
             FUNCTION_REGISTRY[info.name] = info
             # Only log at DEBUG level, not INFO (reduces CLI noise)
-            logger.debug(f"Registered function '{info.name}' with methods {info.http_methods}")
+            logger.debug(f"Registered function '{info.name}' with methods {info.http_methods} and interfaces {info.interfaces}")
         except Exception as e:
             logger.error(f"Failed to register function '{func.__name__}': {e}")
             raise RegistryError(f"Failed to register function '{func.__name__}': {e}") from e
@@ -89,6 +91,35 @@ def register_function(http_methods: List[str] = None):
 # ============================================================================
 # PUBLIC API - REGISTRY ACCESS
 # ============================================================================
+
+def get_functions_for_interface(interface: str) -> Dict[str, FunctionInfo]:
+    """Get all functions that should be exposed in a specific interface.
+    
+    This is the centralized way to filter functions by interface. Use this
+    instead of manually checking `"interface" in func_info.interfaces`.
+    
+    Args:
+        interface: The interface to filter by ("api", "cli", or "mcp")
+        
+    Returns:
+        Dictionary mapping function names to FunctionInfo for functions
+        that should be exposed in the specified interface
+        
+    Example:
+        >>> api_functions = get_functions_for_interface("api")
+        >>> for name, info in api_functions.items():
+        ...     print(f"{name}: {info.description}")
+        
+        >>> mcp_functions = get_functions_for_interface("mcp")
+        >>> # Only functions with "mcp" in their interfaces list
+    """
+    _ensure_functions_loaded()
+    return {
+        name: info 
+        for name, info in FUNCTION_REGISTRY.items() 
+        if interface in info.interfaces
+    }
+
 
 def get_function_info(name: str) -> FunctionInfo:
     """Get complete function information from the registry.
@@ -394,7 +425,7 @@ def _ensure_functions_loaded():
 # PRIVATE HELPERS - FUNCTION INTROSPECTION
 # ============================================================================
 
-def _generate_function_info(func: Callable, http_methods: List[str] = None) -> FunctionInfo:
+def _generate_function_info(func: Callable, http_methods: List[str] = None, interfaces: List[str] = None) -> FunctionInfo:
     """Generate FunctionInfo from function signature and docstring.
     
     Main orchestrator that coordinates validation and extraction of function metadata.
@@ -402,6 +433,7 @@ def _generate_function_info(func: Callable, http_methods: List[str] = None) -> F
     Args:
         func: The function to analyze
         http_methods: List of HTTP methods to support (default: ["GET", "POST"])
+        interfaces: List of interfaces where the function should be exposed (default: ["api", "cli", "mcp"])
         
     Returns:
         FunctionInfo instance with inferred parameters and description
@@ -412,6 +444,9 @@ def _generate_function_info(func: Callable, http_methods: List[str] = None) -> F
     """
     if http_methods is None:
         http_methods = ["GET", "POST"]
+        
+    if interfaces is None:
+        interfaces = ["api", "cli", "mcp"]
     
     http_methods = _validate_http_methods(http_methods)
     return_type = _get_return_type(func)
@@ -436,6 +471,7 @@ def _generate_function_info(func: Callable, http_methods: List[str] = None) -> F
         description=doc.short_description or f"Execute {func.__name__}",
         params=params,
         http_methods=http_methods,
+        interfaces=interfaces,
         return_type=return_type
     )
 

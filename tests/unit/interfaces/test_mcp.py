@@ -36,10 +36,12 @@ def patched_dependencies():
     """Patch common MCP dependencies and return the patchers."""
     with patch('autocode.interfaces.mcp.create_api_app') as mock_create_api_app, \
          patch('autocode.interfaces.mcp.FastApiMCP') as mock_fastapi_mcp, \
+         patch('autocode.interfaces.mcp._register_mcp_endpoints') as mock_register_mcp, \
          patch('autocode.interfaces.mcp.logger') as mock_logger:
         yield {
             'create_api_app': mock_create_api_app,
             'fastapi_mcp': mock_fastapi_mcp,
+            'register_mcp_endpoints': mock_register_mcp,
             'logger': mock_logger
         }
 
@@ -47,9 +49,10 @@ def patched_dependencies():
 class TestCreateMcpApp:
     """Tests for create_mcp_app - MCP-enabled FastAPI app creation."""
     
+    @patch('autocode.interfaces.mcp._register_mcp_endpoints')
     @patch('autocode.interfaces.mcp.FastApiMCP')
     @patch('autocode.interfaces.mcp.create_api_app')
-    def test_create_mcp_app_success(self, mock_create_api_app, mock_fastapi_mcp):
+    def test_create_mcp_app_success(self, mock_create_api_app, mock_fastapi_mcp, mock_register_mcp):
         """Test successful MCP app creation."""
         # Mock the API app with additional properties
         mock_api_app = Mock(spec=FastAPI)
@@ -70,6 +73,9 @@ class TestCreateMcpApp:
         # Verify API app was created with no arguments
         mock_create_api_app.assert_called_once_with()
         
+        # Verify MCP endpoints were registered
+        mock_register_mcp.assert_called_once_with(mock_api_app)
+        
         # Verify app metadata was updated correctly
         assert mock_api_app.title == "Autocode API + MCP Server"
         assert mock_api_app.description == "Minimalistic framework for code quality tools with MCP integration"
@@ -78,11 +84,12 @@ class TestCreateMcpApp:
         assert mock_api_app.version == "1.0.0"  # Should not change
         assert mock_api_app.routes == ["existing_route"]  # Should not change
         
-        # Verify MCP was initialized with exact parameters
+        # Verify MCP was initialized with exact parameters (including include_tags)
         mock_fastapi_mcp.assert_called_once_with(
             mock_api_app,
             name="Autocode MCP Server",
-            description="MCP server for autocode functions and API endpoints"
+            description="MCP server for autocode functions and API endpoints",
+            include_tags=["mcp-tools"]
         )
         
         # Verify MCP was mounted with no arguments
@@ -220,9 +227,10 @@ class TestMcpIntegration:
         assert result_app.title == "Autocode API + MCP Server"
         assert "MCP integration" in result_app.description
     
+    @patch('autocode.interfaces.mcp._register_mcp_endpoints')
     @patch('autocode.interfaces.mcp.FastApiMCP')
     @patch('autocode.interfaces.mcp.create_api_app')
-    def test_mcp_server_configuration(self, mock_create_api_app, mock_fastapi_mcp):
+    def test_mcp_server_configuration(self, mock_create_api_app, mock_fastapi_mcp, mock_register_mcp):
         """Test that MCP server is configured with correct parameters."""
         mock_api_app = Mock(spec=FastAPI)
         mock_create_api_app.return_value = mock_api_app
@@ -232,11 +240,15 @@ class TestMcpIntegration:
         
         create_mcp_app()
         
-        # Verify MCP was configured with correct parameters
+        # Verify MCP endpoints were registered
+        mock_register_mcp.assert_called_once_with(mock_api_app)
+        
+        # Verify MCP was configured with correct parameters (including include_tags)
         mock_fastapi_mcp.assert_called_once_with(
             mock_api_app,
             name="Autocode MCP Server",
-            description="MCP server for autocode functions and API endpoints"
+            description="MCP server for autocode functions and API endpoints",
+            include_tags=["mcp-tools"]
         )
         
         # Verify mount was called

@@ -136,6 +136,7 @@ def fastapi_test_client():
 @pytest.fixture
 def mock_core_functions():
     """Mock core function imports to prevent actual loading."""
-    with patch('autocode.core.hello.hello_world'), \
-         patch('autocode.core.math.calculator'):
+    with patch('autocode.core.ai.pipelines'), \
+         patch('autocode.core.vcs.tree'), \
+         patch('autocode.core.workflow.session'):
         yield

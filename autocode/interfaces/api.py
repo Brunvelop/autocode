@@ -11,7 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, create_model
 
 from autocode.interfaces.models import FunctionInfo, GenericOutput, FunctionDetailsResponse
-from autocode.interfaces.registry import FUNCTION_REGISTRY, load_core_functions, get_all_function_schemas
+from autocode.interfaces.registry import FUNCTION_REGISTRY, load_core_functions, get_all_function_schemas, get_functions_for_interface
 
 # Setup logging with custom filter to exclude noisy third-party libraries
 class AutocodeLogFilter(logging.Filter):
@@ -104,10 +104,15 @@ def _load_and_validate_functions():
         if not FUNCTION_REGISTRY:
             logger.warning("No functions loaded in registry")
         else:
-            logger.info(
-                f"Successfully loaded {len(FUNCTION_REGISTRY)} functions: "
-                f"{list(FUNCTION_REGISTRY.keys())}"
-            )
+            # Use centralized filtering function
+            api_funcs = list(get_functions_for_interface("api").keys())
+            mcp_funcs = list(get_functions_for_interface("mcp").keys())
+            
+            logger.info(f"Successfully loaded {len(FUNCTION_REGISTRY)} functions:")
+            if api_funcs:
+                logger.info(f"  - API ({len(api_funcs)}): {api_funcs}")
+            if mcp_funcs:
+                logger.info(f"  - MCP ({len(mcp_funcs)}): {mcp_funcs}")
     except Exception as e:
         logger.error(f"Failed to load core functions: {e}")
         raise
@@ -248,6 +253,7 @@ def register_dynamic_endpoints(app: FastAPI):
     
     Creates both GET and POST handlers based on function metadata with dynamic models.
     Uses the unified create_handler function to avoid code duplication.
+    Only registers functions that have "api" in their interfaces list.
     
     Args:
         app: FastAPI application instance to register routes on
@@ -256,7 +262,10 @@ def register_dynamic_endpoints(app: FastAPI):
         >>> app = FastAPI()
         >>> register_dynamic_endpoints(app)
     """
-    for func_name, func_info in FUNCTION_REGISTRY.items():
+    # Use centralized filtering - only get functions exposed in API
+    api_functions = get_functions_for_interface("api")
+    
+    for func_name, func_info in api_functions.items():
         for method in func_info.http_methods:
             handler, input_model = create_handler(func_info, method)
 

@@ -21,7 +21,8 @@ from typing import Dict, Any, Callable, Optional
 
 from autocode.interfaces.registry import (
     FUNCTION_REGISTRY, 
-    load_core_functions
+    load_core_functions,
+    get_functions_for_interface
 )
 from autocode.interfaces.api import create_api_app
 from autocode.interfaces.mcp import create_mcp_app
@@ -357,13 +358,17 @@ def _create_handler(func_name: str, func_info) -> Callable:
 def _register_commands() -> None:
     """Register all functions from registry as CLI commands.
     
-    Iterates through FUNCTION_REGISTRY and creates Click commands for each
-    registered function with dynamically generated parameters.
+    Uses get_functions_for_interface to get only functions that should be
+    exposed in CLI, then creates Click commands for each with dynamically
+    generated parameters.
     
     Should be called after load_core_functions() to ensure all functions
     are registered before CLI command generation.
     """
-    for func_name, func_info in FUNCTION_REGISTRY.items():
+    # Use centralized filtering - only get functions exposed in CLI
+    cli_functions = get_functions_for_interface("cli")
+    
+    for func_name, func_info in cli_functions.items():
         # Create the command handler
         command_func = _create_handler(func_name, func_info)
         

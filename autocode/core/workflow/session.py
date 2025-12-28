@@ -265,7 +265,7 @@ class AISessionManager:
 # REGISTERED FUNCTIONS (API/CLI/MCP endpoints)
 # ============================================================================
 
-@register_function(http_methods=["POST"])
+@register_function(http_methods=["POST"], interfaces=["api", "cli"])
 def start_ai_session(
     description: str,
     base_branch: str = "main",
@@ -286,7 +286,7 @@ def start_ai_session(
     except Exception as e:
         return GenericOutput(success=False, result={}, message=str(e))
 
-@register_function(http_methods=["POST"])
+@register_function(http_methods=["POST"], interfaces=["api", "cli"])
 def save_conversation(
     messages: List[Dict[str, Any]]
 ) -> GenericOutput:
@@ -300,7 +300,7 @@ def save_conversation(
     except Exception as e:
         return GenericOutput(success=False, result={}, message=str(e))
 
-@register_function(http_methods=["POST"])
+@register_function(http_methods=["POST"], interfaces=["api", "cli"])
 def finalize_ai_session(
     commit_message: str,
     merge_to: str = "main",
@@ -316,7 +316,7 @@ def finalize_ai_session(
     except Exception as e:
         return GenericOutput(success=False, result={}, message=str(e))
 
-@register_function(http_methods=["GET"])
+@register_function(http_methods=["GET"], interfaces=["api", "cli"])
 def get_current_session() -> GenericOutput:
     """Obtiene info de la sesión actual."""
     try:
@@ -328,7 +328,7 @@ def get_current_session() -> GenericOutput:
     except Exception as e:
         return GenericOutput(success=False, result=None, message=str(e))
 
-@register_function(http_methods=["GET"])
+@register_function(http_methods=["GET"], interfaces=["api", "cli"])
 def list_ai_sessions() -> GenericOutput:
     """Lista sesiones activas (ramas)."""
     try:
@@ -338,7 +338,7 @@ def list_ai_sessions() -> GenericOutput:
     except Exception as e:
         return GenericOutput(success=False, result={"sessions": []}, message=str(e))
 
-@register_function(http_methods=["POST"])
+@register_function(http_methods=["POST"], interfaces=["api", "cli"])
 def abort_ai_session(
     delete_branch: bool = True
 ) -> GenericOutput:

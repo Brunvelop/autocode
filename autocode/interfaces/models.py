@@ -135,6 +135,7 @@ class FunctionInfo(BaseModel):
     description: str
     params: List[ExplicitParam] = Field(default_factory=list, description="Explicit parameter definitions")
     http_methods: List[str] = Field(default_factory=lambda: ["GET", "POST"])
+    interfaces: List[str] = Field(default_factory=lambda: ["api", "cli", "mcp"], description="Interfaces where this function is exposed")
     # Return type annotation (GenericOutput o subclase). Útil para tipar el response_model en FastAPI.
     return_type: Optional[Type[BaseModel]] = Field(default=None, description="Declared return type annotation")
 

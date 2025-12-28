@@ -460,7 +460,7 @@ def calculate_context_usage(
         )
 
 
-@register_function(http_methods=["POST"])
+@register_function(http_methods=["POST"], interfaces=["api", "cli"])
 def chat(
     message: str,
     conversation_history: str = "",
