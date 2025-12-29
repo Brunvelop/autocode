@@ -29,7 +29,7 @@ from autocode.core.ai.signatures import (
     QASignature,
     ChatSignature
 )
-from autocode.interfaces.registry import FUNCTION_REGISTRY, _ensure_functions_loaded
+from autocode.interfaces.registry import _ensure_functions_loaded, get_functions_for_interface
 
 
 # Available signature types for UI selection
@@ -503,13 +503,11 @@ def chat(
     
     try:
         _ensure_functions_loaded()
-        # Crear tools con schemas detallados del registry
+        # Crear tools con schemas detallados usando filtrado centralizado por interface MCP
+        # Funciones como 'chat' se excluyen automáticamente al no tener "mcp" en interfaces
+        mcp_functions = get_functions_for_interface("mcp")
         tools = []
-        for func_name, func_info in FUNCTION_REGISTRY.items():
-            # Excluir la función chat de los tools para evitar recursión
-            if func_name == 'chat':
-                continue
-            
+        for func_name, func_info in mcp_functions.items():
             # Filtrar por enabled_tools si se especificó
             if enabled_tools is not None and func_name not in enabled_tools:
                 continue
