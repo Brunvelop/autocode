@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Code Explorer - Test</title>
+    <style>
+        :root {
+            --bg-primary: #1a1a2e;
+            --bg-secondary: #16213e;
+            --text-primary: #eee;
+            --text-secondary: #aaa;
+            --accent: #0ea5e9;
+            --border: #333;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+        }
+
+        h1 {
+            margin: 0 0 20px;
+            font-size: 1.5rem;
+            color: var(--text-primary);
+        }
+
+        .test-container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .test-section {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .test-section h2 {
+            margin: 0 0 15px;
+            font-size: 1.1rem;
+            color: var(--accent);
+        }
+
+        .test-row {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 15px;
+        }
+
+        .test-col {
+            flex: 1;
+        }
+
+        .controls {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-bottom: 15px;
+        }
+
+        button {
+            padding: 8px 16px;
+            background: var(--accent);
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.9rem;
+        }
+
+        button:hover {
+            opacity: 0.9;
+        }
+
+        button:active {
+            opacity: 0.8;
+        }
+
+        input, select {
+            padding: 8px 12px;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            font-size: 0.9rem;
+        }
+
+        input:focus, select:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+        }
+
+        .event-log {
+            background: #0a0a1a;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 10px;
+            max-height: 200px;
+            overflow-y: auto;
+            font-family: 'Fira Code', monospace;
+            font-size: 0.8rem;
+        }
+
+        .event-log-entry {
+            padding: 4px 0;
+            border-bottom: 1px solid #222;
+        }
+
+        .event-log-entry:last-child {
+            border-bottom: none;
+        }
+
+        .event-log-entry .event-name {
+            color: var(--accent);
+        }
+
+        .event-log-entry .event-time {
+            color: var(--text-secondary);
+            margin-right: 10px;
+        }
+
+        .event-log-entry .event-data {
+            color: #88c;
+        }
+
+        /* Explorer container */
+        .explorer-wrapper {
+            min-height: 400px;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        code-explorer {
+            display: block;
+            height: 400px;
+            overflow: auto;
+        }
+
+        /* Status badges */
+        .status-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 0.75rem;
+            margin-left: 10px;
+        }
+
+        .status-badge.success {
+            background: #22c55e33;
+            color: #22c55e;
+        }
+
+        .status-badge.error {
+            background: #ef444433;
+            color: #ef4444;
+        }
+
+        .status-badge.loading {
+            background: #f59e0b33;
+            color: #f59e0b;
+        }
+
+        /* Info panel */
+        .info-panel {
+            background: #0a0a1a;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 15px;
+            font-family: 'Fira Code', monospace;
+            font-size: 0.85rem;
+        }
+
+        .info-panel h4 {
+            margin: 0 0 10px;
+            color: var(--accent);
+        }
+
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 4px 0;
+            border-bottom: 1px solid #222;
+        }
+
+        .info-row:last-child {
+            border-bottom: none;
+        }
+
+        .info-key {
+            color: var(--text-secondary);
+        }
+
+        .info-value {
+            color: var(--text-primary);
+        }
+    </style>
+</head>
+<body>
+    <div class="test-container">
+        <h1>🗂️ Code Explorer Test</h1>
+
+        <!-- Main Test Section -->
+        <div class="test-section">
+            <h2>Explorador de Código</h2>
+            
+            <div class="controls">
+                <div>
+                    <label for="pathInput">Path:</label>
+                    <input type="text" id="pathInput" value="autocode" placeholder="Ruta a explorar">
+                </div>
+                <div>
+                    <label for="depthInput">Profundidad:</label>
+                    <select id="depthInput">
+                        <option value="-1" selected>Ilimitada (-1)</option>
+                        <option value="1">1 nivel</option>
+                        <option value="2">2 niveles</option>
+                        <option value="3">3 niveles</option>
+                    </select>
+                </div>
+                <div style="align-self: flex-end;">
+                    <button id="loadBtn">🔄 Cargar</button>
+                </div>
+            </div>
+
+            <div class="test-row">
+                <div class="test-col">
+                    <div class="explorer-wrapper">
+                        <code-explorer id="explorer" path="autocode"></code-explorer>
+                    </div>
+                </div>
+            </div>
+
+            <!-- API Actions -->
+            <div class="controls">
+                <button id="expandAllBtn">➕ Expandir Todo</button>
+                <button id="collapseAllBtn">➖ Colapsar Todo</button>
+                <button id="refreshBtn">🔄 Refresh</button>
+                <button id="logStateBtn">📋 Log State</button>
+            </div>
+        </div>
+
+        <!-- Selected Node Info -->
+        <div class="test-section">
+            <h2>Nodo Seleccionado</h2>
+            <div class="info-panel" id="selectedNodeInfo">
+                <span style="color: var(--text-secondary);">Haz clic en un nodo para ver sus detalles...</span>
+            </div>
+        </div>
+
+        <!-- Event Log -->
+        <div class="test-section">
+            <h2>Event Log <button id="clearLogBtn" style="font-size: 0.75rem; padding: 4px 8px;">Limpiar</button></h2>
+            <div class="event-log" id="eventLog">
+                <div class="event-log-entry">
+                    <span class="event-time">--:--:--</span>
+                    <span class="event-name">Esperando eventos...</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Metrics Overview -->
+        <div class="test-section">
+            <h2>Métricas del Codebase</h2>
+            <div class="info-panel" id="metricsInfo">
+                <span style="color: var(--text-secondary);">Carga un path para ver las métricas...</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Import code-explorer component -->
+    <script type="module">
+        import '../../../elements/code-explorer/index.js';
+
+        // DOM Elements
+        const explorer = document.getElementById('explorer');
+        const pathInput = document.getElementById('pathInput');
+        const depthInput = document.getElementById('depthInput');
+        const loadBtn = document.getElementById('loadBtn');
+        const expandAllBtn = document.getElementById('expandAllBtn');
+        const collapseAllBtn = document.getElementById('collapseAllBtn');
+        const refreshBtn = document.getElementById('refreshBtn');
+        const logStateBtn = document.getElementById('logStateBtn');
+        const clearLogBtn = document.getElementById('clearLogBtn');
+        const eventLog = document.getElementById('eventLog');
+        const selectedNodeInfo = document.getElementById('selectedNodeInfo');
+        const metricsInfo = document.getElementById('metricsInfo');
+
+        // ====================================================================
+        // Event Logging
+        // ====================================================================
+
+        function logEvent(eventName, data = null) {
+            const now = new Date();
+            const time = now.toLocaleTimeString('es-ES');
+            
+            const entry = document.createElement('div');
+            entry.className = 'event-log-entry';
+            
+            let dataStr = '';
+            if (data) {
+                if (typeof data === 'object') {
+                    // Truncate for display
+                    dataStr = JSON.stringify(data, null, 0).substring(0, 100);
+                    if (dataStr.length === 100) dataStr += '...';
+                } else {
+                    dataStr = String(data);
+                }
+            }
+            
+            entry.innerHTML = `
+                <span class="event-time">${time}</span>
+                <span class="event-name">${eventName}</span>
+                ${dataStr ? `<span class="event-data"> → ${dataStr}</span>` : ''}
+            `;
+            
+            // Insert at top
+            eventLog.insertBefore(entry, eventLog.firstChild);
+            
+            // Limit entries
+            while (eventLog.children.length > 50) {
+                eventLog.removeChild(eventLog.lastChild);
+            }
+        }
+
+        // ====================================================================
+        // Update UI Functions
+        // ====================================================================
+
+        function updateSelectedNodeInfo(node) {
+            if (!node) {
+                selectedNodeInfo.innerHTML = `<span style="color: var(--text-secondary);">Ningún nodo seleccionado</span>`;
+                return;
+            }
+
+            selectedNodeInfo.innerHTML = `
+                <h4>${node.name}</h4>
+                <div class="info-row">
+                    <span class="info-key">ID:</span>
+                    <span class="info-value">${node.id}</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-key">Tipo:</span>
+                    <span class="info-value">${node.type}</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-key">Lenguaje:</span>
+                    <span class="info-value">${node.language || 'N/A'}</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-key">Path:</span>
+                    <span class="info-value">${node.path}</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-key">LOC:</span>
+                    <span class="info-value">${node.loc || 0}</span>
+                </div>
+                ${node.line_start ? `
+                <div class="info-row">
+                    <span class="info-key">Líneas:</span>
+                    <span class="info-value">${node.line_start} - ${node.line_end}</span>
+                </div>
+                ` : ''}
+                ${node.params ? `
+                <div class="info-row">
+                    <span class="info-key">Params:</span>
+                    <span class="info-value">${node.params.join(', ') || 'ninguno'}</span>
+                </div>
+                ` : ''}
+                ${node.decorators?.length ? `
+                <div class="info-row">
+                    <span class="info-key">Decorators:</span>
+                    <span class="info-value">${node.decorators.join(', ')}</span>
+                </div>
+                ` : ''}
+                ${node.bases?.length ? `
+                <div class="info-row">
+                    <span class="info-key">Hereda de:</span>
+                    <span class="info-value">${node.bases.join(', ')}</span>
+                </div>
+                ` : ''}
+                <div class="info-row">
+                    <span class="info-key">Hijos:</span>
+                    <span class="info-value">${node.children?.length || 0}</span>
+                </div>
+            `;
+        }
+
+        function updateMetricsInfo(structure) {
+            if (!structure) {
+                metricsInfo.innerHTML = `<span style="color: var(--text-secondary);">Sin datos</span>`;
+                return;
+            }
+
+            metricsInfo.innerHTML = `
+                <h4>📊 Resumen</h4>
+                <div class="info-row">
+                    <span class="info-key">Total archivos:</span>
+                    <span class="info-value">${structure.total_files || 0}</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-key">Total LOC:</span>
+                    <span class="info-value">${structure.total_loc?.toLocaleString() || 0}</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-key">Funciones:</span>
+                    <span class="info-value">${structure.total_functions || 0}</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-key">Clases:</span>
+                    <span class="info-value">${structure.total_classes || 0}</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-key">Lenguajes:</span>
+                    <span class="info-value">${structure.languages?.join(', ') || 'N/A'}</span>
+                </div>
+            `;
+        }
+
+        // ====================================================================
+        // Event Listeners - Explorer
+        // ====================================================================
+
+        explorer.addEventListener('structure-loaded', (e) => {
+            logEvent('structure-loaded', { 
+                files: e.detail.structure?.total_files,
+                loc: e.detail.structure?.total_loc 
+            });
+            updateMetricsInfo(e.detail.structure);
+        });
+
+        explorer.addEventListener('node-selected', (e) => {
+            logEvent('node-selected', { 
+                name: e.detail.node?.name, 
+                type: e.detail.node?.type 
+            });
+            updateSelectedNodeInfo(e.detail.node);
+        });
+
+        explorer.addEventListener('node-expanded', (e) => {
+            logEvent('node-expanded', { 
+                name: e.detail.node?.name, 
+                children: e.detail.node?.children?.length 
+            });
+        });
+
+        explorer.addEventListener('node-collapsed', (e) => {
+            logEvent('node-collapsed', { name: e.detail.node?.name });
+        });
+
+        // ====================================================================
+        // Event Listeners - Controls
+        // ====================================================================
+
+        loadBtn.addEventListener('click', () => {
+            const path = pathInput.value.trim() || '.';
+            const depth = parseInt(depthInput.value);
+            
+            explorer.path = path;
+            explorer.depth = depth;
+            explorer.refresh();
+            
+            logEvent('manual-load', { path, depth });
+        });
+
+        expandAllBtn.addEventListener('click', () => {
+            explorer.expandAll();
+            logEvent('expand-all');
+        });
+
+        collapseAllBtn.addEventListener('click', () => {
+            explorer.collapseAll();
+            logEvent('collapse-all');
+        });
+
+        refreshBtn.addEventListener('click', () => {
+            explorer.refresh();
+            logEvent('manual-refresh');
+        });
+
+        logStateBtn.addEventListener('click', () => {
+            console.log('📊 Code Explorer State:');
+            console.log('  path:', explorer.path);
+            console.log('  depth:', explorer.depth);
+            console.log('  _structure:', explorer._structure);
+            console.log('  _expandedNodes:', explorer._expandedNodes);
+            console.log('  _selectedNode:', explorer._selectedNode);
+            console.log('  _loading:', explorer._loading);
+            console.log('  _error:', explorer._error);
+            logEvent('state-logged', 'Ver consola');
+        });
+
+        clearLogBtn.addEventListener('click', () => {
+            eventLog.innerHTML = `
+                <div class="event-log-entry">
+                    <span class="event-time">${new Date().toLocaleTimeString('es-ES')}</span>
+                    <span class="event-name">Log limpiado</span>
+                </div>
+            `;
+        });
+
+        // ====================================================================
+        // Initial Log
+        // ====================================================================
+        logEvent('test-page-loaded', { 
+            component: 'code-explorer',
+            initialPath: explorer.path 
+        });
+    </script>
+</body>
+</html>
