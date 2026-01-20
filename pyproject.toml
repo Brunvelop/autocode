@@ -37,11 +37,6 @@ dependencies = [
     "gitpython>=3.1.40",
 ]
 
-[project.optional-dependencies]
-dev = [
-    "pytest>=8.4.1",
-    "pytest-mock>=3.14.1",
-]
 
 [project.scripts]
 autocode = "autocode.interfaces.cli:app"
@@ -68,4 +63,5 @@ python_functions = ["test_*"]
 dev = [
     "pytest>=8.4.1",
     "pytest-cov>=6.2.1",
+    "pytest-mock>=3.14.1",
 ]
