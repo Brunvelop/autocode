@@ -12,47 +12,10 @@ from pydantic import BaseModel, Field, create_model
 
 from autocode.interfaces.models import FunctionInfo, GenericOutput, FunctionDetailsResponse
 from autocode.interfaces.registry import FUNCTION_REGISTRY, load_core_functions, get_all_function_schemas, get_functions_for_interface
+from autocode.interfaces.logging_config import configure_api_logging
 
-# Setup logging with custom filter to exclude noisy third-party libraries
-class AutocodeLogFilter(logging.Filter):
-    """Filter to exclude logs from specified noisy third-party modules."""
-    
-    # List of module prefixes to exclude from logs
-    EXCLUDED_MODULES = [
-        'sse_starlette',
-        'LiteLLM',
-        'httpcore',
-        'mcp',
-        'fastapi_mcp',
-    ]
-    
-    def filter(self, record):
-        # Exclude logs from modules in the exclusion list
-        for excluded in self.EXCLUDED_MODULES:
-            if record.name.startswith(excluded):
-                return False
-        return True
-
-logging.basicConfig(
-    level=logging.DEBUG,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-
-# Add filter to root logger to exclude third-party library logs
-root_logger = logging.getLogger()
-root_logger.addFilter(AutocodeLogFilter())
-
-# Silence specific noisy third-party loggers by setting their level to WARNING
-# This is necessary because some libraries bypass filters with custom handlers
-for noisy_logger in ['LiteLLM', 'httpcore', 'sse_starlette', 'mcp', 'fastapi_mcp']:
-    logging.getLogger(noisy_logger).setLevel(logging.WARNING)
-    # Also silence sub-loggers
-    for sub in ['connection', 'http11', 'sse', 'server', 'lowlevel']:
-        logging.getLogger(f'{noisy_logger}.{sub}').setLevel(logging.WARNING)
-    # Silence nested sub-loggers (e.g., mcp.server.lowlevel.server)
-    for nested in ['server.lowlevel.server', 'server.sse', 'server.lowlevel']:
-        logging.getLogger(f'{noisy_logger}.{nested}').setLevel(logging.WARNING)
-
+# Setup logging using centralized configuration
+configure_api_logging()
 logger = logging.getLogger(__name__)
 
 
@@ -77,7 +40,7 @@ def create_api_app() -> FastAPI:
     """
     app = FastAPI(
         title="Autocode API",
-        description="Minimalistic framework for code quality tools",
+        description="Minimalistic framework for autocode",
         version="1.0.0"
     )
 
@@ -110,9 +73,9 @@ def _load_and_validate_functions():
             
             logger.info(f"Successfully loaded {len(FUNCTION_REGISTRY)} functions:")
             if api_funcs:
-                logger.info(f"  - API ({len(api_funcs)}): {api_funcs}")
+                logger.info(f"API ({len(api_funcs)}): {api_funcs}")
             if mcp_funcs:
-                logger.info(f"  - MCP ({len(mcp_funcs)}): {mcp_funcs}")
+                logger.info(f"MCP ({len(mcp_funcs)}): {mcp_funcs}")
     except Exception as e:
         logger.error(f"Failed to load core functions: {e}")
         raise

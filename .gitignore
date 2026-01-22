@@ -190,3 +190,6 @@ reports/
 .clinerules/
 lm_scripts/
 .clineignore
+
+bash
+bash_out

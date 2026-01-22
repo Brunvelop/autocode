@@ -368,67 +368,94 @@ class TestCreateHandler:
 class TestRegisterDynamicEndpoints:
     """Tests for register_dynamic_endpoints - endpoint registration."""
     
-    def test_register_dynamic_endpoints(self, populated_registry):
+    def test_register_dynamic_endpoints(self):
         """Test registering endpoints for all functions in registry."""
-        # Mock FastAPI app
-        mock_app = Mock()
-        mock_app.add_api_route = Mock()
+        # Create a mock function info - completely independent of core functions
+        test_func_info = FunctionInfo(
+            name="mock_test_func",
+            func=lambda x, y: GenericOutput(result=x + y, success=True),
+            description="Mock test function for endpoint registration",
+            params=[
+                ExplicitParam(name="x", type=int, required=True, description="First param"),
+                ExplicitParam(name="y", type=int, default=1, required=False, description="Second param")
+            ],
+            http_methods=["GET", "POST"],
+            interfaces=["api"],
+            return_type=GenericOutput
+        )
         
-        register_dynamic_endpoints(mock_app)
-        
-        # Should have called add_api_route for each HTTP method of each function
-        expected_calls = len(populated_registry["test_add"].http_methods)  # GET and POST
-        assert mock_app.add_api_route.call_count == expected_calls
-        
-        # Check that routes were added correctly
-        call_args_list = mock_app.add_api_route.call_args_list
-        
-        # Verify GET route
-        get_call = next(call for call in call_args_list if call[1]["methods"] == ["GET"])
-        assert get_call[0][0] == "/test_add"  # Path
-        assert get_call[1]["operation_id"] == "test_add_get"
-        assert get_call[1]["summary"] == "Add two numbers together"
-        
-        # Verify POST route
-        post_call = next(call for call in call_args_list if call[1]["methods"] == ["POST"])
-        assert post_call[0][0] == "/test_add"  # Path
-        assert post_call[1]["operation_id"] == "test_add_post"
-        assert post_call[1]["summary"] == "Add two numbers together"
+        # Mock get_functions_for_interface to return ONLY our test function
+        with patch('autocode.interfaces.api.get_functions_for_interface') as mock_get_funcs:
+            mock_get_funcs.return_value = {"mock_test_func": test_func_info}
+            
+            # Mock FastAPI app
+            mock_app = Mock()
+            mock_app.add_api_route = Mock()
+            
+            register_dynamic_endpoints(mock_app)
+            
+            # Should have called add_api_route for each HTTP method (GET and POST)
+            assert mock_app.add_api_route.call_count == 2
+            
+            # Check that routes were added correctly
+            call_args_list = mock_app.add_api_route.call_args_list
+            
+            # Verify GET route
+            get_call = next(call for call in call_args_list if call[1]["methods"] == ["GET"])
+            assert get_call[0][0] == "/mock_test_func"  # Path
+            assert get_call[1]["operation_id"] == "mock_test_func_get"
+            assert get_call[1]["summary"] == "Mock test function for endpoint registration"
+            
+            # Verify POST route
+            post_call = next(call for call in call_args_list if call[1]["methods"] == ["POST"])
+            assert post_call[0][0] == "/mock_test_func"  # Path
+            assert post_call[1]["operation_id"] == "mock_test_func_post"
+            assert post_call[1]["summary"] == "Mock test function for endpoint registration"
     
     def test_register_dynamic_endpoints_empty_registry(self):
         """Test registering endpoints with empty registry."""
-        mock_app = Mock()
-        mock_app.add_api_route = Mock()
-        
-        register_dynamic_endpoints(mock_app)
-        
-        # Should not add any routes
-        mock_app.add_api_route.assert_not_called()
+        # Mock get_functions_for_interface to return empty dict (simulating empty registry)
+        with patch('autocode.interfaces.api.get_functions_for_interface') as mock_get_funcs:
+            mock_get_funcs.return_value = {}
+            
+            mock_app = Mock()
+            mock_app.add_api_route = Mock()
+            
+            register_dynamic_endpoints(mock_app)
+            
+            # Should not add any routes
+            mock_app.add_api_route.assert_not_called()
     
     def test_register_dynamic_endpoints_custom_methods(self):
         """Test registering endpoints with custom HTTP methods."""
-        # Add function with custom methods
+        # Create function with custom methods (PUT and DELETE)
         custom_func_info = FunctionInfo(
             name="custom_func",
-            func=lambda x: x,
-            description="Custom function",
+            func=lambda x: GenericOutput(result=x, success=True),
+            description="Custom function with PUT/DELETE",
             params=[ExplicitParam(name="x", type=str, required=True, description="Param")],
             http_methods=["PUT", "DELETE"],
+            interfaces=["api"],
             return_type=GenericOutput
         )
-        FUNCTION_REGISTRY["custom_func"] = custom_func_info
         
-        mock_app = Mock()
-        mock_app.add_api_route = Mock()
-        
-        register_dynamic_endpoints(mock_app)
-        
-        # Should register PUT and DELETE routes
-        call_args_list = mock_app.add_api_route.call_args_list
-        methods_called = [call[1]["methods"][0] for call in call_args_list]
-        
-        assert "PUT" in methods_called
-        assert "DELETE" in methods_called
+        # Mock get_functions_for_interface to return ONLY our custom function
+        with patch('autocode.interfaces.api.get_functions_for_interface') as mock_get_funcs:
+            mock_get_funcs.return_value = {"custom_func": custom_func_info}
+            
+            mock_app = Mock()
+            mock_app.add_api_route = Mock()
+            
+            register_dynamic_endpoints(mock_app)
+            
+            # Should register PUT and DELETE routes (2 total)
+            assert mock_app.add_api_route.call_count == 2
+            
+            call_args_list = mock_app.add_api_route.call_args_list
+            methods_called = [call[1]["methods"][0] for call in call_args_list]
+            
+            assert "PUT" in methods_called
+            assert "DELETE" in methods_called
 
 
 class TestCreateApiApp:
@@ -442,7 +469,7 @@ class TestCreateApiApp:
         
         # Verify app configuration
         assert app.title == "Autocode API"
-        assert app.description == "Minimalistic framework for code quality tools"
+        assert app.description == "Minimalistic framework for autocode"
         assert app.version == "1.0.0"
         
         # Verify functions were loaded and endpoints registered
