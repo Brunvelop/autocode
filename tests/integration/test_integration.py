@@ -183,10 +183,8 @@ class TestFullIntegration:
                 "optional_bool": optional_bool
             }, success=True)
         
-        # Verify function was registered correctly
-        from autocode.interfaces.registry import get_function_info
-        
-        func_info = get_function_info("complex_function")
+        # Verify function was registered correctly via FUNCTION_REGISTRY
+        func_info = FUNCTION_REGISTRY["complex_function"]
         assert func_info.name == "complex_function"
         assert len(func_info.params) == 3
         
@@ -315,9 +313,8 @@ class TestInterfaceConsistency:
             """
             return GenericOutput(result={"x": x, "y": y}, success=True)
         
-        from autocode.interfaces.registry import get_function_info
-        
-        func_info = get_function_info("metadata_test")
+        # Access function info via FUNCTION_REGISTRY
+        func_info = FUNCTION_REGISTRY["metadata_test"]
         
         # Verify metadata
         assert func_info.name == "metadata_test"
@@ -387,11 +384,9 @@ class TestCrossModuleDependencies:
     
     def test_error_propagation_across_modules(self):
         """Test that errors propagate correctly across module boundaries."""
-        from autocode.interfaces.registry import RegistryError, get_function
-        
-        # Test that registry errors propagate
-        with pytest.raises(RegistryError, match="Function 'nonexistent' not found"):
-            get_function("nonexistent")
+        # Test that accessing non-existent function in registry raises KeyError
+        with pytest.raises(KeyError):
+            _ = FUNCTION_REGISTRY["nonexistent"]
         
         # Test that API would handle registry errors
         from autocode.interfaces.api import execute_function_with_params

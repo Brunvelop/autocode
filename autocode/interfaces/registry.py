@@ -88,15 +88,6 @@ def get_functions_for_interface(interface: Interface) -> Dict[str, FunctionInfo]
     }
 
 
-def get_function_info(name: str) -> FunctionInfo:
-    """Get FunctionInfo by name. Raises RegistryError if not found."""
-    _ensure_functions_loaded()
-    if name not in FUNCTION_REGISTRY:
-        available = ", ".join(list_functions())
-        raise RegistryError(f"Function '{name}' not found. Available functions: {available}")
-    return FUNCTION_REGISTRY[name]
-
-
 def get_all_function_schemas() -> Dict[str, FunctionSchema]:
     """Get serializable schemas for all registered functions."""
     _ensure_functions_loaded()
@@ -117,12 +108,6 @@ def clear_registry():
     global _functions_loaded
     FUNCTION_REGISTRY.clear()
     _functions_loaded = False
-
-
-def get_function(name: str) -> Callable:
-    """Get callable function by name. Raises RegistryError if not found."""
-    func_info = get_function_info(name)
-    return func_info.func
 
 
 def get_registry_stats() -> Dict[str, Any]:

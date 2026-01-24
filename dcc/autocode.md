@@ -258,8 +258,8 @@ pytest tests/unit/interfaces/test_registry.py  # Contratos
 pytest tests/unit/interfaces/test_models.py    # Tipos
 
 # Verificar que toda función registrada retorna GenericOutput:
-∀ name in list_functions():
-    assert issubclass(get_function_info(name).return_type, GenericOutput)
+∀ name, info in FUNCTION_REGISTRY.items():
+    assert issubclass(info.return_type, GenericOutput)
 ```
 
 ---

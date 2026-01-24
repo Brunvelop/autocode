@@ -12,7 +12,7 @@ from unittest.mock import patch, Mock
 
 from autocode.interfaces.registry import (
     FUNCTION_REGISTRY, _generate_function_info, register_function,
-    get_function, get_function_info, get_all_function_schemas, list_functions,
+    get_all_function_schemas, list_functions,
     clear_registry, get_registry_stats, load_core_functions,
     RegistryError, _functions_loaded, _has_register_decorator
 )
@@ -205,34 +205,6 @@ class TestRegisterFunctionDecorator:
 
 class TestRegistryPublicAPI:
     """Tests for public registry API functions."""
-    
-    def test_get_function_success(self, populated_registry):
-        """Test successful function retrieval."""
-        func = get_function("test_add")
-        
-        assert callable(func)
-        # Test that we got the right function - now returns GenericOutput
-        result = func(3, 4)
-        assert result.result == 7
-    
-    def test_get_function_not_found(self):
-        """Test function retrieval with non-existent function."""
-        with pytest.raises(RegistryError, match="Function 'nonexistent' not found"):
-            get_function("nonexistent")
-    
-    def test_get_function_info_success(self, populated_registry):
-        """Test successful function info retrieval."""
-        func_info = get_function_info("test_add")
-        
-        assert isinstance(func_info, FunctionInfo)
-        assert func_info.name == "test_add"
-        assert func_info.description == "Add two numbers together"
-        assert len(func_info.params) == 2
-    
-    def test_get_function_info_not_found(self):
-        """Test function info retrieval with non-existent function."""
-        with pytest.raises(RegistryError, match="Function 'nonexistent' not found"):
-            get_function_info("nonexistent")
     
     def test_get_all_function_schemas(self, populated_registry):
         """Test schemas retrieval."""
@@ -459,9 +431,9 @@ class TestRegistryIntegration:
         # Verify registration
         assert "integration_test_func" in FUNCTION_REGISTRY
         
-        # Test function retrieval and execution
-        func = get_function("integration_test_func")
-        result = func("test", 3)
+        # Test function retrieval and execution via FUNCTION_REGISTRY
+        func_info = FUNCTION_REGISTRY["integration_test_func"]
+        result = func_info.func("test", 3)
         assert result.result == "test test test"
         
         # Test parameter information
@@ -482,14 +454,10 @@ class TestRegistryIntegration:
         assert stats["http_methods_distribution"]["GET"] >= 1
         assert stats["http_methods_distribution"]["POST"] >= 1
     
-    def test_registry_error_propagation(self):
-        """Test that registry errors are properly propagated."""
-        # Test with non-existent function
-        with pytest.raises(RegistryError):
-            get_function("does_not_exist")
-        
-        with pytest.raises(RegistryError):
-            get_function_info("does_not_exist")
+    def test_registry_access_nonexistent_function(self):
+        """Test that accessing non-existent function raises KeyError."""
+        with pytest.raises(KeyError):
+            _ = FUNCTION_REGISTRY["does_not_exist"]
 
 
 class TestDecoratorDetection:
