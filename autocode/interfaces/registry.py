@@ -17,7 +17,7 @@ Example:
         '''
         return GenericOutput(result=x + y, success=True)
 """
-from typing import Dict, Any, List, Callable, get_origin, get_args, Union, Literal
+from typing import Dict, Any, List, Callable, get_origin, get_args, Union, Literal, TypeAlias
 import inspect
 import logging
 from docstring_parser import parse
@@ -30,6 +30,14 @@ logger = logging.getLogger(__name__)
 # Global registry - populated dynamically by decorator
 FUNCTION_REGISTRY: Dict[str, FunctionInfo] = {}
 _functions_loaded = False
+
+# Type aliases for better type hints
+HttpMethod = Literal["GET", "POST", "PUT", "DELETE", "PATCH"]
+Interface = Literal["api", "cli", "mcp"]
+
+# Default values as constants (explicit and reusable)
+DEFAULT_HTTP_METHODS: list[HttpMethod] = ["GET", "POST"]
+DEFAULT_INTERFACES: list[Interface] = ["api", "cli", "mcp"]
 
 
 # ============================================================================
@@ -45,35 +53,13 @@ class RegistryError(Exception):
 # PUBLIC API - REGISTRATION
 # ============================================================================
 
-def register_function(http_methods: List[str] = None, interfaces: List[str] = None):
-    """Decorator to automatically register a function in the global registry.
+def register_function(
+    http_methods: list[HttpMethod] | None = None,
+    interfaces: list[Interface] | None = None
+) -> Callable[[Callable], Callable]:
+    """Decorator to expose a function via CLI, API, and/or MCP.
     
-    This is the main entry point for registering functions. Simply decorate
-    your function and it will be automatically available via CLI, API, and MCP.
-    
-    Args:
-        http_methods: List of HTTP methods to support (default: ["GET", "POST"])
-        interfaces: List of interfaces where the function should be exposed
-                    (default: ["api", "cli", "mcp"])
-        
-    Returns:
-        Decorator function that registers the wrapped function
-        
-    Raises:
-        RegistryError: If registration fails (e.g., invalid return type)
-        
-    Example:
-        @register_function(http_methods=["GET", "POST"], interfaces=["api", "cli"])
-        def calculate(x: int, y: int, operation: str = "add") -> GenericOutput:
-            '''Performs a mathematical operation.
-            
-            Args:
-                x: First operand
-                y: Second operand
-                operation: Operation to perform (add, subtract, multiply, divide)
-            '''
-            result = x + y if operation == "add" else x - y
-            return GenericOutput(result=result, success=True)
+    Raises RegistryError if registration fails (e.g., invalid return type).
     """
     def decorator(func: Callable) -> Callable:
         try:
@@ -92,27 +78,8 @@ def register_function(http_methods: List[str] = None, interfaces: List[str] = No
 # PUBLIC API - REGISTRY ACCESS
 # ============================================================================
 
-def get_functions_for_interface(interface: str) -> Dict[str, FunctionInfo]:
-    """Get all functions that should be exposed in a specific interface.
-    
-    This is the centralized way to filter functions by interface. Use this
-    instead of manually checking `"interface" in func_info.interfaces`.
-    
-    Args:
-        interface: The interface to filter by ("api", "cli", or "mcp")
-        
-    Returns:
-        Dictionary mapping function names to FunctionInfo for functions
-        that should be exposed in the specified interface
-        
-    Example:
-        >>> api_functions = get_functions_for_interface("api")
-        >>> for name, info in api_functions.items():
-        ...     print(f"{name}: {info.description}")
-        
-        >>> mcp_functions = get_functions_for_interface("mcp")
-        >>> # Only functions with "mcp" in their interfaces list
-    """
+def get_functions_for_interface(interface: Interface) -> Dict[str, FunctionInfo]:
+    """Filter registered functions by interface ("api", "cli", or "mcp")."""
     _ensure_functions_loaded()
     return {
         name: info 
@@ -122,25 +89,7 @@ def get_functions_for_interface(interface: str) -> Dict[str, FunctionInfo]:
 
 
 def get_function_info(name: str) -> FunctionInfo:
-    """Get complete function information from the registry.
-    
-    Args:
-        name: The name of the function to retrieve
-        
-    Returns:
-        FunctionInfo instance with complete metadata including parameters,
-        description, and HTTP methods
-        
-    Raises:
-        RegistryError: If the function is not found in the registry
-        
-    Example:
-        >>> info = get_function_info("calculate")
-        >>> print(info.description)
-        'Performs a mathematical operation'
-        >>> print([p.name for p in info.params])
-        ['x', 'y', 'operation']
-    """
+    """Get FunctionInfo by name. Raises RegistryError if not found."""
     _ensure_functions_loaded()
     if name not in FUNCTION_REGISTRY:
         available = ", ".join(list_functions())
@@ -149,11 +98,7 @@ def get_function_info(name: str) -> FunctionInfo:
 
 
 def get_all_function_schemas() -> Dict[str, FunctionSchema]:
-    """Get serializable schemas for all registered functions.
-    
-    Returns:
-        Dictionary mapping function names to their schemas.
-    """
+    """Get serializable schemas for all registered functions."""
     _ensure_functions_loaded()
     return {
         name: info.to_schema()
@@ -162,77 +107,26 @@ def get_all_function_schemas() -> Dict[str, FunctionSchema]:
 
 
 def list_functions() -> List[str]:
-    """Get list of all registered function names.
-    
-    Returns:
-        Sorted list of function names available in the registry
-        
-    Example:
-        >>> functions = list_functions()
-        >>> print(functions)
-        ['calculate', 'hello_world', 'process_text']
-    """
+    """Return sorted list of all registered function names."""
     _ensure_functions_loaded()
     return sorted(FUNCTION_REGISTRY.keys())
 
 
 def clear_registry():
-    """Clear all registered functions from the registry.
-    
-    Primarily used for testing to ensure clean state between tests.
-    Also resets the loaded flag to allow re-registration.
-    
-    Warning:
-        This will remove all registered functions. Only use this in
-        testing scenarios or when you need to completely reset the registry.
-        
-    Example:
-        >>> clear_registry()
-        >>> len(list_functions())
-        0
-    """
+    """Clear registry and reset loaded flag. Used for testing."""
     global _functions_loaded
     FUNCTION_REGISTRY.clear()
     _functions_loaded = False
 
 
 def get_function(name: str) -> Callable:
-    """Get the actual callable function from the registry.
-    
-    Args:
-        name: The name of the function to retrieve
-        
-    Returns:
-        The callable function
-        
-    Raises:
-        RegistryError: If the function is not found
-        
-    Example:
-        >>> func = get_function("calculate")
-        >>> result = func(x=5, y=3)
-    """
+    """Get callable function by name. Raises RegistryError if not found."""
     func_info = get_function_info(name)
     return func_info.func
 
 
 def get_registry_stats() -> Dict[str, Any]:
-    """Get statistical information about the registry.
-    
-    Provides insights into the current state of the registry including
-    total functions, their names, and HTTP method distribution.
-    
-    Returns:
-        Dictionary with statistics:
-        - total_functions: Number of registered functions
-        - function_names: List of all function names
-        - http_methods_distribution: Count of functions by HTTP method
-        
-    Example:
-        >>> stats = get_registry_stats()
-        >>> print(f"Total functions: {stats['total_functions']}")
-        >>> print(f"GET methods: {stats['http_methods_distribution']['GET']}")
-    """
+    """Return stats: total_functions, function_names, http_methods_distribution."""
     _ensure_functions_loaded()
     
     # Count HTTP methods distribution
@@ -254,17 +148,7 @@ def get_registry_stats() -> Dict[str, Any]:
 # ============================================================================
 
 def _get_module_file_path(module_name: str) -> str | None:
-    """Get the file path for a module using importlib.util.find_spec.
-    
-    Uses the standard importlib.util approach with the full module name,
-    which is more robust than using the importer's find_spec with short names.
-    
-    Args:
-        module_name: Full module name (e.g., 'autocode.core.hello.hello_world')
-        
-    Returns:
-        The file path to the module, or None if not found
-    """
+    """Return file path for a module, or None if not found."""
     import importlib.util
     try:
         spec = importlib.util.find_spec(module_name)
@@ -276,19 +160,7 @@ def _get_module_file_path(module_name: str) -> str | None:
 
 
 def _has_register_decorator(module_path: str) -> bool:
-    """Check if a module file contains the @register_function decorator using AST.
-    
-    Parses the module's source code with AST to accurately detect functions
-    decorated with @register_function. This approach eliminates false positives
-    (e.g., decorator mentioned in comments) and false negatives (e.g., unusual
-    formatting or aliases).
-    
-    Args:
-        module_path: Path to the Python module file
-        
-    Returns:
-        True if the module contains a function with @register_function, False otherwise
-    """
+    """Check if module contains @register_function decorator using AST parsing."""
     import ast
     
     if not module_path:
@@ -322,25 +194,10 @@ def _has_register_decorator(module_path: str) -> bool:
 
 
 def load_core_functions(strict: bool = False):
-    """Autodiscover and load modules with @register_function decorator in autocode/core/.
+    """Autodiscover and import modules with @register_function in autocode/core/.
     
-    Automatically scans the autocode.core package and imports Python modules that
-    contain the @register_function decorator, which populates the registry.
-    
-    Uses decorator detection instead of hardcoded exclusion patterns:
-    - Only modules containing '@register_function' in source are imported
-    - Avoids importing utility modules, models, etc. without explicit exclusions
-    
-    Called automatically by _ensure_functions_loaded() on first registry access.
-    Safe to call multiple times (will only load once).
-    
-    Args:
-        strict: If True, raises RegistryError when any module fails to import.
-                Useful for CI/production environments. Default: False (tolerant mode).
-    
-    Raises:
-        RegistryError: If autocode.core package cannot be imported, or if strict=True
-                       and any module fails to import.
+    Called automatically on first registry access. Safe to call multiple times.
+    If strict=True, raises RegistryError on any import failure.
     """
     global _functions_loaded
     if _functions_loaded:
@@ -412,11 +269,7 @@ def load_core_functions(strict: bool = False):
 
 
 def _ensure_functions_loaded():
-    """Ensure functions are loaded before accessing the registry.
-    
-    Internal helper that performs lazy loading of functions.
-    Called by all public registry access methods.
-    """
+    """Lazy-load functions on first registry access."""
     if not _functions_loaded:
         load_core_functions()
 
@@ -425,28 +278,17 @@ def _ensure_functions_loaded():
 # PRIVATE HELPERS - FUNCTION INTROSPECTION
 # ============================================================================
 
-def _generate_function_info(func: Callable, http_methods: List[str] = None, interfaces: List[str] = None) -> FunctionInfo:
-    """Generate FunctionInfo from function signature and docstring.
-    
-    Main orchestrator that coordinates validation and extraction of function metadata.
-    
-    Args:
-        func: The function to analyze
-        http_methods: List of HTTP methods to support (default: ["GET", "POST"])
-        interfaces: List of interfaces where the function should be exposed (default: ["api", "cli", "mcp"])
-        
-    Returns:
-        FunctionInfo instance with inferred parameters and description
-        
-    Raises:
-        ValueError: If http_methods contains invalid values
-        RegistryError: If return type is not GenericOutput or a subclass
-    """
+def _generate_function_info(
+    func: Callable,
+    http_methods: list[HttpMethod] | None = None,
+    interfaces: list[Interface] | None = None
+) -> FunctionInfo:
+    """Generate FunctionInfo from function signature and docstring."""
     if http_methods is None:
-        http_methods = ["GET", "POST"]
+        http_methods = list(DEFAULT_HTTP_METHODS)
         
     if interfaces is None:
-        interfaces = ["api", "cli", "mcp"]
+        interfaces = list(DEFAULT_INTERFACES)
     
     http_methods = _validate_http_methods(http_methods)
     return_type = _get_return_type(func)
@@ -477,11 +319,7 @@ def _generate_function_info(func: Callable, http_methods: List[str] = None, inte
 
 
 def _get_return_type(func: Callable):
-    """Obtiene el tipo de retorno declarado (resolviendo Optional/Union).
-
-    El registry ya exige GenericOutput o subclase; guardamos el tipo para
-    que FastAPI pueda declarar response_model de forma precisa por endpoint.
-    """
+    """Get declared return type, resolving Optional/Union to the inner type."""
     sig = inspect.signature(func)
     return_annotation = sig.return_annotation
 
@@ -498,18 +336,8 @@ def _get_return_type(func: Callable):
     return return_annotation
 
 
-def _validate_http_methods(http_methods: List[str]) -> List[str]:
-    """Validate HTTP methods list.
-    
-    Args:
-        http_methods: List of HTTP methods to validate
-        
-    Returns:
-        Validated list of HTTP methods (unchanged if valid)
-        
-    Raises:
-        ValueError: If any method is not in the valid set
-    """
+def _validate_http_methods(http_methods: list[str]) -> list[str]:
+    """Validate HTTP methods. Raises ValueError if invalid."""
     valid_methods = {"GET", "POST", "PUT", "DELETE", "PATCH"}
     if not all(method.upper() in valid_methods for method in http_methods):
         raise ValueError(f"Invalid HTTP methods. Must be one of: {valid_methods}")
@@ -517,17 +345,7 @@ def _validate_http_methods(http_methods: List[str]) -> List[str]:
 
 
 def _validate_return_type(func: Callable) -> None:
-    """Validate that function returns GenericOutput or a subclass.
-    
-    Ensures type safety for all registered functions by requiring a standardized
-    output format. Handles Union types (e.g., GenericOutput | None).
-    
-    Args:
-        func: The function to validate
-        
-    Raises:
-        RegistryError: If return type is invalid or missing
-    """
+    """Validate return type is GenericOutput or subclass. Raises RegistryError if invalid."""
     sig = inspect.signature(func)
     return_annotation = sig.return_annotation
     
@@ -560,20 +378,8 @@ def _validate_return_type(func: Callable) -> None:
         )
 
 
-def _extract_param_info(param: inspect.Parameter, param_name: str, param_docs: Dict[str, str]) -> ExplicitParam:
-    """Extract parameter information from function signature.
-    
-    Handles type inference, default values, and special types like Literal
-    (which provides choices for parameters).
-    
-    Args:
-        param: Parameter object from inspect.signature
-        param_name: Name of the parameter
-        param_docs: Dictionary mapping parameter names to descriptions from docstring
-        
-    Returns:
-        ExplicitParam instance with complete parameter metadata
-    """
+def _extract_param_info(param: inspect.Parameter, param_name: str, param_docs: dict[str, str]) -> ExplicitParam:
+    """Extract ExplicitParam from inspect.Parameter (type, default, description, choices)."""
     param_type = param.annotation if param.annotation != inspect.Parameter.empty else Any
     default = param.default if param.default != inspect.Parameter.empty else None
     required = param.default == inspect.Parameter.empty
