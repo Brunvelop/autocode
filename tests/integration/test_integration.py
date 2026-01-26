@@ -241,23 +241,6 @@ class TestFullIntegration:
         result = runner.invoke(cli_app, ['error_prone_function', '--value', '-2'])
         assert result.exit_code != 0
     
-    def test_function_registry_stats_integration(self):
-        """Test registry statistics with multiple registered functions."""
-        from autocode.interfaces.registry import get_registry_stats
-        
-        stats = get_registry_stats()
-        
-        # Should have our integration test functions
-        assert stats["total_functions"] >= 3
-        assert "integration_add" in stats["function_names"]
-        assert "integration_multiply" in stats["function_names"]
-        assert "integration_greet" in stats["function_names"]
-        
-        # Check HTTP methods distribution
-        assert stats["http_methods_distribution"]["GET"] >= 2  # integration_add and integration_greet
-        assert stats["http_methods_distribution"]["POST"] >= 2  # integration_add and integration_multiply
-
-
 class TestInterfaceConsistency:
     """Tests to ensure consistent behavior across all interfaces."""
     
@@ -351,11 +334,6 @@ class TestCrossModuleDependencies:
         runner = CliRunner()
         result = runner.invoke(cli_app, ['list'])
         assert "dynamic_function" in result.output
-        
-        # Test that API would reflect the change
-        from autocode.interfaces.registry import list_functions
-        functions = list_functions()
-        assert "dynamic_function" in functions
     
     @patch('autocode.interfaces.api.load_core_functions')
     def test_mcp_and_api_integration(self, mock_load):
@@ -509,12 +487,9 @@ class TestRealWorldScenarios:
             return GenericOutput(result=complexity, success=True)
         
         # Verify all tools are registered
-        from autocode.interfaces.registry import list_functions
-        functions = list_functions()
-        
-        assert "format_code" in functions
-        assert "check_imports" in functions
-        assert "calculate_complexity" in functions
+        assert "format_code" in FUNCTION_REGISTRY
+        assert "check_imports" in FUNCTION_REGISTRY
+        assert "calculate_complexity" in FUNCTION_REGISTRY
         
         # Re-register CLI commands for new functions
         _register_commands()

@@ -12,8 +12,8 @@ from unittest.mock import patch, Mock
 
 from autocode.interfaces.registry import (
     FUNCTION_REGISTRY, _generate_function_info, register_function,
-    get_all_function_schemas, list_functions,
-    clear_registry, get_registry_stats, load_core_functions,
+    get_all_function_schemas,
+    clear_registry, load_core_functions,
     RegistryError, _functions_loaded, _has_register_decorator
 )
 from autocode.interfaces.models import FunctionInfo, ExplicitParam, GenericOutput, FunctionSchema
@@ -230,26 +230,6 @@ class TestRegistryPublicAPI:
         assert y_param.default == 1
         assert y_param.description == "Second number"
     
-    def test_list_functions_empty(self):
-        """Test listing functions with empty registry."""
-        functions = list_functions()
-        assert functions == []
-    
-    def test_list_functions_populated(self, populated_registry):
-        """Test listing functions with populated registry."""
-        functions = list_functions()
-        
-        assert functions == ["test_add"]  # Should be sorted
-        
-        # Add another function and test sorting
-        @register_function()
-        def another_func() -> GenericOutput:
-            """Another function for testing."""
-            return GenericOutput(result="done", success=True)
-        
-        functions = list_functions()
-        assert functions == ["another_func", "test_add"]
-    
     def test_clear_registry(self, populated_registry):
         """Test registry clearing."""
         # Verify registry is populated
@@ -259,33 +239,6 @@ class TestRegistryPublicAPI:
         
         # Verify registry is empty
         assert len(FUNCTION_REGISTRY) == 0
-        assert list_functions() == []
-    
-    def test_get_registry_stats_empty(self):
-        """Test registry statistics with empty registry."""
-        stats = get_registry_stats()
-        
-        assert stats["total_functions"] == 0
-        assert stats["function_names"] == []
-        assert stats["http_methods_distribution"]["GET"] == 0
-        assert stats["http_methods_distribution"]["POST"] == 0
-    
-    def test_get_registry_stats_populated(self, populated_registry):
-        """Test registry statistics with populated registry."""
-        # Add another function with different methods
-        @register_function(http_methods=["GET", "PUT"])
-        def put_func() -> GenericOutput:
-            """PUT function for testing."""
-            return GenericOutput(result="put", success=True)
-        
-        stats = get_registry_stats()
-        
-        assert stats["total_functions"] == 2
-        assert set(stats["function_names"]) == {"test_add", "put_func"}
-        assert stats["http_methods_distribution"]["GET"] == 2
-        assert stats["http_methods_distribution"]["POST"] == 1
-        assert stats["http_methods_distribution"]["PUT"] == 1
-        assert stats["http_methods_distribution"]["DELETE"] == 0
 
 
 class TestLoadCoreFunctions:
@@ -448,11 +401,9 @@ class TestRegistryIntegration:
         assert count_param.required is False
         assert count_param.default == 1
         
-        # Test stats
-        stats = get_registry_stats()
-        assert "integration_test_func" in stats["function_names"]
-        assert stats["http_methods_distribution"]["GET"] >= 1
-        assert stats["http_methods_distribution"]["POST"] >= 1
+        # Verify HTTP methods are set correctly
+        assert "GET" in func_info.http_methods
+        assert "POST" in func_info.http_methods
     
     def test_registry_access_nonexistent_function(self):
         """Test that accessing non-existent function raises KeyError."""
