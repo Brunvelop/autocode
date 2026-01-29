@@ -505,13 +505,13 @@ def get_all_module_kwargs_schemas() -> Dict[str, Dict[str, Any]]:
     }
 
 
-def get_available_tools_info() -> List[Dict[str, Any]]:
+def get_available_tools_info(functions: Dict[str, Any] = None) -> List[Dict[str, Any]]:
     """
-    Obtiene información de las funciones del registry que pueden usarse como tools.
+    Obtiene información de las funciones proporcionadas que pueden usarse como tools.
 
-    Solo incluye funciones que están expuestas en MCP (tienen "mcp" en interfaces).
-    Las funciones que no deben ser tools (como 'chat') se excluyen a nivel de registro
-    usando interfaces=["api", "cli"] sin "mcp".
+    Args:
+        functions: Dict[str, FunctionInfo] con las funciones a listar.
+                   Si es None, retorna lista vacía.
 
     Returns:
         Lista de diccionarios con información de cada tool:
@@ -520,19 +520,17 @@ def get_available_tools_info() -> List[Dict[str, Any]]:
         - enabled_by_default: Si está habilitada por defecto
         
     Example:
-        >>> tools = get_available_tools_info()
+        >>> # En interfaces, obtener funciones y pasarlas:
+        >>> mcp_funcs = get_functions_for_interface("mcp")
+        >>> tools = get_available_tools_info(mcp_funcs)
         >>> print([t['name'] for t in tools])
         ['generate_code', 'generate_design', 'generate_answer', ...]
     """
-    # Import aquí para evitar importación circular
-    from autocode.interfaces.registry import get_functions_for_interface
-
-    # Use centralized filtering - only get functions exposed in MCP
-    # Functions like 'chat' are excluded at registration level (interfaces without "mcp")
-    mcp_functions = get_functions_for_interface("mcp")
+    if functions is None:
+        return []
 
     tools = []
-    for func_name, func_info in mcp_functions.items():
+    for func_name, func_info in functions.items():
         tools.append({
             'name': func_name,
             'description': func_info.description,

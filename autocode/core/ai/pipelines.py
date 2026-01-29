@@ -6,7 +6,7 @@ with DSPy generation for complete workflows.
 """
 from typing import Literal, Dict, Any, Optional, List, get_args
 import litellm
-from autocode.interfaces.registry import register_function
+from autocode.interfaces.registry import register_function, get_functions_for_interface
 from autocode.interfaces.models import GenericOutput
 from autocode.core.ai.models import DspyOutput
 from autocode.core.utils.file_utils import (
@@ -29,7 +29,7 @@ from autocode.core.ai.signatures import (
     QASignature,
     ChatSignature
 )
-from autocode.interfaces.registry import _ensure_functions_loaded, get_functions_for_interface
+from autocode.interfaces.models import FunctionInfo
 
 
 # Available signature types for UI selection
@@ -476,7 +476,7 @@ def chat(
     Chat conversacional con acceso a herramientas MCP.
     
     Este endpoint usa DSPy con el módulo configurado para:
-    - Acceder a las funciones registradas como herramientas con schemas completos
+    - Usar las funciones MCP registradas como herramientas con schemas completos
     - Razonar sobre qué herramientas usar para responder (con ReAct)
     - Retornar un DspyOutput completo con trajectory, reasoning, history, etc.
     
@@ -502,20 +502,20 @@ def chat(
     import dspy
     
     try:
-        _ensure_functions_loaded()
-        # Crear tools con schemas detallados usando filtrado centralizado por interface MCP
-        # Funciones como 'chat' se excluyen automáticamente al no tener "mcp" en interfaces
+        # Obtener funciones MCP del registry
         mcp_functions = get_functions_for_interface("mcp")
+        functions_to_use = list(mcp_functions.values())
+        
         tools = []
-        for func_name, func_info in mcp_functions.items():
+        for func_info in functions_to_use:
             # Filtrar por enabled_tools si se especificó
-            if enabled_tools is not None and func_name not in enabled_tools:
+            if enabled_tools is not None and func_info.name not in enabled_tools:
                 continue
             
             # Crear wrapper de tool con schema enriquecido
-            def create_tool_wrapper(func_name, func_info):
+            def create_tool_wrapper(fi: FunctionInfo):
                 def tool_func(**kwargs):
-                    """Tool wrapper que ejecuta funciones del registry."""
+                    """Tool wrapper que ejecuta funciones inyectadas."""
                     try:
                         # DSPy ReAct puede pasar los params dentro de un argumento 'kwargs'
                         # Si recibimos kwargs={'name': 'value'} en lugar de name='value'
@@ -524,16 +524,16 @@ def chat(
                         else:
                             actual_kwargs = kwargs
                         
-                        return func_info.func(**actual_kwargs)
+                        return fi.func(**actual_kwargs)
                     except Exception as e:
-                        return f"Error ejecutando {func_name}: {str(e)}"
+                        return f"Error ejecutando {fi.name}: {str(e)}"
                 
                 # Configurar metadata del tool con schema detallado
-                tool_func.__name__ = func_name
+                tool_func.__name__ = fi.name
                 
                 # Construir docstring enriquecida con información de parámetros
-                doc_parts = [func_info.description, "\n\nArgs:"]
-                for param in func_info.params:
+                doc_parts = [fi.description, "\n\nArgs:"]
+                for param in fi.params:
                     # Formato: nombre (tipo, required/optional, default): descripción
                     param_type = param.type.__name__ if hasattr(param.type, '__name__') else str(param.type)
                     required_str = "required" if param.required else f"optional, default={param.default}"
@@ -549,7 +549,7 @@ def chat(
                 
                 return tool_func
             
-            tools.append(create_tool_wrapper(func_name, func_info))
+            tools.append(create_tool_wrapper(func_info))
         
         # Preparar module_kwargs con tools para ReAct
         if module_kwargs is None:
@@ -594,7 +594,7 @@ def get_chat_config() -> GenericOutput:
     
     Retorna información sobre:
     - module_kwargs_schemas: Parámetros disponibles por cada module_type
-    - available_tools: Lista de tools disponibles con nombre y descripción
+    - available_tools: Lista de tools MCP disponibles con nombre y descripción
     - models: Lista de modelos disponibles con metadata de OpenRouter
     
     Esta información permite a la UI renderizar controles dinámicos
@@ -626,11 +626,14 @@ def get_chat_config() -> GenericOutput:
                 "supported_parameters": info.get("supported_parameters", [])
             })
 
+        # Obtener funciones MCP del registry
+        mcp_functions = get_functions_for_interface("mcp")
+
         return GenericOutput(
             success=True,
             result={
                 "module_kwargs_schemas": get_all_module_kwargs_schemas(),
-                "available_tools": get_available_tools_info(),
+                "available_tools": get_available_tools_info(mcp_functions),
                 "models": models_data
             },
             message="Configuración de chat obtenida exitosamente"

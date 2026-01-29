@@ -13,7 +13,7 @@ from autocode.interfaces.cli import (
     app, _add_command_options, _create_handler, _register_commands,
     list_functions, serve_api, serve_mcp, serve, TYPE_MAP
 )
-from autocode.interfaces.registry import FUNCTION_REGISTRY
+from autocode.interfaces.registry import FUNCTION_REGISTRY, RegistryError
 from autocode.interfaces.models import ExplicitParam, FunctionInfo, GenericOutput
 
 
@@ -200,7 +200,7 @@ class TestRegisterCommands:
     
     @patch('autocode.interfaces.cli.load_core_functions')
     def test_register_commands_empty_registry(self, mock_load):
-        """Test command registration with empty registry."""
+        """Test command registration with empty registry raises RegistryError."""
         # Clear registry and commands
         original_commands = app.commands.copy()
         original_registry = FUNCTION_REGISTRY.copy()
@@ -208,10 +208,11 @@ class TestRegisterCommands:
         app.commands.clear()
         
         try:
-            _register_commands()
+            # Should raise RegistryError when registry is empty
+            with pytest.raises(RegistryError) as exc_info:
+                _register_commands()
             
-            # Should not have registered any new commands (only built-in ones)
-            # Note: This test depends on the order of operations in the module
+            assert "FUNCTION_REGISTRY is empty" in str(exc_info.value)
             
         finally:
             # Restore
@@ -246,7 +247,7 @@ class TestBuiltInCommands:
         assert "Available functions:" in result.output
     
     @patch('uvicorn.run')
-    def test_serve_api_command_defaults(self, mock_uvicorn_run):
+    def test_serve_api_command_defaults(self, mock_uvicorn_run, populated_registry):
         """Test serve-api command with default parameters."""
         runner = CliRunner()
         result = runner.invoke(app, ['serve-api'])

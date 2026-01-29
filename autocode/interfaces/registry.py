@@ -61,8 +61,16 @@ def register_function(
 
 
 def get_functions_for_interface(interface: Interface) -> Dict[str, FunctionInfo]:
-    """Filter registered functions by interface ("api", "cli", or "mcp")."""
-    _ensure_functions_loaded()
+    """Filter registered functions by interface ("api", "cli", or "mcp").
+    
+    Raises:
+        RegistryError: If FUNCTION_REGISTRY is empty (load_core_functions not called).
+    """
+    if not FUNCTION_REGISTRY:
+        raise RegistryError(
+            "FUNCTION_REGISTRY is empty. "
+            "Call load_core_functions() at application startup."
+        )
     return {name: info for name, info in FUNCTION_REGISTRY.items() if interface in info.interfaces}
 
 

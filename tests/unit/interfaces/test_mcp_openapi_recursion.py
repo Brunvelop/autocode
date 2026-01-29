@@ -9,7 +9,7 @@ We changed get_git_tree() to return a non-recursive graph to keep OpenAPI acycli
 from fastapi.openapi.utils import get_openapi
 
 
-def test_fastapi_mcp_convert_openapi_to_mcp_tools_does_not_recurse():
+def test_fastapi_mcp_convert_openapi_to_mcp_tools_does_not_recurse(populated_registry):
     from autocode.interfaces.api import create_api_app
     from fastapi_mcp.openapi.convert import convert_openapi_to_mcp_tools
 

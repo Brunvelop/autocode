@@ -98,9 +98,10 @@ class TestCreateMcpApp:
         # Verify the exact same app instance is returned
         assert result_app is mock_api_app
     
+    @patch('autocode.interfaces.mcp._register_mcp_endpoints')
     @patch('autocode.interfaces.mcp.FastApiMCP')
     @patch('autocode.interfaces.mcp.create_api_app')
-    def test_create_mcp_app_preserves_api_functionality(self, mock_create_api_app, mock_fastapi_mcp):
+    def test_create_mcp_app_preserves_api_functionality(self, mock_create_api_app, mock_fastapi_mcp, mock_register):
         """Test that MCP app preserves original API functionality."""
         # Create a more realistic mock API app
         mock_api_app = Mock(spec=FastAPI)
@@ -123,10 +124,11 @@ class TestCreateMcpApp:
         assert result_app.title == "Autocode API + MCP Server"
         assert result_app.description == "Minimalistic framework for code quality tools with MCP integration"
     
+    @patch('autocode.interfaces.mcp._register_mcp_endpoints')
     @patch('autocode.interfaces.mcp.FastApiMCP')
     @patch('autocode.interfaces.mcp.create_api_app')
     @patch('autocode.interfaces.mcp.logger')
-    def test_create_mcp_app_logs_success(self, mock_logger, mock_create_api_app, mock_fastapi_mcp):
+    def test_create_mcp_app_logs_success(self, mock_logger, mock_create_api_app, mock_fastapi_mcp, mock_register):
         """Test that successful MCP app creation is logged."""
         # Setup mocks
         mock_api_app = Mock(spec=FastAPI)
@@ -147,9 +149,10 @@ class TestCreateMcpApp:
         with pytest.raises(RuntimeError, match="MCP server initialization failed: API creation failed"):
             create_mcp_app()
     
+    @patch('autocode.interfaces.mcp._register_mcp_endpoints')
     @patch('autocode.interfaces.mcp.FastApiMCP')
     @patch('autocode.interfaces.mcp.create_api_app')
-    def test_create_mcp_app_mcp_initialization_error(self, mock_create_api_app, mock_fastapi_mcp):
+    def test_create_mcp_app_mcp_initialization_error(self, mock_create_api_app, mock_fastapi_mcp, mock_register):
         """Test MCP app creation when MCP initialization fails."""
         # API app creation succeeds
         mock_api_app = Mock(spec=FastAPI)
@@ -161,9 +164,10 @@ class TestCreateMcpApp:
         with pytest.raises(RuntimeError, match="MCP server initialization failed: MCP initialization failed"):
             create_mcp_app()
     
+    @patch('autocode.interfaces.mcp._register_mcp_endpoints')
     @patch('autocode.interfaces.mcp.FastApiMCP')
     @patch('autocode.interfaces.mcp.create_api_app')
-    def test_create_mcp_app_mount_error(self, mock_create_api_app, mock_fastapi_mcp):
+    def test_create_mcp_app_mount_error(self, mock_create_api_app, mock_fastapi_mcp, mock_register):
         """Test MCP app creation when MCP mount fails."""
         # API app and MCP instance creation succeed
         mock_api_app = Mock(spec=FastAPI)
@@ -176,10 +180,11 @@ class TestCreateMcpApp:
         with pytest.raises(RuntimeError, match="MCP server initialization failed: Mount failed"):
             create_mcp_app()
     
+    @patch('autocode.interfaces.mcp._register_mcp_endpoints')
     @patch('autocode.interfaces.mcp.FastApiMCP')
     @patch('autocode.interfaces.mcp.create_api_app')
     @patch('autocode.interfaces.mcp.logger')
-    def test_create_mcp_app_error_logging(self, mock_logger, mock_create_api_app, mock_fastapi_mcp):
+    def test_create_mcp_app_error_logging(self, mock_logger, mock_create_api_app, mock_fastapi_mcp, mock_register):
         """Test that errors are properly logged."""
         # Setup to cause an error in MCP initialization
         mock_api_app = Mock(spec=FastAPI)
@@ -197,9 +202,10 @@ class TestCreateMcpApp:
 class TestMcpIntegration:
     """Integration tests for MCP functionality."""
     
+    @patch('autocode.interfaces.mcp._register_mcp_endpoints')
     @patch('autocode.interfaces.mcp.FastApiMCP')
     @patch('autocode.interfaces.mcp.create_api_app')
-    def test_mcp_app_integration_with_real_api_structure(self, mock_create_api_app, mock_fastapi_mcp):
+    def test_mcp_app_integration_with_real_api_structure(self, mock_create_api_app, mock_fastapi_mcp, mock_register):
         """Test MCP app creation with realistic API app structure."""
         # Create a more realistic mock that mimics actual FastAPI app
         mock_api_app = Mock(spec=FastAPI)
@@ -282,9 +288,10 @@ class TestMcpErrorHandling:
         assert exc_info.value.__cause__ is original_error
         assert "MCP server initialization failed: Original error" in str(exc_info.value)
     
+    @patch('autocode.interfaces.mcp._register_mcp_endpoints')
     @patch('autocode.interfaces.mcp.FastApiMCP')
     @patch('autocode.interfaces.mcp.create_api_app')
-    def test_multiple_error_scenarios(self, mock_create_api_app, mock_fastapi_mcp):
+    def test_multiple_error_scenarios(self, mock_create_api_app, mock_fastapi_mcp, mock_register):
         """Test various error scenarios that could occur during MCP app creation."""
         
         # Test 1: API app creation error
@@ -323,10 +330,11 @@ class TestMcpErrorHandling:
         (TypeError("Type error"), "Type error"),
         (AttributeError("Attribute error"), "Attribute error"),
     ])
+    @patch('autocode.interfaces.mcp._register_mcp_endpoints')
     @patch('autocode.interfaces.mcp.FastApiMCP')
     @patch('autocode.interfaces.mcp.create_api_app')
     @patch('autocode.interfaces.mcp.logger')
-    def test_error_logging_with_different_error_types(self, mock_logger, mock_create_api_app, mock_fastapi_mcp, error, expected_message):
+    def test_error_logging_with_different_error_types(self, mock_logger, mock_create_api_app, mock_fastapi_mcp, mock_register, error, expected_message):
         """Test that different types of errors are logged appropriately."""
         mock_api_app = Mock(spec=FastAPI)
         mock_create_api_app.return_value = mock_api_app
@@ -372,9 +380,10 @@ class TestMcpModuleConstants:
 class TestMcpAppBehavior:
     """Tests for expected MCP app behavior and characteristics."""
     
+    @patch('autocode.interfaces.mcp._register_mcp_endpoints')
     @patch('autocode.interfaces.mcp.FastApiMCP')
     @patch('autocode.interfaces.mcp.create_api_app')
-    def test_app_modification_sequence(self, mock_create_api_app, mock_fastapi_mcp):
+    def test_app_modification_sequence(self, mock_create_api_app, mock_fastapi_mcp, mock_register):
         """Test the sequence of modifications made to the app."""
         # Create a mock that tracks changes
         mock_api_app = Mock(spec=FastAPI)

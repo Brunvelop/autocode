@@ -485,8 +485,9 @@ class TestCreateApiApp:
             create_api_app()
     
     @patch('autocode.interfaces.api.load_core_functions')
-    def test_create_api_app_endpoints(self, mock_load):
-        """Test that standard endpoints are created."""
+    @patch('autocode.interfaces.api.register_dynamic_endpoints')
+    def test_root_endpoint_file_response(self, mock_register, mock_load):
+        """Test root endpoint returns a response (verifying route exists)."""
         app = create_api_app()
         client = TestClient(app)
         
@@ -513,7 +514,7 @@ class TestCreateApiApp:
     @patch('autocode.interfaces.api.load_core_functions')
     @patch('os.path.exists')
     @patch('os.path.isdir')
-    def test_create_api_app_static_files(self, mock_isdir, mock_exists, mock_load):
+    def test_create_api_app_static_files(self, mock_isdir, mock_exists, mock_load, populated_registry):
         """Test static file mounting."""
         mock_exists.return_value = True
         mock_isdir.return_value = True
@@ -525,7 +526,7 @@ class TestCreateApiApp:
         # Note: This test might need adjustment based on FastAPI's internal structure
     
     @patch('autocode.interfaces.api.load_core_functions')
-    def test_create_api_app_root_endpoint(self, mock_load):
+    def test_create_api_app_root_endpoint(self, mock_load, populated_registry):
         """Test root endpoint serves index.html."""
         app = create_api_app()
         
@@ -961,7 +962,7 @@ class TestStaticFilesAndRootEndpoint:
     @patch('os.path.exists')
     @patch('os.path.join')
     @patch('os.path.isdir')
-    def test_static_files_mounting_when_dir_exists(self, mock_isdir, mock_join, mock_exists, mock_load):
+    def test_static_files_mounting_when_dir_exists(self, mock_isdir, mock_join, mock_exists, mock_load, populated_registry):
         """Test static files are mounted when web directory exists."""
         mock_exists.return_value = True
         mock_isdir.return_value = True
@@ -981,7 +982,7 @@ class TestStaticFilesAndRootEndpoint:
     
     @patch('autocode.interfaces.api.load_core_functions')
     @patch('os.path.exists')
-    def test_static_files_not_mounted_when_dir_missing(self, mock_exists, mock_load):
+    def test_static_files_not_mounted_when_dir_missing(self, mock_exists, mock_load, populated_registry):
         """Test static files are not mounted when web directory doesn't exist."""
         mock_exists.return_value = False
         
@@ -994,7 +995,7 @@ class TestStaticFilesAndRootEndpoint:
         assert app.title == "Autocode API"
     
     @patch('autocode.interfaces.api.load_core_functions')
-    def test_root_endpoint_file_response(self, mock_load):
+    def test_root_endpoint_file_response(self, mock_load, populated_registry):
         """Test root endpoint returns a response (verifying route exists)."""
         app = create_api_app()
         
@@ -1016,7 +1017,8 @@ class TestStaticFilesAndRootEndpoint:
         assert response.status_code in [200, 404, 500]
     
     @patch('autocode.interfaces.api.load_core_functions')
-    def test_root_endpoint_path_construction(self, mock_load):
+    @patch('autocode.interfaces.api.register_dynamic_endpoints')
+    def test_root_endpoint_path_construction(self, mock_register, mock_load):
         """Test that root endpoint constructs correct path to index.html."""
         with patch('os.path.dirname') as mock_dirname, \
              patch('os.path.join') as mock_join, \
