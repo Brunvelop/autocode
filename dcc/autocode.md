@@ -39,7 +39,7 @@ GenericOutput:
 def f(params: typed) -> GenericOutput
 
 # === Contrato de Parámetro ===
-ExplicitParam:
+ParamSchema:
     name: str
     type: Type           # Inferido de signature
     default: Any?
@@ -52,7 +52,7 @@ FunctionInfo:
     name: str            # f.__name__
     func: Callable       # La función real
     description: str     # Docstring.short_description
-    params: [ExplicitParam]
+    params: [ParamSchema]
     http_methods: [str]  # GET, POST...
     interfaces: [str]    # api, cli, mcp
 ```
@@ -173,7 +173,7 @@ Python Type    ──────────────────►  JSON S
 
 Docstring      ──────────────────►  Metadata
   short_description                   FunctionInfo.description
-  Args.param_name                     ExplicitParam.description
+  Args.param_name                     ParamSchema.description
 
                     FRONTEND
 JSON Schema    ──────────────────►  HTML Input

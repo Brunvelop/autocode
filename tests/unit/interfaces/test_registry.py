@@ -16,7 +16,7 @@ from autocode.interfaces.registry import (
     clear_registry, load_functions,
     RegistryError, _has_register_decorator
 )
-from autocode.interfaces.models import FunctionInfo, ExplicitParam, GenericOutput, FunctionSchema
+from autocode.interfaces.models import FunctionInfo, ParamSchema, GenericOutput, FunctionSchema
 
 
 class TestGenerateFunctionInfo:
@@ -235,13 +235,13 @@ class TestRegistryPublicAPI:
         
         x_param = params[0]
         assert x_param.name == "x"
-        assert x_param.type == "int"
+        assert x_param.type_str == "int"
         assert x_param.required is True
         assert x_param.description == "First number"
         
         y_param = params[1]
         assert y_param.name == "y"
-        assert y_param.type == "int"
+        assert y_param.type_str == "int"
         assert y_param.required is False
         assert y_param.default == 1
         assert y_param.description == "Second number"

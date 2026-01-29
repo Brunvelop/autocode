@@ -23,7 +23,7 @@ import pkgutil
 from docstring_parser import parse
 
 from autocode.interfaces.models import (
-    FunctionInfo, ExplicitParam, GenericOutput, FunctionSchema,
+    FunctionInfo, ParamSchema, GenericOutput, FunctionSchema,
     HttpMethod, Interface, DEFAULT_HTTP_METHODS, DEFAULT_INTERFACES
 )
 
@@ -237,12 +237,12 @@ def _generate_function_info(
     )
 
 
-def _extract_param_info(param: inspect.Parameter, name: str, param_docs: dict[str, str]) -> ExplicitParam:
-    """Extract ExplicitParam from inspect.Parameter."""
+def _extract_param_info(param: inspect.Parameter, name: str, param_docs: dict[str, str]) -> ParamSchema:
+    """Extract ParamSchema from inspect.Parameter."""
     param_type = param.annotation if param.annotation != inspect.Parameter.empty else Any
     choices = list(get_args(param_type)) if get_origin(param_type) is Literal else None
     
-    return ExplicitParam(
+    return ParamSchema(
         name=name,
         type=param_type,
         default=param.default if param.default != inspect.Parameter.empty else None,

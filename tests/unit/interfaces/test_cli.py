@@ -16,7 +16,7 @@ from autocode.interfaces.cli import (
 from autocode.interfaces.registry import (
     RegistryError, function_count, get_all_functions, get_function_by_name, clear_registry
 )
-from autocode.interfaces.models import ExplicitParam, FunctionInfo, GenericOutput
+from autocode.interfaces.models import ParamSchema, FunctionInfo, GenericOutput
 
 
 class TestTypeMappingAndUtils:
@@ -40,8 +40,8 @@ class TestTypeMappingAndUtils:
             pass
         
         params = [
-            ExplicitParam(name="count", type=int, default=1, required=False, description="Number of items"),
-            ExplicitParam(name="name", type=str, required=True, description="Name parameter")
+            ParamSchema(name="count", type=int, default=1, required=False, description="Number of items"),
+            ParamSchema(name="name", type=str, required=True, description="Name parameter")
         ]
         
         decorated_func = _add_command_options(test_command, params)
@@ -65,7 +65,7 @@ class TestTypeMappingAndUtils:
             pass
         
         params = [
-            ExplicitParam(name="required_param", type=str, required=True, description="Required parameter")
+            ParamSchema(name="required_param", type=str, required=True, description="Required parameter")
         ]
         
         decorated_func = _add_command_options(test_command, params)
@@ -87,9 +87,9 @@ class TestTypeMappingAndUtils:
             pass
         
         params = [
-            ExplicitParam(name="int_param", type=int, default=42, required=False, description="Integer param"),
-            ExplicitParam(name="float_param", type=float, default=3.14, required=False, description="Float param"),
-            ExplicitParam(name="bool_param", type=bool, default=True, required=False, description="Boolean param"),
+            ParamSchema(name="int_param", type=int, default=42, required=False, description="Integer param"),
+            ParamSchema(name="float_param", type=float, default=3.14, required=False, description="Float param"),
+            ParamSchema(name="bool_param", type=bool, default=True, required=False, description="Boolean param"),
         ]
         
         decorated_func = _add_command_options(test_command, params)
@@ -434,7 +434,7 @@ class TestCLIErrorScenarios:
             name="always_fails",
             func=always_fails,
             description="Function that always fails",
-            params=[ExplicitParam(name="x", type=int, required=True, description="Param x")],
+            params=[ParamSchema(name="x", type=int, required=True, description="Param x")],
             return_type=GenericOutput
         )
         
@@ -487,7 +487,7 @@ class TestCLICommandRegistrationEdgeCases:
             name="underscore_func",
             func=func_with_underscore,
             description="Function with underscore param",
-            params=[ExplicitParam(name="param_name", type=str, required=True, description="Param with underscore")],
+            params=[ParamSchema(name="param_name", type=str, required=True, description="Param with underscore")],
             return_type=GenericOutput
         )
         
@@ -508,9 +508,9 @@ class TestCLICommandRegistrationEdgeCases:
         from typing import Optional
         
         params = [
-            ExplicitParam(name="string_param", type=str, required=True, description="String parameter"),
-            ExplicitParam(name="optional_int", type=int, default=42, required=False, description="Optional integer"),
-            ExplicitParam(name="boolean_flag", type=bool, default=False, required=False, description="Boolean flag"),
+            ParamSchema(name="string_param", type=str, required=True, description="String parameter"),
+            ParamSchema(name="optional_int", type=int, default=42, required=False, description="Optional integer"),
+            ParamSchema(name="boolean_flag", type=bool, default=False, required=False, description="Boolean flag"),
         ]
         
         def complex_command(**kwargs):

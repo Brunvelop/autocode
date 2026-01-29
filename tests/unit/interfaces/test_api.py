@@ -18,7 +18,7 @@ from autocode.interfaces.api import (
     execute_function_with_params, create_handler, register_dynamic_endpoints,
     create_api_app
 )
-from autocode.interfaces.models import GenericOutput, FunctionInfo, ExplicitParam
+from autocode.interfaces.models import GenericOutput, FunctionInfo, ParamSchema
 from autocode.interfaces.registry import _registry, clear_registry
 
 
@@ -75,7 +75,7 @@ class TestCreateDynamicModel:
     def test_create_dynamic_model_post_required_only(self, sample_function_info):
         """Test creating POST model with required parameters only."""
         # Create function info with only required params
-        required_param = ExplicitParam(
+        required_param = ParamSchema(
             name="required_param",
             type=str,
             required=True,
@@ -132,9 +132,9 @@ class TestCreateDynamicModel:
     def test_create_dynamic_model_complex_types(self):
         """Test creating model with various parameter types."""
         params = [
-            ExplicitParam(name="str_param", type=str, required=True, description="String param"),
-            ExplicitParam(name="int_param", type=int, default=42, required=False, description="Int param"),
-            ExplicitParam(name="bool_param", type=bool, default=True, required=False, description="Bool param"),
+            ParamSchema(name="str_param", type=str, required=True, description="String param"),
+            ParamSchema(name="int_param", type=int, default=42, required=False, description="Int param"),
+            ParamSchema(name="bool_param", type=bool, default=True, required=False, description="Bool param"),
         ]
         
         func_info = FunctionInfo(
@@ -194,8 +194,8 @@ class TestExtractFunctionParams:
     def test_extract_function_params_none_defaults(self):
         """Test parameter extraction with None defaults."""
         params = [
-            ExplicitParam(name="required", type=str, required=True, description="Required"),
-            ExplicitParam(name="optional", type=str, default=None, required=False, description="Optional with None default")
+            ParamSchema(name="required", type=str, required=True, description="Required"),
+            ParamSchema(name="optional", type=str, default=None, required=False, description="Optional with None default")
         ]
         func_info = FunctionInfo(
             name="test",
@@ -236,7 +236,7 @@ class TestExecuteFunctionWithParams:
             name="dict_func",
             func=dict_func,
             description="Returns dict",
-            params=[ExplicitParam(name="name", type=str, required=True, description="Name")],
+            params=[ParamSchema(name="name", type=str, required=True, description="Name")],
             return_type=GenericOutput
         )
         
@@ -257,7 +257,7 @@ class TestExecuteFunctionWithParams:
             name="failing_func",
             func=failing_func,
             description="Failing function",
-            params=[ExplicitParam(name="x", type=int, required=True, description="Integer param")],
+            params=[ParamSchema(name="x", type=int, required=True, description="Integer param")],
             return_type=GenericOutput
         )
         
@@ -278,7 +278,7 @@ class TestExecuteFunctionWithParams:
             name="error_func",
             func=error_func,
             description="Error function",
-            params=[ExplicitParam(name="x", type=int, required=True, description="Integer param")],
+            params=[ParamSchema(name="x", type=int, required=True, description="Integer param")],
             return_type=GenericOutput
         )
         
@@ -376,8 +376,8 @@ class TestRegisterDynamicEndpoints:
             func=lambda x, y: GenericOutput(result=x + y, success=True),
             description="Mock test function for endpoint registration",
             params=[
-                ExplicitParam(name="x", type=int, required=True, description="First param"),
-                ExplicitParam(name="y", type=int, default=1, required=False, description="Second param")
+                ParamSchema(name="x", type=int, required=True, description="First param"),
+                ParamSchema(name="y", type=int, default=1, required=False, description="Second param")
             ],
             http_methods=["GET", "POST"],
             interfaces=["api"],
@@ -433,7 +433,7 @@ class TestRegisterDynamicEndpoints:
             name="custom_func",
             func=lambda x: GenericOutput(result=x, success=True),
             description="Custom function with PUT/DELETE",
-            params=[ExplicitParam(name="x", type=str, required=True, description="Param")],
+            params=[ParamSchema(name="x", type=str, required=True, description="Param")],
             http_methods=["PUT", "DELETE"],
             interfaces=["api"],
             return_type=GenericOutput
@@ -643,8 +643,8 @@ class TestCreateDynamicModelExtended:
     def test_create_dynamic_model_with_list_type(self):
         """Test creating model with List type parameter."""
         params = [
-            ExplicitParam(name="items", type=List[str], required=True, description="List of items"),
-            ExplicitParam(name="numbers", type=List[int], default=[], required=False, description="List of numbers")
+            ParamSchema(name="items", type=List[str], required=True, description="List of items"),
+            ParamSchema(name="numbers", type=List[int], default=[], required=False, description="List of numbers")
         ]
         
         func_info = FunctionInfo(
@@ -670,8 +670,8 @@ class TestCreateDynamicModelExtended:
     def test_create_dynamic_model_with_dict_type(self):
         """Test creating model with Dict type parameter."""
         params = [
-            ExplicitParam(name="config", type=Dict[str, Any], required=True, description="Configuration dict"),
-            ExplicitParam(name="metadata", type=Dict[str, str], default={}, required=False, description="Metadata")
+            ParamSchema(name="config", type=Dict[str, Any], required=True, description="Configuration dict"),
+            ParamSchema(name="metadata", type=Dict[str, str], default={}, required=False, description="Metadata")
         ]
         
         func_info = FunctionInfo(
@@ -700,9 +700,9 @@ class TestCreateDynamicModelExtended:
     def test_create_dynamic_model_all_optional_params(self):
         """Test creating model with all optional parameters."""
         params = [
-            ExplicitParam(name="opt1", type=str, default="default1", required=False, description="Optional 1"),
-            ExplicitParam(name="opt2", type=int, default=100, required=False, description="Optional 2"),
-            ExplicitParam(name="opt3", type=bool, default=False, required=False, description="Optional 3")
+            ParamSchema(name="opt1", type=str, default="default1", required=False, description="Optional 1"),
+            ParamSchema(name="opt2", type=int, default=100, required=False, description="Optional 2"),
+            ParamSchema(name="opt3", type=bool, default=False, required=False, description="Optional 3")
         ]
         
         func_info = FunctionInfo(
@@ -751,11 +751,11 @@ class TestExtractFunctionParamsExtended:
     def test_extract_function_params_mixed_defaults(self):
         """Test parameter extraction with mixed default types."""
         params = [
-            ExplicitParam(name="required_str", type=str, required=True, description="Required string"),
-            ExplicitParam(name="optional_int", type=int, default=42, required=False, description="Optional int"),
-            ExplicitParam(name="optional_list", type=List[str], default=[], required=False, description="Optional list"),
-            ExplicitParam(name="optional_dict", type=Dict[str, Any], default={}, required=False, description="Optional dict"),
-            ExplicitParam(name="optional_none", type=str, default=None, required=False, description="Optional with None")
+            ParamSchema(name="required_str", type=str, required=True, description="Required string"),
+            ParamSchema(name="optional_int", type=int, default=42, required=False, description="Optional int"),
+            ParamSchema(name="optional_list", type=List[str], default=[], required=False, description="Optional list"),
+            ParamSchema(name="optional_dict", type=Dict[str, Any], default={}, required=False, description="Optional dict"),
+            ParamSchema(name="optional_none", type=str, default=None, required=False, description="Optional with None")
         ]
         
         func_info = FunctionInfo(
@@ -781,9 +781,9 @@ class TestExtractFunctionParamsExtended:
     def test_extract_function_params_partial_override(self):
         """Test parameter extraction with partial override of defaults."""
         params = [
-            ExplicitParam(name="param1", type=str, default="default1", required=False, description="Param 1"),
-            ExplicitParam(name="param2", type=int, default=10, required=False, description="Param 2"),
-            ExplicitParam(name="param3", type=bool, default=True, required=False, description="Param 3")
+            ParamSchema(name="param1", type=str, default="default1", required=False, description="Param 1"),
+            ParamSchema(name="param2", type=int, default=10, required=False, description="Param 2"),
+            ParamSchema(name="param3", type=bool, default=True, required=False, description="Param 3")
         ]
         
         func_info = FunctionInfo(
@@ -808,8 +808,8 @@ class TestExtractFunctionParamsExtended:
     def test_extract_function_params_complex_types(self):
         """Test parameter extraction with complex data types."""
         params = [
-            ExplicitParam(name="data_list", type=List[Dict[str, Any]], required=True, description="List of dicts"),
-            ExplicitParam(name="config_dict", type=Dict[str, List[str]], default={}, required=False, description="Dict of lists")
+            ParamSchema(name="data_list", type=List[Dict[str, Any]], required=True, description="List of dicts"),
+            ParamSchema(name="config_dict", type=Dict[str, List[str]], default={}, required=False, description="Dict of lists")
         ]
         
         func_info = FunctionInfo(
@@ -847,8 +847,8 @@ class TestExecuteFunctionWithParamsExtended:
             func=type_error_func,
             description="Function that can raise TypeError",
             params=[
-                ExplicitParam(name="x", type=int, required=True, description="Integer param"),
-                ExplicitParam(name="y", type=str, required=True, description="String param")
+                ParamSchema(name="x", type=int, required=True, description="Integer param"),
+                ParamSchema(name="y", type=str, required=True, description="String param")
             ],
             return_type=GenericOutput
         )
@@ -876,7 +876,7 @@ class TestExecuteFunctionWithParamsExtended:
             name="custom_error_func",
             func=custom_error_func,
             description="Function with custom exception",
-            params=[ExplicitParam(name="x", type=int, required=True, description="Positive integer")],
+            params=[ParamSchema(name="x", type=int, required=True, description="Positive integer")],
             return_type=GenericOutput
         )
         
@@ -897,7 +897,7 @@ class TestExecuteFunctionWithParamsExtended:
             name="list_func",
             func=list_func,
             description="Returns list",
-            params=[ExplicitParam(name="count", type=int, required=True, description="Number of items")],
+            params=[ParamSchema(name="count", type=int, required=True, description="Number of items")],
             return_type=GenericOutput
         )
         
@@ -919,7 +919,7 @@ class TestExecuteFunctionWithParamsExtended:
             name="none_func",
             func=none_func,
             description="Returns None result",
-            params=[ExplicitParam(name="message", type=str, required=True, description="Message")],
+            params=[ParamSchema(name="message", type=str, required=True, description="Message")],
             return_type=GenericOutput
         )
         

@@ -81,7 +81,7 @@ Existe una simetría intencional entre el Backend y el Frontend:
 | **Metadata** | `registry.py` | `/functions/details` (API) |
 | **Generador** | `api.py` (Endpoints dinámicos) | `AutoElementGenerator` |
 | **Contrato** | `GenericOutput` | `AutoFunctionController.result` |
-| **Adaptador** | `ExplicitParam` | `renderParam()` |
+| **Adaptador** | `ParamSchema` | `renderParam()` |
 
 Esta simetría cierra el ciclo de desarrollo:
 1.  Escribes `def my_func(...)` en Python.

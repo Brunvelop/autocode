@@ -505,12 +505,12 @@ def get_all_module_kwargs_schemas() -> Dict[str, Dict[str, Any]]:
     }
 
 
-def get_available_tools_info(functions: Dict[str, Any] = None) -> List[Dict[str, Any]]:
+def get_available_tools_info(functions: List[Any] = None) -> List[Dict[str, Any]]:
     """
     Obtiene información de las funciones proporcionadas que pueden usarse como tools.
 
     Args:
-        functions: Dict[str, FunctionInfo] con las funciones a listar.
+        functions: List[FunctionInfo] con las funciones a listar.
                    Si es None, retorna lista vacía.
 
     Returns:
@@ -530,9 +530,9 @@ def get_available_tools_info(functions: Dict[str, Any] = None) -> List[Dict[str,
         return []
 
     tools = []
-    for func_name, func_info in functions.items():
+    for func_info in functions:
         tools.append({
-            'name': func_name,
+            'name': func_info.name,
             'description': func_info.description,
             'enabled_by_default': True  # Por defecto todas habilitadas
         })

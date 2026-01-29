@@ -35,7 +35,7 @@ GenericOutput:
     message: str?        # Contexto opcional
 
 # === Contrato de Parámetro (runtime) ===
-ExplicitParam:
+ParamSchema:
     name: str
     type: Any            # Tipo Python (incluye genéricos)
     default: Any?
@@ -48,7 +48,7 @@ FunctionInfo:
     name: str            # f.__name__
     func: Callable       # La función real
     description: str     # Docstring.short_description
-    params: [ExplicitParam]
+    params: [ParamSchema]
     http_methods: [str]  # GET, POST...
     interfaces: [str]    # api, cli, mcp
     return_type: Type?   # GenericOutput o subclase
@@ -192,14 +192,14 @@ Invariante: Solo se importan módulos con el decorator
 
 ```
                     REGISTRO
-Python Signature   ──────────────────►  ExplicitParam
+Python Signature   ──────────────────►  ParamSchema
   name: str                              name="name"
   param.annotation                       type=str
   param.default                          default=None/value
   docstring.Args.name                    description="..."
 
                     SERIALIZACIÓN
-ExplicitParam      ──────────────────►  ParamSchema
+ParamSchema      ──────────────────►  ParamSchema
   type: Type                             type: str (serializado)
   (resto igual)                          (resto igual)
 
@@ -362,7 +362,7 @@ python -m autocode.interfaces.cli list
 ```
 autocode/interfaces/
 ├── __init__.py          # Package marker
-├── models.py            # Contratos: GenericOutput, ExplicitParam, FunctionInfo
+├── models.py            # Contratos: GenericOutput, ParamSchema, FunctionInfo
 ├── registry.py          # FUNCTION_REGISTRY + @register_function + autodiscovery
 ├── api.py               # Adapter FastAPI (create_api_app, register_dynamic_endpoints)
 ├── cli.py               # Adapter Click (app, _register_commands)

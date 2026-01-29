@@ -504,7 +504,7 @@ def chat(
     try:
         # Obtener funciones MCP del registry
         mcp_functions = get_functions_for_interface("mcp")
-        functions_to_use = list(mcp_functions.values())
+        functions_to_use = mcp_functions  # Ya es una lista de FunctionInfo
         
         tools = []
         for func_info in functions_to_use:

@@ -10,7 +10,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, create_model
 
-from autocode.interfaces.models import FunctionInfo, GenericOutput, FunctionDetailsResponse, FunctionSchema
+from autocode.interfaces.models import FunctionInfo, GenericOutput, FunctionSchema
 from autocode.interfaces.registry import (
     load_functions, 
     get_all_schemas, 
@@ -124,13 +124,11 @@ def _register_standard_endpoints(app: FastAPI):
         """Serve the test dashboard page."""
         return FileResponse(os.path.join(tests_dir, "index.html"))
 
-    @app.get("/functions/details", response_model=FunctionDetailsResponse)
-    async def list_functions_details():
+    @app.get("/functions/details")
+    async def list_functions_details() -> dict[str, dict[str, FunctionSchema]]:
         """Get detailed information about all registered functions."""
         schemas = get_all_schemas()
-        return FunctionDetailsResponse(
-            functions={s.name: s for s in schemas}
-        )
+        return {"functions": {s.name: s for s in schemas}}
 
     @app.get("/health")
     async def health_check():

@@ -91,7 +91,7 @@ def list_functions_cmd():
         if params:
             params_info = []
             for param in params:
-                param_str = f"{param.name} ({param.type})"
+                param_str = f"{param.name} ({param.type_str})"
                 if not param.required:
                     param_str += f" = {param.default}"
                 else:
@@ -247,7 +247,7 @@ def _add_command_options(command_func: Callable, params: list) -> Callable:
     
     Args:
         command_func: Function to decorate with Click options
-        params: List of ExplicitParam objects from function registry
+        params: List of ParamSchema objects from function registry
         
     Returns:
         Decorated function with Click options attached

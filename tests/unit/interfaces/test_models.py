@@ -9,16 +9,16 @@ from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 from pydantic import ValidationError
 
 from autocode.interfaces.models import (
-    ExplicitParam, FunctionInfo, ExplicitInput, GenericOutput
+    ParamSchema, FunctionInfo, GenericOutput
 )
 
 
-class TestExplicitParam:
-    """Tests for ExplicitParam model - parameter definitions for registry functions."""
+class TestParamSchema:
+    """Tests for ParamSchema model - parameter definitions for registry functions."""
     
     def test_explicit_param_creation_required(self):
         """Test creating required parameter without default."""
-        param = ExplicitParam(
+        param = ParamSchema(
             name="test_param",
             type=int,
             required=True,
@@ -33,7 +33,7 @@ class TestExplicitParam:
     
     def test_explicit_param_creation_optional(self):
         """Test creating optional parameter with default value."""
-        param = ExplicitParam(
+        param = ParamSchema(
             name="optional_param",
             type=str,
             default="default_value",
@@ -49,8 +49,8 @@ class TestExplicitParam:
     
     @pytest.mark.parametrize("param_type", [int, str, float, bool, list, dict, Any])
     def test_explicit_param_supports_various_types(self, param_type):
-        """Test that ExplicitParam supports various Python types."""
-        param = ExplicitParam(
+        """Test that ParamSchema supports various Python types."""
+        param = ParamSchema(
             name="test",
             type=param_type,
             required=True,
@@ -62,10 +62,10 @@ class TestExplicitParam:
     def test_explicit_param_validation_required_fields(self):
         """Test that required fields are validated."""
         with pytest.raises(ValidationError):
-            ExplicitParam()  # Missing required fields
+            ParamSchema()  # Missing required fields
         
         with pytest.raises(ValidationError):
-            ExplicitParam(name="test")  # Missing other required fields
+            ParamSchema(name="test")  # Missing other required fields
 
 
 class TestFunctionInfo:
@@ -90,8 +90,8 @@ class TestFunctionInfo:
     def test_function_info_creation_complete(self, sample_function):
         """Test creating FunctionInfo with all fields specified."""
         params = [
-            ExplicitParam(name="x", type=int, required=True, description="First param"),
-            ExplicitParam(name="y", type=str, default="test", required=False, description="Second param")
+            ParamSchema(name="x", type=int, required=True, description="First param"),
+            ParamSchema(name="y", type=str, default="test", required=False, description="Second param")
         ]
         
         func_info = FunctionInfo(
@@ -143,34 +143,6 @@ class TestFunctionInfo:
         
         with pytest.raises(ValidationError):
             FunctionInfo(name="test")  # Missing func and description
-
-
-class TestExplicitInput:
-    """Tests for ExplicitInput model - generic input handling."""
-    
-    def test_explicit_input_creation_empty(self):
-        """Test creating ExplicitInput with default empty params."""
-        input_model = ExplicitInput()
-        
-        assert input_model.params == {}
-    
-    def test_explicit_input_creation_with_params(self):
-        """Test creating ExplicitInput with parameters."""
-        params = {"x": 5, "y": "test", "z": True}
-        input_model = ExplicitInput(params=params)
-        
-        assert input_model.params == params
-    
-    @pytest.mark.parametrize("params", [
-        {"single": 1},
-        {"multiple": 1, "params": "test", "here": True},
-        {"nested": {"inner": "value"}},
-        {"list_param": [1, 2, 3]},
-    ])
-    def test_explicit_input_various_param_types(self, params):
-        """Test ExplicitInput with various parameter types."""
-        input_model = ExplicitInput(params=params)
-        assert input_model.params == params
 
 
 class TestGenericOutput:
@@ -237,10 +209,10 @@ class TestModelsIntegration:
     """Integration tests for models working together."""
     
     def test_function_info_with_explicit_params(self, sample_function):
-        """Test FunctionInfo containing ExplicitParam instances."""
+        """Test FunctionInfo containing ParamSchema instances."""
         params = [
-            ExplicitParam(name="x", type=int, required=True, description="First"),
-            ExplicitParam(name="y", type=str, default="default", required=False, description="Second")
+            ParamSchema(name="x", type=int, required=True, description="First"),
+            ParamSchema(name="y", type=str, default="default", required=False, description="Second")
         ]
         
         func_info = FunctionInfo(
@@ -253,7 +225,7 @@ class TestModelsIntegration:
         
         # Verify the integration
         assert len(func_info.params) == 2
-        assert all(isinstance(p, ExplicitParam) for p in func_info.params)
+        assert all(isinstance(p, ParamSchema) for p in func_info.params)
         
         # Verify param details
         x_param = func_info.params[0]
@@ -267,8 +239,8 @@ class TestSerializeType:
     """Tests para _serialize_type() - serialización de tipos Python a strings."""
 
     def _serialize(self, py_type: Any) -> str:
-        """Helper para testear _serialize_type() a través de ExplicitParam."""
-        param = ExplicitParam(
+        """Helper para testear _serialize_type() a través de ParamSchema."""
+        param = ParamSchema(
             name="test",
             type=py_type,
             required=True,
@@ -372,25 +344,29 @@ class TestSerializeType:
     # ========================================================================
 
     def test_to_schema_with_generic_type(self):
-        """Verifica que to_schema() usa _serialize_type() correctamente."""
-        param = ExplicitParam(
+        """Verifica que type_str serializa correctamente."""
+        param = ParamSchema(
             name="items",
             type=List[str],
             required=True,
             description="List of items"
         )
-        schema = param.to_schema()
-        assert schema.type == "list[str]"
-        assert schema.name == "items"
+        # type_str returns serialized type string
+        assert param.type_str == "list[str]"
+        assert param.name == "items"
+        # model_dump() also serializes the type
+        assert param.model_dump()['type'] == "list[str]"
 
     def test_to_schema_with_optional_type(self):
-        """Verifica que to_schema() serializa Optional correctamente."""
-        param = ExplicitParam(
+        """Verifica que type_str serializa Optional correctamente."""
+        param = ParamSchema(
             name="name",
             type=Optional[str],
             required=False,
             default=None,
             description="Optional name"
         )
-        schema = param.to_schema()
-        assert schema.type == "str?"
+        # type_str returns serialized type string
+        assert param.type_str == "str?"
+        # model_dump() also serializes the type
+        assert param.model_dump()['type'] == "str?"

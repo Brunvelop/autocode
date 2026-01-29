@@ -6,7 +6,7 @@ from unittest.mock import Mock, MagicMock, patch
 from typing import Dict, Any, List
 import logging
 
-from autocode.interfaces.models import ExplicitParam, FunctionInfo, GenericOutput
+from autocode.interfaces.models import ParamSchema, FunctionInfo, GenericOutput
 from autocode.interfaces.registry import clear_registry, get_all_functions, get_function_by_name
 
 # Configure logging for tests
@@ -47,8 +47,8 @@ def sample_function():
 
 @pytest.fixture
 def sample_explicit_param():
-    """Sample ExplicitParam for testing."""
-    return ExplicitParam(
+    """Sample ParamSchema for testing."""
+    return ParamSchema(
         name="test_param",
         type=int,
         default=None,
@@ -65,8 +65,8 @@ def sample_function_info(sample_function):
         func=sample_function,
         description="Add two numbers together",
         params=[
-            ExplicitParam(name="x", type=int, required=True, description="First number"),
-            ExplicitParam(name="y", type=int, default=1, required=False, description="Second number")
+            ParamSchema(name="x", type=int, required=True, description="First number"),
+            ParamSchema(name="y", type=int, default=1, required=False, description="Second number")
         ],
         http_methods=["GET", "POST"],
         return_type=GenericOutput

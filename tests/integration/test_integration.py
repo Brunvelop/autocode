@@ -195,7 +195,7 @@ class TestFullIntegration:
         
         str_param = next(p for p in params if p.name == "required_str")
         assert str_param.required is True
-        assert str_param.type == "str"
+        assert str_param.type_str == "str"
         
         int_param = next(p for p in params if p.name == "optional_int")
         assert int_param.required is False
