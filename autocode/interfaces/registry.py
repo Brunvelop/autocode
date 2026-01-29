@@ -22,7 +22,10 @@ import logging
 import pkgutil
 from docstring_parser import parse
 
-from autocode.interfaces.models import FunctionInfo, ExplicitParam, GenericOutput, FunctionSchema
+from autocode.interfaces.models import (
+    FunctionInfo, ExplicitParam, GenericOutput, FunctionSchema,
+    HttpMethod, Interface, DEFAULT_HTTP_METHODS, DEFAULT_INTERFACES
+)
 
 logger = logging.getLogger(__name__)
 
@@ -30,11 +33,6 @@ logger = logging.getLogger(__name__)
 
 FUNCTION_REGISTRY: Dict[str, FunctionInfo] = {}
 _functions_loaded = False
-
-HttpMethod = Literal["GET", "POST", "PUT", "DELETE", "PATCH"]
-Interface = Literal["api", "cli", "mcp"]
-DEFAULT_HTTP_METHODS: list[HttpMethod] = ["GET", "POST"]
-DEFAULT_INTERFACES: list[Interface] = ["api", "cli", "mcp"]
 
 
 class RegistryError(Exception):

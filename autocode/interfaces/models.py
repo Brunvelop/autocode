@@ -12,6 +12,16 @@ from typing import Any, Callable, Dict, List, Literal, Optional, Type, Union, ge
 
 
 # ============================================================================
+# TYPE DEFINITIONS & CONSTANTS
+# ============================================================================
+
+HttpMethod = Literal["GET", "POST", "PUT", "DELETE", "PATCH"]
+Interface = Literal["api", "cli", "mcp"]
+DEFAULT_HTTP_METHODS: list[HttpMethod] = ["GET", "POST"]
+DEFAULT_INTERFACES: list[Interface] = ["api", "cli", "mcp"]
+
+
+# ============================================================================
 # SERIALIZATION SCHEMAS (API Contract)
 # ============================================================================
 
