@@ -7,7 +7,7 @@ from typing import Dict, Any, List
 import logging
 
 from autocode.interfaces.models import ExplicitParam, FunctionInfo, GenericOutput
-from autocode.interfaces.registry import FUNCTION_REGISTRY, clear_registry
+from autocode.interfaces.registry import clear_registry, get_all_functions, get_function_by_name
 
 # Configure logging for tests
 logging.basicConfig(level=logging.DEBUG)
@@ -92,9 +92,16 @@ def mock_fastapi_app():
 
 @pytest.fixture
 def populated_registry(sample_function_info):
-    """Registry with sample function for integration testing."""
-    FUNCTION_REGISTRY["test_add"] = sample_function_info
-    return FUNCTION_REGISTRY
+    """Registry with sample function for integration testing.
+    
+    Note: Uses internal registry access for test setup only.
+    Tests should use public API (get_function_by_name, get_all_functions) to verify.
+    """
+    # Import here to limit scope - this is intentional test-only access
+    from autocode.interfaces.registry import _registry
+    _registry.append(sample_function_info)
+    # Return None - tests should use public API to access registry
+    return None
 
 
 @pytest.fixture

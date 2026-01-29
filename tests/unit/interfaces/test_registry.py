@@ -11,10 +11,10 @@ from typing import Any
 from unittest.mock import patch, Mock
 
 from autocode.interfaces.registry import (
-    FUNCTION_REGISTRY, _generate_function_info, register_function,
-    get_all_function_schemas,
-    clear_registry, load_core_functions,
-    RegistryError, _functions_loaded, _has_register_decorator
+    _generate_function_info, register_function,
+    get_all_schemas, get_all_functions, get_function_by_name, function_count,
+    clear_registry, load_functions,
+    RegistryError, _has_register_decorator
 )
 from autocode.interfaces.models import FunctionInfo, ExplicitParam, GenericOutput, FunctionSchema
 
@@ -168,8 +168,8 @@ class TestRegisterFunctionDecorator:
             """Basic test function."""
             return GenericOutput(result=x * 2, success=True)
         
-        assert "test_basic_func" in FUNCTION_REGISTRY
-        func_info = FUNCTION_REGISTRY["test_basic_func"]
+        func_info = get_function_by_name("test_basic_func")
+        assert func_info is not None
         
         assert func_info.name == "test_basic_func"
         assert func_info.func == test_basic_func
@@ -188,8 +188,8 @@ class TestRegisterFunctionDecorator:
             """GET-only function."""
             return GenericOutput(result=f"GET: {x}", success=True)
         
-        assert "get_only_func" in FUNCTION_REGISTRY
-        func_info = FUNCTION_REGISTRY["get_only_func"]
+        func_info = get_function_by_name("get_only_func")
+        assert func_info is not None
         assert func_info.http_methods == ["GET"]
     
     def test_register_function_error_handling(self):
@@ -201,17 +201,33 @@ class TestRegisterFunctionDecorator:
                 @register_function()
                 def failing_func():
                     pass
+    
+    def test_register_function_duplicate_raises_error(self):
+        """Test that registering a function with the same name raises RegistryError."""
+        @register_function()
+        def duplicate_test_func(x: int) -> GenericOutput:
+            """First registration."""
+            return GenericOutput(result=x, success=True)
+        
+        # Second registration with same name should raise
+        with pytest.raises(RegistryError, match="already registered"):
+            @register_function()
+            def duplicate_test_func(y: str) -> GenericOutput:
+                """Second registration with same name."""
+                return GenericOutput(result=y, success=True)
 
 
 class TestRegistryPublicAPI:
     """Tests for public registry API functions."""
     
-    def test_get_all_function_schemas(self, populated_registry):
+    def test_get_all_schemas(self, populated_registry):
         """Test schemas retrieval."""
-        schemas = get_all_function_schemas()
+        schemas = get_all_schemas()
         
-        assert "test_add" in schemas
-        schema = schemas["test_add"]
+        # Now returns list instead of dict
+        assert len(schemas) > 0
+        schema = next((s for s in schemas if s.name == "test_add"), None)
+        assert schema is not None
         assert isinstance(schema, FunctionSchema)
         
         params = schema.parameters
@@ -233,72 +249,87 @@ class TestRegistryPublicAPI:
     def test_clear_registry(self, populated_registry):
         """Test registry clearing."""
         # Verify registry is populated
-        assert len(FUNCTION_REGISTRY) > 0
+        assert function_count() > 0
         
         clear_registry()
         
         # Verify registry is empty
-        assert len(FUNCTION_REGISTRY) == 0
-
-
-class TestLoadCoreFunctions:
-    """Tests for core function loading."""
+        assert function_count() == 0
     
-    def test_load_core_functions_success(self, mock_core_functions):
+    def test_get_function_by_name(self, populated_registry):
+        """Test retrieving function by name."""
+        func_info = get_function_by_name("test_add")
+        assert func_info is not None
+        assert func_info.name == "test_add"
+        
+        # Non-existent function returns None
+        assert get_function_by_name("nonexistent") is None
+    
+    def test_get_all_functions(self, populated_registry):
+        """Test retrieving all functions."""
+        functions = get_all_functions()
+        assert len(functions) > 0
+        assert any(f.name == "test_add" for f in functions)
+
+
+class TestLoadFunctions:
+    """Tests for function loading."""
+    
+    def test_load_functions_success(self, mock_core_functions):
         """Test successful loading of core functions."""
-        # Import the module's _functions_loaded to manipulate it
+        # Import the module's _loaded to manipulate it
         from autocode.interfaces import registry
-        original_loaded = registry._functions_loaded
+        original_loaded = registry._loaded
         
         try:
             # Clear registry and reset flag
             clear_registry()
-            registry._functions_loaded = False
+            registry._loaded = False
             
-            load_core_functions()
+            load_functions()
             
             # Should have loaded successfully (mocked imports)
-            assert registry._functions_loaded is True
+            assert registry._loaded is True
             
         finally:
-            registry._functions_loaded = original_loaded
+            registry._loaded = original_loaded
     
-    def test_load_core_functions_already_loaded(self, mock_core_functions):
-        """Test that load_core_functions doesn't reload if already loaded."""
+    def test_load_functions_already_loaded(self, mock_core_functions):
+        """Test that load_functions doesn't reload if already loaded."""
         from autocode.interfaces import registry
-        original_loaded = registry._functions_loaded
+        original_loaded = registry._loaded
         
         try:
-            registry._functions_loaded = True
-            registry_size = len(FUNCTION_REGISTRY)
+            registry._loaded = True
+            registry_size = function_count()
             
-            load_core_functions()
+            load_functions()
             
             # Should not have changed registry size
-            assert len(FUNCTION_REGISTRY) == registry_size
+            assert function_count() == registry_size
             
         finally:
-            registry._functions_loaded = original_loaded
+            registry._loaded = original_loaded
     
-    def test_load_core_functions_import_error(self):
+    def test_load_functions_import_error(self):
         """Test handling of import errors during autocode.core package import."""
         from autocode.interfaces import registry
-        original_loaded = registry._functions_loaded
+        original_loaded = registry._loaded
         
         try:
-            registry._functions_loaded = False
+            registry._loaded = False
             
             # Mock the autocode.core package import to fail
             # This tests the critical path where the core package itself fails to import
             with patch.dict('sys.modules', {'autocode.core': None}):
                 with patch('importlib.import_module', side_effect=ImportError("Mock import error")):
                     with pytest.raises(RegistryError, match="Failed to import autocode.core"):
-                        load_core_functions()
+                        load_functions()
             
         finally:
-            registry._functions_loaded = original_loaded
+            registry._loaded = original_loaded
 
-    def test_load_core_functions_partial_failure_continues(self):
+    def test_load_functions_partial_failure_continues(self):
         """Test that autodiscovery continues loading other modules when one fails.
         
         This test verifies that when a single module fails to import during autodiscovery,
@@ -310,15 +341,15 @@ class TestLoadCoreFunctions:
         """
         from autocode.interfaces import registry
         import sys
-        original_loaded = registry._functions_loaded
-        original_registry = dict(FUNCTION_REGISTRY)
+        original_loaded = registry._loaded
+        original_functions = get_all_functions()
         
         # Save original modules state to restore later
         modules_to_remove = [m for m in sys.modules if m.startswith('autocode.core.')]
         original_modules = {m: sys.modules[m] for m in modules_to_remove}
         
         try:
-            registry._functions_loaded = False
+            registry._loaded = False
             clear_registry()
             
             # Remove cached core modules to force re-import
@@ -335,31 +366,34 @@ class TestLoadCoreFunctions:
                     raise ImportError("Mock vcs.tree import error")
                 return original_import(name)
             
-            # Patch importlib.import_module directly since it's imported inside load_core_functions
+            # Patch importlib.import_module directly since it's imported inside load_functions
             with patch.object(importlib, 'import_module', 
                               side_effect=mock_import_with_partial_failure):
                 # Should NOT raise an exception - partial failures are tolerated
-                load_core_functions()
+                load_functions()
             
             # The registry should have been marked as loaded
-            assert registry._functions_loaded is True
+            assert registry._loaded is True
             
             # Verify that the mock actually triggered (import failure was attempted)
             assert len(import_failures) > 0, "Mock should have intercepted vcs.tree import"
             
             # Functions from other modules SHOULD be in registry
             # (pipelines, session, etc. - they all loaded successfully)
-            function_names = list(FUNCTION_REGISTRY.keys())
-            assert len(function_names) > 0, "At least some functions should have loaded"
+            functions = get_all_functions()
+            assert len(functions) > 0, "At least some functions should have loaded"
             
             # Verify some specific functions that should have loaded (from pipelines.py)
-            assert 'chat' in FUNCTION_REGISTRY, "chat should be registered"
+            chat_func = get_function_by_name("chat")
+            assert chat_func is not None, "chat should be registered"
             
         finally:
             # Restore original state
-            registry._functions_loaded = original_loaded
+            registry._loaded = original_loaded
             clear_registry()
-            FUNCTION_REGISTRY.update(original_registry)
+            # Re-add original functions using internal access (test cleanup only)
+            from autocode.interfaces.registry import _registry
+            _registry.extend(original_functions)
             # Restore original modules
             for m, mod in original_modules.items():
                 sys.modules[m] = mod
@@ -381,16 +415,18 @@ class TestRegistryIntegration:
             """
             return GenericOutput(result=" ".join([name] * count), success=True)
         
-        # Verify registration
-        assert "integration_test_func" in FUNCTION_REGISTRY
+        # Verify registration using public API
+        func_info = get_function_by_name("integration_test_func")
+        assert func_info is not None
         
-        # Test function retrieval and execution via FUNCTION_REGISTRY
-        func_info = FUNCTION_REGISTRY["integration_test_func"]
+        # Test function retrieval and execution
         result = func_info.func("test", 3)
         assert result.result == "test test test"
         
         # Test parameter information
-        schema = get_all_function_schemas()["integration_test_func"]
+        schemas = get_all_schemas()
+        schema = next((s for s in schemas if s.name == "integration_test_func"), None)
+        assert schema is not None
         params = schema.parameters
         assert len(params) == 2
         
@@ -406,9 +442,9 @@ class TestRegistryIntegration:
         assert "POST" in func_info.http_methods
     
     def test_registry_access_nonexistent_function(self):
-        """Test that accessing non-existent function raises KeyError."""
-        with pytest.raises(KeyError):
-            _ = FUNCTION_REGISTRY["does_not_exist"]
+        """Test that searching for non-existent function returns None."""
+        result = get_function_by_name("does_not_exist")
+        assert result is None
 
 
 class TestDecoratorDetection:
@@ -521,21 +557,21 @@ def broken_function(
 
 
 class TestStrictMode:
-    """Tests for strict mode in load_core_functions."""
+    """Tests for strict mode in load_functions."""
     
-    def test_load_core_functions_strict_raises_on_failure(self):
+    def test_load_functions_strict_raises_on_failure(self):
         """Test that strict=True raises RegistryError when modules fail to import."""
         from autocode.interfaces import registry
         import sys
-        original_loaded = registry._functions_loaded
-        original_registry = dict(FUNCTION_REGISTRY)
+        original_loaded = registry._loaded
+        original_functions = get_all_functions()
         
         # Save original modules state
         modules_to_remove = [m for m in sys.modules if m.startswith('autocode.core.')]
         original_modules = {m: sys.modules[m] for m in modules_to_remove}
         
         try:
-            registry._functions_loaded = False
+            registry._loaded = False
             clear_registry()
             
             # Remove cached core modules
@@ -554,27 +590,29 @@ class TestStrictMode:
                               side_effect=mock_import_with_failure):
                 # With strict=True, should raise RegistryError
                 with pytest.raises(RegistryError, match="Failed to load modules in strict mode"):
-                    load_core_functions(strict=True)
+                    load_functions(strict=True)
             
         finally:
-            registry._functions_loaded = original_loaded
+            registry._loaded = original_loaded
             clear_registry()
-            FUNCTION_REGISTRY.update(original_registry)
+            # Re-add original functions using internal access (test cleanup only)
+            from autocode.interfaces.registry import _registry
+            _registry.extend(original_functions)
             for m, mod in original_modules.items():
                 sys.modules[m] = mod
     
-    def test_load_core_functions_strict_false_tolerates_failures(self):
+    def test_load_functions_strict_false_tolerates_failures(self):
         """Test that strict=False (default) tolerates import failures."""
         from autocode.interfaces import registry
         import sys
-        original_loaded = registry._functions_loaded
-        original_registry = dict(FUNCTION_REGISTRY)
+        original_loaded = registry._loaded
+        original_functions = get_all_functions()
         
         modules_to_remove = [m for m in sys.modules if m.startswith('autocode.core.')]
         original_modules = {m: sys.modules[m] for m in modules_to_remove}
         
         try:
-            registry._functions_loaded = False
+            registry._loaded = False
             clear_registry()
             
             for m in modules_to_remove:
@@ -590,14 +628,16 @@ class TestStrictMode:
             with patch.object(importlib, 'import_module', 
                               side_effect=mock_import_with_failure):
                 # With strict=False (default), should NOT raise
-                load_core_functions(strict=False)
+                load_functions(strict=False)
             
             # Should have completed loading
-            assert registry._functions_loaded is True
+            assert registry._loaded is True
             
         finally:
-            registry._functions_loaded = original_loaded
+            registry._loaded = original_loaded
             clear_registry()
-            FUNCTION_REGISTRY.update(original_registry)
+            # Re-add original functions using internal access (test cleanup only)
+            from autocode.interfaces.registry import _registry
+            _registry.extend(original_functions)
             for m, mod in original_modules.items():
                 sys.modules[m] = mod

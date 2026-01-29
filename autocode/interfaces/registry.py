@@ -13,7 +13,7 @@ Example:
         '''
         return GenericOutput(result=x + y, success=True)
 """
-from typing import Dict, Any, Callable, get_origin, get_args, Union, Literal
+from typing import Any, Callable, get_origin, get_args, Union, Literal
 import ast
 import importlib
 import importlib.util
@@ -29,10 +29,11 @@ from autocode.interfaces.models import (
 
 logger = logging.getLogger(__name__)
 
-# --- GLOBALS ---
 
-FUNCTION_REGISTRY: Dict[str, FunctionInfo] = {}
-_functions_loaded = False
+# --- PRIVATE STATE ---
+
+_registry: list[FunctionInfo] = []
+_loaded = False
 
 
 class RegistryError(Exception):
@@ -50,7 +51,10 @@ def register_function(
     def decorator(func: Callable) -> Callable:
         try:
             info = _generate_function_info(func, http_methods, interfaces)
-            FUNCTION_REGISTRY[info.name] = info
+            # Check for duplicates
+            if any(f.name == info.name for f in _registry):
+                raise RegistryError(f"Function '{info.name}' is already registered")
+            _registry.append(info)
             logger.debug(f"Registered '{info.name}' with methods {info.http_methods}")
         except Exception as e:
             raise RegistryError(f"Failed to register function '{func.__name__}': {e}") from e
@@ -58,34 +62,57 @@ def register_function(
     return decorator
 
 
-def get_functions_for_interface(interface: Interface) -> Dict[str, FunctionInfo]:
+def get_all_functions() -> list[FunctionInfo]:
+    """Get all registered functions.
+    
+    Returns:
+        List of all registered FunctionInfo objects.
+    """
+    _ensure_loaded()
+    return list(_registry)
+
+
+def get_functions_for_interface(interface: Interface) -> list[FunctionInfo]:
     """Filter registered functions by interface ("api", "cli", or "mcp").
     
+    Args:
+        interface: The interface to filter by.
+        
+    Returns:
+        List of FunctionInfo objects that support the given interface.
+        
     Raises:
-        RegistryError: If FUNCTION_REGISTRY is empty (load_core_functions not called).
+        RegistryError: If registry is empty (load_functions not called).
     """
-    if not FUNCTION_REGISTRY:
+    _ensure_loaded()
+    if not _registry:
         raise RegistryError(
-            "FUNCTION_REGISTRY is empty. "
-            "Call load_core_functions() at application startup."
+            "Registry is empty. "
+            "Call load_functions() at application startup."
         )
-    return {name: info for name, info in FUNCTION_REGISTRY.items() if interface in info.interfaces}
+    return [info for info in _registry if interface in info.interfaces]
 
 
-def get_all_function_schemas() -> Dict[str, FunctionSchema]:
-    """Get serializable schemas for all registered functions."""
-    _ensure_functions_loaded()
-    return {name: info.to_schema() for name, info in FUNCTION_REGISTRY.items()}
+def get_all_schemas() -> list[FunctionSchema]:
+    """Get serializable schemas for all registered functions.
+    
+    Returns:
+        List of FunctionSchema objects for API serialization.
+    """
+    _ensure_loaded()
+    return [info.to_schema() for info in _registry]
 
 
-def load_core_functions(strict: bool = False):
+def load_functions(strict: bool = False) -> None:
     """Autodiscover and import modules with @register_function in autocode/core/.
     
     Called automatically on first registry access. Safe to call multiple times.
-    If strict=True, raises RegistryError on any import failure.
+    
+    Args:
+        strict: If True, raises RegistryError on any import failure.
     """
-    global _functions_loaded
-    if _functions_loaded:
+    global _loaded
+    if _loaded:
         return
     
     try:
@@ -94,7 +121,10 @@ def load_core_functions(strict: bool = False):
         raise RegistryError(f"Failed to import autocode.core: {e}") from e
     
     discovered, failed = [], []
-    modules = sorted(pkgutil.walk_packages(autocode.core.__path__, autocode.core.__name__ + "."), key=lambda x: x[1])
+    modules = sorted(
+        pkgutil.walk_packages(autocode.core.__path__, autocode.core.__name__ + "."), 
+        key=lambda x: x[1]
+    )
     
     for _, module_name, is_pkg in modules:
         if is_pkg:
@@ -109,27 +139,49 @@ def load_core_functions(strict: bool = False):
             failed.append((module_name, str(e)))
             logger.warning(f"Could not import {module_name}: {e}")
     
-    _functions_loaded = True
+    _loaded = True
     
     if failed and strict:
         raise RegistryError(f"Failed to load modules in strict mode: {[m[0] for m in failed]}")
     
-    logger.debug(f"Loaded {len(FUNCTION_REGISTRY)} functions from {len(discovered)} modules")
+    logger.debug(f"Loaded {len(_registry)} functions from {len(discovered)} modules")
 
 
-def clear_registry():
+def clear_registry() -> None:
     """Clear registry and reset loaded flag. Used for testing."""
-    global _functions_loaded
-    FUNCTION_REGISTRY.clear()
-    _functions_loaded = False
+    global _loaded
+    _registry.clear()
+    _loaded = False
+
+
+def function_count() -> int:
+    """Return the number of registered functions.
+    
+    Returns:
+        Number of functions in the registry.
+    """
+    return len(_registry)
+
+
+def get_function_by_name(name: str) -> FunctionInfo | None:
+    """Get a function by its name.
+    
+    Args:
+        name: The name of the function to retrieve.
+        
+    Returns:
+        FunctionInfo if found, None otherwise.
+    """
+    _ensure_loaded()
+    return next((f for f in _registry if f.name == name), None)
 
 
 # --- PRIVATE IMPLEMENTATION ---
 
-def _ensure_functions_loaded():
+def _ensure_loaded() -> None:
     """Lazy-load functions on first registry access."""
-    if not _functions_loaded:
-        load_core_functions()
+    if not _loaded:
+        load_functions()
 
 
 def _generate_function_info(

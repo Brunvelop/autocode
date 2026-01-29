@@ -10,7 +10,8 @@ from fastapi.testclient import TestClient
 from click.testing import CliRunner
 
 from autocode.interfaces.registry import (
-    register_function, FUNCTION_REGISTRY, clear_registry
+    register_function, clear_registry, function_count,
+    get_function_by_name, get_all_functions
 )
 from autocode.interfaces.api import create_api_app
 from autocode.interfaces.cli import app as cli_app, _register_commands
@@ -70,7 +71,7 @@ class TestFullIntegration:
         
         # Cleanup is handled by conftest.py cleanup_registry fixture
     
-    @patch('autocode.interfaces.api.load_core_functions')
+    @patch('autocode.interfaces.api.load_functions')
     def test_api_integration_with_registered_functions(self, mock_load):
         """Test that API correctly serves registered functions."""
         app = create_api_app()
@@ -144,7 +145,7 @@ class TestFullIntegration:
         mock_fastapi_mcp.return_value = mock_mcp_instance
         
         # Create MCP app
-        with patch('autocode.interfaces.api.load_core_functions'):
+        with patch('autocode.interfaces.api.load_functions'):
             mcp_app = create_mcp_app()
         
         # Test that API functionality is preserved
@@ -183,8 +184,9 @@ class TestFullIntegration:
                 "optional_bool": optional_bool
             }, success=True)
         
-        # Verify function was registered correctly via FUNCTION_REGISTRY
-        func_info = FUNCTION_REGISTRY["complex_function"]
+        # Verify function was registered correctly using public API
+        func_info = get_function_by_name("complex_function")
+        assert func_info is not None
         assert func_info.name == "complex_function"
         assert len(func_info.params) == 3
         
@@ -203,7 +205,7 @@ class TestFullIntegration:
         assert bool_param.required is False
         assert bool_param.default is True
     
-    @patch('autocode.interfaces.api.load_core_functions')
+    @patch('autocode.interfaces.api.load_functions')
     def test_error_handling_across_interfaces(self, mock_load):
         """Test error handling consistency across interfaces."""
         # Register a function that can error
@@ -252,7 +254,7 @@ class TestInterfaceConsistency:
             return GenericOutput(result=f"{param1}:{param2}", success=True)
         
         # Test via API
-        with patch('autocode.interfaces.api.load_core_functions'):
+        with patch('autocode.interfaces.api.load_functions'):
             app = create_api_app()
             client = TestClient(app)
             
@@ -296,8 +298,9 @@ class TestInterfaceConsistency:
             """
             return GenericOutput(result={"x": x, "y": y}, success=True)
         
-        # Access function info via FUNCTION_REGISTRY
-        func_info = FUNCTION_REGISTRY["metadata_test"]
+        # Access function info using public API
+        func_info = get_function_by_name("metadata_test")
+        assert func_info is not None
         
         # Verify metadata
         assert func_info.name == "metadata_test"
@@ -318,7 +321,7 @@ class TestCrossModuleDependencies:
     
     def test_registry_integration_with_all_interfaces(self):
         """Test that registry changes are reflected in all interfaces."""
-        initial_count = len(FUNCTION_REGISTRY)
+        initial_count = function_count()
         
         # Add function dynamically
         @register_function()
@@ -326,16 +329,17 @@ class TestCrossModuleDependencies:
             """Dynamically added function."""
             return GenericOutput(result=f"Dynamic: {value}", success=True)
         
-        # Verify registry was updated
-        assert len(FUNCTION_REGISTRY) == initial_count + 1
-        assert "dynamic_function" in FUNCTION_REGISTRY
+        # Verify registry was updated using public API
+        assert function_count() == initial_count + 1
+        func_info = get_function_by_name("dynamic_function")
+        assert func_info is not None
         
         # Test that CLI reflects the change
         runner = CliRunner()
         result = runner.invoke(cli_app, ['list'])
         assert "dynamic_function" in result.output
     
-    @patch('autocode.interfaces.api.load_core_functions')
+    @patch('autocode.interfaces.api.load_functions')
     def test_mcp_and_api_integration(self, mock_load):
         """Test integration between MCP and API components."""
         # Register a test function
@@ -362,9 +366,9 @@ class TestCrossModuleDependencies:
     
     def test_error_propagation_across_modules(self):
         """Test that errors propagate correctly across module boundaries."""
-        # Test that accessing non-existent function in registry raises KeyError
-        with pytest.raises(KeyError):
-            _ = FUNCTION_REGISTRY["nonexistent"]
+        # Test that searching for non-existent function returns None
+        result = get_function_by_name("nonexistent")
+        assert result is None
         
         # Test that API would handle registry errors
         from autocode.interfaces.api import execute_function_with_params
@@ -428,7 +432,7 @@ class TestRealWorldScenarios:
             }, success=True)
         
         # Test via API
-        with patch('autocode.interfaces.api.load_core_functions'):
+        with patch('autocode.interfaces.api.load_functions'):
             app = create_api_app()
             client = TestClient(app)
             
@@ -486,10 +490,14 @@ class TestRealWorldScenarios:
                 complexity += code.count(keyword)
             return GenericOutput(result=complexity, success=True)
         
-        # Verify all tools are registered
-        assert "format_code" in FUNCTION_REGISTRY
-        assert "check_imports" in FUNCTION_REGISTRY
-        assert "calculate_complexity" in FUNCTION_REGISTRY
+        # Verify all tools are registered using public API
+        format_func = get_function_by_name("format_code")
+        check_func = get_function_by_name("check_imports")
+        calc_func = get_function_by_name("calculate_complexity")
+        
+        assert format_func is not None
+        assert check_func is not None
+        assert calc_func is not None
         
         # Re-register CLI commands for new functions
         _register_commands()

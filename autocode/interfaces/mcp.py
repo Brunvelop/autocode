@@ -29,17 +29,17 @@ def _register_mcp_endpoints(app: FastAPI) -> None:
     # Get functions that should be exposed in MCP
     mcp_functions = get_functions_for_interface("mcp")
     
-    for func_name, func_info in mcp_functions.items():
+    for func_info in mcp_functions:
         for method in func_info.http_methods:
             handler, input_model = create_handler(func_info, method)
             response_model = func_info.return_type or GenericOutput
             
             app.add_api_route(
-                f"/{func_name}",
+                f"/{func_info.name}",
                 handler,
                 methods=[method.upper()],
                 response_model=response_model,
-                operation_id=f"mcp_{func_name}_{method.lower()}",
+                operation_id=f"mcp_{func_info.name}_{method.lower()}",
                 summary=func_info.description,
                 tags=["mcp-tools"]  # Tag for MCP-specific endpoints
             )

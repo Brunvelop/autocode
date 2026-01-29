@@ -20,8 +20,8 @@ import uvicorn
 from typing import Dict, Any, Callable, Optional
 
 from autocode.interfaces.registry import (
-    FUNCTION_REGISTRY, 
-    load_core_functions,
+    get_all_functions,
+    load_functions,
     get_functions_for_interface
 )
 from autocode.interfaces.api import create_api_app
@@ -69,7 +69,7 @@ def app(ctx, verbose):
 # ============================================================================
 
 @app.command("list")
-def list_functions():
+def list_functions_cmd():
     """List all available functions in the registry.
     
     Displays comprehensive information about each registered function including:
@@ -81,8 +81,8 @@ def list_functions():
         $ python -m autocode.interfaces.cli list
     """
     click.echo("Available functions:")
-    for func_name, func_info in FUNCTION_REGISTRY.items():
-        click.echo(f"  {func_name}: {func_info.description}")
+    for func_info in get_all_functions():
+        click.echo(f"  {func_info.name}: {func_info.description}")
         
         # Show inferred parameters with rich information
         schema = func_info.to_schema()
@@ -362,21 +362,21 @@ def _register_commands() -> None:
     exposed in CLI, then creates Click commands for each with dynamically
     generated parameters.
     
-    Should be called after load_core_functions() to ensure all functions
+    Should be called after load_functions() to ensure all functions
     are registered before CLI command generation.
     """
     # Use centralized filtering - only get functions exposed in CLI
     cli_functions = get_functions_for_interface("cli")
     
-    for func_name, func_info in cli_functions.items():
+    for func_info in cli_functions:
         # Create the command handler
-        command_func = _create_handler(func_name, func_info)
+        command_func = _create_handler(func_info.name, func_info)
         
         # Add Click options from explicit params
         command_func = _add_command_options(command_func, func_info.params)
         
         # Register the command with the app
-        app.command(name=func_name, help=func_info.description)(command_func)
+        app.command(name=func_info.name, help=func_info.description)(command_func)
 
 
 # ============================================================================
@@ -397,7 +397,7 @@ def _initialize_cli():
     configure_cli_logging(verbose=False)
     
     # Load core functions
-    load_core_functions()
+    load_functions()
     
     # Then register all commands from registry
     _register_commands()

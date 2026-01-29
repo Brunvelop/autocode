@@ -11,9 +11,11 @@ import click
 
 from autocode.interfaces.cli import (
     app, _add_command_options, _create_handler, _register_commands,
-    list_functions, serve_api, serve_mcp, serve, TYPE_MAP
+    list_functions_cmd, serve_api, serve_mcp, serve, TYPE_MAP
 )
-from autocode.interfaces.registry import FUNCTION_REGISTRY, RegistryError
+from autocode.interfaces.registry import (
+    RegistryError, function_count, get_all_functions, get_function_by_name, clear_registry
+)
 from autocode.interfaces.models import ExplicitParam, FunctionInfo, GenericOutput
 
 
@@ -173,7 +175,7 @@ class TestCreateHandler:
 class TestRegisterCommands:
     """Tests for register_commands - dynamic command registration."""
     
-    @patch('autocode.interfaces.cli.load_core_functions')
+    @patch('autocode.interfaces.cli.load_functions')
     def test_register_commands_with_populated_registry(self, mock_load, populated_registry):
         """Test command registration with functions in registry."""
         # Clear existing commands from app first
@@ -198,13 +200,13 @@ class TestRegisterCommands:
             # Restore original commands
             app.commands = original_commands
     
-    @patch('autocode.interfaces.cli.load_core_functions')
+    @patch('autocode.interfaces.cli.load_functions')
     def test_register_commands_empty_registry(self, mock_load):
         """Test command registration with empty registry raises RegistryError."""
         # Clear registry and commands
         original_commands = app.commands.copy()
-        original_registry = FUNCTION_REGISTRY.copy()
-        FUNCTION_REGISTRY.clear()
+        original_functions = get_all_functions()
+        clear_registry()
         app.commands.clear()
         
         try:
@@ -212,12 +214,13 @@ class TestRegisterCommands:
             with pytest.raises(RegistryError) as exc_info:
                 _register_commands()
             
-            assert "FUNCTION_REGISTRY is empty" in str(exc_info.value)
+            assert "Registry is empty" in str(exc_info.value)
             
         finally:
-            # Restore
+            # Restore - need internal access for test cleanup
+            from autocode.interfaces.registry import _registry
             app.commands = original_commands
-            FUNCTION_REGISTRY.update(original_registry)
+            _registry.extend(original_functions)
 
 
 class TestBuiltInCommands:
@@ -431,13 +434,14 @@ class TestCLIErrorScenarios:
             name="always_fails",
             func=always_fails,
             description="Function that always fails",
-            params=[],
+            params=[ExplicitParam(name="x", type=int, required=True, description="Param x")],
             return_type=GenericOutput
         )
         
-        # Temporarily add to registry
-        original_registry = FUNCTION_REGISTRY.copy()
-        FUNCTION_REGISTRY["always_fails"] = error_func_info
+        # Temporarily add to registry - need internal access for test setup
+        from autocode.interfaces.registry import _registry
+        original_functions = get_all_functions()
+        _registry.append(error_func_info)
         
         # Register commands again to pick up the new function
         original_commands = app.commands.copy()
@@ -456,8 +460,8 @@ class TestCLIErrorScenarios:
             
         finally:
             # Restore original state
-            FUNCTION_REGISTRY.clear()
-            FUNCTION_REGISTRY.update(original_registry)
+            _registry.clear()
+            _registry.extend(original_functions)
             app.commands = original_commands
     
     def test_parameter_type_validation(self, populated_registry):

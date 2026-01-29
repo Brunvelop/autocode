@@ -10,8 +10,13 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, create_model
 
-from autocode.interfaces.models import FunctionInfo, GenericOutput, FunctionDetailsResponse
-from autocode.interfaces.registry import FUNCTION_REGISTRY, load_core_functions, get_all_function_schemas, get_functions_for_interface
+from autocode.interfaces.models import FunctionInfo, GenericOutput, FunctionDetailsResponse, FunctionSchema
+from autocode.interfaces.registry import (
+    load_functions, 
+    get_all_schemas, 
+    get_functions_for_interface,
+    function_count
+)
 from autocode.interfaces.logging_config import configure_api_logging
 
 # Setup logging using centralized configuration
@@ -63,15 +68,15 @@ def _load_and_validate_functions():
     """Load core functions and validate registry state."""
     logger.info("Loading core functions for API...")
     try:
-        load_core_functions()
-        if not FUNCTION_REGISTRY:
+        load_functions()
+        count = function_count()
+        if count == 0:
             logger.warning("No functions loaded in registry")
         else:
-            # Use centralized filtering function
-            api_funcs = list(get_functions_for_interface("api").keys())
-            mcp_funcs = list(get_functions_for_interface("mcp").keys())
+            api_funcs = [f.name for f in get_functions_for_interface("api")]
+            mcp_funcs = [f.name for f in get_functions_for_interface("mcp")]
             
-            logger.info(f"Successfully loaded {len(FUNCTION_REGISTRY)} functions:")
+            logger.info(f"Successfully loaded {count} functions:")
             if api_funcs:
                 logger.info(f"API ({len(api_funcs)}): {api_funcs}")
             if mcp_funcs:
@@ -122,14 +127,15 @@ def _register_standard_endpoints(app: FastAPI):
     @app.get("/functions/details", response_model=FunctionDetailsResponse)
     async def list_functions_details():
         """Get detailed information about all registered functions."""
+        schemas = get_all_schemas()
         return FunctionDetailsResponse(
-            functions=get_all_function_schemas()
+            functions={s.name: s for s in schemas}
         )
 
     @app.get("/health")
     async def health_check():
         """Health check endpoint with function count."""
-        return {"status": "healthy", "functions": len(FUNCTION_REGISTRY)}
+        return {"status": "healthy", "functions": function_count()}
         
     @app.get("/api/tests/discover")
     async def discover_tests():
@@ -228,7 +234,7 @@ def register_dynamic_endpoints(app: FastAPI):
     # Use centralized filtering - only get functions exposed in API
     api_functions = get_functions_for_interface("api")
     
-    for func_name, func_info in api_functions.items():
+    for func_info in api_functions:
         for method in func_info.http_methods:
             handler, input_model = create_handler(func_info, method)
 
@@ -236,11 +242,11 @@ def register_dynamic_endpoints(app: FastAPI):
             # Esto mejora OpenAPI y evita el Union genérico.
             response_model = func_info.return_type or GenericOutput
             app.add_api_route(
-                f"/{func_name}",
+                f"/{func_info.name}",
                 handler,
                 methods=[method.upper()],
                 response_model=response_model,
-                operation_id=f"{func_name}_{method.lower()}",
+                operation_id=f"{func_info.name}_{method.lower()}",
                 summary=func_info.description
             )
 
