@@ -96,7 +96,7 @@ class FunctionSchema(BaseModel):
     """Serializable schema for a function (API contract)."""
     name: str = Field(description="Function name")
     description: str = Field(description="Function description")
-    http_methods: list[str] = Field(description="Supported HTTP methods")
+    http_methods: list[HttpMethod] = Field(description="Supported HTTP methods")
     parameters: list[ParamSchema] = Field(description="Function parameters")
 
 
@@ -110,8 +110,8 @@ class FunctionInfo(BaseModel):
     func: Callable
     description: str
     params: list[ParamSchema] = Field(default_factory=list, description="Parameter definitions")
-    http_methods: list[str] = Field(default_factory=lambda: list(DEFAULT_HTTP_METHODS))
-    interfaces: list[str] = Field(default_factory=lambda: list(DEFAULT_INTERFACES), description="Interfaces where this function is exposed")
+    http_methods: list[HttpMethod] = Field(default_factory=lambda: list(DEFAULT_HTTP_METHODS))
+    interfaces: list[Interface] = Field(default_factory=lambda: list(DEFAULT_INTERFACES), description="Interfaces where this function is exposed")
     # Return type annotation (GenericOutput or subclass). Useful for typing the response_model in FastAPI.
     return_type: type[BaseModel] | None = Field(default=None, description="Declared return type annotation")
 

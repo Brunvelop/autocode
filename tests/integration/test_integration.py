@@ -371,7 +371,7 @@ class TestCrossModuleDependencies:
         assert result is None
         
         # Test that API would handle registry errors
-        from autocode.interfaces.api import execute_function_with_params
+        from autocode.interfaces.api import _execute_function as execute_function_with_params
         from autocode.interfaces.models import FunctionInfo
         
         # Create a function info that references nonexistent function

@@ -14,10 +14,17 @@ from fastapi.testclient import TestClient
 from pydantic import BaseModel
 
 from autocode.interfaces.api import (
-    create_result_response, create_dynamic_model, extract_function_params,
-    execute_function_with_params, create_handler, register_dynamic_endpoints,
+    _format_response, _create_dynamic_model, _extract_params,
+    _execute_function, create_handler, _register_dynamic_endpoints,
     create_api_app
 )
+
+# Aliases for backward compatibility with tests
+create_result_response = _format_response
+create_dynamic_model = _create_dynamic_model
+extract_function_params = _extract_params
+execute_function_with_params = _execute_function
+register_dynamic_endpoints = _register_dynamic_endpoints
 from autocode.interfaces.models import GenericOutput, FunctionInfo, ParamSchema
 from autocode.interfaces.registry import _registry, clear_registry
 
@@ -295,18 +302,14 @@ class TestExecuteFunctionWithParams:
         """Test that function execution logs appropriately."""
         request_params = {"x": 5, "y": 3}
         
-        execute_function_with_params(
-            sample_function_info, request_params, "POST", "extra_info"
-        )
+        execute_function_with_params(sample_function_info, request_params, "POST")
         
-        # Should log debug message (may be called multiple times)
+        # Should log debug message
         assert mock_logger.debug.call_count >= 1
-        # Find the call with the expected content
         log_calls = [call[0][0] for call in mock_logger.debug.call_args_list if call[0]]
         request_log = next((log for log in log_calls if "POST test_add" in str(log)), None)
         assert request_log is not None
         assert "params={'x': 5, 'y': 3}" in str(request_log)
-        assert "extra_info" in str(request_log)
 
 
 class TestCreateHandler:
@@ -356,9 +359,7 @@ class TestCreateHandler:
         # For testing, create a simple handler that bypasses Depends
         async def test_handler():
             request_params = query_params.model_dump()
-            return execute_function_with_params(
-                sample_function_info, request_params, "GET", f"query={request_params}"
-            )
+            return execute_function_with_params(sample_function_info, request_params, "GET")
         
         # Execute test handler
         result = asyncio.run(test_handler())
@@ -462,7 +463,7 @@ class TestCreateApiApp:
     """Tests for create_api_app - complete FastAPI app creation."""
     
     @patch('autocode.interfaces.api.load_functions')
-    @patch('autocode.interfaces.api.register_dynamic_endpoints')
+    @patch('autocode.interfaces.api._register_dynamic_endpoints')
     def test_create_api_app_success(self, mock_register, mock_load):
         """Test successful API app creation."""
         app = create_api_app()
@@ -485,7 +486,7 @@ class TestCreateApiApp:
             create_api_app()
     
     @patch('autocode.interfaces.api.load_functions')
-    @patch('autocode.interfaces.api.register_dynamic_endpoints')
+    @patch('autocode.interfaces.api._register_dynamic_endpoints')
     def test_root_endpoint_file_response(self, mock_register, mock_load):
         """Test root endpoint returns a response (verifying route exists)."""
         app = create_api_app()
@@ -951,7 +952,7 @@ class TestExecuteFunctionWithParamsExtended:
         # Should log warning for parameter/type errors
         mock_logger.warning.assert_called_once()
         log_call = mock_logger.warning.call_args[0][0]
-        assert "POST error_func parameter error" in log_call
+        assert "POST error_func param error" in log_call
         assert "Test error for logging" in log_call
 
 
@@ -1017,7 +1018,7 @@ class TestStaticFilesAndRootEndpoint:
         assert response.status_code in [200, 404, 500]
     
     @patch('autocode.interfaces.api.load_functions')
-    @patch('autocode.interfaces.api.register_dynamic_endpoints')
+    @patch('autocode.interfaces.api._register_dynamic_endpoints')
     def test_root_endpoint_path_construction(self, mock_register, mock_load):
         """Test that root endpoint constructs correct path to index.html."""
         with patch('os.path.dirname') as mock_dirname, \
