@@ -258,4 +258,105 @@ export const commitDetailStyles = css`
         background: var(--design-indigo-50, #eef2ff);
         text-decoration: underline;
     }
+
+    /* ===== COMMIT METRICS ===== */
+    .metrics-toggle {
+        display: flex;
+        align-items: center;
+        gap: var(--design-spacing-xs, 0.25rem);
+        padding: var(--design-spacing-sm, 0.5rem);
+        border: 1px solid var(--design-border-gray, #e5e7eb);
+        border-radius: var(--design-radius-md, 0.5rem);
+        cursor: pointer;
+        font-size: 12px;
+        color: var(--design-text-secondary, #6b7280);
+        transition: background var(--design-transition-fast, 0.1s);
+        user-select: none;
+    }
+
+    .metrics-toggle:hover {
+        background: var(--design-bg-gray-50, #f9fafb);
+        color: var(--design-text-primary, #1f2937);
+    }
+
+    .metrics-toggle-icon {
+        font-size: 10px;
+        width: 12px;
+    }
+
+    .metrics-toggle-label {
+        flex: 1;
+        font-weight: var(--design-font-weight-medium, 500);
+    }
+
+    .metrics-loading, .metrics-empty {
+        font-size: 11px;
+        color: var(--design-text-tertiary, #9ca3af);
+        padding: var(--design-spacing-xs, 0.25rem) var(--design-spacing-sm, 0.5rem);
+        text-align: center;
+    }
+
+    .metrics-content {
+        display: flex;
+        flex-direction: column;
+        gap: var(--design-spacing-xs, 0.25rem);
+    }
+
+    .metrics-summary-bar {
+        display: flex;
+        align-items: center;
+        gap: var(--design-spacing-md, 0.75rem);
+        padding: var(--design-spacing-xs, 0.25rem) var(--design-spacing-sm, 0.5rem);
+        background: var(--design-bg-white, #fff);
+        border: 1px solid var(--design-border-gray, #e5e7eb);
+        border-radius: var(--design-radius-md, 0.5rem);
+        font-size: 11px;
+        font-family: var(--design-font-mono, monospace);
+    }
+
+    .ms-item {
+        color: var(--design-text-secondary, #6b7280);
+    }
+
+    .ms-delta { font-weight: var(--design-font-weight-semibold, 600); }
+    .ms-up { color: #dc2626; }
+    .ms-down { color: #16a34a; }
+    .ms-down-good { color: #16a34a; }
+    .ms-up-bad { color: #dc2626; }
+    .ms-count { margin-left: auto; color: var(--design-text-tertiary, #9ca3af); }
+
+    .metrics-files {
+        display: flex;
+        flex-direction: column;
+        gap: 1px;
+    }
+
+    .mf-row {
+        display: flex;
+        align-items: center;
+        gap: var(--design-spacing-xs, 0.25rem);
+        padding: 3px var(--design-spacing-sm, 0.5rem);
+        border-radius: var(--design-radius-sm, 0.25rem);
+        font-size: 10px;
+        font-family: var(--design-font-mono, monospace);
+    }
+
+    .mf-row:hover {
+        background: var(--design-bg-gray-50, #f9fafb);
+    }
+
+    .mf-path {
+        flex: 1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        color: var(--design-text-primary, #1f2937);
+    }
+
+    .mf-stat {
+        color: var(--design-text-tertiary, #9ca3af);
+        white-space: nowrap;
+        min-width: 55px;
+        text-align: right;
+    }
 `;

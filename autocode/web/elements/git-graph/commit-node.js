@@ -22,9 +22,9 @@ const LANE_COLORS = [
     '#6d28d9', // purple
 ];
 
-const NODE_RADIUS = 5;
-const LANE_WIDTH = 20;
-const ROW_HEIGHT = 40;
+const NODE_RADIUS = 4;
+const LANE_WIDTH = 16;
+const ROW_HEIGHT = 28;
 
 export class CommitNode extends LitElement {
     static properties = {
@@ -63,22 +63,17 @@ export class CommitNode extends LitElement {
                     ${this._renderGraphSvg()}
                 </div>
 
-                <!-- Commit info -->
+                <!-- Commit info — single line -->
                 <div class="commit-info">
-                    <div class="commit-top-row">
-                        ${this._renderBadges()}
-                        <span class="commit-message" title="${this.commit.message}">
-                            ${this.commit.message}
-                        </span>
-                    </div>
-                    <div class="commit-meta">
-                        <span class="commit-hash">${this.commit.short_hash}</span>
-                        <span class="commit-author">${this.commit.author}</span>
-                        <span class="commit-date">${this._formatDate(this.commit.date)}</span>
-                        ${this.commit.is_merge ? html`
-                            <span class="merge-indicator">merge</span>
-                        ` : ''}
-                    </div>
+                    ${this._renderBadges()}
+                    ${this.commit.is_merge ? html`
+                        <span class="merge-indicator">M</span>
+                    ` : ''}
+                    <span class="commit-hash">${this.commit.short_hash}</span>
+                    <span class="commit-message" title="${this.commit.message}">
+                        ${this.commit.message}
+                    </span>
+                    <span class="commit-date">${this._formatDate(this.commit.date)}</span>
                 </div>
             </div>
         `;

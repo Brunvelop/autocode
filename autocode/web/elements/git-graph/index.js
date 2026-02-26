@@ -17,6 +17,7 @@ import { gitGraphStyles } from './styles/git-graph.styles.js';
 // Sub-components
 import './commit-node.js';
 import './commit-detail.js';
+import './metrics-dashboard.js';
 
 export class GitGraph extends LitElement {
     static properties = {
@@ -33,6 +34,12 @@ export class GitGraph extends LitElement {
 
         // Graph layout computed data
         _layoutData: { state: true },
+
+        // Metrics dashboard toggle
+        _showMetrics: { state: true },
+
+        // Collapsible commit panel
+        _panelCollapsed: { state: true },
     };
 
     static styles = [themeTokens, gitGraphStyles];
@@ -49,6 +56,8 @@ export class GitGraph extends LitElement {
         this._loading = false;
         this._error = null;
         this._layoutData = null;
+        this._showMetrics = false;
+        this._panelCollapsed = false;
     }
 
     connectedCallback() {
@@ -101,6 +110,11 @@ export class GitGraph extends LitElement {
                             </option>
                         `)}
                     </select>
+                    <button 
+                        class="action-btn ${this._showMetrics ? 'active' : ''}" 
+                        @click=${() => { this._showMetrics = !this._showMetrics; }}
+                        title="Métricas de código"
+                    >📊</button>
                     <button class="action-btn" @click=${this.refresh} title="Recargar">
                         🔄
                     </button>
@@ -114,20 +128,23 @@ export class GitGraph extends LitElement {
     // ========================================================================
 
     _renderGraphPanel() {
+        const collapsed = this._panelCollapsed;
+
         if (this._loading) {
             return html`
-                <div class="graph-panel">
+                <div class="graph-panel ${collapsed ? 'collapsed' : ''}">
                     <div class="loading-container">
                         <div class="spinner"></div>
-                        <span>Cargando historial git...</span>
+                        <span>Cargando...</span>
                     </div>
+                    <button class="panel-toggle" @click=${() => { this._panelCollapsed = true; }} title="Ocultar commits">◀</button>
                 </div>
             `;
         }
 
         if (this._error) {
             return html`
-                <div class="graph-panel">
+                <div class="graph-panel ${collapsed ? 'collapsed' : ''}">
                     <div class="error-container">
                         <div class="error-box">❌ ${this._error}</div>
                         <button class="retry-btn" @click=${this.refresh}>Reintentar</button>
@@ -136,13 +153,18 @@ export class GitGraph extends LitElement {
             `;
         }
 
+        if (collapsed) {
+            return html`<div class="graph-panel collapsed"></div>`;
+        }
+
         if (!this._layoutData || this._layoutData.rows.length === 0) {
             return html`
                 <div class="graph-panel">
                     <div class="loading-container">
-                        <span style="font-size:2rem; opacity:0.4;">📭</span>
-                        <span>No hay commits para mostrar</span>
+                        <span style="font-size:1.5rem; opacity:0.4;">📭</span>
+                        <span>Sin commits</span>
                     </div>
+                    <button class="panel-toggle" @click=${() => { this._panelCollapsed = true; }} title="Ocultar commits">◀</button>
                 </div>
             `;
         }
@@ -165,11 +187,12 @@ export class GitGraph extends LitElement {
                     ${this._commits.length >= this.maxCount ? html`
                         <div class="load-more">
                             <button class="load-more-btn" @click=${this._loadMore}>
-                                ⬇️ Cargar más commits...
+                                ⬇️ Más...
                             </button>
                         </div>
                     ` : ''}
                 </div>
+                <button class="panel-toggle" @click=${() => { this._panelCollapsed = true; }} title="Ocultar commits">◀</button>
             </div>
         `;
     }
@@ -181,16 +204,23 @@ export class GitGraph extends LitElement {
     _renderDetailPanel() {
         return html`
             <div class="detail-panel">
-                ${this._selectedCommit ? html`
+                ${this._panelCollapsed ? html`
+                    <button class="panel-toggle-collapsed" @click=${() => { this._panelCollapsed = false; }} title="Mostrar commits">▶</button>
+                ` : ''}
+                ${this._showMetrics ? html`
+                    <metrics-dashboard></metrics-dashboard>
+                ` : this._selectedCommit ? html`
                     <commit-detail
                         .commitHash=${this._selectedCommit.hash}
                         .commitSummary=${this._selectedCommit}
                     ></commit-detail>
                 ` : html`
                     <div class="detail-placeholder">
-                        <span class="detail-placeholder-icon">👈</span>
+                        <span class="detail-placeholder-icon">${this._panelCollapsed ? '📊' : '👈'}</span>
                         <span class="detail-placeholder-text">
-                            Selecciona un commit para ver sus detalles
+                            ${this._panelCollapsed 
+                                ? 'Usa 📊 para ver métricas o expande el panel de commits'
+                                : 'Selecciona un commit para ver sus detalles'}
                         </span>
                     </div>
                 `}

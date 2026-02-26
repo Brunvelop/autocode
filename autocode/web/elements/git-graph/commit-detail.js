@@ -26,6 +26,10 @@ export class CommitDetail extends LitElement {
         _detail: { state: true },          // Full detail loaded from API
         _loading: { state: true },
         _error: { state: true },
+        // Commit metrics
+        _metrics: { state: true },
+        _metricsLoading: { state: true },
+        _metricsExpanded: { state: true },
     };
 
     static styles = [themeTokens, commitDetailStyles];
@@ -37,11 +41,17 @@ export class CommitDetail extends LitElement {
         this._detail = null;
         this._loading = false;
         this._error = null;
+        // Metrics
+        this._metrics = null;
+        this._metricsLoading = false;
+        this._metricsExpanded = false;
     }
 
     willUpdate(changed) {
         if (changed.has('commitHash') && this.commitHash) {
             this._loadDetail();
+            this._metrics = null;
+            this._metricsExpanded = false;
         }
     }
 
@@ -132,6 +142,9 @@ export class CommitDetail extends LitElement {
                         ${detail.files.map(f => this._renderFileItem(f))}
                     </div>
                 ` : ''}
+
+                <!-- Code Metrics (expandable) -->
+                ${this._renderMetricsSection()}
             </div>
         `;
     }
@@ -208,6 +221,100 @@ export class CommitDetail extends LitElement {
         } catch {
             return isoDate;
         }
+    }
+
+    // ========================================================================
+    // COMMIT METRICS
+    // ========================================================================
+
+    _renderMetricsSection() {
+        return html`
+            <div class="metrics-toggle" @click=${this._toggleMetrics}>
+                <span class="metrics-toggle-icon">${this._metricsExpanded ? '▾' : '▸'}</span>
+                <span class="metrics-toggle-label">📊 Métricas de código</span>
+                ${this._metricsLoading ? html`<div class="spinner-sm"></div>` : ''}
+            </div>
+            ${this._metricsExpanded ? this._renderMetricsContent() : ''}
+        `;
+    }
+
+    _renderMetricsContent() {
+        if (this._metricsLoading) {
+            return html`<div class="metrics-loading">Analizando...</div>`;
+        }
+        if (!this._metrics || !this._metrics.files || this._metrics.files.length === 0) {
+            return html`<div class="metrics-empty">Sin archivos .py en este commit</div>`;
+        }
+
+        const m = this._metrics;
+        const s = m.summary || {};
+
+        return html`
+            <div class="metrics-content">
+                <!-- Summary -->
+                <div class="metrics-summary-bar">
+                    <span class="ms-item">
+                        SLOC <span class="ms-delta ${s.delta_sloc > 0 ? 'ms-up' : s.delta_sloc < 0 ? 'ms-down' : ''}">
+                            ${s.delta_sloc > 0 ? '+' : ''}${s.delta_sloc || 0}
+                        </span>
+                    </span>
+                    <span class="ms-item">
+                        CC <span class="ms-delta ${s.delta_avg_complexity > 0 ? 'ms-up' : s.delta_avg_complexity < 0 ? 'ms-down' : ''}">
+                            ${s.delta_avg_complexity > 0 ? '+' : ''}${s.delta_avg_complexity?.toFixed(2) || '0'}
+                        </span>
+                    </span>
+                    <span class="ms-item ms-count">${s.files_analyzed || 0} .py</span>
+                </div>
+
+                <!-- Per-file table -->
+                <div class="metrics-files">
+                    ${m.files.map(f => html`
+                        <div class="mf-row">
+                            <span class="mf-path" title="${f.path}">${this._shortPath(f.path)}</span>
+                            <span class="mf-stat">
+                                SLOC <span class="${f.delta_sloc > 0 ? 'ms-up' : f.delta_sloc < 0 ? 'ms-down' : ''}">${f.delta_sloc > 0 ? '+' : ''}${f.delta_sloc}</span>
+                            </span>
+                            <span class="mf-stat">
+                                CC <span class="${f.delta_complexity > 0 ? 'ms-up' : f.delta_complexity < 0 ? 'ms-down' : ''}">${f.delta_complexity > 0 ? '+' : ''}${f.delta_complexity?.toFixed(1)}</span>
+                            </span>
+                            <span class="mf-stat">
+                                MI <span class="${f.delta_mi > 0 ? 'ms-down-good' : f.delta_mi < 0 ? 'ms-up-bad' : ''}">${f.delta_mi > 0 ? '+' : ''}${f.delta_mi?.toFixed(1)}</span>
+                            </span>
+                        </div>
+                    `)}
+                </div>
+            </div>
+        `;
+    }
+
+    async _toggleMetrics() {
+        this._metricsExpanded = !this._metricsExpanded;
+        if (this._metricsExpanded && !this._metrics && !this._metricsLoading) {
+            await this._loadMetrics();
+        }
+    }
+
+    async _loadMetrics() {
+        if (!this.commitHash) return;
+        this._metricsLoading = true;
+        try {
+            const result = await AutoFunctionController.executeFunction(
+                'get_commit_metrics',
+                { commit_hash: this.commitHash }
+            );
+            this._metrics = result;
+        } catch (e) {
+            console.error('❌ Error loading commit metrics:', e);
+            this._metrics = { files: [], summary: {} };
+        } finally {
+            this._metricsLoading = false;
+        }
+    }
+
+    _shortPath(p) {
+        if (!p) return '';
+        const parts = p.split('/');
+        return parts.length > 2 ? '…/' + parts.slice(-2).join('/') : p;
     }
 
     // ========================================================================

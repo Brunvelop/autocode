@@ -72,3 +72,130 @@ class CodeStructureOutput(GenericOutput):
     Extiende GenericOutput con tipado específico para result.
     """
     result: Optional[CodeStructureResult] = None
+
+
+# ==============================================================================
+# CODE METRICS MODELS
+# ==============================================================================
+
+
+class FunctionMetrics(BaseModel):
+    """Métricas de complejidad de una función/método individual."""
+
+    name: str = Field(..., description="Nombre de la función/método")
+    file: str = Field(..., description="Path del archivo")
+    line: int = Field(0, description="Línea de inicio")
+    complexity: int = Field(0, description="Complejidad ciclomática")
+    rank: str = Field("A", description="Grado de complejidad (A-F)")
+    nesting_depth: int = Field(0, description="Profundidad máxima de anidamiento")
+    sloc: int = Field(0, description="Líneas de código fuente")
+    is_method: bool = Field(False, description="Si es método de clase")
+    class_name: Optional[str] = Field(None, description="Clase contenedora si es método")
+
+
+class FileMetrics(BaseModel):
+    """Métricas agregadas de un archivo individual."""
+
+    path: str = Field(..., description="Path relativo del archivo")
+    language: Optional[Language] = Field(None, description="Lenguaje detectado")
+    sloc: int = Field(0, description="Líneas de código fuente (sin blanks ni comments)")
+    comments: int = Field(0, description="Líneas de comentario")
+    blanks: int = Field(0, description="Líneas en blanco")
+    total_loc: int = Field(0, description="Total de líneas")
+    functions: List[FunctionMetrics] = Field(default_factory=list, description="Métricas por función")
+    classes_count: int = Field(0, description="Número de clases")
+    functions_count: int = Field(0, description="Número de funciones/métodos")
+    avg_complexity: float = Field(0.0, description="Complejidad ciclomática media")
+    max_complexity: int = Field(0, description="Complejidad ciclomática máxima")
+    max_nesting: int = Field(0, description="Profundidad máxima de anidamiento")
+    maintainability_index: float = Field(100.0, description="Índice de mantenibilidad (0-100)")
+
+
+class PackageCoupling(BaseModel):
+    """Métricas de acoplamiento de un subpaquete."""
+
+    name: str = Field(..., description="Nombre del paquete (ej: autocode.core)")
+    ce: int = Field(0, description="Acoplamiento eferente (imports salientes)")
+    ca: int = Field(0, description="Acoplamiento aferente (imports entrantes)")
+    instability: float = Field(0.0, description="Inestabilidad: Ce/(Ce+Ca). 0=estable, 1=inestable")
+    imports_to: List[str] = Field(default_factory=list, description="Paquetes de los que depende")
+    imported_by: List[str] = Field(default_factory=list, description="Paquetes que dependen de este")
+
+
+class MetricsSnapshot(BaseModel):
+    """Snapshot completo de métricas de código en un momento dado."""
+
+    commit_hash: str = Field(..., description="Hash completo del commit")
+    commit_short: str = Field("", description="Hash abreviado")
+    branch: str = Field("", description="Rama activa")
+    timestamp: str = Field("", description="Fecha ISO del snapshot")
+    # Per-file metrics
+    files: List[FileMetrics] = Field(default_factory=list, description="Métricas por archivo")
+    # Aggregates
+    total_files: int = Field(0)
+    total_sloc: int = Field(0)
+    total_comments: int = Field(0)
+    total_blanks: int = Field(0)
+    total_functions: int = Field(0)
+    total_classes: int = Field(0)
+    avg_complexity: float = Field(0.0)
+    avg_mi: float = Field(0.0)
+    complexity_distribution: dict = Field(default_factory=dict, description="Distribución {A:n, B:n, ...}")
+    # Coupling
+    coupling: List[PackageCoupling] = Field(default_factory=list)
+    circular_deps: List[List[str]] = Field(default_factory=list)
+
+
+class MetricsComparison(BaseModel):
+    """Comparación entre dos snapshots de métricas."""
+
+    before: Optional[MetricsSnapshot] = Field(None, description="Snapshot anterior (None si es el primero)")
+    after: MetricsSnapshot = Field(..., description="Snapshot actual")
+    delta_sloc: int = Field(0)
+    delta_functions: int = Field(0)
+    delta_classes: int = Field(0)
+    delta_avg_complexity: float = Field(0.0)
+    delta_avg_mi: float = Field(0.0)
+    files_improved: List[dict] = Field(default_factory=list, description="Archivos donde CC bajó")
+    files_degraded: List[dict] = Field(default_factory=list, description="Archivos donde CC subió")
+
+
+class CommitFileMetrics(BaseModel):
+    """Métricas before/after de un archivo en un commit."""
+
+    path: str = Field(..., description="Path del archivo")
+    status: str = Field("modified", description="added/modified/deleted")
+    before: Optional[FileMetrics] = Field(None, description="Métricas antes del commit")
+    after: Optional[FileMetrics] = Field(None, description="Métricas después del commit")
+    delta_sloc: int = Field(0)
+    delta_complexity: float = Field(0.0)
+    delta_mi: float = Field(0.0)
+
+
+class CommitMetrics(BaseModel):
+    """Métricas de impacto de un commit específico."""
+
+    commit_hash: str = Field(...)
+    commit_short: str = Field("")
+    files: List[CommitFileMetrics] = Field(default_factory=list)
+    summary: dict = Field(default_factory=dict, description="Resumen: delta_sloc, delta_cc, etc.")
+
+
+# ==============================================================================
+# METRICS OUTPUT MODELS (GenericOutput wrappers)
+# ==============================================================================
+
+
+class MetricsSnapshotOutput(GenericOutput):
+    """Output de generate_code_metrics() y get_metrics_snapshot()."""
+    result: Optional[MetricsComparison] = None
+
+
+class MetricsSnapshotListOutput(GenericOutput):
+    """Output de get_metrics_snapshots()."""
+    result: Optional[List[dict]] = None
+
+
+class CommitMetricsOutput(GenericOutput):
+    """Output de get_commit_metrics()."""
+    result: Optional[CommitMetrics] = None

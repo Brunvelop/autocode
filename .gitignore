@@ -172,6 +172,9 @@ outputs/
 # AI Session context (only in session branches)
 .ai-context/
 
+# Autocode metrics snapshots (generated data)
+.autocode/
+
 # OpenCode configuration (contains API keys)
 .opencode.json
 .opencode/
