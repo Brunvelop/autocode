@@ -29,7 +29,6 @@ dependencies = [
     "beautifulsoup4>=4.13.4",
     "typer>=0.16.0",
     "fastapi-mcp>=0.4.0",
-    "pytest>=8.4.1",
     "docstring-parser>=0.17.0",
     "dspy-ai>=3.0.3",
     "mcp>=1.0.0",
@@ -42,9 +41,9 @@ dependencies = [
 autocode = "autocode.interfaces.cli:app"
 
 [project.urls]
-"Homepage" = "https://github.com/yourusername/autocode"
-"Bug Reports" = "https://github.com/yourusername/autocode/issues"
-"Source" = "https://github.com/yourusername/autocode"
+"Homepage" = "https://github.com/Brunvelop/autocode"
+"Bug Reports" = "https://github.com/Brunvelop/autocode/issues"
+"Source" = "https://github.com/Brunvelop/autocode"
 
 [build-system]
 requires = ["setuptools>=61.0", "wheel"]
@@ -52,6 +51,16 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 include = ["autocode*"]
+
+[tool.setuptools.package-data]
+"autocode.web" = [
+    "views/*.html",
+    "elements/**/*.js",
+    "elements/**/*.html",
+    "elements/**/*.css",
+    "tests/**/*.html",
+    "tests/**/*.js",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
