@@ -9,6 +9,7 @@ import logging
 from typing import Optional
 
 from autocode.interfaces.registry import register_function
+from autocode.interfaces.models import GenericOutput
 from autocode.core.vcs.models import (
     GitCommit,
     GitBranch,
@@ -27,7 +28,7 @@ _SEP = "‖"
 _LOG_FORMAT = f"%H{_SEP}%h{_SEP}%an{_SEP}%ae{_SEP}%aI{_SEP}%P{_SEP}%s"
 
 
-@register_function(http_methods=["GET"], interfaces=["api", "mcp"])
+@register_function(http_methods=["GET"], interfaces=["api"])
 def get_git_log(max_count: int = 50, branch: str = "") -> GitLogOutput:
     """
     Obtiene el historial de commits del repositorio como un grafo.
@@ -82,6 +83,76 @@ def get_git_log(max_count: int = 50, branch: str = "") -> GitLogOutput:
         error_msg = f"Error obteniendo git log: {str(e)}"
         logger.error(error_msg)
         return GitLogOutput(success=False, message=error_msg)
+
+
+@register_function(http_methods=["GET"], interfaces=["api", "mcp"])
+def get_git_log_summary(max_count: int = 15, branch: str = "") -> GenericOutput:
+    """
+    Obtiene un resumen compacto del historial de commits.
+    
+    Versión ligera de get_git_log(), optimizada para LLMs.
+    Devuelve texto plano con una línea por commit (short hash, fecha corta,
+    autor, mensaje) y un resumen de branches al final.
+    
+    Args:
+        max_count: Número máximo de commits a retornar (default 15)
+        branch: Rama específica a consultar (vacío = rama actual)
+    """
+    try:
+        # Obtener rama actual
+        current_branch = _get_current_branch()
+        
+        # Formato compacto: short_hash | fecha corta | autor | mensaje
+        fmt = "%h | %ad | %an | %s"
+        cmd = [
+            "git", "log",
+            f"--format={fmt}",
+            "--date=short",
+            f"-n{max_count}",
+        ]
+        
+        if branch:
+            cmd.append(branch)
+        # Sin --all: solo rama actual (más relevante para el agente)
+        
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        lines = [l for l in result.stdout.strip().split("\n") if l]
+        
+        if not lines:
+            return GenericOutput(
+                success=True,
+                result=f"Branch: {current_branch}\nNo commits found.",
+                message="No commits"
+            )
+        
+        # Obtener conteo de branches
+        branch_result = subprocess.run(
+            ["git", "branch", "--format=%(refname:short)"],
+            capture_output=True, text=True, check=False,
+        )
+        branch_names = [b.strip() for b in branch_result.stdout.strip().split("\n") if b.strip()] if branch_result.returncode == 0 else []
+        
+        # Construir output
+        output_lines = [f"Branch: {current_branch} ({len(branch_names)} branches total)"]
+        output_lines.extend(lines)
+        output_lines.append(f"---\nShowing {len(lines)} commits")
+        
+        summary = "\n".join(output_lines)
+        return GenericOutput(
+            success=True,
+            result=summary,
+            message=f"{len(lines)} commits on {current_branch}"
+        )
+        
+    except subprocess.CalledProcessError as e:
+        error_msg = f"Git error: {e.stderr.strip() if e.stderr else str(e)}"
+        logger.error(error_msg)
+        return GenericOutput(success=False, result=None, message=error_msg)
+        
+    except Exception as e:
+        error_msg = f"Error obteniendo git log summary: {str(e)}"
+        logger.error(error_msg)
+        return GenericOutput(success=False, result=None, message=error_msg)
 
 
 @register_function(http_methods=["GET"], interfaces=["api", "mcp"])

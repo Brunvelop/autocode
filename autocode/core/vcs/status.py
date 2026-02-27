@@ -59,7 +59,7 @@ class GitStatusOutput(GenericOutput):
 # FUNCTIONS
 # ==============================================================================
 
-@register_function(http_methods=["GET"], interfaces=["api", "mcp"])
+@register_function(http_methods=["GET"], interfaces=["api"])
 def get_git_status() -> GitStatusOutput:
     """
     Obtiene el estado actual del repositorio git.
@@ -145,6 +145,120 @@ def get_git_status() -> GitStatusOutput:
         error_msg = f"Error obteniendo git status: {str(e)}"
         logger.error(error_msg)
         return GitStatusOutput(success=False, message=error_msg)
+
+
+@register_function(http_methods=["GET"], interfaces=["api", "mcp"])
+def get_git_status_summary() -> GenericOutput:
+    """
+    Obtiene un resumen compacto del estado del repositorio git.
+    
+    Versión ligera de get_git_status(), optimizada para LLMs.
+    Devuelve texto plano con el estado de cada archivo en formato corto
+    y un resumen de contadores al final.
+    
+    Returns:
+        GenericOutput con result=texto compacto del status
+    """
+    try:
+        # Obtener branch
+        branch_result = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            capture_output=True, text=True, check=True
+        )
+        branch = branch_result.stdout.strip()
+        
+        # Obtener status porcelain v1 (más compacto)
+        status_result = subprocess.run(
+            ["git", "status", "--porcelain", "--untracked-files=all"],
+            capture_output=True, text=True, check=True
+        )
+        
+        lines = [l for l in status_result.stdout.strip().split('\n') if l]
+        
+        if not lines:
+            summary = f"Branch: {branch} | Clean (no changes)"
+            return GenericOutput(
+                success=True,
+                result=summary,
+                message="Working directory limpio"
+            )
+        
+        # Construir resumen compacto
+        output_lines = [f"Branch: {branch}"]
+        
+        counters = {"M": 0, "A": 0, "D": 0, "R": 0, "?": 0, "staged": 0}
+        
+        for line in lines:
+            # Porcelain v1: "XY path" donde X=index, Y=worktree
+            if len(line) < 4:
+                continue
+            
+            xy = line[:2]
+            path = line[3:]
+            
+            # Determinar símbolo compacto
+            x, y = xy[0], xy[1]
+            
+            if xy == '??':
+                counters["?"] += 1
+                output_lines.append(f"  ? {path}")
+            else:
+                # Staged indicator
+                staged = "+" if x != '.' and x != ' ' and x != '?' else " "
+                if staged == "+":
+                    counters["staged"] += 1
+                
+                # Status letter (usar el más significativo)
+                status_char = x if x not in ('.', ' ', '?') else y
+                if status_char in ('M', 'm'):
+                    counters["M"] += 1
+                    output_lines.append(f" {staged}M {path}")
+                elif status_char == 'A':
+                    counters["A"] += 1
+                    output_lines.append(f" {staged}A {path}")
+                elif status_char == 'D':
+                    counters["D"] += 1
+                    output_lines.append(f" {staged}D {path}")
+                elif status_char == 'R':
+                    counters["R"] += 1
+                    output_lines.append(f" {staged}R {path}")
+                else:
+                    counters["M"] += 1
+                    output_lines.append(f" {staged}{status_char} {path}")
+        
+        # Línea resumen
+        parts = []
+        if counters["M"]:
+            parts.append(f"{counters['M']} modified")
+        if counters["A"]:
+            parts.append(f"{counters['A']} added")
+        if counters["D"]:
+            parts.append(f"{counters['D']} deleted")
+        if counters["R"]:
+            parts.append(f"{counters['R']} renamed")
+        if counters["?"]:
+            parts.append(f"{counters['?']} untracked")
+        if counters["staged"]:
+            parts.append(f"{counters['staged']} staged")
+        
+        output_lines.append(f"---\nTotal: {', '.join(parts)}")
+        
+        summary = "\n".join(output_lines)
+        return GenericOutput(
+            success=True,
+            result=summary,
+            message=f"Status: {len(lines)} archivos con cambios"
+        )
+        
+    except subprocess.CalledProcessError as e:
+        error_msg = f"Git error: {e.stderr.strip() if e.stderr else str(e)}"
+        logger.error(error_msg)
+        return GenericOutput(success=False, result=None, message=error_msg)
+        
+    except Exception as e:
+        error_msg = f"Error obteniendo git status summary: {str(e)}"
+        logger.error(error_msg)
+        return GenericOutput(success=False, result=None, message=error_msg)
 
 
 def _parse_status_line(line: str) -> Optional[GitFileStatus]:

@@ -4,9 +4,11 @@ VCS Module - Operaciones y utilidades de control de versiones para Autocode.
 Este módulo proporciona:
 - GitOperations: Wrapper para operaciones Git usando GitPython
 - Modelos Pydantic para estructuras de datos Git
-- Función get_git_tree() para obtener la estructura del repositorio
-- Función get_git_status() para obtener el estado actual del repositorio
-- Función get_git_log() para obtener el historial de commits como grafo
+- Función get_git_tree() para obtener la estructura del repositorio (API only)
+- Función get_git_status() para obtener el estado actual del repositorio (API only)
+- Función get_git_status_summary() para resumen compacto del status (MCP/LLM)
+- Función get_git_log() para obtener el historial de commits como grafo (API only)
+- Función get_git_log_summary() para resumen compacto del log (MCP/LLM)
 - Función get_commit_detail() para obtener detalle de un commit
 """
 
@@ -28,11 +30,12 @@ from autocode.core.vcs.models import (
 from autocode.core.vcs.tree import get_git_tree
 from autocode.core.vcs.status import (
     get_git_status,
+    get_git_status_summary,
     GitFileStatus,
     GitStatusResult,
     GitStatusOutput,
 )
-from autocode.core.vcs.log import get_git_log, get_commit_detail
+from autocode.core.vcs.log import get_git_log, get_git_log_summary, get_commit_detail
 
 __all__ = [
     # Operations
@@ -53,9 +56,12 @@ __all__ = [
     "GitFileStatus",
     "GitStatusResult",
     "GitStatusOutput",
-    # Functions
+    # Functions - API (full data for frontend)
     "get_git_tree",
     "get_git_status",
     "get_git_log",
     "get_commit_detail",
+    # Functions - MCP/LLM (compact text summaries)
+    "get_git_status_summary",
+    "get_git_log_summary",
 ]

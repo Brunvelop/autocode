@@ -13,7 +13,7 @@ from autocode.core.vcs.models import GitNodeEntry, GitTreeGraph, GitTreeOutput
 logger = logging.getLogger(__name__)
 
 
-@register_function(http_methods=["GET"])
+@register_function(http_methods=["GET"], interfaces=["api"])
 def get_git_tree() -> GitTreeOutput:
     """
     Obtiene la estructura del proyecto desde el índice git incluyendo tamaños de archivo.
