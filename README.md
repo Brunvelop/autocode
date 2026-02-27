@@ -381,3 +381,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ---
 
 **Made with ❤️ for developers who value code quality**
+
+```bash
+uv lock --upgrade-package autocode && uv sync
+```

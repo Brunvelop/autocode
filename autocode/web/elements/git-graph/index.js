@@ -202,19 +202,24 @@ export class GitGraph extends LitElement {
     // ========================================================================
 
     _renderDetailPanel() {
+        const showDashboard = this._showMetrics;
+        const showDetail = !showDashboard && this._selectedCommit;
+        const showPlaceholder = !showDashboard && !this._selectedCommit;
+
         return html`
             <div class="detail-panel">
                 ${this._panelCollapsed ? html`
                     <button class="panel-toggle-collapsed" @click=${() => { this._panelCollapsed = false; }} title="Mostrar commits">▶</button>
                 ` : ''}
-                ${this._showMetrics ? html`
-                    <metrics-dashboard></metrics-dashboard>
-                ` : this._selectedCommit ? html`
+                <!-- Always in DOM, toggle visibility via style -->
+                <metrics-dashboard style="display: ${showDashboard ? 'block' : 'none'}"></metrics-dashboard>
+                ${showDetail ? html`
                     <commit-detail
                         .commitHash=${this._selectedCommit.hash}
                         .commitSummary=${this._selectedCommit}
                     ></commit-detail>
-                ` : html`
+                ` : ''}
+                ${showPlaceholder ? html`
                     <div class="detail-placeholder">
                         <span class="detail-placeholder-icon">${this._panelCollapsed ? '📊' : '👈'}</span>
                         <span class="detail-placeholder-text">
@@ -223,7 +228,7 @@ export class GitGraph extends LitElement {
                                 : 'Selecciona un commit para ver sus detalles'}
                         </span>
                     </div>
-                `}
+                ` : ''}
             </div>
         `;
     }

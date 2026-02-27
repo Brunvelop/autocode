@@ -53,16 +53,30 @@ def generate_code_metrics() -> MetricsSnapshotOutput:
     Analiza todos los archivos .py trackeados por git calculando complejidad
     ciclomática, índice de mantenibilidad, acoplamiento y más.
     Guarda el snapshot en .autocode/metrics/ para seguimiento histórico.
+
+    Si ya existe un snapshot para el commit actual, lo reutiliza sin
+    recalcular (cache por commit hash).
     """
     try:
-        snapshot = _build_current_snapshot()
-        _save_snapshot(snapshot)
+        # Check cache: si ya existe snapshot para el commit actual, reutilizar
+        current_hash = _git("rev-parse", "HEAD")
+        cached = _load_snapshot_by_hash(current_hash)
+
+        if cached is not None:
+            logger.debug(f"Snapshot en cache para {current_hash[:7]}, reutilizando")
+            snapshot = cached
+        else:
+            snapshot = _build_current_snapshot()
+            _save_snapshot(snapshot)
+
         previous = _load_previous_snapshot(snapshot.commit_hash)
         comparison = _compare_snapshots(previous, snapshot)
+
+        source = "cache" if cached is not None else "generado"
         return MetricsSnapshotOutput(
             success=True,
             result=comparison,
-            message=f"Snapshot generado: {snapshot.total_files} archivos, "
+            message=f"Snapshot ({source}): {snapshot.total_files} archivos, "
                     f"avg CC={snapshot.avg_complexity:.2f}, avg MI={snapshot.avg_mi:.1f}",
         )
     except Exception as e:
@@ -465,6 +479,21 @@ def _save_snapshot(snapshot: MetricsSnapshot) -> None:
     path = metrics_dir / fname
     path.write_text(snapshot.model_dump_json(indent=2), encoding="utf-8")
     logger.debug(f"Snapshot saved: {path}")
+
+
+def _load_snapshot_by_hash(commit_hash: str) -> Optional[MetricsSnapshot]:
+    """Load a snapshot matching the given commit hash (full), if it exists."""
+    metrics_dir = Path(METRICS_DIR)
+    if not metrics_dir.exists():
+        return None
+    for f in metrics_dir.glob("*.json"):
+        try:
+            data = json.loads(f.read_text(encoding="utf-8"))
+            if data.get("commit_hash") == commit_hash:
+                return MetricsSnapshot(**data)
+        except Exception:
+            continue
+    return None
 
 
 def _load_previous_snapshot(current_hash: str) -> Optional[MetricsSnapshot]:

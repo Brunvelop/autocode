@@ -26,10 +26,10 @@ export class CommitDetail extends LitElement {
         _detail: { state: true },          // Full detail loaded from API
         _loading: { state: true },
         _error: { state: true },
-        // Commit metrics
+        // Commit metrics — always visible
         _metrics: { state: true },
         _metricsLoading: { state: true },
-        _metricsExpanded: { state: true },
+        _metricsCollapsed: { state: true },
     };
 
     static styles = [themeTokens, commitDetailStyles];
@@ -41,17 +41,18 @@ export class CommitDetail extends LitElement {
         this._detail = null;
         this._loading = false;
         this._error = null;
-        // Metrics
+        // Metrics — expanded by default
         this._metrics = null;
         this._metricsLoading = false;
-        this._metricsExpanded = false;
+        this._metricsCollapsed = false;
     }
 
     willUpdate(changed) {
         if (changed.has('commitHash') && this.commitHash) {
             this._loadDetail();
+            // Auto-load metrics alongside detail
             this._metrics = null;
-            this._metricsExpanded = false;
+            this._loadMetrics();
         }
     }
 
@@ -224,23 +225,30 @@ export class CommitDetail extends LitElement {
     }
 
     // ========================================================================
-    // COMMIT METRICS
+    // COMMIT METRICS (always visible, detailed)
     // ========================================================================
 
     _renderMetricsSection() {
+        const isCollapsed = this._metricsCollapsed;
         return html`
-            <div class="metrics-toggle" @click=${this._toggleMetrics}>
-                <span class="metrics-toggle-icon">${this._metricsExpanded ? '▾' : '▸'}</span>
-                <span class="metrics-toggle-label">📊 Métricas de código</span>
+            <div class="metrics-header-bar" @click=${this._toggleMetrics}>
+                <span class="metrics-toggle-icon">${isCollapsed ? '▸' : '▾'}</span>
+                <span class="metrics-header-label">📊 Métricas de código</span>
                 ${this._metricsLoading ? html`<div class="spinner-sm"></div>` : ''}
+                ${!this._metricsLoading && this._metrics?.files?.length ? html`
+                    <span class="metrics-header-count">${this._metrics.files.length} .py</span>
+                ` : ''}
             </div>
-            ${this._metricsExpanded ? this._renderMetricsContent() : ''}
+            ${!isCollapsed ? this._renderMetricsContent() : ''}
         `;
     }
 
     _renderMetricsContent() {
         if (this._metricsLoading) {
-            return html`<div class="metrics-loading">Analizando...</div>`;
+            return html`<div class="metrics-loading">
+                <div class="spinner-sm"></div>
+                <span>Analizando métricas...</span>
+            </div>`;
         }
         if (!this._metrics || !this._metrics.files || this._metrics.files.length === 0) {
             return html`<div class="metrics-empty">Sin archivos .py en este commit</div>`;
@@ -249,49 +257,169 @@ export class CommitDetail extends LitElement {
         const m = this._metrics;
         const s = m.summary || {};
 
+        // Aggregate totals from file data for detailed summary
+        const totalBefore = { sloc: 0, funcs: 0, classes: 0, maxCC: 0 };
+        const totalAfter = { sloc: 0, funcs: 0, classes: 0, maxCC: 0 };
+        let totalMiBefore = 0, totalMiAfter = 0, miCount = 0;
+
+        for (const f of m.files) {
+            if (f.before) {
+                totalBefore.sloc += f.before.sloc || 0;
+                totalBefore.funcs += f.before.functions_count || 0;
+                totalBefore.classes += f.before.classes_count || 0;
+                totalBefore.maxCC = Math.max(totalBefore.maxCC, f.before.max_complexity || 0);
+                totalMiBefore += f.before.maintainability_index || 0;
+            }
+            if (f.after) {
+                totalAfter.sloc += f.after.sloc || 0;
+                totalAfter.funcs += f.after.functions_count || 0;
+                totalAfter.classes += f.after.classes_count || 0;
+                totalAfter.maxCC = Math.max(totalAfter.maxCC, f.after.max_complexity || 0);
+                totalMiAfter += f.after.maintainability_index || 0;
+            }
+            if (f.after || f.before) miCount++;
+        }
+
+        const avgMiBefore = miCount ? totalMiBefore / miCount : 0;
+        const avgMiAfter = miCount ? totalMiAfter / miCount : 0;
+        const deltaMi = avgMiAfter - avgMiBefore;
+        const deltaFuncs = totalAfter.funcs - totalBefore.funcs;
+        const deltaClasses = totalAfter.classes - totalBefore.classes;
+
         return html`
             <div class="metrics-content">
-                <!-- Summary -->
-                <div class="metrics-summary-bar">
-                    <span class="ms-item">
-                        SLOC <span class="ms-delta ${s.delta_sloc > 0 ? 'ms-up' : s.delta_sloc < 0 ? 'ms-down' : ''}">
-                            ${s.delta_sloc > 0 ? '+' : ''}${s.delta_sloc || 0}
-                        </span>
-                    </span>
-                    <span class="ms-item">
-                        CC <span class="ms-delta ${s.delta_avg_complexity > 0 ? 'ms-up' : s.delta_avg_complexity < 0 ? 'ms-down' : ''}">
-                            ${s.delta_avg_complexity > 0 ? '+' : ''}${s.delta_avg_complexity?.toFixed(2) || '0'}
-                        </span>
-                    </span>
-                    <span class="ms-item ms-count">${s.files_analyzed || 0} .py</span>
+                <!-- Summary cards -->
+                <div class="metrics-summary-grid">
+                    ${this._metricCard('SLOC', s.delta_sloc, totalAfter.sloc, true)}
+                    ${this._metricCard('CC Media', s.delta_avg_complexity, null, true, true)}
+                    ${this._metricCard('MI Media', deltaMi, avgMiAfter?.toFixed(1), false, true, true)}
+                    ${this._metricCard('Funciones', deltaFuncs, totalAfter.funcs)}
+                    ${this._metricCard('Clases', deltaClasses, totalAfter.classes)}
+                    ${this._metricCard('Max CC', totalAfter.maxCC - totalBefore.maxCC, totalAfter.maxCC, true)}
                 </div>
 
-                <!-- Per-file table -->
-                <div class="metrics-files">
-                    ${m.files.map(f => html`
-                        <div class="mf-row">
-                            <span class="mf-path" title="${f.path}">${this._shortPath(f.path)}</span>
-                            <span class="mf-stat">
-                                SLOC <span class="${f.delta_sloc > 0 ? 'ms-up' : f.delta_sloc < 0 ? 'ms-down' : ''}">${f.delta_sloc > 0 ? '+' : ''}${f.delta_sloc}</span>
-                            </span>
-                            <span class="mf-stat">
-                                CC <span class="${f.delta_complexity > 0 ? 'ms-up' : f.delta_complexity < 0 ? 'ms-down' : ''}">${f.delta_complexity > 0 ? '+' : ''}${f.delta_complexity?.toFixed(1)}</span>
-                            </span>
-                            <span class="mf-stat">
-                                MI <span class="${f.delta_mi > 0 ? 'ms-down-good' : f.delta_mi < 0 ? 'ms-up-bad' : ''}">${f.delta_mi > 0 ? '+' : ''}${f.delta_mi?.toFixed(1)}</span>
-                            </span>
-                        </div>
-                    `)}
+                <!-- Per-file detailed cards -->
+                <div class="metrics-files-detailed">
+                    ${m.files.map(f => this._renderFileMetrics(f))}
                 </div>
             </div>
         `;
     }
 
-    async _toggleMetrics() {
-        this._metricsExpanded = !this._metricsExpanded;
-        if (this._metricsExpanded && !this._metrics && !this._metricsLoading) {
-            await this._loadMetrics();
+    _metricCard(label, delta, value, lowerBetter = false, isFloat = false, higherBetter = false) {
+        let deltaClass = 'delta-neutral';
+        if (delta != null && delta !== 0) {
+            if (lowerBetter) deltaClass = delta < 0 ? 'delta-positive' : 'delta-negative';
+            else if (higherBetter) deltaClass = delta > 0 ? 'delta-positive' : 'delta-negative';
         }
+        const sign = delta > 0 ? '+' : '';
+        const deltaStr = delta != null && delta !== 0
+            ? (isFloat ? `${sign}${delta.toFixed(2)}` : `${sign}${delta}`)
+            : '—';
+
+        return html`
+            <div class="mc-card">
+                <span class="mc-label">${label}</span>
+                ${value != null ? html`<span class="mc-value">${value}</span>` : ''}
+                <span class="mc-delta ${deltaClass}">${deltaStr}</span>
+            </div>
+        `;
+    }
+
+    _renderFileMetrics(f) {
+        const statusIcons = { added: '✅', modified: '🔄', deleted: '❌' };
+        const icon = statusIcons[f.status] || '📄';
+        const after = f.after || {};
+        const before = f.before || {};
+
+        // MI status indicator
+        const mi = after.maintainability_index ?? 0;
+        const miIcon = mi >= 60 ? '✅' : mi >= 40 ? '⚠️' : '🔴';
+
+        return html`
+            <div class="mf-card">
+                <div class="mf-card-header">
+                    <span class="mf-status-icon">${icon}</span>
+                    <span class="mf-card-path" title="${f.path}">${this._shortPath(f.path)}</span>
+                    <span class="mf-status-badge mf-status-${f.status}">${f.status}</span>
+                </div>
+
+                ${f.status === 'deleted' ? html`
+                    <div class="mf-deleted-info">Archivo eliminado (${before.sloc || 0} SLOC)</div>
+                ` : html`
+                    <!-- Metrics grid -->
+                    <div class="mf-metrics-grid">
+                        <div class="mf-metric">
+                            <span class="mf-metric-label">SLOC</span>
+                            <span class="mf-metric-value">${after.sloc || 0}</span>
+                            ${this._renderDelta(f.delta_sloc, true)}
+                        </div>
+                        <div class="mf-metric">
+                            <span class="mf-metric-label">Funciones</span>
+                            <span class="mf-metric-value">${after.functions_count || 0}</span>
+                            ${this._renderDelta((after.functions_count || 0) - (before.functions_count || 0))}
+                        </div>
+                        <div class="mf-metric">
+                            <span class="mf-metric-label">Clases</span>
+                            <span class="mf-metric-value">${after.classes_count || 0}</span>
+                            ${this._renderDelta((after.classes_count || 0) - (before.classes_count || 0))}
+                        </div>
+                        <div class="mf-metric">
+                            <span class="mf-metric-label">CC Media</span>
+                            <span class="mf-metric-value">${after.avg_complexity?.toFixed(1) || '0'}</span>
+                            ${this._renderDelta(f.delta_complexity, true, true)}
+                        </div>
+                        <div class="mf-metric">
+                            <span class="mf-metric-label">Max CC</span>
+                            <span class="mf-metric-value">${after.max_complexity || 0}</span>
+                            ${this._renderDelta((after.max_complexity || 0) - (before.max_complexity || 0), true)}
+                        </div>
+                        <div class="mf-metric">
+                            <span class="mf-metric-label">Max Nest</span>
+                            <span class="mf-metric-value">${after.max_nesting || 0}</span>
+                            ${this._renderDelta((after.max_nesting || 0) - (before.max_nesting || 0), true)}
+                        </div>
+                        <div class="mf-metric mf-metric-wide">
+                            <span class="mf-metric-label">MI ${miIcon}</span>
+                            <span class="mf-metric-value">${mi.toFixed(1)}</span>
+                            ${this._renderDelta(f.delta_mi, false, true, true)}
+                        </div>
+                    </div>
+
+                    <!-- Top complex functions (if any) -->
+                    ${after.functions && after.functions.length > 0 ? html`
+                        <div class="mf-functions">
+                            <div class="mf-functions-title">Funciones (por CC)</div>
+                            ${[...after.functions]
+                                .sort((a, b) => b.complexity - a.complexity)
+                                .slice(0, 5)
+                                .map(fn => html`
+                                    <div class="mf-func-row">
+                                        <span class="mf-func-name" title="${fn.name}">${fn.name}</span>
+                                        <span class="mf-func-cc">CC ${fn.complexity}</span>
+                                        <span class="rank-badge rank-${fn.rank}">${fn.rank}</span>
+                                        <span class="mf-func-nest">↕${fn.nesting_depth}</span>
+                                    </div>
+                                `)}
+                        </div>
+                    ` : ''}
+                `}
+            </div>
+        `;
+    }
+
+    _renderDelta(delta, lowerBetter = false, isFloat = false, higherBetter = false) {
+        if (delta == null || delta === 0) return html`<span class="mc-delta delta-neutral">—</span>`;
+        let cls = 'delta-neutral';
+        if (lowerBetter) cls = delta < 0 ? 'delta-positive' : 'delta-negative';
+        else if (higherBetter) cls = delta > 0 ? 'delta-positive' : 'delta-negative';
+        const sign = delta > 0 ? '+' : '';
+        const val = isFloat ? delta.toFixed(1) : delta;
+        return html`<span class="mc-delta ${cls}">${sign}${val}</span>`;
+    }
+
+    _toggleMetrics() {
+        this._metricsCollapsed = !this._metricsCollapsed;
     }
 
     async _loadMetrics() {
