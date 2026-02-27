@@ -464,7 +464,7 @@ def calculate_context_usage(
 def chat(
     message: str,
     conversation_history: str = "",
-    model: ModelType = 'openrouter/openai/gpt-4o',
+    model: ModelType = 'openrouter/z-ai/glm-5',
     max_tokens: int = 16000,
     temperature: float = 0.7,
     module_type: ModuleType = 'ReAct',

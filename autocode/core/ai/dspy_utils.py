@@ -33,6 +33,7 @@ ModelType = Literal[
     'openrouter/openai/gpt-oss-20b',
     'openrouter/openai/gpt-5',
     'openrouter/openai/gpt-5-codex',
+    'openrouter/z-ai/glm-5',
 ]
 
 
