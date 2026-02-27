@@ -131,6 +131,13 @@ export class ChatSettings extends LitElement {
         
         return kwargs;
     }
+
+    _getEnablePromptCache() {
+        // Por defecto true (activo), el usuario puede desactivarlo
+        return this._settings.enable_prompt_cache !== undefined 
+            ? this._settings.enable_prompt_cache 
+            : true;
+    }
     
     // Método interno para actualizar settings (usado en tests)
     _updateSetting(name, value) {
@@ -226,7 +233,7 @@ export class ChatSettings extends LitElement {
 
         return this._funcInfo.parameters.map(param => {
             // Excluir parámetros manejados de forma especial
-            if (['message', 'conversation_history', 'module_kwargs', 'enabled_tools', 'lm_kwargs'].includes(param.name)) return '';
+            if (['message', 'conversation_history', 'module_kwargs', 'enabled_tools', 'lm_kwargs', 'enable_prompt_cache'].includes(param.name)) return '';
             
             return html`
                 <div class="control-group">
@@ -410,6 +417,19 @@ export class ChatSettings extends LitElement {
             
             ${this._showAdvanced ? html`
                 <div class="advanced-controls">
+                    <div class="control-group">
+                        <label class="control-label" title="Activa cache de prompts del proveedor (Anthropic/OpenAI) para reducir costos y latencia en llamadas repetidas">
+                            💰 Prompt Cache (Proveedor)
+                        </label>
+                        <div class="checkbox-wrapper">
+                            <input 
+                                type="checkbox" 
+                                ?checked=${this._getEnablePromptCache()}
+                                @change=${e => this._updateSetting('enable_prompt_cache', e.target.checked)}
+                            >
+                            <span class="checkbox-label">Reduce costos cacheando prompts en el servidor del proveedor</span>
+                        </div>
+                    </div>
                     ${relevantParams.map(param => this._renderAdvancedControl(param))}
                 </div>
             ` : ''}

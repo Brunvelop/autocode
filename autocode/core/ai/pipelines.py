@@ -156,7 +156,8 @@ def chat(
     module_type: ModuleType = 'ReAct',
     module_kwargs: Optional[Dict[str, Any]] = None,
     enabled_tools: Optional[List[str]] = None,
-    lm_kwargs: Optional[Dict[str, Any]] = None
+    lm_kwargs: Optional[Dict[str, Any]] = None,
+    enable_prompt_cache: bool = True
 ) -> DspyOutput:
     """
     Chat conversacional con acceso a herramientas MCP.
@@ -176,6 +177,7 @@ def chat(
         module_kwargs: Parámetros adicionales del módulo (ej: max_iters para ReAct)
         enabled_tools: Lista de nombres de funciones a habilitar como tools (si None, usa todas)
         lm_kwargs: Parámetros avanzados adicionales para el LLM (top_p, etc.)
+        enable_prompt_cache: Activa cache de prompts del proveedor (Anthropic/OpenAI) para reducir costos y latencia (default: True)
         
     Returns:
         DspyOutput con:
@@ -250,6 +252,14 @@ def chat(
         
         # Generar respuesta usando el módulo configurado
         kwargs = lm_kwargs or {}
+        
+        # Inyectar cache_control_injection_points para cache del proveedor (Anthropic/OpenAI)
+        # Esto reduce costos y latencia cacheando prefijos de prompts en el servidor del proveedor
+        if enable_prompt_cache and 'cache_control_injection_points' not in kwargs:
+            kwargs['cache_control_injection_points'] = [
+                {"location": "message", "role": "system"}
+            ]
+        
         return generate_with_dspy(
             signature_class=ChatSignature,
             inputs={
