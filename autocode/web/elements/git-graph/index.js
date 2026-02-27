@@ -17,6 +17,8 @@ import { gitGraphStyles } from './styles/git-graph.styles.js';
 // Sub-components
 import './commit-node.js';
 import './commit-detail.js';
+import './commit-plan-node.js';
+import './commit-plan-detail.js';
 import './metrics-dashboard.js';
 
 export class GitGraph extends LitElement {
@@ -40,6 +42,10 @@ export class GitGraph extends LitElement {
 
         // Collapsible commit panel
         _panelCollapsed: { state: true },
+
+        // Commit plans (ghost nodes)
+        _plans: { state: true },
+        _selectedPlan: { state: true },
     };
 
     static styles = [themeTokens, gitGraphStyles];
@@ -58,6 +64,8 @@ export class GitGraph extends LitElement {
         this._layoutData = null;
         this._showMetrics = false;
         this._panelCollapsed = false;
+        this._plans = [];
+        this._selectedPlan = null;
     }
 
     connectedCallback() {
@@ -68,6 +76,11 @@ export class GitGraph extends LitElement {
         this.addEventListener('commit-selected', this._handleCommitSelected.bind(this));
         this.addEventListener('detail-closed', this._handleDetailClosed.bind(this));
         this.addEventListener('navigate-commit', this._handleNavigateCommit.bind(this));
+        // Plan events
+        this.addEventListener('plan-selected', this._handlePlanSelected.bind(this));
+        this.addEventListener('plan-closed', this._handlePlanClosed.bind(this));
+        this.addEventListener('plan-deleted', this._handlePlanDeleted.bind(this));
+        this.addEventListener('plan-updated', this._handlePlanUpdated.bind(this));
     }
 
     render() {
@@ -172,6 +185,14 @@ export class GitGraph extends LitElement {
         return html`
             <div class="graph-panel">
                 <div class="commit-list">
+                    <!-- Ghost nodes: planned commits -->
+                    ${this._plans.map(plan => html`
+                        <commit-plan-node
+                            .plan=${plan}
+                            .selected=${this._selectedPlan?.id === plan.id}
+                        ></commit-plan-node>
+                    `)}
+
                     ${this._layoutData.rows.map(row => html`
                         <commit-node
                             .commit=${row.commit}
@@ -203,8 +224,9 @@ export class GitGraph extends LitElement {
 
     _renderDetailPanel() {
         const showDashboard = this._showMetrics;
-        const showDetail = !showDashboard && this._selectedCommit;
-        const showPlaceholder = !showDashboard && !this._selectedCommit;
+        const showPlanDetail = !showDashboard && this._selectedPlan;
+        const showCommitDetail = !showDashboard && !this._selectedPlan && this._selectedCommit;
+        const showPlaceholder = !showDashboard && !this._selectedPlan && !this._selectedCommit;
 
         return html`
             <div class="detail-panel">
@@ -213,7 +235,12 @@ export class GitGraph extends LitElement {
                 ` : ''}
                 <!-- Always in DOM, toggle visibility via style -->
                 <metrics-dashboard style="display: ${showDashboard ? 'block' : 'none'}"></metrics-dashboard>
-                ${showDetail ? html`
+                ${showPlanDetail ? html`
+                    <commit-plan-detail
+                        .planId=${this._selectedPlan.id}
+                    ></commit-plan-detail>
+                ` : ''}
+                ${showCommitDetail ? html`
                     <commit-detail
                         .commitHash=${this._selectedCommit.hash}
                         .commitSummary=${this._selectedCommit}
@@ -261,6 +288,9 @@ export class GitGraph extends LitElement {
                 // Compute graph layout
                 this._layoutData = this._computeLayout(this._commits);
             }
+
+            // Load commit plans (non-blocking)
+            this._loadPlans();
 
             this.dispatchEvent(new CustomEvent('graph-loaded', {
                 detail: { commits: this._commits.length, branches: this._branches.length },
@@ -404,16 +434,6 @@ export class GitGraph extends LitElement {
     // EVENT HANDLERS
     // ========================================================================
 
-    _handleCommitSelected(e) {
-        const commit = e.detail.commit;
-        // Toggle: if clicking same commit, deselect
-        if (this._selectedCommit?.hash === commit.hash) {
-            this._selectedCommit = null;
-        } else {
-            this._selectedCommit = commit;
-        }
-    }
-
     _handleDetailClosed() {
         this._selectedCommit = null;
     }
@@ -448,6 +468,62 @@ export class GitGraph extends LitElement {
         this.maxCount += 50;
         await this.refresh();
     }
+
+    // ========================================================================
+    // PLAN HANDLERS
+    // ========================================================================
+
+    _handlePlanSelected(e) {
+        const plan = e.detail.plan;
+        // Toggle: if clicking same plan, deselect
+        if (this._selectedPlan?.id === plan.id) {
+            this._selectedPlan = null;
+        } else {
+            this._selectedPlan = plan;
+            this._selectedCommit = null; // Deselect commit when selecting plan
+        }
+    }
+
+    _handlePlanClosed() {
+        this._selectedPlan = null;
+    }
+
+    _handlePlanDeleted() {
+        this._selectedPlan = null;
+        this._loadPlans();
+    }
+
+    _handlePlanUpdated() {
+        this._loadPlans();
+    }
+
+    _handleCommitSelected(e) {
+        // Override: also deselect plan when selecting commit
+        const commit = e.detail.commit;
+        if (this._selectedCommit?.hash === commit.hash) {
+            this._selectedCommit = null;
+        } else {
+            this._selectedCommit = commit;
+            this._selectedPlan = null; // Deselect plan when selecting commit
+        }
+    }
+
+    /**
+     * Load commit plans from backend (non-blocking).
+     */
+    async _loadPlans() {
+        try {
+            const plans = await AutoFunctionController.executeFunction(
+                'list_commit_plans',
+                {}
+            );
+            this._plans = plans || [];
+        } catch (error) {
+            console.error('❌ Error loading commit plans:', error);
+            this._plans = [];
+        }
+    }
+
 }
 
 // Register the custom element
