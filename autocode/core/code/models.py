@@ -74,6 +74,15 @@ class CodeStructureOutput(GenericOutput):
     result: Optional[CodeStructureResult] = None
 
 
+class CodeSummaryOutput(GenericOutput):
+    """
+    Output de get_code_summary().
+    Versión compacta en texto plano, optimizada para uso en LLMs.
+    Devuelve un string tipo tree con estructura y métricas básicas.
+    """
+    result: Optional[str] = None
+
+
 # ==============================================================================
 # CODE METRICS MODELS
 # ==============================================================================

@@ -10,6 +10,7 @@ from .models import (
     CodeGraph,
     CodeStructureOutput,
     CodeStructureResult,
+    CodeSummaryOutput,
     # Metrics models
     FunctionMetrics,
     FileMetrics,
@@ -26,7 +27,7 @@ from .models import (
     MetricsHistory,
     MetricsHistoryOutput,
 )
-from .structure import get_code_structure
+from .structure import get_code_structure, get_code_summary
 from .metrics import generate_code_metrics, get_metrics_snapshots, get_commit_metrics, get_metrics_history
 
 __all__ = [
@@ -35,7 +36,9 @@ __all__ = [
     'CodeGraph',
     'CodeStructureOutput',
     'CodeStructureResult',
+    'CodeSummaryOutput',
     'get_code_structure',
+    'get_code_summary',
     # Metrics models
     'FunctionMetrics',
     'FileMetrics',

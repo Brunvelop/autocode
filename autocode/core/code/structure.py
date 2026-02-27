@@ -11,14 +11,14 @@ from typing import List, Optional, Dict
 
 from autocode.interfaces.registry import register_function
 from autocode.core.vcs import get_git_tree
-from .models import CodeNode, CodeGraph, CodeStructureOutput, CodeStructureResult
+from .models import CodeNode, CodeGraph, CodeStructureOutput, CodeStructureResult, CodeSummaryOutput
 
 
 # Extensiones parseables
 PARSEABLE_EXTENSIONS = {'.py', '.js', '.mjs', '.jsx'}
 
 
-@register_function(http_methods=["GET"], interfaces=["api", "mcp"])
+@register_function(http_methods=["GET"], interfaces=["api"])
 def get_code_structure(
     path: str = ".",
     depth: int = -1,
@@ -112,6 +112,137 @@ def get_code_structure(
             success=False,
             message=f"Error analizando estructura: {str(e)}"
         )
+
+
+@register_function(http_methods=["GET"], interfaces=["api", "mcp"])
+def get_code_summary(
+    path: str = ".",
+    depth: int = -1,
+) -> CodeSummaryOutput:
+    """
+    Obtiene un resumen compacto de la estructura del código en formato texto.
+    
+    Versión ligera de get_code_structure, optimizada para LLMs.
+    Devuelve un árbol tipo 'tree' con nombres de archivos/directorios y
+    métricas básicas (LOC, funciones, clases) sin datos detallados por nodo.
+    
+    Args:
+        path: Path relativo al directorio a analizar (default: directorio actual)
+        depth: Profundidad máxima de recursión (-1 para ilimitado)
+        
+    Returns:
+        Resumen compacto en texto plano con estructura y métricas
+    """
+    try:
+        # Reutilizar get_code_structure para obtener los nodos
+        structure_output = get_code_structure(path=path, depth=depth, include_imports=False)
+        
+        if not structure_output.success or not structure_output.result:
+            return CodeSummaryOutput(
+                success=False,
+                message=structure_output.message or "Error obteniendo estructura"
+            )
+        
+        result = structure_output.result
+        nodes = result.graph.nodes
+        root_id = result.graph.root_id
+        
+        # Construir mapa de hijos por parent_id
+        children_map: Dict[str, List[CodeNode]] = {}
+        node_map: Dict[str, CodeNode] = {}
+        for node in nodes:
+            node_map[node.id] = node
+            pid = node.parent_id
+            if pid is not None:
+                children_map.setdefault(pid, []).append(node)
+        
+        # Ordenar hijos: directorios primero, luego por nombre
+        for pid in children_map:
+            children_map[pid].sort(key=lambda n: (
+                0 if n.type == "directory" else 1,
+                n.name
+            ))
+        
+        # Generar texto tipo tree
+        lines: List[str] = []
+        
+        # Header con métricas globales
+        root_name = path if path != "." else "project"
+        lines.append(
+            f"{root_name}/ ({result.total_files} files, "
+            f"{result.total_loc} LOC, "
+            f"{result.total_functions} functions, "
+            f"{result.total_classes} classes, "
+            f"languages: {', '.join(result.languages) or 'none'})"
+        )
+        
+        # Renderizar árbol recursivamente
+        _render_summary_tree(root_id, children_map, node_map, lines, prefix="")
+        
+        summary_text = "\n".join(lines)
+        
+        return CodeSummaryOutput(
+            success=True,
+            result=summary_text,
+            message=f"Resumen: {result.total_files} archivos, {result.total_loc} LOC"
+        )
+        
+    except Exception as e:
+        return CodeSummaryOutput(
+            success=False,
+            message=f"Error generando resumen: {str(e)}"
+        )
+
+
+def _render_summary_tree(
+    node_id: str,
+    children_map: Dict[str, List[CodeNode]],
+    node_map: Dict[str, CodeNode],
+    lines: List[str],
+    prefix: str
+) -> None:
+    """
+    Renderiza recursivamente el árbol en formato texto compacto.
+    
+    Solo muestra directorios y archivos con sus métricas inline.
+    Clases y funciones se resumen como conteos por archivo.
+    """
+    children = children_map.get(node_id, [])
+    
+    # Separar hijos directos: dirs y archivos (ignorar clases/funciones/métodos sueltos)
+    visible_children = [c for c in children if c.type in ("directory", "file")]
+    
+    for i, child in enumerate(visible_children):
+        is_last = (i == len(visible_children) - 1)
+        connector = "└── " if is_last else "├── "
+        extension = "    " if is_last else "│   "
+        
+        if child.type == "directory":
+            # Contar métricas del directorio
+            dir_info = f"{child.name}/ ({child.loc} LOC)"
+            lines.append(f"{prefix}{connector}{dir_info}")
+            _render_summary_tree(child.id, children_map, node_map, lines, prefix + extension)
+        
+        elif child.type == "file":
+            # Contar clases y funciones/métodos dentro del archivo
+            file_children = children_map.get(child.id, [])
+            n_classes = sum(1 for c in file_children if c.type == "class")
+            n_funcs = sum(1 for c in file_children if c.type in ("function", "method"))
+            # Contar métodos dentro de clases de este archivo
+            for fc in file_children:
+                if fc.type == "class":
+                    class_children = children_map.get(fc.id, [])
+                    n_funcs += sum(1 for cc in class_children if cc.type == "method")
+            
+            # Formato compacto: nombre - LOC, conteos
+            parts = [f"{child.loc} LOC"]
+            if n_classes:
+                parts.append(f"{n_classes}c")
+            if n_funcs:
+                parts.append(f"{n_funcs}f")
+            
+            file_info = f"{child.name} ({', '.join(parts)})"
+            lines.append(f"{prefix}{connector}{file_info}")
 
 
 def _build_tree_from_git_files(
