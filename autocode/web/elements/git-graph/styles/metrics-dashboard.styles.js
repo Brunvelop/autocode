@@ -17,7 +17,6 @@ export const metricsDashboardStyles = css`
         display: flex;
         flex-direction: column;
         gap: var(--design-spacing-lg, 1rem);
-        max-width: 1200px;
     }
 
     /* ===== LOADING / ERROR ===== */

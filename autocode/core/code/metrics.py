@@ -32,6 +32,9 @@ from autocode.core.code.models import (
     CommitMetrics,
     CommitFileMetrics,
     CommitMetricsOutput,
+    MetricsHistoryPoint,
+    MetricsHistory,
+    MetricsHistoryOutput,
 )
 
 logger = logging.getLogger(__name__)
@@ -125,6 +128,52 @@ def get_commit_metrics(commit_hash: str) -> CommitMetricsOutput:
     except Exception as e:
         logger.error(f"Error analizando commit {commit_hash}: {e}")
         return CommitMetricsOutput(success=False, message=str(e))
+
+
+@register_function(http_methods=["GET"], interfaces=["api", "mcp"])
+def get_metrics_history(max_count: int = 100) -> MetricsHistoryOutput:
+    """
+    Obtiene la serie temporal de métricas agregadas para graficar.
+
+    Carga todos los snapshots guardados en .autocode/metrics/ y extrae
+    solo los valores agregados (sin datos per-file) para renderizar
+    gráficas de evolución de métricas a lo largo de los commits.
+
+    Args:
+        max_count: Número máximo de puntos a retornar (default 100)
+    """
+    try:
+        points = _load_history_points(max_count)
+
+        # Metadata de métricas disponibles para el frontend
+        available_metrics = [
+            {"key": "total_sloc", "label": "SLOC", "group": "volume", "description": "Líneas de código fuente"},
+            {"key": "total_files", "label": "Archivos", "group": "volume", "description": "Archivos Python"},
+            {"key": "total_functions", "label": "Funciones", "group": "volume", "description": "Funciones y métodos"},
+            {"key": "total_classes", "label": "Clases", "group": "volume", "description": "Clases definidas"},
+            {"key": "total_comments", "label": "Comentarios", "group": "volume", "description": "Líneas de comentario"},
+            {"key": "total_blanks", "label": "Blanks", "group": "volume", "description": "Líneas en blanco"},
+            {"key": "avg_complexity", "label": "CC Media", "group": "quality", "description": "Complejidad ciclomática media"},
+            {"key": "avg_mi", "label": "MI Media", "group": "quality", "description": "Índice de mantenibilidad medio (0-100)"},
+            {"key": "rank_a", "label": "Rank A", "group": "distribution", "description": "Funciones con CC ≤ 5"},
+            {"key": "rank_b", "label": "Rank B", "group": "distribution", "description": "Funciones con CC 6-10"},
+            {"key": "rank_c", "label": "Rank C", "group": "distribution", "description": "Funciones con CC 11-15"},
+            {"key": "rank_d", "label": "Rank D", "group": "distribution", "description": "Funciones con CC 16-20"},
+            {"key": "rank_e", "label": "Rank E", "group": "distribution", "description": "Funciones con CC 21-25"},
+            {"key": "rank_f", "label": "Rank F", "group": "distribution", "description": "Funciones con CC > 25"},
+            {"key": "circular_deps_count", "label": "Deps Circulares", "group": "coupling", "description": "Dependencias circulares detectadas"},
+        ]
+
+        history = MetricsHistory(points=points, available_metrics=available_metrics)
+
+        return MetricsHistoryOutput(
+            success=True,
+            result=history,
+            message=f"{len(points)} snapshots en historial",
+        )
+    except Exception as e:
+        logger.error(f"Error obteniendo historial de métricas: {e}")
+        return MetricsHistoryOutput(success=False, message=str(e))
 
 
 # ==============================================================================
@@ -511,6 +560,48 @@ def _load_previous_snapshot(current_hash: str) -> Optional[MetricsSnapshot]:
         except Exception:
             continue
     return None
+
+
+def _load_history_points(max_count: int) -> list[MetricsHistoryPoint]:
+    """Load all snapshots and extract lightweight history points for charting."""
+    metrics_dir = Path(METRICS_DIR)
+    if not metrics_dir.exists():
+        return []
+
+    points: list[MetricsHistoryPoint] = []
+    for f in sorted(metrics_dir.glob("*.json")):
+        try:
+            data = json.loads(f.read_text(encoding="utf-8"))
+            dist = data.get("complexity_distribution", {})
+            circular = data.get("circular_deps", [])
+            points.append(MetricsHistoryPoint(
+                commit_hash=data.get("commit_hash", ""),
+                commit_short=data.get("commit_short", ""),
+                branch=data.get("branch", ""),
+                timestamp=data.get("timestamp", ""),
+                total_sloc=data.get("total_sloc", 0),
+                total_files=data.get("total_files", 0),
+                total_functions=data.get("total_functions", 0),
+                total_classes=data.get("total_classes", 0),
+                total_comments=data.get("total_comments", 0),
+                total_blanks=data.get("total_blanks", 0),
+                avg_complexity=data.get("avg_complexity", 0.0),
+                avg_mi=data.get("avg_mi", 0.0),
+                rank_a=dist.get("A", 0),
+                rank_b=dist.get("B", 0),
+                rank_c=dist.get("C", 0),
+                rank_d=dist.get("D", 0),
+                rank_e=dist.get("E", 0),
+                rank_f=dist.get("F", 0),
+                circular_deps_count=len(circular),
+            ))
+        except Exception as e:
+            logger.debug(f"Skip snapshot {f.name}: {e}")
+            continue
+
+    # Sort by timestamp (oldest first) and limit
+    points.sort(key=lambda p: p.timestamp)
+    return points[-max_count:] if len(points) > max_count else points
 
 
 def _list_snapshots() -> list[dict]:

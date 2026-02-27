@@ -199,3 +199,52 @@ class MetricsSnapshotListOutput(GenericOutput):
 class CommitMetricsOutput(GenericOutput):
     """Output de get_commit_metrics()."""
     result: Optional[CommitMetrics] = None
+
+
+# ==============================================================================
+# METRICS HISTORY MODELS (for charting over commits)
+# ==============================================================================
+
+
+class MetricsHistoryPoint(BaseModel):
+    """Punto de datos ligero para la gráfica temporal de métricas por commit."""
+
+    commit_hash: str = Field(..., description="Hash completo del commit")
+    commit_short: str = Field("", description="Hash abreviado")
+    branch: str = Field("", description="Rama activa en el momento del snapshot")
+    timestamp: str = Field("", description="Fecha ISO del snapshot")
+    # Aggregate metrics (all plottable)
+    total_sloc: int = Field(0, description="Total líneas de código fuente")
+    total_files: int = Field(0, description="Total archivos Python")
+    total_functions: int = Field(0, description="Total funciones/métodos")
+    total_classes: int = Field(0, description="Total clases")
+    total_comments: int = Field(0, description="Total líneas de comentario")
+    total_blanks: int = Field(0, description="Total líneas en blanco")
+    avg_complexity: float = Field(0.0, description="Complejidad ciclomática media")
+    avg_mi: float = Field(0.0, description="Índice de mantenibilidad medio")
+    # Complexity distribution
+    rank_a: int = Field(0, description="Funciones con rank A (CC ≤ 5)")
+    rank_b: int = Field(0, description="Funciones con rank B (CC 6-10)")
+    rank_c: int = Field(0, description="Funciones con rank C (CC 11-15)")
+    rank_d: int = Field(0, description="Funciones con rank D (CC 16-20)")
+    rank_e: int = Field(0, description="Funciones con rank E (CC 21-25)")
+    rank_f: int = Field(0, description="Funciones con rank F (CC > 25)")
+    # Coupling
+    circular_deps_count: int = Field(0, description="Número de dependencias circulares")
+
+
+class MetricsHistory(BaseModel):
+    """Serie temporal de métricas a lo largo de commits."""
+
+    points: List[MetricsHistoryPoint] = Field(
+        default_factory=list, description="Puntos ordenados cronológicamente (más antiguo primero)"
+    )
+    available_metrics: List[dict] = Field(
+        default_factory=list,
+        description="Métricas disponibles con metadata: [{key, label, group, description}]",
+    )
+
+
+class MetricsHistoryOutput(GenericOutput):
+    """Output de get_metrics_history()."""
+    result: Optional[MetricsHistory] = None

@@ -21,9 +21,13 @@ from .models import (
     CommitMetrics,
     CommitFileMetrics,
     CommitMetricsOutput,
+    # Metrics history models
+    MetricsHistoryPoint,
+    MetricsHistory,
+    MetricsHistoryOutput,
 )
 from .structure import get_code_structure
-from .metrics import generate_code_metrics, get_metrics_snapshots, get_commit_metrics
+from .metrics import generate_code_metrics, get_metrics_snapshots, get_commit_metrics, get_metrics_history
 
 __all__ = [
     # Structure
@@ -43,8 +47,13 @@ __all__ = [
     'CommitMetrics',
     'CommitFileMetrics',
     'CommitMetricsOutput',
+    # Metrics history models
+    'MetricsHistoryPoint',
+    'MetricsHistory',
+    'MetricsHistoryOutput',
     # Metrics functions
     'generate_code_metrics',
     'get_metrics_snapshots',
     'get_commit_metrics',
+    'get_metrics_history',
 ]

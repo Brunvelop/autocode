@@ -13,6 +13,9 @@ import { AutoFunctionController } from '../auto-element-generator.js';
 import { themeTokens } from './styles/theme.js';
 import { metricsDashboardStyles } from './styles/metrics-dashboard.styles.js';
 
+// Sub-component: metrics chart (evolution over commits)
+import './metrics-chart.js';
+
 const RANKS = ['A', 'B', 'C', 'D', 'E', 'F'];
 
 export class MetricsDashboard extends LitElement {
@@ -75,6 +78,8 @@ export class MetricsDashboard extends LitElement {
         return html`
             <div class="dashboard">
                 ${this._renderSummary(snap, before)}
+                <!-- Metrics evolution chart (over commits) -->
+                <metrics-chart></metrics-chart>
                 ${this._renderDistribution(snap)}
                 <div class="two-col">
                     ${this._renderTopComplex(snap)}
