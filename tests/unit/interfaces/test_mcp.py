@@ -27,7 +27,7 @@ def mock_api_app():
 def mock_mcp_instance():
     """Create a mock MCP instance with common methods."""
     mock_instance = Mock()
-    mock_instance.mount = Mock()
+    mock_instance.mount_http = Mock()
     return mock_instance
 
 
@@ -64,7 +64,7 @@ class TestCreateMcpApp:
         
         # Mock the MCP server
         mock_mcp_instance = Mock()
-        mock_mcp_instance.mount = Mock()
+        mock_mcp_instance.mount_http = Mock()
         mock_fastapi_mcp.return_value = mock_mcp_instance
         
         # Call create_mcp_app
@@ -92,8 +92,8 @@ class TestCreateMcpApp:
             include_tags=["mcp-tools"]
         )
         
-        # Verify MCP was mounted with no arguments
-        mock_mcp_instance.mount.assert_called_once_with()
+        # Verify MCP was mounted with Streamable HTTP transport
+        mock_mcp_instance.mount_http.assert_called_once_with()
         
         # Verify the exact same app instance is returned
         assert result_app is mock_api_app
@@ -174,7 +174,7 @@ class TestCreateMcpApp:
         mock_create_api_app.return_value = mock_api_app
         
         mock_mcp_instance = Mock()
-        mock_mcp_instance.mount.side_effect = Exception("Mount failed")
+        mock_mcp_instance.mount_http.side_effect = Exception("Mount failed")
         mock_fastapi_mcp.return_value = mock_mcp_instance
         
         with pytest.raises(RuntimeError, match="MCP server initialization failed: Mount failed"):
@@ -219,7 +219,7 @@ class TestMcpIntegration:
         
         # Mock MCP with realistic behavior
         mock_mcp_instance = Mock()
-        mock_mcp_instance.mount = Mock(return_value=None)
+        mock_mcp_instance.mount_http = Mock(return_value=None)
         mock_fastapi_mcp.return_value = mock_mcp_instance
         
         result_app = create_mcp_app()
@@ -257,8 +257,8 @@ class TestMcpIntegration:
             include_tags=["mcp-tools"]
         )
         
-        # Verify mount was called
-        mock_mcp_instance.mount.assert_called_once()
+        # Verify mount_http was called
+        mock_mcp_instance.mount_http.assert_called_once()
     
     def test_mcp_app_return_type(self, patched_dependencies, mock_api_app, mock_mcp_instance):
         """Test that create_mcp_app returns a FastAPI instance."""
@@ -317,7 +317,7 @@ class TestMcpErrorHandling:
         mock_fastapi_mcp.return_value = mock_mcp_instance
         
         # Test 3: Mount operation error
-        mock_mcp_instance.mount.side_effect = RuntimeError("Cannot mount MCP server")
+        mock_mcp_instance.mount_http.side_effect = RuntimeError("Cannot mount MCP server")
         
         with pytest.raises(RuntimeError, match="Cannot mount MCP server"):
             create_mcp_app()

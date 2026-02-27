@@ -87,8 +87,8 @@ def create_mcp_app() -> FastAPI:
             include_tags=["mcp-tools"]  # Only include MCP-specific endpoints
         )
         
-        # Step 5: Mount MCP server to enable MCP functionality
-        mcp.mount()
+        # Step 5: Mount MCP server with Streamable HTTP transport (modern)
+        mcp.mount_http()
         
         logger.info("Successfully created MCP app with API integration")
         return app
