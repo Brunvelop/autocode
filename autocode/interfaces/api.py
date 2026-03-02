@@ -2,10 +2,10 @@
 import logging
 import os
 import re
-from typing import Any, Dict, Type
+from typing import Any, Callable, Dict, Type
 
 from fastapi import Depends, FastAPI, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, create_model
 
@@ -14,6 +14,7 @@ from autocode.interfaces.registry import (
     load_functions,
     get_all_schemas,
     get_functions_for_interface,
+    get_stream_func,
     function_count
 )
 from autocode.interfaces.logging_config import configure_api_logging
@@ -85,21 +86,39 @@ def _load_and_validate_functions():
 
 
 def _register_dynamic_endpoints(app: FastAPI):
-    """Register all API-exposed functions as endpoints."""
+    """Register all API-exposed functions as endpoints.
+    
+    Streaming functions get a dedicated SSE endpoint via _create_stream_handler.
+    Non-streaming functions use the standard handler as before.
+    """
     api_functions = get_functions_for_interface("api")
 
     for func_info in api_functions:
-        for method in func_info.http_methods:
-            handler, _ = create_handler(func_info, method)
-            response_model = func_info.return_type or GenericOutput
+        if func_info.streaming:
+            stream_func = get_stream_func(func_info.name)
+            if stream_func is None:
+                logger.error(f"Streaming function '{func_info.name}' has no stream_func registered")
+                continue
+            handler = _create_stream_handler(func_info, stream_func)
             app.add_api_route(
                 f"/{func_info.name}",
                 handler,
-                methods=[method.upper()],
-                response_model=response_model,
-                operation_id=f"{func_info.name}_{method.lower()}",
-                summary=func_info.description
+                methods=["POST"],
+                operation_id=f"{func_info.name}_stream",
+                summary=f"[SSE Stream] {func_info.description}"
             )
+        else:
+            for method in func_info.http_methods:
+                handler, _ = create_handler(func_info, method)
+                response_model = func_info.return_type or GenericOutput
+                app.add_api_route(
+                    f"/{func_info.name}",
+                    handler,
+                    methods=[method.upper()],
+                    response_model=response_model,
+                    operation_id=f"{func_info.name}_{method.lower()}",
+                    summary=func_info.description
+                )
 
     logger.info(f"Registered {len(api_functions)} dynamic endpoints")
 
@@ -173,6 +192,34 @@ def _create_dynamic_model(func_info: FunctionInfo, for_post: bool = True) -> Typ
 
     suffix = "Input" if for_post else "QueryParams"
     return create_model(f"{func_info.name.title()}{suffix}", **fields)
+
+
+# --- Streaming Handler ---
+
+def _create_stream_handler(func_info: FunctionInfo, stream_func: Callable):
+    """Create SSE streaming handler for a registered function.
+    
+    Args:
+        func_info: Function metadata from registry.
+        stream_func: Async generator function that produces SSE events.
+        
+    Returns:
+        FastAPI handler that returns StreamingResponse.
+    """
+    DynamicModel = _create_dynamic_model(func_info, for_post=True)
+    
+    async def handler(request: DynamicModel):
+        params = request.model_dump()
+        return StreamingResponse(
+            stream_func(**params),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no"
+            }
+        )
+    return handler
 
 
 # --- Function Execution ---

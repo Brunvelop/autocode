@@ -374,6 +374,74 @@ def generate_with_dspy(
 
 
 # ============================================================================
+# SHARED TOOL HELPERS
+# ============================================================================
+
+def prepare_chat_tools(enabled_tools: Optional[List[str]] = None) -> list:
+    """Prepara tools del registry MCP para DSPy.
+    
+    Extraído de chat() para reutilizar en streaming.
+    
+    Args:
+        enabled_tools: Lista de nombres de funciones a habilitar como tools.
+            Si None, usa todas las funciones MCP disponibles.
+            
+    Returns:
+        Lista de funciones wrapper listas para usar como tools en DSPy.
+    """
+    from autocode.interfaces.registry import get_functions_for_interface
+    
+    mcp_functions = get_functions_for_interface("mcp")
+    tools = []
+    for func_info in mcp_functions:
+        if enabled_tools is not None and func_info.name not in enabled_tools:
+            continue
+        tools.append(_create_tool_wrapper(func_info))
+    return tools
+
+
+def _create_tool_wrapper(func_info) -> Any:
+    """Crea un wrapper de tool DSPy con schema enriquecido.
+    
+    Lógica extraída de chat() en pipelines.py. Cada wrapper:
+    - Maneja el patrón kwargs anidado de DSPy ReAct
+    - Tiene __name__ y __doc__ configurados con información del schema
+    
+    Args:
+        func_info: FunctionInfo del registry con metadata de la función.
+        
+    Returns:
+        Función wrapper lista para usar como tool en DSPy.
+    """
+    def tool_func(**kwargs):
+        """Tool wrapper que ejecuta funciones inyectadas."""
+        try:
+            # DSPy ReAct puede pasar los params dentro de un argumento 'kwargs'
+            if 'kwargs' in kwargs and isinstance(kwargs['kwargs'], dict):
+                actual_kwargs = kwargs['kwargs']
+            else:
+                actual_kwargs = kwargs
+            return func_info.func(**actual_kwargs)
+        except Exception as e:
+            return f"Error ejecutando {func_info.name}: {str(e)}"
+    
+    tool_func.__name__ = func_info.name
+    
+    # Construir docstring enriquecida con información de parámetros
+    doc_parts = [func_info.description, "\n\nArgs:"]
+    for param in func_info.params:
+        param_type = param.type.__name__ if hasattr(param.type, '__name__') else str(param.type)
+        required_str = "required" if param.required else f"optional, default={param.default}"
+        choices_str = ""
+        if param.choices:
+            choices_str = f" [choices: {', '.join(map(str, param.choices))}]"
+        doc_parts.append(f"    {param.name} ({param_type}, {required_str}){choices_str}: {param.description}")
+    
+    tool_func.__doc__ = "\n".join(doc_parts)
+    return tool_func
+
+
+# ============================================================================
 # MODULE INTROSPECTION FUNCTIONS
 # ============================================================================
 

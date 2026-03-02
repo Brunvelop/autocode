@@ -92,3 +92,89 @@ class TestDspyOutput:
             trajectory=None
         )
         assert output.model_dump()["trajectory"] is None
+
+
+class TestDspyOutputStaticMethods:
+    """Tests for DspyOutput static methods (normalize_trajectory, serialize_value)."""
+    
+    def test_normalize_trajectory_static_with_flat_dict(self):
+        """normalize_trajectory works as staticmethod without instance."""
+        flat = {
+            "thought_0": "First",
+            "tool_name_0": "tool1",
+            "thought_1": "Second",
+            "tool_name_1": "tool2",
+        }
+        result = DspyOutput.normalize_trajectory(flat)
+        assert isinstance(result, list)
+        assert len(result) == 2
+        assert result[0]["thought"] == "First"
+        assert result[1]["tool_name"] == "tool2"
+    
+    def test_normalize_trajectory_static_with_list(self):
+        """normalize_trajectory passes through lists unchanged."""
+        trajectory = [{"thought": "step1"}, {"thought": "step2"}]
+        result = DspyOutput.normalize_trajectory(trajectory)
+        assert result == trajectory
+    
+    def test_normalize_trajectory_static_with_none(self):
+        """normalize_trajectory returns None for None input."""
+        assert DspyOutput.normalize_trajectory(None) is None
+    
+    def test_normalize_trajectory_static_with_non_indexed_dict(self):
+        """normalize_trajectory returns dict as-is if no indexed keys."""
+        d = {"some_key": "value", "another": 42}
+        result = DspyOutput.normalize_trajectory(d)
+        assert result == d
+    
+    def test_serialize_value_static_basic_types(self):
+        """serialize_value works as staticmethod with basic types."""
+        assert DspyOutput.serialize_value(None) is None
+        assert DspyOutput.serialize_value("hello") == "hello"
+        assert DspyOutput.serialize_value(42) == 42
+        assert DspyOutput.serialize_value(3.14) == 3.14
+        assert DspyOutput.serialize_value(True) is True
+    
+    def test_serialize_value_static_list(self):
+        """serialize_value recursively serializes lists."""
+        result = DspyOutput.serialize_value([1, "two", [3, 4]])
+        assert result == [1, "two", [3, 4]]
+    
+    def test_serialize_value_static_dict(self):
+        """serialize_value recursively serializes dicts."""
+        result = DspyOutput.serialize_value({"a": 1, "b": {"c": 2}})
+        assert result == {"a": 1, "b": {"c": 2}}
+    
+    def test_serialize_value_static_object_with_dict(self):
+        """serialize_value handles objects with __dict__."""
+        class Obj:
+            def __init__(self):
+                self.name = "test"
+                self.value = 42
+                self._private = "hidden"
+        
+        result = DspyOutput.serialize_value(Obj())
+        assert result == {"name": "test", "value": 42}
+    
+    def test_model_dump_uses_static_methods(self):
+        """model_dump() still works correctly after refactor to staticmethods."""
+        flat_trajectory = {
+            "thought_0": "Thinking",
+            "tool_name_0": "search",
+        }
+        output = DspyOutput(
+            success=True,
+            result={"response": "hello"},
+            trajectory=flat_trajectory,
+            reasoning="Some reasoning"
+        )
+        dump = output.model_dump()
+        
+        # trajectory should be normalized
+        assert isinstance(dump["trajectory"], list)
+        assert dump["trajectory"][0]["thought"] == "Thinking"
+        
+        # Other fields should work
+        assert dump["success"] is True
+        assert dump["result"] == {"response": "hello"}
+        assert dump["reasoning"] == "Some reasoning"

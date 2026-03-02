@@ -15,7 +15,8 @@ from autocode.core.ai.dspy_utils import (
     ModelType, 
     ModuleType,
     get_all_module_kwargs_schemas,
-    get_available_tools_info
+    get_available_tools_info,
+    prepare_chat_tools
 )
 from autocode.core.ai.signatures import (
     CodeGenerationSignature,
@@ -23,6 +24,7 @@ from autocode.core.ai.signatures import (
     QASignature,
     ChatSignature
 )
+from autocode.core.ai.streaming import stream_chat
 from autocode.interfaces.models import FunctionInfo
 
 
@@ -187,57 +189,9 @@ def chat(
         - reasoning: Razonamiento paso a paso
         - completions: Múltiples completions si aplica
     """
-    import dspy
-    
     try:
-        # Obtener funciones MCP del registry
-        mcp_functions = get_functions_for_interface("mcp")
-        functions_to_use = mcp_functions  # Ya es una lista de FunctionInfo
-        
-        tools = []
-        for func_info in functions_to_use:
-            # Filtrar por enabled_tools si se especificó
-            if enabled_tools is not None and func_info.name not in enabled_tools:
-                continue
-            
-            # Crear wrapper de tool con schema enriquecido
-            def create_tool_wrapper(fi: FunctionInfo):
-                def tool_func(**kwargs):
-                    """Tool wrapper que ejecuta funciones inyectadas."""
-                    try:
-                        # DSPy ReAct puede pasar los params dentro de un argumento 'kwargs'
-                        # Si recibimos kwargs={'name': 'value'} en lugar de name='value'
-                        if 'kwargs' in kwargs and isinstance(kwargs['kwargs'], dict):
-                            actual_kwargs = kwargs['kwargs']
-                        else:
-                            actual_kwargs = kwargs
-                        
-                        return fi.func(**actual_kwargs)
-                    except Exception as e:
-                        return f"Error ejecutando {fi.name}: {str(e)}"
-                
-                # Configurar metadata del tool con schema detallado
-                tool_func.__name__ = fi.name
-                
-                # Construir docstring enriquecida con información de parámetros
-                doc_parts = [fi.description, "\n\nArgs:"]
-                for param in fi.params:
-                    # Formato: nombre (tipo, required/optional, default): descripción
-                    param_type = param.type.__name__ if hasattr(param.type, '__name__') else str(param.type)
-                    required_str = "required" if param.required else f"optional, default={param.default}"
-                    
-                    # Agregar choices si existen (para Literal types)
-                    choices_str = ""
-                    if param.choices:
-                        choices_str = f" [choices: {', '.join(map(str, param.choices))}]"
-                    
-                    doc_parts.append(f"    {param.name} ({param_type}, {required_str}){choices_str}: {param.description}")
-                
-                tool_func.__doc__ = "\n".join(doc_parts)
-                
-                return tool_func
-            
-            tools.append(create_tool_wrapper(func_info))
+        # Preparar tools usando helper compartido
+        tools = prepare_chat_tools(enabled_tools)
         
         # Preparar module_kwargs con tools para ReAct
         if module_kwargs is None:
@@ -281,6 +235,55 @@ def chat(
             result={"error": f"Error en chat: {str(e)}"},
             message=f"Error en chat: {str(e)}"
         )
+
+
+@register_function(
+    http_methods=["POST"],
+    interfaces=["api"],
+    streaming=True,
+    stream_func=stream_chat
+)
+def chat_stream(
+    message: str,
+    conversation_history: str = "",
+    model: ModelType = 'openrouter/openai/gpt-4o',
+    max_tokens: int = 16000,
+    temperature: float = 0.7,
+    module_type: ModuleType = 'ReAct',
+    module_kwargs: Optional[Dict[str, Any]] = None,
+    enabled_tools: Optional[List[str]] = None,
+    lm_kwargs: Optional[Dict[str, Any]] = None,
+    enable_prompt_cache: bool = True
+) -> DspyOutput:
+    """Chat con streaming en tiempo real vía SSE.
+    
+    Misma funcionalidad que chat() pero con streaming de tokens.
+    Esta función existe como definición de schema para el registry.
+    La ejecución real se hace vía stream_func (stream_chat).
+    Si se invoca síncronamente (ej: desde CLI), delega a chat().
+    
+    Args:
+        message: Mensaje actual del usuario
+        conversation_history: Historial de conversación en formato texto (opcional)
+        model: Modelo de inferencia a utilizar
+        max_tokens: Número máximo de tokens (default: 16000)
+        temperature: Temperature para generación (default: 0.7)
+        module_type: Tipo de módulo DSPy (Predict, ChainOfThought, ReAct, etc.) (default: ReAct)
+        module_kwargs: Parámetros adicionales del módulo (ej: max_iters para ReAct)
+        enabled_tools: Lista de nombres de funciones a habilitar como tools (si None, usa todas)
+        lm_kwargs: Parámetros avanzados adicionales para el LLM (top_p, etc.)
+        enable_prompt_cache: Activa cache de prompts del proveedor (default: True)
+        
+    Returns:
+        DspyOutput (en modo síncrono, delega a chat())
+    """
+    return chat(
+        message=message, conversation_history=conversation_history,
+        model=model, max_tokens=max_tokens, temperature=temperature,
+        module_type=module_type, module_kwargs=module_kwargs,
+        enabled_tools=enabled_tools, lm_kwargs=lm_kwargs,
+        enable_prompt_cache=enable_prompt_cache
+    )
 
 
 @register_function(http_methods=["GET"], interfaces=["api"])

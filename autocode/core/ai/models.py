@@ -51,23 +51,24 @@ class DspyOutput(GenericOutput):
             Dict con todos los campos serializados de forma segura para JSON
         """
         # Normalizar trayectoria si es necesario (limpieza de formato plano de DSPy)
-        normalized_trajectory = self._normalize_trajectory(self.trajectory)
+        normalized_trajectory = DspyOutput.normalize_trajectory(self.trajectory)
 
         # Construir el dict manualmente para evitar problemas con super().model_dump()
         # cuando hay objetos no serializables
         data = {
             'success': self.success,
-            'result': self._serialize_value(self.result),
+            'result': DspyOutput.serialize_value(self.result),
             'message': self.message,
             'reasoning': self.reasoning,
-            'completions': self._serialize_value(self.completions),
-            'trajectory': self._serialize_value(normalized_trajectory),
-            'history': self._serialize_value(self.history)
+            'completions': DspyOutput.serialize_value(self.completions),
+            'trajectory': DspyOutput.serialize_value(normalized_trajectory),
+            'history': DspyOutput.serialize_value(self.history)
         }
         
         return data
     
-    def _normalize_trajectory(self, trajectory: Any) -> Any:
+    @staticmethod
+    def normalize_trajectory(trajectory: Any) -> Any:
         """
         Detecta y normaliza trayectorias planas de DSPy (thought_0, tool_0...) 
         a una lista estructurada de pasos.
@@ -109,7 +110,8 @@ class DspyOutput(GenericOutput):
             
         return ordered_steps
 
-    def _serialize_value(self, value: Any) -> Any:
+    @staticmethod
+    def serialize_value(value: Any) -> Any:
         """
         Serializa recursivamente un valor a tipos básicos de Python.
         
@@ -128,16 +130,16 @@ class DspyOutput(GenericOutput):
         
         # Si es una lista, serializar cada elemento
         if isinstance(value, list):
-            return [self._serialize_value(item) for item in value]
+            return [DspyOutput.serialize_value(item) for item in value]
         
         # Si es un dict, serializar cada valor
         if isinstance(value, dict):
-            return {key: self._serialize_value(val) for key, val in value.items()}
+            return {key: DspyOutput.serialize_value(val) for key, val in value.items()}
         
         # Si tiene método model_dump (Pydantic), usarlo
         if hasattr(value, 'model_dump') and callable(getattr(value, 'model_dump')):
             try:
-                return self._serialize_value(value.model_dump())
+                return DspyOutput.serialize_value(value.model_dump())
             except Exception:
                 # Si falla model_dump, intentar con __dict__
                 pass
@@ -149,7 +151,7 @@ class DspyOutput(GenericOutput):
                 for key, val in value.__dict__.items():
                     # Saltar atributos privados
                     if not key.startswith('_'):
-                        obj_dict[key] = self._serialize_value(val)
+                        obj_dict[key] = DspyOutput.serialize_value(val)
                 return obj_dict
             except Exception:
                 # Si falla, intentar convertir a string
