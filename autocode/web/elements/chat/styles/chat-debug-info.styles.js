@@ -456,4 +456,43 @@ export const chatDebugInfoStyles = css`
         padding: 0.125rem 0.25rem;
         border-radius: var(--design-radius-sm, 0.25rem);
     }
+
+    /* Live Log (Streaming Status) */
+    .live-log {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+    }
+
+    .log-entry {
+        display: flex;
+        gap: 0.5rem;
+        font-size: 0.75rem;
+        padding: 0.25rem 0.5rem;
+        border-radius: var(--design-radius-sm, 0.25rem);
+        background-color: var(--design-bg-white, white);
+        border: 1px solid var(--design-bg-gray-100, #f3f4f6);
+    }
+
+    .log-entry:hover {
+        background-color: var(--design-bg-gray-50, #f9fafb);
+    }
+
+    .log-time {
+        color: var(--design-text-tertiary, #6b7280);
+        font-family: var(--design-font-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace);
+        white-space: nowrap;
+        font-size: 0.65rem;
+    }
+
+    .log-message {
+        color: var(--design-text-primary, #1f2937);
+    }
+
+    .empty-state {
+        text-align: center;
+        color: var(--design-text-tertiary, #9ca3af);
+        font-style: italic;
+        padding: var(--design-spacing-lg, 1rem);
+    }
 `;

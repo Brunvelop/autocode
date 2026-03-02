@@ -30,6 +30,7 @@ export class ChatDebugInfo extends LitElement {
         const info = this._parseData(this.data);
         const hasTrajectory = info.trajectory && info.trajectory.length > 0;
         const hasHistory = info.history && info.history.length > 0;
+        const hasStatusLog = info.statusLog && info.statusLog.length > 0;
 
         return html`
             <details>
@@ -95,6 +96,15 @@ export class ChatDebugInfo extends LitElement {
                             </button>
                         ` : ''}
 
+                        ${hasStatusLog ? html`
+                            <button 
+                                class="tab-btn ${this._activeTab === 'live' ? 'active' : ''}" 
+                                @click=${() => this._activeTab = 'live'}
+                            >
+                                Live (${info.statusLog.length})
+                            </button>
+                        ` : ''}
+
                         <button 
                             class="tab-btn ${this._activeTab === 'raw' ? 'active' : ''}" 
                             @click=${() => this._activeTab = 'raw'}
@@ -117,6 +127,7 @@ export class ChatDebugInfo extends LitElement {
             case 'overview': return this._renderOverview(info);
             case 'trajectory': return this._renderTrajectory(info.trajectory);
             case 'history': return this._renderHistory(info.history);
+            case 'live': return this._renderLiveLog(info.statusLog);
             case 'raw': return this._renderJsonViewer();
             default: return this._renderOverview(info);
         }
@@ -310,6 +321,23 @@ export class ChatDebugInfo extends LitElement {
         `;
     }
 
+    _renderLiveLog(statusLog) {
+        if (!statusLog || statusLog.length === 0) {
+            return html`<div class="empty-state">No hay eventos de streaming.</div>`;
+        }
+
+        return html`
+            <div class="live-log">
+                ${statusLog.map(s => html`
+                    <div class="log-entry">
+                        <span class="log-time">${new Date(s.timestamp).toLocaleTimeString()}</span>
+                        <span class="log-message">${s.message}</span>
+                    </div>
+                `)}
+            </div>
+        `;
+    }
+
     _renderJsonViewer() {
         return html`
             <div class="json-section">
@@ -347,7 +375,12 @@ export class ChatDebugInfo extends LitElement {
         // 4. Extraer Success
         if (data.success !== undefined) info.success = data.success;
 
-        // 5. Extraer Metrics (Model & Tokens)
+        // 5. Extraer Status Log (streaming)
+        if (data._statusLog && Array.isArray(data._statusLog)) {
+            info.statusLog = data._statusLog;
+        }
+
+        // 6. Extraer Metrics (Model & Tokens)
         // Intentar sacar de la raíz primero
         if (data.model) info.model = data.model;
         if (data.usage) {

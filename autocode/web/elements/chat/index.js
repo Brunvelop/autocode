@@ -49,6 +49,7 @@ export class AutocodeChat extends AutoFunctionController {
     connectedCallback() {
         super.connectedCallback();
         this._loadChatConfig();
+        this._loadStreamFuncInfo();
     }
 
     firstUpdated() {
@@ -163,6 +164,21 @@ export class AutocodeChat extends AutoFunctionController {
             this._chatConfig = result;
         } catch (error) {
             console.warn('⚠️ Error loading chat config:', error);
+        }
+    }
+
+    /**
+     * Pre-carga la info de chat_stream del registry para evitar latencia en el primer mensaje.
+     * Si chat_stream no está disponible, _streamFuncInfo queda null y se usa fallback síncrono.
+     */
+    async _loadStreamFuncInfo() {
+        try {
+            const response = await fetch('/functions/details');
+            const data = await response.json();
+            this._streamFuncInfo = data.functions['chat_stream'] || null;
+        } catch (e) {
+            console.warn('⚠️ Could not pre-load chat_stream info');
+            this._streamFuncInfo = null;
         }
     }
 
@@ -301,13 +317,102 @@ export class AutocodeChat extends AutoFunctionController {
             });
         }
 
-        // 3. Ejecutar (usa this.execute del Controller)
+        // 3. Usar streaming si disponible, sino fallback síncrono
+        if (this._streamFuncInfo?.streaming) {
+            await this._sendMessageStream(message);
+        } else {
+            await this._sendMessageSync(message);
+        }
+
+        // 4. Limpieza
+        if (this._input) this._input.clear();
+        this._updateContext();
+    }
+
+    /**
+     * Envía mensaje usando streaming SSE (chat_stream endpoint).
+     * Muestra tokens incrementalmente conforme llegan del servidor.
+     */
+    async _sendMessageStream(message) {
+        const streamId = this._messages.addStreamingMessage();
+        let fullText = '';
+        const statusLog = [];
+
+        // Resetear envelope para evitar guardar datos stale si hay error
+        this.envelope = null;
+        this.result = null;
+        this.success = undefined;
+
+        try {
+            this._setStatus('loading', 'Conectando...');
+
+            for await (const event of this.callStreamAPI('chat_stream', this.params, this._streamFuncInfo)) {
+                switch (event.event) {
+                    case 'token':
+                        fullText += event.data.chunk;
+                        this._messages.appendToStreaming(streamId, event.data.chunk);
+                        break;
+
+                    case 'status':
+                        this._setStatus('loading', event.data.message);
+                        statusLog.push({
+                            message: event.data.message,
+                            timestamp: Date.now()
+                        });
+                        break;
+
+                    case 'complete': {
+                        const envelope = { ...event.data, _statusLog: statusLog };
+                        this._messages.finalizeStreaming(streamId, envelope);
+                        this.envelope = envelope;
+                        this.result = event.data.result;
+                        this.success = event.data.success;
+                        this._setStatus('success', 'Completado');
+                        break;
+                    }
+
+                    case 'error':
+                        this._messages.finalizeStreaming(streamId, {
+                            ...event.data, _isError: true, _statusLog: statusLog
+                        });
+                        this._setStatus('error', event.data.message);
+                        break;
+                }
+            }
+
+            // Actualizar historial de conversación
+            const responseText = fullText || this.result?.response || '';
+            if (this._pendingUserMessage) {
+                this.conversationHistory.push({ role: 'user', content: this._pendingUserMessage });
+                this._pendingUserMessage = null;
+            }
+            this.conversationHistory.push({ role: 'assistant', content: responseText });
+            this.setParam('conversation_history', this._formatHistory());
+
+            // Auto-save sesión (solo si success)
+            if (this._sessionManager?.hasActiveSession() && this.envelope?.success !== false) {
+                await this._sessionManager.saveConversation(this.conversationHistory);
+            }
+
+        } catch (error) {
+            this._messages.finalizeStreaming(streamId, {
+                _isError: true, _message: error.message, _statusLog: statusLog
+            });
+            this._setStatus('error', error.message);
+        }
+    }
+
+    /**
+     * Fallback síncrono: ejecuta chat() normal sin streaming.
+     * Usado cuando chat_stream no está disponible en el registry.
+     */
+    async _sendMessageSync(message) {
         try {
             await this.execute();
             // Procesar siempre el envelope para conservar success/message + metadata DSPy
             this._processResult(this.envelope || this.result);
-            
-            // 4. Auto-save si estamos en sesión (después de respuesta del asistente)
+
+            // Auto-save si estamos en sesión (después de respuesta del asistente)
             if (this._sessionManager?.hasActiveSession() && this.envelope && this.envelope.success !== false && !this.envelope._isError) {
                 await this._sessionManager.saveConversation(this.conversationHistory);
             }
@@ -316,10 +421,6 @@ export class AutocodeChat extends AutoFunctionController {
                 this._messages.addMessage('error', error.message || 'Error desconocido');
             }
         }
-
-        // 5. Limpieza
-        if (this._input) this._input.clear();
-        this._updateContext();
     }
 }
 

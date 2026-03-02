@@ -1,0 +1,598 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Autocode Chat Streaming - Integration Tests</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="p-8 bg-gray-100 min-h-screen">
+    <div class="flex items-center gap-4 mb-2">
+        <a href="/tests" class="text-indigo-600 hover:text-indigo-800">← Tests</a>
+        <h1 class="text-3xl font-bold">🌊 Autocode Chat Streaming - Integration Tests</h1>
+    </div>
+    <p class="text-gray-600 mb-4">Tests de integración del flujo de streaming en autocode-chat.</p>
+
+    <div id="summary" class="mb-6 p-4 bg-white rounded-lg shadow"></div>
+    <div id="results" class="space-y-2"></div>
+
+    <script type="module">
+        import { TestRunner } from '../utils/test-runner.js';
+
+        const runner = new TestRunner();
+
+        // ========================================
+        // HELPERS: Mock SSE infrastructure
+        // ========================================
+        const originalFetch = window.fetch;
+
+        function createSSEStream(events, delayMs = 0) {
+            const encoder = new TextEncoder();
+            let eventIndex = 0;
+
+            return new ReadableStream({
+                async pull(controller) {
+                    if (delayMs > 0) {
+                        await new Promise(r => setTimeout(r, delayMs));
+                    }
+                    if (eventIndex < events.length) {
+                        const { event, data } = events[eventIndex];
+                        const dataStr = typeof data === 'string' ? data : JSON.stringify(data);
+                        const chunk = `event: ${event}\ndata: ${dataStr}\n\n`;
+                        controller.enqueue(encoder.encode(chunk));
+                        eventIndex++;
+                    } else {
+                        controller.close();
+                    }
+                }
+            });
+        }
+
+        /**
+         * Mock fetch that intercepts specific URLs.
+         * - /chat_stream → returns SSE stream
+         * - /functions/details → returns mock registry with chat_stream
+         * - Everything else → original fetch (or fallback mock)
+         */
+        function setupMockFetch(sseEvents, options = {}) {
+            const {
+                streamFuncAvailable = true,
+                delayMs = 0,
+                chatStreamStatus = 200
+            } = options;
+
+            window.fetch = async (url, fetchOptions) => {
+                const urlStr = typeof url === 'string' ? url : url.toString();
+
+                // Mock /functions/details
+                if (urlStr.includes('/functions/details')) {
+                    const functions = {
+                        chat: {
+                            name: 'chat',
+                            description: 'Chat with AI',
+                            http_methods: ['POST'],
+                            streaming: false,
+                            parameters: [
+                                { name: 'message', type: 'str', required: true, description: 'Message' },
+                                { name: 'conversation_history', type: 'str', required: false, default: '', description: 'History' },
+                                { name: 'model', type: 'str', required: false, default: 'openrouter/openai/gpt-4o', description: 'Model', choices: [] },
+                                { name: 'max_tokens', type: 'int', required: false, default: 16000, description: 'Max tokens' },
+                                { name: 'temperature', type: 'float', required: false, default: 0.7, description: 'Temperature' },
+                                { name: 'module_type', type: 'str', required: false, default: 'ReAct', description: 'Module' },
+                                { name: 'module_kwargs', type: 'dict', required: false, default: null, description: 'Module kwargs' },
+                                { name: 'enabled_tools', type: 'list', required: false, default: null, description: 'Tools' },
+                                { name: 'lm_kwargs', type: 'dict', required: false, default: null, description: 'LM kwargs' },
+                                { name: 'enable_prompt_cache', type: 'bool', required: false, default: true, description: 'Cache' }
+                            ]
+                        }
+                    };
+
+                    if (streamFuncAvailable) {
+                        functions['chat_stream'] = {
+                            ...functions.chat,
+                            name: 'chat_stream',
+                            description: 'Chat with AI (streaming)',
+                            streaming: true
+                        };
+                    }
+
+                    return {
+                        ok: true,
+                        status: 200,
+                        json: async () => ({ functions })
+                    };
+                }
+
+                // Mock /chat_stream SSE endpoint
+                if (urlStr.includes('/chat_stream')) {
+                    if (chatStreamStatus !== 200) {
+                        return {
+                            ok: false,
+                            status: chatStreamStatus,
+                            statusText: 'Error',
+                            json: async () => ({ detail: `HTTP ${chatStreamStatus} error` })
+                        };
+                    }
+                    return {
+                        ok: true,
+                        status: 200,
+                        body: createSSEStream(sseEvents, delayMs)
+                    };
+                }
+
+                // Mock other API calls (get_chat_config, etc.) — return empty success
+                if (urlStr.startsWith('/')) {
+                    return {
+                        ok: true,
+                        status: 200,
+                        json: async () => ({})
+                    };
+                }
+
+                // Non-API calls (CDN, etc.) → original fetch
+                return originalFetch(url, fetchOptions);
+            };
+        }
+
+        function restoreFetch() {
+            window.fetch = originalFetch;
+        }
+
+        // Helper to create and mount autocode-chat
+        async function createChat(stage) {
+            // Ensure imports are loaded
+            await runner.waitForElement('autocode-chat');
+            const el = document.createElement('autocode-chat');
+            stage.appendChild(el);
+            // Wait for render + connectedCallback async calls
+            await runner.sleep(300);
+            return el;
+        }
+
+        // ========================================
+        // STREAMING END-TO-END
+        // ========================================
+        runner.group('Streaming End-to-End', () => {
+
+            runner.test('Streaming: tokens appear incrementally and complete finalizes', async (stage) => {
+                const sseEvents = [
+                    { event: 'status', data: { message: '🧠 Consultando al LLM...' } },
+                    { event: 'token', data: { chunk: 'Hello', field: 'response' } },
+                    { event: 'token', data: { chunk: ' world', field: 'response' } },
+                    { event: 'token', data: { chunk: '!', field: 'response' } },
+                    { event: 'complete', data: {
+                        success: true,
+                        result: { response: 'Hello world!' },
+                        message: 'Streaming completado',
+                        reasoning: 'Test reasoning'
+                    }}
+                ];
+
+                setupMockFetch(sseEvents);
+
+                try {
+                    const el = await createChat(stage);
+
+                    // Verify _streamFuncInfo was pre-loaded
+                    runner.assertTrue(el._streamFuncInfo != null, '_streamFuncInfo must be pre-loaded');
+                    runner.assertTrue(el._streamFuncInfo.streaming, '_streamFuncInfo.streaming must be true');
+
+                    // Send message (triggers streaming)
+                    await el._sendMessage('Test message');
+                    await runner.sleep(200);
+
+                    // Verify messages
+                    const messages = el._messages.getMessages();
+                    runner.assertTrue(messages.length >= 2, 'Must have user + assistant messages');
+
+                    // User message
+                    runner.assertEqual(messages[0].role, 'user', 'First message must be user');
+                    runner.assertEqual(messages[0].content, 'Test message', 'User content must match');
+
+                    // Assistant message (finalized)
+                    const assistantMsg = messages[1];
+                    runner.assertEqual(assistantMsg.role, 'assistant', 'Second message must be assistant');
+                    runner.assertFalse(assistantMsg.streaming, 'Must be finalized (streaming=false)');
+                    runner.assertTrue(assistantMsg.content.success, 'Envelope must have success=true');
+                    runner.assertEqual(assistantMsg.content.result.response, 'Hello world!', 'Result must match');
+
+                    // Verify envelope was set on controller
+                    runner.assertTrue(el.envelope != null, 'Envelope must be set');
+                    runner.assertTrue(el.envelope.success, 'Envelope success must be true');
+
+                    // Verify conversation history was updated
+                    runner.assertEqual(el.conversationHistory.length, 2, 'History must have 2 entries');
+                    runner.assertEqual(el.conversationHistory[0].role, 'user');
+                    runner.assertEqual(el.conversationHistory[1].role, 'assistant');
+                    runner.assertTrue(el.conversationHistory[1].content.includes('Hello world'), 'Assistant history must have streamed text');
+                } finally {
+                    restoreFetch();
+                }
+            });
+
+            runner.test('Streaming: status events update _statusMessage', async (stage) => {
+                const statusMessages = [];
+                const sseEvents = [
+                    { event: 'status', data: { message: '🧠 Consultando al LLM...' } },
+                    { event: 'status', data: { message: '🛠️ Llamando herramienta: search' } },
+                    { event: 'token', data: { chunk: 'Done', field: 'response' } },
+                    { event: 'complete', data: {
+                        success: true,
+                        result: { response: 'Done' },
+                        message: 'OK'
+                    }}
+                ];
+
+                setupMockFetch(sseEvents);
+
+                try {
+                    const el = await createChat(stage);
+
+                    // Capture status changes
+                    const originalSetStatus = el._setStatus.bind(el);
+                    el._setStatus = (type, message) => {
+                        statusMessages.push({ type, message });
+                        originalSetStatus(type, message);
+                    };
+
+                    await el._sendMessage('Test');
+                    await runner.sleep(200);
+
+                    // Check that status messages were captured
+                    const loadingStatuses = statusMessages.filter(s => s.type === 'loading');
+                    runner.assertTrue(loadingStatuses.length >= 2, 'Must have at least 2 loading statuses');
+                    runner.assertTrue(
+                        loadingStatuses.some(s => s.message.includes('Consultando')),
+                        'Must have LLM status'
+                    );
+                    runner.assertTrue(
+                        loadingStatuses.some(s => s.message.includes('herramienta')),
+                        'Must have tool status'
+                    );
+
+                    // Final status should be success
+                    const lastStatus = statusMessages[statusMessages.length - 1];
+                    runner.assertEqual(lastStatus.type, 'success', 'Final status must be success');
+                } finally {
+                    restoreFetch();
+                }
+            });
+
+            runner.test('Streaming: statusLog is passed to debug-info envelope', async (stage) => {
+                const sseEvents = [
+                    { event: 'status', data: { message: '🧠 Thinking' } },
+                    { event: 'status', data: { message: '🛠️ Tool call' } },
+                    { event: 'token', data: { chunk: 'Answer', field: 'response' } },
+                    { event: 'complete', data: {
+                        success: true,
+                        result: { response: 'Answer' },
+                        message: 'Done'
+                    }}
+                ];
+
+                setupMockFetch(sseEvents);
+
+                try {
+                    const el = await createChat(stage);
+                    await el._sendMessage('Test');
+                    await runner.sleep(200);
+
+                    // Check envelope has _statusLog
+                    runner.assertTrue(el.envelope._statusLog != null, 'Envelope must have _statusLog');
+                    runner.assertEqual(el.envelope._statusLog.length, 2, 'Must have 2 status entries');
+                    runner.assertEqual(el.envelope._statusLog[0].message, '🧠 Thinking', 'First status message');
+                    runner.assertEqual(el.envelope._statusLog[1].message, '🛠️ Tool call', 'Second status message');
+                    runner.assertTrue(el.envelope._statusLog[0].timestamp > 0, 'Must have timestamp');
+                } finally {
+                    restoreFetch();
+                }
+            });
+        });
+
+        // ========================================
+        // FALLBACK TO SYNC
+        // ========================================
+        runner.group('Fallback to Sync', () => {
+
+            runner.test('Falls back to sync when chat_stream not available', async (stage) => {
+                setupMockFetch([], { streamFuncAvailable: false });
+
+                try {
+                    const el = await createChat(stage);
+
+                    // _streamFuncInfo should be null
+                    runner.assertTrue(
+                        el._streamFuncInfo == null,
+                        '_streamFuncInfo must be null when chat_stream not in registry'
+                    );
+
+                    // Verify _sendMessageSync would be called (check the path)
+                    let syncCalled = false;
+                    el._sendMessageSync = async () => { syncCalled = true; };
+
+                    await el._sendMessage('Test');
+                    await runner.sleep(100);
+
+                    runner.assertTrue(syncCalled, '_sendMessageSync must be called as fallback');
+                } finally {
+                    restoreFetch();
+                }
+            });
+
+            runner.test('Uses streaming when chat_stream IS available', async (stage) => {
+                const sseEvents = [
+                    { event: 'token', data: { chunk: 'Hi', field: 'response' } },
+                    { event: 'complete', data: { success: true, result: { response: 'Hi' } } }
+                ];
+
+                setupMockFetch(sseEvents, { streamFuncAvailable: true });
+
+                try {
+                    const el = await createChat(stage);
+
+                    let streamCalled = false;
+                    const originalStream = el._sendMessageStream.bind(el);
+                    el._sendMessageStream = async (msg) => {
+                        streamCalled = true;
+                        return originalStream(msg);
+                    };
+
+                    await el._sendMessage('Test');
+                    await runner.sleep(200);
+
+                    runner.assertTrue(streamCalled, '_sendMessageStream must be called');
+                } finally {
+                    restoreFetch();
+                }
+            });
+        });
+
+        // ========================================
+        // ENVELOPE RESET (NO STALE DATA)
+        // ========================================
+        runner.group('Envelope Reset', () => {
+
+            runner.test('Envelope is reset before streaming starts', async (stage) => {
+                const sseEvents = [
+                    { event: 'token', data: { chunk: 'New', field: 'response' } },
+                    { event: 'complete', data: { success: true, result: { response: 'New response' } } }
+                ];
+
+                setupMockFetch(sseEvents);
+
+                try {
+                    const el = await createChat(stage);
+
+                    // Simulate previous envelope (stale data)
+                    el.envelope = { success: true, result: { response: 'Old response' }, staleField: true };
+                    el.result = { response: 'Old response' };
+                    el.success = true;
+
+                    // Send new message
+                    // We need to intercept right after reset but before stream completes
+                    let envelopeDuringStream = 'not-checked';
+                    const originalAppend = el._messages.appendToStreaming.bind(el._messages);
+                    el._messages.appendToStreaming = (id, chunk) => {
+                        // At this point, envelope should be null (reset happened)
+                        if (envelopeDuringStream === 'not-checked') {
+                            envelopeDuringStream = el.envelope;
+                        }
+                        return originalAppend(id, chunk);
+                    };
+
+                    await el._sendMessage('New message');
+                    await runner.sleep(200);
+
+                    runner.assertTrue(envelopeDuringStream === null, 'Envelope must be null during streaming (reset)');
+                    runner.assertTrue(el.envelope != null, 'Envelope must be set after complete');
+                    runner.assertEqual(el.envelope.result.response, 'New response', 'Must have new response');
+                    runner.assertTrue(!el.envelope.staleField, 'Must NOT have stale fields');
+                } finally {
+                    restoreFetch();
+                }
+            });
+        });
+
+        // ========================================
+        // ERROR HANDLING
+        // ========================================
+        runner.group('Streaming Error Handling', () => {
+
+            runner.test('Server error event is handled gracefully', async (stage) => {
+                const sseEvents = [
+                    { event: 'status', data: { message: '🧠 Thinking...' } },
+                    { event: 'error', data: { message: 'Model overloaded', success: false } }
+                ];
+
+                setupMockFetch(sseEvents);
+
+                try {
+                    const el = await createChat(stage);
+                    await el._sendMessage('Test');
+                    await runner.sleep(200);
+
+                    // Should have user message + finalized error message
+                    const messages = el._messages.getMessages();
+                    runner.assertTrue(messages.length >= 2, 'Must have user + error messages');
+
+                    const assistantMsg = messages[1];
+                    runner.assertFalse(assistantMsg.streaming, 'Must be finalized');
+                    runner.assertTrue(assistantMsg.content._isError, 'Content must be marked as error');
+                    runner.assertEqual(assistantMsg.content.message, 'Model overloaded', 'Error message must match');
+
+                    // Status should be error
+                    runner.assertEqual(el._status, 'error', 'Status must be error');
+                } finally {
+                    restoreFetch();
+                }
+            });
+
+            runner.test('HTTP error on stream endpoint is caught', async (stage) => {
+                setupMockFetch([], { chatStreamStatus: 500 });
+
+                try {
+                    const el = await createChat(stage);
+                    await el._sendMessage('Test');
+                    await runner.sleep(200);
+
+                    // The streaming message should be finalized with error
+                    const messages = el._messages.getMessages();
+                    const lastMsg = messages[messages.length - 1];
+                    runner.assertFalse(lastMsg.streaming, 'Must be finalized after error');
+                    runner.assertTrue(lastMsg.content._isError, 'Content must be error');
+                    runner.assertEqual(el._status, 'error', 'Status must be error');
+                } finally {
+                    restoreFetch();
+                }
+            });
+        });
+
+        // ========================================
+        // DEBUG INFO: LIVE TAB
+        // ========================================
+        runner.group('Debug Info Live Tab', () => {
+
+            runner.test('chat-debug-info shows Live tab when _statusLog present', async (stage) => {
+                // Import debug info component
+                await import('/elements/chat/chat-debug-info.js');
+
+                const el = document.createElement('chat-debug-info');
+                el.data = {
+                    success: true,
+                    result: { response: 'Hello' },
+                    _statusLog: [
+                        { message: '🧠 Thinking', timestamp: Date.now() - 2000 },
+                        { message: '🛠️ Tool call', timestamp: Date.now() - 1000 },
+                        { message: '✅ Done', timestamp: Date.now() }
+                    ]
+                };
+                stage.appendChild(el);
+                await el.updateComplete;
+
+                // Open details
+                const details = el.shadowRoot.querySelector('details');
+                details.open = true;
+                await el.updateComplete;
+
+                // Check Live tab exists
+                const tabs = el.shadowRoot.querySelectorAll('.tab-btn');
+                const liveTab = Array.from(tabs).find(t => t.textContent.includes('Live'));
+                runner.assertTrue(liveTab, 'Live tab must exist');
+                runner.assertTrue(liveTab.textContent.includes('3'), 'Must show count (3)');
+            });
+
+            runner.test('chat-debug-info Live tab renders log entries', async (stage) => {
+                await import('/elements/chat/chat-debug-info.js');
+
+                const el = document.createElement('chat-debug-info');
+                el.data = {
+                    success: true,
+                    result: { response: 'Hi' },
+                    _statusLog: [
+                        { message: '🧠 Thinking', timestamp: 1700000000000 },
+                        { message: '✅ Done', timestamp: 1700000001000 }
+                    ]
+                };
+                stage.appendChild(el);
+                await el.updateComplete;
+
+                // Open details and click Live tab
+                const details = el.shadowRoot.querySelector('details');
+                details.open = true;
+                await el.updateComplete;
+
+                const tabs = el.shadowRoot.querySelectorAll('.tab-btn');
+                const liveTab = Array.from(tabs).find(t => t.textContent.includes('Live'));
+                liveTab.click();
+                await el.updateComplete;
+
+                // Check log entries
+                const entries = el.shadowRoot.querySelectorAll('.log-entry');
+                runner.assertEqual(entries.length, 2, 'Must have 2 log entries');
+
+                const firstMsg = entries[0].querySelector('.log-message');
+                runner.assertTrue(firstMsg.textContent.includes('Thinking'), 'First entry message');
+
+                const secondMsg = entries[1].querySelector('.log-message');
+                runner.assertTrue(secondMsg.textContent.includes('Done'), 'Second entry message');
+
+                // Check timestamps are rendered
+                const times = el.shadowRoot.querySelectorAll('.log-time');
+                runner.assertEqual(times.length, 2, 'Must have 2 timestamps');
+            });
+
+            runner.test('chat-debug-info hides Live tab when no _statusLog', async (stage) => {
+                await import('/elements/chat/chat-debug-info.js');
+
+                const el = document.createElement('chat-debug-info');
+                el.data = {
+                    success: true,
+                    result: { response: 'Hello' },
+                    reasoning: 'Some reasoning'
+                    // No _statusLog
+                };
+                stage.appendChild(el);
+                await el.updateComplete;
+
+                const details = el.shadowRoot.querySelector('details');
+                details.open = true;
+                await el.updateComplete;
+
+                const tabs = el.shadowRoot.querySelectorAll('.tab-btn');
+                const liveTab = Array.from(tabs).find(t => t.textContent.includes('Live'));
+                runner.assertFalse(liveTab, 'Live tab must NOT exist when no statusLog');
+            });
+        });
+
+        // ========================================
+        // PRE-LOAD _streamFuncInfo
+        // ========================================
+        runner.group('Pre-load Stream Func Info', () => {
+
+            runner.test('_streamFuncInfo is loaded on connectedCallback', async (stage) => {
+                setupMockFetch([], { streamFuncAvailable: true });
+
+                try {
+                    const el = await createChat(stage);
+                    runner.assertTrue(el._streamFuncInfo != null, '_streamFuncInfo must be loaded');
+                    runner.assertEqual(el._streamFuncInfo.name, 'chat_stream', 'Must be chat_stream');
+                    runner.assertTrue(el._streamFuncInfo.streaming, 'Must have streaming=true');
+                } finally {
+                    restoreFetch();
+                }
+            });
+
+            runner.test('_streamFuncInfo is null when chat_stream not registered', async (stage) => {
+                setupMockFetch([], { streamFuncAvailable: false });
+
+                try {
+                    const el = await createChat(stage);
+                    runner.assertTrue(el._streamFuncInfo == null, '_streamFuncInfo must be null');
+                } finally {
+                    restoreFetch();
+                }
+            });
+        });
+
+        // ========================================
+        // IMPORT AND RUN
+        // ========================================
+        try {
+            await import('/elements/auto-element-generator.js');
+        } catch (e) {
+            console.warn('auto-element-generator.js import:', e.message);
+        }
+
+        await runner.sleep(500);
+
+        try {
+            await import('/elements/chat/index.js');
+        } catch (e) {
+            console.warn('autocode-chat.js import:', e.message);
+        }
+
+        await runner.sleep(500);
+        await runner.run();
+    </script>
+</body>
+</html>
