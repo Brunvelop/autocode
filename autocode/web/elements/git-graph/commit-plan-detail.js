@@ -30,6 +30,9 @@ const TASK_STATUS_ICONS = {
 // Statuses from which a plan can be executed
 const EXECUTABLE_STATUSES = new Set(['draft', 'ready', 'failed']);
 
+// Default model for execution
+const DEFAULT_MODEL = 'openrouter/z-ai/glm-5';
+
 export class CommitPlanDetail extends LitElement {
     static properties = {
         planId: { type: String },
@@ -39,6 +42,8 @@ export class CommitPlanDetail extends LitElement {
         _isExecuting: { state: true },   // Execution in progress
         _taskStatuses: { state: true },  // Map<taskIndex, {status, messages[], error, summary, files_changed}>
         _executionSummary: { state: true }, // Final result {success, tasksCompleted, tasksFailed, commitHash}
+        _selectedModel: { state: true }, // Selected model for execution
+        _modelChoices: { state: true },  // Available models from registry
     };
 
     static styles = [themeTokens, commitPlanDetailStyles];
@@ -52,6 +57,13 @@ export class CommitPlanDetail extends LitElement {
         this._isExecuting = false;
         this._taskStatuses = new Map();
         this._executionSummary = null;
+        this._selectedModel = DEFAULT_MODEL;
+        this._modelChoices = [];
+    }
+
+    connectedCallback() {
+        super.connectedCallback();
+        this._loadModelChoices();
     }
 
     willUpdate(changed) {
@@ -169,17 +181,35 @@ export class CommitPlanDetail extends LitElement {
                     </div>
                 ` : ''}
 
+                <!-- Execution controls -->
+                ${this._canExecute(status) ? html`
+                    <div class="execute-section">
+                        <div class="execute-row">
+                            ${this._modelChoices.length > 0 ? html`
+                                <select class="model-select"
+                                    .value=${this._selectedModel}
+                                    ?disabled=${this._isExecuting}
+                                    @change=${e => this._selectedModel = e.target.value}>
+                                    ${this._modelChoices.map(m => html`
+                                        <option value="${m}" ?selected=${m === this._selectedModel}>
+                                            ${m.split('/').pop()}
+                                        </option>
+                                    `)}
+                                </select>
+                            ` : ''}
+                            <button class="execute-btn"
+                                ?disabled=${this._isExecuting}
+                                @click=${this._executePlan}>
+                                ${this._isExecuting ? html`
+                                    <div class="spinner-sm"></div> Ejecutando...
+                                ` : '▶️ Ejecutar'}
+                            </button>
+                        </div>
+                    </div>
+                ` : ''}
+
                 <!-- Actions -->
                 <div class="actions-section">
-                    ${this._canExecute(status) ? html`
-                        <button class="execute-btn"
-                            ?disabled=${this._isExecuting}
-                            @click=${this._executePlan}>
-                            ${this._isExecuting ? html`
-                                <div class="spinner-sm"></div> Ejecutando...
-                            ` : '▶️ Ejecutar Plan'}
-                        </button>
-                    ` : ''}
                     <select class="status-select ${this._isExecuting ? 'disabled' : ''}"
                         .value=${status}
                         ?disabled=${this._isExecuting}
@@ -235,6 +265,30 @@ export class CommitPlanDetail extends LitElement {
             }));
         } catch (error) {
             console.error('❌ Error updating plan status:', error);
+        }
+    }
+
+    /**
+     * Load available model choices from the execute_commit_plan function schema.
+     */
+    async _loadModelChoices() {
+        try {
+            const response = await fetch('/functions/details');
+            if (!response.ok) return;
+            const data = await response.json();
+            const funcInfo = data.functions?.execute_commit_plan;
+            if (funcInfo?.parameters) {
+                const modelParam = funcInfo.parameters.find(p => p.name === 'model');
+                if (modelParam?.choices?.length) {
+                    this._modelChoices = modelParam.choices;
+                    // Ensure selected model is valid
+                    if (!this._modelChoices.includes(this._selectedModel)) {
+                        this._selectedModel = modelParam.default || this._modelChoices[0];
+                    }
+                }
+            }
+        } catch (error) {
+            console.warn('⚠️ Could not load model choices:', error);
         }
     }
 
@@ -364,7 +418,7 @@ export class CommitPlanDetail extends LitElement {
 
             for await (const { event, data } of controller.callStreamAPI(
                 'execute_commit_plan',
-                { plan_id: this.planId, auto_commit: true }
+                { plan_id: this.planId, model: this._selectedModel, auto_commit: true }
             )) {
                 this._handleSSEEvent(event, data);
             }

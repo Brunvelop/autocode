@@ -68,7 +68,7 @@ EXECUTOR_TOOLS = {
 
 async def stream_execute_plan(
     plan_id: str,
-    model: ModelType = "openrouter/openai/gpt-4o",
+    model: ModelType = "openrouter/z-ai/glm-5",
     max_tokens: int = 16000,
     temperature: float = 0.3,
     auto_commit: bool = True,
@@ -234,7 +234,7 @@ async def stream_execute_plan(
 )
 def execute_commit_plan(
     plan_id: str,
-    model: ModelType = "openrouter/openai/gpt-4o",
+    model: ModelType = "openrouter/z-ai/glm-5",
     max_tokens: int = 16000,
     temperature: float = 0.3,
     auto_commit: bool = True,
