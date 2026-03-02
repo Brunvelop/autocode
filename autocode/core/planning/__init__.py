@@ -23,6 +23,10 @@ from .planner import (
     update_commit_plan,
     delete_commit_plan,
 )
+from .executor import (
+    execute_commit_plan,
+    stream_execute_plan,
+)
 
 __all__ = [
     # Models
@@ -34,10 +38,13 @@ __all__ = [
     "CommitPlanListOutput",
     "TaskExecutionResult",
     "PlanExecutionState",
-    # Functions
+    # Functions — CRUD
     "create_commit_plan",
     "list_commit_plans",
     "get_commit_plan",
     "update_commit_plan",
     "delete_commit_plan",
+    # Functions — Executor
+    "execute_commit_plan",
+    "stream_execute_plan",
 ]
