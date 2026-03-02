@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 from pydantic import ValidationError
 
 from autocode.interfaces.models import (
-    ParamSchema, FunctionInfo, GenericOutput
+    ParamSchema, FunctionInfo, FunctionSchema, GenericOutput
 )
 
 
@@ -233,6 +233,84 @@ class TestModelsIntegration:
         
         assert x_param.name == "x" and x_param.required is True
         assert y_param.name == "y" and y_param.required is False and y_param.default == "default"
+
+
+class TestFunctionInfoStreaming:
+    """Tests for streaming field in FunctionInfo."""
+    
+    def test_function_info_streaming_default_false(self, sample_function):
+        """streaming field defaults to False."""
+        func_info = FunctionInfo(
+            name="test_func",
+            func=sample_function,
+            description="Test function",
+            params=[],
+            return_type=GenericOutput
+        )
+        assert func_info.streaming is False
+    
+    def test_function_info_streaming_true(self, sample_function):
+        """streaming can be set to True."""
+        func_info = FunctionInfo(
+            name="test_func",
+            func=sample_function,
+            description="Test function",
+            params=[],
+            return_type=GenericOutput,
+            streaming=True
+        )
+        assert func_info.streaming is True
+    
+    def test_function_info_to_schema_includes_streaming(self, sample_function):
+        """to_schema() includes streaming field when True."""
+        func_info = FunctionInfo(
+            name="test_func",
+            func=sample_function,
+            description="Test function",
+            params=[],
+            return_type=GenericOutput,
+            streaming=True
+        )
+        schema = func_info.to_schema()
+        assert schema.streaming is True
+    
+    def test_function_info_to_schema_streaming_default(self, sample_function):
+        """to_schema() streaming defaults to False."""
+        func_info = FunctionInfo(
+            name="test_func",
+            func=sample_function,
+            description="Test function",
+            params=[],
+            return_type=GenericOutput
+        )
+        schema = func_info.to_schema()
+        assert schema.streaming is False
+
+
+class TestFunctionSchemaStreaming:
+    """Tests for streaming field in FunctionSchema."""
+    
+    def test_function_schema_streaming_default_false(self):
+        """streaming field defaults to False."""
+        schema = FunctionSchema(
+            name="test",
+            description="Test",
+            http_methods=["GET"],
+            parameters=[]
+        )
+        assert schema.streaming is False
+    
+    def test_function_schema_streaming_serialization(self):
+        """streaming field is included in serialized output."""
+        schema = FunctionSchema(
+            name="test",
+            description="Test",
+            http_methods=["GET"],
+            parameters=[],
+            streaming=True
+        )
+        data = schema.model_dump()
+        assert data["streaming"] is True
 
 
 class TestSerializeType:

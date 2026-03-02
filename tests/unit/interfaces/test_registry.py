@@ -13,8 +13,8 @@ from unittest.mock import patch, Mock
 from autocode.interfaces.registry import (
     _generate_function_info, register_function,
     get_all_schemas, get_all_functions, get_function_by_name, function_count,
-    clear_registry, load_functions,
-    RegistryError, _has_register_decorator
+    clear_registry, load_functions, get_stream_func,
+    RegistryError, _has_register_decorator, _stream_registry
 )
 from autocode.interfaces.models import FunctionInfo, ParamSchema, GenericOutput, FunctionSchema
 
@@ -554,6 +554,71 @@ def broken_function(
         
         # Should return False when AST parsing fails
         assert _has_register_decorator(str(module_file)) is False
+
+
+class TestRegisterStreamingFunction:
+    """Tests for streaming support in register_function."""
+    
+    def test_register_streaming_function(self):
+        """streaming=True propagates to FunctionInfo and stream_func is stored."""
+        async def mock_stream(**kwargs):
+            yield "chunk"
+        
+        @register_function(streaming=True, stream_func=mock_stream)
+        def streaming_func(message: str) -> GenericOutput:
+            """A streaming function."""
+            return GenericOutput(result=message, success=True)
+        
+        func_info = get_function_by_name("streaming_func")
+        assert func_info is not None
+        assert func_info.streaming is True
+        
+        # stream_func should be in the stream registry
+        retrieved = get_stream_func("streaming_func")
+        assert retrieved is mock_stream
+    
+    def test_register_non_streaming_default(self):
+        """Normal registration keeps streaming=False, no stream_func."""
+        @register_function()
+        def normal_func(x: int) -> GenericOutput:
+            """A normal function."""
+            return GenericOutput(result=x, success=True)
+        
+        func_info = get_function_by_name("normal_func")
+        assert func_info is not None
+        assert func_info.streaming is False
+        
+        # No stream_func should be registered
+        assert get_stream_func("normal_func") is None
+    
+    def test_register_streaming_without_stream_func_raises(self):
+        """streaming=True without stream_func raises RegistryError."""
+        with pytest.raises(RegistryError, match="streaming=True requires stream_func"):
+            @register_function(streaming=True)
+            def bad_streaming_func(message: str) -> GenericOutput:
+                """Bad streaming function."""
+                return GenericOutput(result=message, success=True)
+    
+    def test_clear_registry_clears_stream_registry(self):
+        """clear_registry() also clears _stream_registry."""
+        async def mock_stream(**kwargs):
+            yield "chunk"
+        
+        @register_function(streaming=True, stream_func=mock_stream)
+        def stream_func_clear_test(message: str) -> GenericOutput:
+            """A streaming function."""
+            return GenericOutput(result=message, success=True)
+        
+        # Verify it's registered
+        assert get_stream_func("stream_func_clear_test") is mock_stream
+        assert len(_stream_registry) > 0
+        
+        clear_registry()
+        
+        # Both registries should be empty
+        assert function_count() == 0
+        assert len(_stream_registry) == 0
+        assert get_stream_func("stream_func_clear_test") is None
 
 
 class TestStrictMode:

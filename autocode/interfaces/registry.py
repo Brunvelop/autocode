@@ -33,6 +33,7 @@ logger = logging.getLogger(__name__)
 # --- PRIVATE STATE ---
 
 _registry: list[FunctionInfo] = []
+_stream_registry: dict[str, Callable] = {}
 _loaded = False
 
 
@@ -45,17 +46,38 @@ class RegistryError(Exception):
 
 def register_function(
     http_methods: list[HttpMethod] | None = None,
-    interfaces: list[Interface] | None = None
+    interfaces: list[Interface] | None = None,
+    streaming: bool = False,
+    stream_func: Callable | None = None
 ) -> Callable[[Callable], Callable]:
-    """Decorator to expose a function via CLI, API, and/or MCP."""
+    """Decorator to expose a function via CLI, API, and/or MCP.
+    
+    Args:
+        http_methods: HTTP methods to expose (default: GET, POST).
+        interfaces: Interfaces to expose on (default: api, cli, mcp).
+        streaming: Whether this function supports SSE streaming.
+        stream_func: Async generator function for streaming. Required if streaming=True.
+    """
     def decorator(func: Callable) -> Callable:
         try:
+            # Validation: streaming=True requires stream_func
+            if streaming and stream_func is None:
+                raise RegistryError(
+                    f"Function '{func.__name__}': streaming=True requires stream_func"
+                )
+            
             info = _generate_function_info(func, http_methods, interfaces)
+            info.streaming = streaming
+            
+            # Store stream_func in separate registry (not in the Pydantic model)
+            if stream_func is not None:
+                _stream_registry[info.name] = stream_func
+            
             # Check for duplicates
             if any(f.name == info.name for f in _registry):
                 raise RegistryError(f"Function '{info.name}' is already registered")
             _registry.append(info)
-            logger.debug(f"Registered '{info.name}' with methods {info.http_methods}")
+            logger.debug(f"Registered '{info.name}' with methods {info.http_methods}, streaming={streaming}")
         except Exception as e:
             raise RegistryError(f"Failed to register function '{func.__name__}': {e}") from e
         return func
@@ -147,10 +169,23 @@ def load_functions(strict: bool = False) -> None:
     logger.debug(f"Loaded {len(_registry)} functions from {len(discovered)} modules")
 
 
+def get_stream_func(name: str) -> Callable | None:
+    """Get the streaming function for a registered function.
+    
+    Args:
+        name: The name of the registered function.
+        
+    Returns:
+        The streaming callable if found, None otherwise.
+    """
+    return _stream_registry.get(name)
+
+
 def clear_registry() -> None:
     """Clear registry and reset loaded flag. Used for testing."""
     global _loaded
     _registry.clear()
+    _stream_registry.clear()
     _loaded = False
 
 

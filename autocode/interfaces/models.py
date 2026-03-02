@@ -98,6 +98,7 @@ class FunctionSchema(BaseModel):
     description: str = Field(description="Function description")
     http_methods: list[HttpMethod] = Field(description="Supported HTTP methods")
     parameters: list[ParamSchema] = Field(description="Function parameters")
+    streaming: bool = Field(default=False, description="Whether this function supports SSE streaming")
 
 
 # --- Runtime Models (Internal Registry) ---
@@ -114,6 +115,7 @@ class FunctionInfo(BaseModel):
     interfaces: list[Interface] = Field(default_factory=lambda: list(DEFAULT_INTERFACES), description="Interfaces where this function is exposed")
     # Return type annotation (GenericOutput or subclass). Useful for typing the response_model in FastAPI.
     return_type: type[BaseModel] | None = Field(default=None, description="Declared return type annotation")
+    streaming: bool = Field(default=False, description="Whether this function supports SSE streaming")
 
     def to_schema(self) -> FunctionSchema:
         """Converts to serializable schema."""
@@ -121,7 +123,8 @@ class FunctionInfo(BaseModel):
             name=self.name,
             description=self.description,
             http_methods=self.http_methods,
-            parameters=self.params  # ParamSchema serializes automatically
+            parameters=self.params,  # ParamSchema serializes automatically
+            streaming=self.streaming
         )
 
 
