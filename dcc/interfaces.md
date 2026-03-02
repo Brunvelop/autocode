@@ -52,6 +52,7 @@ FunctionInfo:
     http_methods: [str]  # GET, POST...
     interfaces: [str]    # api, cli, mcp
     return_type: Type?   # GenericOutput o subclase
+    streaming: bool      # False por defecto; True si soporta SSE streaming
 
 # === Contratos de Serialización (API) ===
 ParamSchema:
@@ -67,6 +68,7 @@ FunctionSchema:
     description: str
     http_methods: [str]
     parameters: [ParamSchema]
+    streaming: bool      # Incluido en /functions/details para el frontend
 ```
 
 ---
@@ -84,8 +86,10 @@ FunctionSchema:
 ┌─────────────────────────────────────────────────────────┐
 │                      REGISTRY                           │
 │  registry.py                                            │
-│  FUNCTION_REGISTRY: Dict[str, FunctionInfo]             │
+│  _registry: list[FunctionInfo]                          │
+│  _stream_registry: dict[str, Callable]                  │
 │  get_functions_for_interface(interface) → filtrado      │
+│  get_stream_func(name) → Callable|None                  │
 └───────────────────────┬─────────────────────────────────┘
                         │ consulta (runtime)
           ┌─────────────┼─────────────┐
@@ -163,6 +167,30 @@ Invariante: Solo se importan módulos con el decorator
             Evita imports innecesarios (utils, models, etc.)
 ```
 
+### P6: SSE Streaming Adapter
+```
+Entrada:  FunctionInfo con streaming=True
+Proceso:  1. register_function(streaming=True, stream_func=fn) 
+             → Valida: streaming=True requiere stream_func (RegistryError si no)
+             → Almacena stream_func en _stream_registry[name] (dict separado)
+          2. _register_dynamic_endpoints() detecta streaming=True
+             → get_stream_func(name) obtiene el async generator
+             → _create_stream_handler(func_info, stream_func) crea handler SSE
+          3. Handler retorna StreamingResponse(media_type="text/event-stream")
+Salida:   Endpoint POST que retorna SSE stream
+
+Estado privado:
+  _stream_registry: dict[str, Callable]  # Separado de _registry
+  get_stream_func(name) → Callable|None  # Función pública de acceso
+  clear_registry() limpia _stream_registry también
+
+Invariante: stream_func NO se almacena en FunctionInfo (Pydantic)
+            Solo en _stream_registry (dict simple)
+            streaming=True sin stream_func → RegistryError
+            stream_func sin streaming=True → se almacena pero no se usa
+            _create_stream_handler genera modelo Pydantic dinámico igual que handlers normales
+```
+
 ---
 
 ## INVARIANTES
@@ -220,6 +248,13 @@ FunctionInfo       ──────────────────►  Cl
 FunctionInfo       ──────────────────►  MCP Tool
   (via FastAPI)                          tags=["mcp-tools"]
   fastapi_mcp                            include_tags filter
+
+                    SSE STREAMING
+FunctionInfo       ──────────────────►  SSE Endpoint
+  streaming=True                         POST /{name}
+  _stream_registry[name]                 StreamingResponse
+  → _create_stream_handler()             media_type=text/event-stream
+                                         Cache-Control: no-cache
 ```
 
 ---
@@ -320,6 +355,18 @@ class MyOutput(GenericOutput):
 @register_function
 def my_func() -> MyOutput:
     return MyOutput(result=..., success=True, extra_field=...)
+
+AÑADIR FUNCIÓN STREAMING:
+1. Crear async generator en core/ai/streaming.py (yields SSE strings)
+2. @register_function(
+       http_methods=["POST"],
+       interfaces=["api"],          # Streaming solo aplica a API
+       streaming=True,
+       stream_func=mi_stream_func
+   )
+3. La función síncrona es fallback (ej: delega a versión no-streaming)
+4. api.py registra automáticamente como endpoint SSE
+5. Frontend detecta streaming=True en /functions/details
 ```
 
 ---

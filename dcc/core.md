@@ -45,6 +45,10 @@ DspyOutput(GenericOutput):
     completions: [str]?      # Múltiples completions (Predict n>1)
     trajectory: dict|list?   # Trayectoria ReAct (thoughts, tools, observations)
     history: [dict]?         # Historial completo de llamadas LM
+    
+    # Static methods (usables sin instancia — compartidos con streaming.py)
+    @staticmethod normalize_trajectory(trajectory) → list|dict|None
+    @staticmethod serialize_value(value) → basic_type
 
 # === Contrato Git Tree Output ===
 GitTreeOutput(GenericOutput):
@@ -90,13 +94,16 @@ SessionData:
 │   utils/                    ai/                         │
 │   ├─ file_utils.py          ├─ dspy_utils.py           │
 │   │  (read/write)           │  (get_dspy_lm,           │
-│   └─ openrouter.py          │   generate_with_dspy)    │
-│      (fetch models)         ├─ models.py               │
-│          ↑                  │  (DspyOutput)            │
+│   └─ openrouter.py          │   generate_with_dspy,    │
+│      (fetch models)         │   prepare_chat_tools)    │
+│          ↑                  ├─ models.py               │
+│          │                  │  (DspyOutput)            │
 │          │                  ├─ signatures.py           │
 │          └──────────────────┤  (CodeGen, QA, Chat...)  │
+│                             ├─ streaming.py            │
+│                             │  (stream_chat, SSE)      │
 │                             └─ pipelines.py            │
-│                                (text_to_code, chat...) │
+│                                (chat, chat_stream...)  │
 │                                        ↑               │
 │   vcs/                                 │               │
 │   ├─ operations.py  ─────────────────→ │               │
@@ -184,6 +191,37 @@ Salida:   finalize_ai_session() → squash merge a main
 Invariante: Todo trabajo AI está aislado en rama
             El merge es squash (historia limpia en main)
             .ai-context/ se excluye del merge a main
+```
+
+### P6: SSE Streaming Pattern
+```
+Entrada:  stream_chat(message, ...) — mismos params que chat()
+Proceso:  1. Configurar LM y tools (vía prepare_chat_tools)
+          2. dspy.streamify(module, stream_listeners, status_provider)
+          3. async for chunk in output_stream → _format_sse(event, data)
+Salida:   AsyncGenerator[str] de eventos SSE:
+            event: status  → {"message": "🧠 Consultando..."}
+            event: token   → {"chunk": "...", "field": "response", ...}
+            event: complete→ {"success", "result", "reasoning", "trajectory", ...}
+            event: error   → {"message": "...", "success": false}
+
+Componentes:
+  AutocodeStatusProvider    → Genera mensajes de progreso (tool_start, lm_start, etc.)
+  _format_sse(event, data)  → Formatea "event: X\ndata: JSON\n\n"
+  DspyOutput.normalize_trajectory() → Normaliza trajectory plana de DSPy
+  DspyOutput.serialize_value()      → Serializa a tipos básicos
+
+Registro:
+  @register_function(streaming=True, stream_func=stream_chat)
+  def chat_stream(...) → DspyOutput
+  → stream_func se almacena en _stream_registry (no en Pydantic)
+  → api.py detecta streaming=True y crea handler SSE en vez de JSON
+
+Invariante: stream_chat comparte prepare_chat_tools() con chat()
+            Tokens solo del campo 'response' de la signature
+            history NO se reconstruye en streaming v1
+            CancelledError se captura silenciosamente (client disconnect)
+            Si invocado síncronamente, chat_stream() delega a chat()
 ```
 
 ---
@@ -322,6 +360,13 @@ EXTENDER OUTPUT MODEL:
 1. Crear clase que herede de GenericOutput
 2. Añadir campos específicos con Field()
 3. Usar como return type de función registrada
+
+AÑADIR PIPELINE AI CON STREAMING:
+1. Crear async generator en streaming.py (mismos params que función síncrona)
+2. Usar prepare_chat_tools() para tools compartidos con la versión sync
+3. Usar _format_sse() para emitir eventos SSE (token, status, complete, error)
+4. Registrar con @register_function(streaming=True, stream_func=mi_stream_func)
+5. La función síncrona puede delegar a la versión sin streaming como fallback
 ```
 
 ---
@@ -333,9 +378,10 @@ autocode/core/
 ├── __init__.py
 ├── ai/
 │   ├── __init__.py
-│   ├── dspy_utils.py        # get_dspy_lm, generate_with_dspy, introspección
-│   ├── models.py            # DspyOutput
-│   ├── pipelines.py         # Funciones registradas: chat, generate, text_to_code...
+│   ├── dspy_utils.py        # get_dspy_lm, generate_with_dspy, prepare_chat_tools
+│   ├── models.py            # DspyOutput (con @staticmethod helpers)
+│   ├── pipelines.py         # Funciones registradas: chat, chat_stream, generate...
+│   ├── streaming.py         # stream_chat, AutocodeStatusProvider, _format_sse
 │   ├── signatures.py        # DSPy Signatures: CodeGeneration, QA, Chat...
 │   └── README.md
 ├── utils/

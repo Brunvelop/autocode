@@ -47,6 +47,13 @@ AutocodeChat extends AutoFunctionController:
     conversationHistory: [Message]      // Historial de mensajes
     _chatConfig: Object                 // Config cargada de get_chat_config
     _pendingUserMessage: String?        // Mensaje optimista pendiente
+    _streamFuncInfo: Object?            // Pre-cargado en connectedCallback()
+    
+    // Métodos de streaming
+    _loadStreamFuncInfo()               // Pre-carga chat_stream info del registry
+    _sendMessage(message)               // Decide stream vs sync según _streamFuncInfo
+    _sendMessageStream(message)         // SSE streaming vía callStreamAPI()
+    _sendMessageSync(message)           // Fallback síncrono vía execute()
     
     // Eventos escuchados
     'submit' → _handleInputSubmit()
@@ -82,11 +89,20 @@ ChatMessages extends LitElement:
     
     // API Pública
     addMessage(role, content)           // Añade mensaje y hace scroll
+    addStreamingMessage() → id          // Crea mensaje vacío streaming=true, retorna ID
+    appendToStreaming(id, chunk)         // Añade chunk de texto a mensaje streaming
+    finalizeStreaming(id, envelope)      // Reemplaza contenido con envelope final
     clear()                             // Limpia historial
     getMessages() → [Message]           // Copia del historial
     
     // Message Shape
-    Message: { role: 'user'|'assistant'|'error', content: String|Object, timestamp: Number }
+    Message: { 
+        id?: String,                    // Solo para streaming (stream-{timestamp})
+        role: 'user'|'assistant'|'error', 
+        content: String|Object, 
+        streaming?: Boolean,            // true durante streaming activo
+        timestamp: Number 
+    }
 
 // === Input de Texto ===
 ChatInput extends LitElement:
@@ -121,13 +137,17 @@ ChatSettings extends LitElement:
 ChatDebugInfo extends LitElement:
     // Propiedades
     data: Object                        // Envelope de respuesta completo
-    _activeTab: String (state)          // Tab activa: overview|trajectory|history|raw
+    _activeTab: String (state)          // Tab activa: overview|trajectory|history|live|raw
     
     // Tabs
     "overview"   → Métricas + Reasoning
     "trajectory" → Pasos de ReAct (tool calls)
     "history"    → Llamadas LM raw
+    "live"       → Status log de streaming (si data._statusLog existe)
     "raw"        → JSON completo
+    
+    // _parseData() extrae:
+    //   info.statusLog ← data._statusLog  (array de {message, timestamp})
 
 // === Barra de Contexto ===
 ContextBar extends LitElement:
@@ -341,6 +361,39 @@ Invariante: dialog::backdrop para overlay
             Escape cierra automáticamente
 ```
 
+### P6: Streaming Message Pattern
+```
+Entrada:  Usuario envía mensaje con streaming disponible
+Proceso:  
+  1. _sendMessage() detecta _streamFuncInfo?.streaming === true
+  2. Resetear envelope/result/success (evitar datos stale)
+  3. addStreamingMessage() → crea bubble vacía con cursor ▊
+  4. callStreamAPI('chat_stream', params) → async generator de eventos SSE
+  5. event: token  → appendToStreaming(id, chunk) — texto incremental
+  6. event: status → _setStatus('loading', message) + push a statusLog
+  7. event: complete → finalizeStreaming(id, envelope) — render normal
+  8. event: error → finalizeStreaming(id, errorEnvelope)
+Salida:   Texto aparece token a token, luego se reemplaza por envelope rico
+
+// En AutoFunctionController (heredado):
+_processParams(params, funcInfoOverride)  // DRY: extrae conversión de tipos
+async *callStreamAPI(endpoint, params, funcInfo)  // Async generator SSE
+
+// En ChatMessages:
+addStreamingMessage() → id               // Crea msg {streaming: true, content: ''}
+appendToStreaming(id, chunk)              // content += chunk (inmutable)
+finalizeStreaming(id, envelope)           // content = envelope, streaming = false
+
+// Render durante streaming:
+html`<div class="text-content">${msg.content}<span class="cursor">▊</span></div>`
+// .bubble.streaming tiene border-left indicador
+
+Invariante: envelope se resetea al inicio de cada stream (no stale)
+            _streamFuncInfo se pre-carga en connectedCallback() (no lazy)
+            Si streaming no disponible → fallback a _sendMessageSync()
+            statusLog se pasa en envelope._statusLog al finalizar
+```
+
 ---
 
 ## INVARIANTES
@@ -412,6 +465,14 @@ SessionData        ──────────────────►  Se
   % < 70                                Barra verde
   70 ≤ % < 90                           Barra amarilla
   % ≥ 90                                Barra roja
+
+                    SSE STREAM → INCREMENTAL UI
+SSE events         ──────────────────►  ChatMessages streaming
+  event: token                          appendToStreaming(id, chunk)
+  event: status                         _setStatus() + statusLog push
+  event: complete                       finalizeStreaming(id, envelope)
+  event: error                          finalizeStreaming(id, errorEnvelope)
+  envelope._statusLog                   ChatDebugInfo tab "Live"
 ```
 
 ---
@@ -424,6 +485,7 @@ SessionData        ──────────────────►  Se
    → AutoFunctionController.connectedCallback()
      → loadFunctionInfo() para 'chat'
    → _loadChatConfig() → fetch get_chat_config
+   → _loadStreamFuncInfo() → fetch chat_stream info (pre-carga)
    
    firstUpdated()
    → Obtener referencias: _window, _messages, _input, _settings, _sessionManager
@@ -444,12 +506,27 @@ SessionData        ──────────────────►  Se
        b. _messages.addMessage('user', message)
        c. setParam('message', message)
        d. Sincronizar settings actuales
-       e. await this.execute() → callAPI()
-       f. _processResult(envelope)
-       g. Si sesión activa: sessionManager.saveConversation()
-       h. _input.clear(), _updateContext()
+       e. Si _streamFuncInfo?.streaming → _sendMessageStream()
+          Sino → _sendMessageSync()
+       f. _input.clear(), _updateContext()
 
-4. PROCESAMIENTO DE RESPUESTA
+3a. ENVÍO STREAMING (_sendMessageStream)
+   a. Resetear envelope/result/success (evitar stale)
+   b. addStreamingMessage() → streamId
+   c. for await (event of callStreamAPI('chat_stream', params)):
+      - token → appendToStreaming(streamId, chunk)
+      - status → _setStatus('loading', message), push statusLog
+      - complete → finalizeStreaming(streamId, envelope), save state
+      - error → finalizeStreaming(streamId, errorEnvelope)
+   d. Actualizar conversationHistory con texto acumulado
+   e. Si sesión activa y success: saveConversation()
+
+3b. ENVÍO SÍNCRONO (_sendMessageSync)
+   a. await this.execute() → callAPI()
+   b. _processResult(envelope)
+   c. Si sesión activa: sessionManager.saveConversation()
+
+4. PROCESAMIENTO DE RESPUESTA (solo sync path)
    _processResult(envelope)
    → Si error: _messages.addMessage('error', envelope)
    → Si ok:
