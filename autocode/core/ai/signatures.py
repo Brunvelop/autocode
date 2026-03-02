@@ -94,3 +94,20 @@ class ChatSignature(dspy.Signature):
     response: str = dspy.OutputField(
         desc="Respuesta del asistente al mensaje del usuario, considerando el contexto"
     )
+
+
+class TaskExecutionSignature(dspy.Signature):
+    """You are a precise code executor. Complete the assigned programming task
+    using the available file tools. Read files you need for context, then
+    create or modify files as instructed. Be thorough and precise.
+    Only modify what is necessary. Verify your changes by reading the file after writing."""
+
+    task_instruction: str = dspy.InputField(
+        desc="Complete task description including what to do, implementation details, and acceptance criteria"
+    )
+    file_path: str = dspy.InputField(
+        desc="Primary target file path for this task"
+    )
+    completion_summary: str = dspy.OutputField(
+        desc="Brief summary of all changes made, files created/modified, and any issues encountered"
+    )
