@@ -495,6 +495,8 @@ export class GitGraph extends LitElement {
 
     _handlePlanUpdated() {
         this._loadPlans();
+        // Si el plan se completó con commit, refrescar el graph para mostrar el nuevo commit
+        this.refresh();
     }
 
     _handleCommitSelected(e) {

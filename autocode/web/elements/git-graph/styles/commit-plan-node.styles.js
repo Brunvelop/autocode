@@ -84,6 +84,27 @@ export const commitPlanNodeStyles = css`
         color: var(--design-text-tertiary, #9ca3af);
     }
 
+    .plan-badge.executing {
+        background: #fef3c7;
+        color: #92400e;
+        animation: pulse 1.5s infinite;
+    }
+
+    .plan-badge.completed {
+        background: #dcfce7;
+        color: #166534;
+    }
+
+    .plan-badge.failed {
+        background: #fef2f2;
+        color: #991b1b;
+    }
+
+    @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.5; }
+    }
+
     .plan-title {
         font-size: 11px;
         color: var(--design-text-primary, #1f2937);
