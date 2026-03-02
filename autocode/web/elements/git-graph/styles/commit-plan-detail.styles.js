@@ -364,4 +364,175 @@ export const commitPlanDetailStyles = css`
         color: var(--design-error-text, #991b1b);
         font-size: 12px;
     }
+
+    /* ===== EXECUTE BUTTON ===== */
+    .execute-btn {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        padding: 4px 12px;
+        background: linear-gradient(to right, #4f46e5, #7c3aed);
+        color: white;
+        border: none;
+        border-radius: var(--design-radius-md, 0.5rem);
+        font-size: 11px;
+        font-weight: var(--design-font-weight-semibold, 600);
+        cursor: pointer;
+        transition: all var(--design-transition-fast, 0.1s);
+    }
+
+    .execute-btn:hover:not(:disabled) {
+        opacity: 0.9;
+        box-shadow: 0 2px 8px rgba(79, 70, 229, 0.3);
+    }
+
+    .execute-btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+
+    /* ===== TASK EXECUTION STATES ===== */
+    .task-card.running {
+        border-left: 3px solid #f59e0b;
+    }
+
+    .task-card.completed {
+        border-left: 3px solid #10b981;
+    }
+
+    .task-card.failed {
+        border-left: 3px solid #ef4444;
+    }
+
+    .task-status-icon {
+        margin-left: auto;
+        font-size: 14px;
+        flex-shrink: 0;
+    }
+
+    /* Task log (status messages from ReAct) */
+    .task-log {
+        max-height: 120px;
+        overflow-y: auto;
+        padding: 4px 8px;
+        background: #1f2937;
+        border-radius: var(--design-radius-sm, 0.25rem);
+        margin-top: 4px;
+    }
+
+    .task-log .log-line {
+        font-family: var(--design-font-mono, monospace);
+        font-size: 10px;
+        color: #d1d5db;
+        line-height: 1.5;
+    }
+
+    /* Task error */
+    .task-error {
+        padding: 4px 8px;
+        background: #fef2f2;
+        border: 1px solid #fca5a5;
+        border-radius: var(--design-radius-sm, 0.25rem);
+        color: #991b1b;
+        font-size: 10px;
+        margin-top: 4px;
+    }
+
+    /* Task summary */
+    .task-summary {
+        padding: 4px 8px;
+        background: #f0fdf4;
+        border: 1px solid #86efac;
+        border-radius: var(--design-radius-sm, 0.25rem);
+        color: #166534;
+        font-size: 10px;
+        margin-top: 4px;
+        line-height: 1.4;
+    }
+
+    /* Task files changed */
+    .task-files {
+        padding: 4px 8px;
+        margin-top: 4px;
+        font-size: 10px;
+    }
+
+    .task-files-label {
+        font-weight: var(--design-font-weight-semibold, 600);
+        color: var(--design-text-tertiary, #9ca3af);
+        margin-bottom: 2px;
+    }
+
+    .task-file-item {
+        font-family: var(--design-font-mono, monospace);
+        color: var(--design-primary, #4f46e5);
+        font-size: 10px;
+    }
+
+    /* ===== EXECUTION SUMMARY BANNER ===== */
+    .execution-summary {
+        padding: 8px 12px;
+        border-radius: var(--design-radius-md, 0.5rem);
+        font-size: 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+    }
+
+    .execution-summary.success {
+        background: #dcfce7;
+        border: 1px solid #86efac;
+        color: #166534;
+    }
+
+    .execution-summary.failed {
+        background: #fef2f2;
+        border: 1px solid #fca5a5;
+        color: #991b1b;
+    }
+
+    .execution-summary .summary-header {
+        font-weight: var(--design-font-weight-semibold, 600);
+        display: flex;
+        align-items: center;
+        gap: 4px;
+    }
+
+    .execution-summary .summary-details {
+        font-size: 11px;
+        opacity: 0.85;
+    }
+
+    .commit-hash {
+        font-family: var(--design-font-mono, monospace);
+        font-weight: var(--design-font-weight-bold, 700);
+    }
+
+    /* ===== STATUS BADGE EXTENDED ===== */
+    .status-badge.executing {
+        background: #fef3c7;
+        color: #92400e;
+        animation: pulse 1.5s infinite;
+    }
+
+    .status-badge.completed {
+        background: #dcfce7;
+        color: #166534;
+    }
+
+    .status-badge.failed {
+        background: #fef2f2;
+        color: #991b1b;
+    }
+
+    @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.5; }
+    }
+
+    /* Actions during execution */
+    .actions-section .disabled {
+        opacity: 0.4;
+        pointer-events: none;
+    }
 `;

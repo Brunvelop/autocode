@@ -18,12 +18,27 @@ const TASK_ICONS = {
     rename: '📝',
 };
 
+// Task execution status icons
+const TASK_STATUS_ICONS = {
+    pending: '⏳',
+    running: '🔄',
+    completed: '✅',
+    failed: '❌',
+    skipped: '⏭️',
+};
+
+// Statuses from which a plan can be executed
+const EXECUTABLE_STATUSES = new Set(['draft', 'ready', 'failed']);
+
 export class CommitPlanDetail extends LitElement {
     static properties = {
         planId: { type: String },
         _plan: { state: true },          // Full CommitPlan from API
         _loading: { state: true },
         _error: { state: true },
+        _isExecuting: { state: true },   // Execution in progress
+        _taskStatuses: { state: true },  // Map<taskIndex, {status, messages[], error, summary, files_changed}>
+        _executionSummary: { state: true }, // Final result {success, tasksCompleted, tasksFailed, commitHash}
     };
 
     static styles = [themeTokens, commitPlanDetailStyles];
@@ -34,6 +49,9 @@ export class CommitPlanDetail extends LitElement {
         this._plan = null;
         this._loading = false;
         this._error = null;
+        this._isExecuting = false;
+        this._taskStatuses = new Map();
+        this._executionSummary = null;
     }
 
     willUpdate(changed) {
@@ -102,11 +120,14 @@ export class CommitPlanDetail extends LitElement {
                     <div class="description-section">${plan.description}</div>
                 ` : ''}
 
+                <!-- Execution Summary (if available) -->
+                ${this._renderExecutionSummary()}
+
                 <!-- Tasks -->
                 ${plan.tasks && plan.tasks.length > 0 ? html`
                     <div class="tasks-section">
                         <div class="section-header">📂 Tareas (${plan.tasks.length})</div>
-                        ${plan.tasks.map(t => this._renderTask(t))}
+                        ${plan.tasks.map((t, i) => this._renderTask(t, i))}
                     </div>
                 ` : ''}
 
@@ -150,12 +171,26 @@ export class CommitPlanDetail extends LitElement {
 
                 <!-- Actions -->
                 <div class="actions-section">
-                    <select class="status-select" .value=${status} @change=${this._updateStatus}>
+                    ${this._canExecute(status) ? html`
+                        <button class="execute-btn"
+                            ?disabled=${this._isExecuting}
+                            @click=${this._executePlan}>
+                            ${this._isExecuting ? html`
+                                <div class="spinner-sm"></div> Ejecutando...
+                            ` : '▶️ Ejecutar Plan'}
+                        </button>
+                    ` : ''}
+                    <select class="status-select ${this._isExecuting ? 'disabled' : ''}"
+                        .value=${status}
+                        ?disabled=${this._isExecuting}
+                        @change=${this._updateStatus}>
                         <option value="draft" ?selected=${status === 'draft'}>Draft</option>
                         <option value="ready" ?selected=${status === 'ready'}>Ready</option>
                         <option value="abandoned" ?selected=${status === 'abandoned'}>Abandoned</option>
                     </select>
-                    <button class="delete-btn" @click=${this._delete}>🗑️ Eliminar</button>
+                    <button class="delete-btn ${this._isExecuting ? 'disabled' : ''}"
+                        ?disabled=${this._isExecuting}
+                        @click=${this._delete}>🗑️ Eliminar</button>
                 </div>
             </div>
         `;
@@ -224,14 +259,19 @@ export class CommitPlanDetail extends LitElement {
     // RENDER HELPERS
     // ========================================================================
 
-    _renderTask(task) {
+    _renderTask(task, index) {
         const icon = TASK_ICONS[task.type] || '📄';
+        const taskStatus = this._taskStatuses.get(index);
+        const execStatus = taskStatus?.status || '';
+        const statusIcon = TASK_STATUS_ICONS[execStatus] || '';
+
         return html`
-            <div class="task-card">
+            <div class="task-card ${execStatus}">
                 <div class="task-card-header">
                     <span>${icon}</span>
                     <span class="task-type-badge task-type-${task.type}">${task.type}</span>
                     <span class="task-path" title="${task.path}">${task.path}</span>
+                    ${statusIcon ? html`<span class="task-status-icon">${statusIcon}</span>` : ''}
                 </div>
                 <div class="task-body">
                     <div class="task-description">${task.description}</div>
@@ -244,6 +284,27 @@ export class CommitPlanDetail extends LitElement {
                         </ul>
                     ` : ''}
                 </div>
+                ${taskStatus?.error ? html`
+                    <div class="task-error">❌ ${taskStatus.error}</div>
+                ` : ''}
+                ${taskStatus?.summary ? html`
+                    <div class="task-summary">✅ ${taskStatus.summary}</div>
+                ` : ''}
+                ${taskStatus?.files_changed?.length ? html`
+                    <div class="task-files">
+                        <div class="task-files-label">Archivos modificados:</div>
+                        ${taskStatus.files_changed.map(f => html`
+                            <div class="task-file-item">${f}</div>
+                        `)}
+                    </div>
+                ` : ''}
+                ${taskStatus?.messages?.length ? html`
+                    <div class="task-log">
+                        ${taskStatus.messages.map(m => html`
+                            <div class="log-line">${m}</div>
+                        `)}
+                    </div>
+                ` : ''}
             </div>
         `;
     }
@@ -269,6 +330,172 @@ export class CommitPlanDetail extends LitElement {
         } catch {
             return isoDate;
         }
+    }
+
+    // ========================================================================
+    // EXECUTION
+    // ========================================================================
+
+    /**
+     * Whether the plan can be executed from its current status.
+     */
+    _canExecute(status) {
+        return EXECUTABLE_STATUSES.has(status) || this._isExecuting;
+    }
+
+    /**
+     * Execute the plan via SSE streaming endpoint.
+     * Consumes events from execute_commit_plan and updates task statuses in real-time.
+     */
+    async _executePlan() {
+        if (this._isExecuting) return;
+
+        this._isExecuting = true;
+        this._taskStatuses = new Map();
+        this._executionSummary = null;
+
+        // Optimistically update the badge to "executing"
+        this._plan = { ...this._plan, status: 'executing' };
+
+        try {
+            const controller = new AutoFunctionController();
+            controller.funcName = 'execute_commit_plan';
+            await controller.loadFunctionInfo();
+
+            for await (const { event, data } of controller.callStreamAPI(
+                'execute_commit_plan',
+                { plan_id: this.planId, auto_commit: true }
+            )) {
+                this._handleSSEEvent(event, data);
+            }
+        } catch (error) {
+            console.error('❌ Execution error:', error);
+            this._executionSummary = {
+                success: false,
+                tasksCompleted: 0,
+                tasksFailed: 0,
+                commitHash: '',
+                errorMessage: error.message,
+            };
+        } finally {
+            this._isExecuting = false;
+            // Refresh plan data from server to get final status
+            await this._loadPlan();
+            // Notify parent to refresh graph (new commit may have been created)
+            this.dispatchEvent(new CustomEvent('plan-updated', {
+                bubbles: true,
+                composed: true,
+            }));
+        }
+    }
+
+    /**
+     * Handle a single SSE event from the executor stream.
+     */
+    _handleSSEEvent(event, data) {
+        switch (event) {
+            case 'plan_start':
+                console.log(`🚀 Executing plan: ${data.title} (${data.total_tasks} tasks, model: ${data.model})`);
+                break;
+
+            case 'task_start':
+                this._taskStatuses.set(data.task_index, {
+                    status: 'running',
+                    messages: [],
+                    error: '',
+                    summary: '',
+                    files_changed: [],
+                });
+                // Force Lit reactivity
+                this._taskStatuses = new Map(this._taskStatuses);
+                break;
+
+            case 'status': {
+                const ts = this._taskStatuses.get(data.task_index);
+                if (ts) {
+                    ts.messages.push(data.message);
+                    this._taskStatuses = new Map(this._taskStatuses);
+                }
+                break;
+            }
+
+            case 'task_complete': {
+                const ts = this._taskStatuses.get(data.task_index);
+                if (ts) {
+                    ts.status = 'completed';
+                    ts.summary = data.summary || '';
+                    ts.files_changed = data.files_changed || [];
+                }
+                this._taskStatuses = new Map(this._taskStatuses);
+                break;
+            }
+
+            case 'task_error': {
+                const ts = this._taskStatuses.get(data.task_index);
+                if (ts) {
+                    ts.status = 'failed';
+                    ts.error = data.error || 'Unknown error';
+                }
+                this._taskStatuses = new Map(this._taskStatuses);
+                break;
+            }
+
+            case 'plan_complete':
+                this._executionSummary = {
+                    success: data.success,
+                    tasksCompleted: data.tasks_completed,
+                    tasksFailed: data.tasks_failed,
+                    commitHash: data.commit_hash || '',
+                };
+                break;
+
+            case 'error':
+                console.error('❌ Executor error:', data.message);
+                this._executionSummary = {
+                    success: false,
+                    tasksCompleted: 0,
+                    tasksFailed: 0,
+                    commitHash: '',
+                    errorMessage: data.message,
+                };
+                break;
+
+            default:
+                console.log(`ℹ️ Unknown SSE event: ${event}`, data);
+        }
+    }
+
+    /**
+     * Render the execution summary banner (shown after execution completes).
+     */
+    _renderExecutionSummary() {
+        if (!this._executionSummary) return '';
+
+        const s = this._executionSummary;
+        const cssClass = s.success ? 'success' : 'failed';
+
+        if (s.errorMessage) {
+            return html`
+                <div class="execution-summary failed">
+                    <div class="summary-header">❌ Error de ejecución</div>
+                    <div class="summary-details">${s.errorMessage}</div>
+                </div>
+            `;
+        }
+
+        return html`
+            <div class="execution-summary ${cssClass}">
+                <div class="summary-header">
+                    ${s.success ? '✅' : '❌'}
+                    ${s.success ? 'Ejecución completada' : 'Ejecución con errores'}
+                </div>
+                <div class="summary-details">
+                    ${s.tasksCompleted} tarea${s.tasksCompleted !== 1 ? 's' : ''} completada${s.tasksCompleted !== 1 ? 's' : ''}
+                    ${s.tasksFailed > 0 ? html` · ${s.tasksFailed} fallida${s.tasksFailed !== 1 ? 's' : ''}` : ''}
+                    ${s.commitHash ? html` · Commit: <span class="commit-hash">${s.commitHash.substring(0, 7)}</span>` : ''}
+                </div>
+            </div>
+        `;
     }
 
     // ========================================================================
