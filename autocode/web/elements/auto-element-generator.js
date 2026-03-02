@@ -305,24 +305,23 @@ export class AutoFunctionController extends LitElement {
         return isValid;
     }
 
-    async callAPI(params) {
-        const method = this.funcInfo.http_methods[0];
-        let url = `/${this.funcName}`;
-        let options = {
-            method: method.toUpperCase(),
-            headers: { 'Content-Type': 'application/json' }
-        };
-
-        // Procesar params para envío
+    /**
+     * Procesa parámetros aplicando conversiones de tipo según la definición de funcInfo.
+     * Extraído de callAPI() para reutilizar en callStreamAPI().
+     * @param {object} params - Parámetros crudos
+     * @param {object|null} funcInfoOverride - FuncInfo alternativo (para streaming con otra función)
+     * @returns {object} Parámetros procesados con tipos correctos
+     */
+    _processParams(params, funcInfoOverride = null) {
+        const info = funcInfoOverride || this.funcInfo;
         const processedParams = {};
         Object.entries(params).forEach(([key, val]) => {
-            // Parsear JSON strings si es necesario (para complex types que vengan de textareas)
-            const paramDef = this.funcInfo.parameters.find(p => p.name === key);
+            const paramDef = info?.parameters?.find(p => p.name === key);
             if (paramDef && this._isComplexType(paramDef.type) && typeof val === 'string') {
                 try {
                     processedParams[key] = JSON.parse(val);
                 } catch {
-                    processedParams[key] = val; // Fallback
+                    processedParams[key] = val;
                 }
             } else if (paramDef && paramDef.type === 'int') {
                 processedParams[key] = parseInt(val);
@@ -332,6 +331,18 @@ export class AutoFunctionController extends LitElement {
                 processedParams[key] = val;
             }
         });
+        return processedParams;
+    }
+
+    async callAPI(params) {
+        const method = this.funcInfo.http_methods[0];
+        let url = `/${this.funcName}`;
+        let options = {
+            method: method.toUpperCase(),
+            headers: { 'Content-Type': 'application/json' }
+        };
+
+        const processedParams = this._processParams(params);
 
         if (method.toUpperCase() === 'GET') {
             const queryParams = new URLSearchParams();
@@ -364,6 +375,85 @@ export class AutoFunctionController extends LitElement {
 
         const data = await response.json();
         return data;
+    }
+
+    /**
+     * Async generator que consume un endpoint SSE y produce eventos parseados.
+     * @param {string} endpoint - Nombre del endpoint (se usa como URL: /{endpoint})
+     * @param {object} params - Parámetros a enviar como JSON body
+     * @param {object|null} funcInfo - FuncInfo para procesamiento de tipos (opcional)
+     * @yields {{ event: string, data: object|string }} Eventos SSE parseados
+     */
+    async *callStreamAPI(endpoint, params, funcInfo = null) {
+        const processedParams = this._processParams(params, funcInfo);
+
+        const response = await fetch(`/${endpoint}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(processedParams)
+        });
+
+        if (!response.ok) {
+            let errorMsg = `HTTP ${response.status}`;
+            try {
+                const errorData = await response.json();
+                errorMsg = errorData.detail
+                    ? (typeof errorData.detail === 'string' ? errorData.detail : JSON.stringify(errorData.detail))
+                    : JSON.stringify(errorData);
+            } catch {
+                errorMsg = response.statusText || errorMsg;
+            }
+            throw new Error(errorMsg);
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let currentEvent = null;
+        let currentData = '';
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop();
+
+            for (const line of lines) {
+                if (line.startsWith('event: ')) {
+                    currentEvent = line.slice(7).trim();
+                } else if (line.startsWith('data: ')) {
+                    currentData = line.slice(6);
+                } else if (line === '' && currentEvent && currentData) {
+                    try {
+                        yield { event: currentEvent, data: JSON.parse(currentData) };
+                    } catch (e) {
+                        yield { event: currentEvent, data: currentData };
+                    }
+                    currentEvent = null;
+                    currentData = '';
+                }
+            }
+        }
+
+        // Procesar contenido restante del buffer tras fin de stream
+        if (buffer) {
+            if (buffer.startsWith('event: ')) {
+                currentEvent = buffer.slice(7).trim();
+            } else if (buffer.startsWith('data: ')) {
+                currentData = buffer.slice(6);
+            }
+        }
+
+        // Evento pendiente si stream termina sin \n\n final
+        if (currentEvent && currentData) {
+            try {
+                yield { event: currentEvent, data: JSON.parse(currentData) };
+            } catch (e) {
+                yield { event: currentEvent, data: currentData };
+            }
+        }
     }
 
     /**

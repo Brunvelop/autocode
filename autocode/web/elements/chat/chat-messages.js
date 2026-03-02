@@ -31,6 +31,48 @@ export class ChatMessages extends LitElement {
         this.updateComplete.then(() => this._scrollToBottom());
     }
 
+    /**
+     * Crea un mensaje de streaming vacío (se irá llenando con appendToStreaming).
+     * @returns {string} ID único del mensaje para referenciar en append/finalize
+     */
+    addStreamingMessage() {
+        const id = `stream-${Date.now()}`;
+        this.messages = [...this.messages, {
+            id, role: 'assistant', content: '',
+            streaming: true, timestamp: Date.now()
+        }];
+        this.updateComplete.then(() => this._scrollToBottom());
+        return id;
+    }
+
+    /**
+     * Añade un chunk de texto a un mensaje de streaming existente.
+     * @param {string} id - ID del mensaje de streaming
+     * @param {string} chunk - Texto a añadir
+     */
+    appendToStreaming(id, chunk) {
+        this.messages = this.messages.map(msg =>
+            msg.id === id
+                ? { ...msg, content: msg.content + chunk }
+                : msg
+        );
+        this.updateComplete.then(() => this._scrollToBottom());
+    }
+
+    /**
+     * Finaliza un mensaje de streaming, reemplazando su contenido con el envelope final.
+     * @param {string} id - ID del mensaje de streaming
+     * @param {object} envelope - Datos finales del mensaje (result, reasoning, etc.)
+     */
+    finalizeStreaming(id, envelope) {
+        this.messages = this.messages.map(msg =>
+            msg.id === id
+                ? { ...msg, content: envelope, streaming: false }
+                : msg
+        );
+        this.updateComplete.then(() => this._scrollToBottom());
+    }
+
     clear() {
         this.messages = [];
     }
@@ -60,10 +102,13 @@ export class ChatMessages extends LitElement {
     _renderMessage(msg) {
         return html`
             <div class="message-row ${msg.role}" data-role="${msg.role}">
-                <div class="bubble ${msg.role}">
+                <div class="bubble ${msg.role} ${msg.streaming ? 'streaming' : ''}">
                     <div class="role-label">${this._getRoleLabel(msg.role)}</div>
                     <div class="message-body">
-                        ${this._renderContent(msg.role, msg.content)}
+                        ${msg.streaming
+                            ? html`<div class="text-content">${msg.content}<span class="cursor">▊</span></div>`
+                            : this._renderContent(msg.role, msg.content)
+                        }
                     </div>
                 </div>
             </div>

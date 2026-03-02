@@ -92,6 +92,21 @@ export const chatMessagesStyles = css`
         white-space: pre-wrap;
     }
 
+    /* Streaming cursor */
+    .cursor {
+        animation: blink 0.8s step-end infinite;
+        color: var(--design-primary, #6366f1);
+    }
+
+    @keyframes blink {
+        50% { opacity: 0; }
+    }
+
+    /* Streaming bubble indicator */
+    .bubble.streaming {
+        border-left: 3px solid var(--design-primary, #6366f1);
+    }
+
     /* Reasoning Details */
     details.reasoning {
         background-color: var(--design-bg-gray-50, #f9fafb);

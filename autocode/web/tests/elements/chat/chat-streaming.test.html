@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat Streaming - Unit Tests</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="p-8 bg-gray-100 min-h-screen">
+    <div class="flex items-center gap-4 mb-2">
+        <a href="/tests" class="text-indigo-600 hover:text-indigo-800">← Tests</a>
+        <h1 class="text-3xl font-bold">🔴 Chat Streaming - Unit Tests</h1>
+    </div>
+    
+    <div id="summary" class="mb-6 p-4 bg-white rounded-lg shadow"></div>
+    <div id="results" class="space-y-2"></div>
+
+    <script type="module">
+        import { TestRunner } from '../../utils/test-runner.js'; 
+        import '/elements/chat/chat-messages.js';
+
+        const runner = new TestRunner();
+
+        // ========================================
+        // STREAMING MESSAGE LIFECYCLE
+        // ========================================
+        runner.group('Streaming Message Lifecycle', () => {
+
+            runner.test('addStreamingMessage() creates message with streaming: true', async (stage) => {
+                const el = document.createElement('chat-messages');
+                stage.appendChild(el);
+                await el.updateComplete;
+
+                const id = el.addStreamingMessage();
+                await el.updateComplete;
+
+                runner.assertTrue(id, 'Must return an ID');
+                runner.assertTrue(id.startsWith('stream-'), 'ID must start with stream-');
+
+                const messages = el.getMessages();
+                runner.assertEqual(messages.length, 1, 'Must have 1 message');
+                runner.assertEqual(messages[0].id, id, 'Message ID must match');
+                runner.assertEqual(messages[0].role, 'assistant', 'Role must be assistant');
+                runner.assertEqual(messages[0].content, '', 'Content must be empty string');
+                runner.assertTrue(messages[0].streaming, 'streaming must be true');
+                runner.assertTrue(messages[0].timestamp > 0, 'Must have timestamp');
+            });
+
+            runner.test('appendToStreaming() accumulates text', async (stage) => {
+                const el = document.createElement('chat-messages');
+                stage.appendChild(el);
+                await el.updateComplete;
+
+                const id = el.addStreamingMessage();
+                await el.updateComplete;
+
+                el.appendToStreaming(id, 'Hello');
+                el.appendToStreaming(id, ' world');
+                el.appendToStreaming(id, '!');
+                await el.updateComplete;
+
+                const messages = el.getMessages();
+                runner.assertEqual(messages[0].content, 'Hello world!', 'Content must accumulate chunks');
+                runner.assertTrue(messages[0].streaming, 'Must still be streaming');
+            });
+
+            runner.test('finalizeStreaming() replaces content and sets streaming: false', async (stage) => {
+                const el = document.createElement('chat-messages');
+                stage.appendChild(el);
+                await el.updateComplete;
+
+                const id = el.addStreamingMessage();
+                el.appendToStreaming(id, 'Partial text...');
+                await el.updateComplete;
+
+                const envelope = {
+                    success: true,
+                    result: { response: 'Final response' },
+                    reasoning: 'Some reasoning',
+                    message: 'Completed'
+                };
+
+                el.finalizeStreaming(id, envelope);
+                await el.updateComplete;
+
+                const messages = el.getMessages();
+                runner.assertEqual(messages.length, 1, 'Must still have 1 message');
+                runner.assertFalse(messages[0].streaming, 'streaming must be false');
+                runner.assertEqual(messages[0].content, envelope, 'Content must be the envelope');
+                runner.assertTrue(messages[0].content.success, 'Envelope must have success');
+            });
+
+            runner.test('appendToStreaming() does not affect other messages', async (stage) => {
+                const el = document.createElement('chat-messages');
+                stage.appendChild(el);
+                await el.updateComplete;
+
+                el.addMessage('user', 'Hello');
+                const streamId = el.addStreamingMessage();
+                el.addMessage('user', 'Another message');
+                await el.updateComplete;
+
+                el.appendToStreaming(streamId, 'Streamed text');
+                await el.updateComplete;
+
+                const messages = el.getMessages();
+                runner.assertEqual(messages.length, 3, 'Must have 3 messages');
+                runner.assertEqual(messages[0].content, 'Hello', 'First message unchanged');
+                runner.assertEqual(messages[1].content, 'Streamed text', 'Streaming message updated');
+                runner.assertEqual(messages[2].content, 'Another message', 'Last message unchanged');
+            });
+
+            runner.test('finalizeStreaming() does not affect other messages', async (stage) => {
+                const el = document.createElement('chat-messages');
+                stage.appendChild(el);
+                await el.updateComplete;
+
+                el.addMessage('user', 'User msg');
+                const streamId = el.addStreamingMessage();
+                await el.updateComplete;
+
+                el.appendToStreaming(streamId, 'partial');
+                el.finalizeStreaming(streamId, { result: 'done', success: true });
+                await el.updateComplete;
+
+                const messages = el.getMessages();
+                runner.assertEqual(messages[0].content, 'User msg', 'User message unchanged');
+                runner.assertFalse(messages[1].streaming, 'Streaming message finalized');
+            });
+
+            runner.test('Multiple streaming messages work independently', async (stage) => {
+                const el = document.createElement('chat-messages');
+                stage.appendChild(el);
+                await el.updateComplete;
+
+                const id1 = el.addStreamingMessage();
+                el.appendToStreaming(id1, 'First');
+                el.finalizeStreaming(id1, { result: 'First done' });
+                await el.updateComplete;
+
+                const id2 = el.addStreamingMessage();
+                el.appendToStreaming(id2, 'Second');
+                await el.updateComplete;
+
+                const messages = el.getMessages();
+                runner.assertEqual(messages.length, 2, 'Must have 2 messages');
+                runner.assertFalse(messages[0].streaming, 'First must be finalized');
+                runner.assertTrue(messages[1].streaming, 'Second must still be streaming');
+                runner.assertEqual(messages[1].content, 'Second', 'Second has correct content');
+            });
+        });
+
+        // ========================================
+        // STREAMING RENDER
+        // ========================================
+        runner.group('Streaming Render', () => {
+
+            runner.test('Streaming message shows cursor', async (stage) => {
+                const el = document.createElement('chat-messages');
+                stage.appendChild(el);
+                await el.updateComplete;
+
+                el.addStreamingMessage();
+                await el.updateComplete;
+
+                const cursor = el.shadowRoot.querySelector('.cursor');
+                runner.assertTrue(cursor, 'Must render cursor element');
+                runner.assertEqual(cursor.textContent, '▊', 'Cursor must be ▊');
+            });
+
+            runner.test('Streaming bubble has streaming class', async (stage) => {
+                const el = document.createElement('chat-messages');
+                stage.appendChild(el);
+                await el.updateComplete;
+
+                el.addStreamingMessage();
+                await el.updateComplete;
+
+                const bubble = el.shadowRoot.querySelector('.bubble.streaming');
+                runner.assertTrue(bubble, 'Bubble must have streaming class');
+            });
+
+            runner.test('Streaming message shows accumulated text with cursor', async (stage) => {
+                const el = document.createElement('chat-messages');
+                stage.appendChild(el);
+                await el.updateComplete;
+
+                const id = el.addStreamingMessage();
+                el.appendToStreaming(id, 'Hello ');
+                el.appendToStreaming(id, 'world');
+                await el.updateComplete;
+
+                const textContent = el.shadowRoot.querySelector('.text-content');
+                runner.assertTrue(textContent, 'Must have text-content element');
+                runner.assertTrue(textContent.textContent.includes('Hello world'), 'Must show accumulated text');
+                runner.assertTrue(textContent.querySelector('.cursor'), 'Cursor must be inside text-content');
+            });
+
+            runner.test('Finalized message hides cursor', async (stage) => {
+                const el = document.createElement('chat-messages');
+                stage.appendChild(el);
+                await el.updateComplete;
+
+                const id = el.addStreamingMessage();
+                el.appendToStreaming(id, 'Text');
+                await el.updateComplete;
+
+                // Before finalize: cursor present
+                runner.assertTrue(el.shadowRoot.querySelector('.cursor'), 'Cursor must exist before finalize');
+
+                el.finalizeStreaming(id, { result: 'Final', success: true });
+                await el.updateComplete;
+
+                // After finalize: no cursor
+                const cursor = el.shadowRoot.querySelector('.cursor');
+                runner.assertFalse(cursor, 'Cursor must be gone after finalize');
+            });
+
+            runner.test('Finalized message removes streaming class from bubble', async (stage) => {
+                const el = document.createElement('chat-messages');
+                stage.appendChild(el);
+                await el.updateComplete;
+
+                const id = el.addStreamingMessage();
+                await el.updateComplete;
+
+                runner.assertTrue(el.shadowRoot.querySelector('.bubble.streaming'), 'Bubble must have streaming class');
+
+                el.finalizeStreaming(id, { result: 'Done', success: true });
+                await el.updateComplete;
+
+                const streamingBubble = el.shadowRoot.querySelector('.bubble.streaming');
+                runner.assertFalse(streamingBubble, 'Streaming class must be removed after finalize');
+            });
+
+            runner.test('Finalized message renders as normal assistant message', async (stage) => {
+                const el = document.createElement('chat-messages');
+                stage.appendChild(el);
+                await el.updateComplete;
+
+                const id = el.addStreamingMessage();
+                el.appendToStreaming(id, 'Partial');
+                el.finalizeStreaming(id, { 
+                    result: { response: 'Final answer' },
+                    success: true,
+                    reasoning: 'Step by step'
+                });
+                await el.updateComplete;
+
+                // Must show extracted main text (result.response)
+                const content = el.shadowRoot.textContent;
+                runner.assertTrue(content.includes('Final answer'), 'Must show final response text');
+                
+                // Must have debug-info for envelope
+                const debugInfo = el.shadowRoot.querySelector('chat-debug-info');
+                runner.assertTrue(debugInfo, 'Must render chat-debug-info for envelope');
+            });
+        });
+
+        // ========================================
+        // SCROLL BEHAVIOR
+        // ========================================
+        runner.group('Streaming Scroll', () => {
+
+            runner.test('Auto-scrolls on addStreamingMessage', async (stage) => {
+                const el = document.createElement('chat-messages');
+                el.style.height = '200px';
+                stage.appendChild(el);
+                await el.updateComplete;
+
+                // Fill with messages to create scroll
+                for (let i = 0; i < 15; i++) {
+                    el.addMessage('user', `Message ${i} with enough text to take space`);
+                }
+                await el.updateComplete;
+                await runner.sleep(100);
+
+                el.addStreamingMessage();
+                await el.updateComplete;
+                await runner.sleep(100);
+
+                const container = el.shadowRoot.querySelector('#container');
+                const scrollDiff = container.scrollHeight - container.scrollTop - container.clientHeight;
+                runner.assertTrue(scrollDiff < 10, 'Must auto-scroll to bottom');
+            });
+
+            runner.test('Auto-scrolls on appendToStreaming', async (stage) => {
+                const el = document.createElement('chat-messages');
+                el.style.height = '200px';
+                stage.appendChild(el);
+                await el.updateComplete;
+
+                for (let i = 0; i < 15; i++) {
+                    el.addMessage('user', `Message ${i}`);
+                }
+                const id = el.addStreamingMessage();
+                await el.updateComplete;
+                await runner.sleep(50);
+
+                // Append multiple chunks
+                for (let i = 0; i < 10; i++) {
+                    el.appendToStreaming(id, `Chunk ${i}\n`);
+                }
+                await el.updateComplete;
+                await runner.sleep(100);
+
+                const container = el.shadowRoot.querySelector('#container');
+                const scrollDiff = container.scrollHeight - container.scrollTop - container.clientHeight;
+                runner.assertTrue(scrollDiff < 10, 'Must stay scrolled to bottom during streaming');
+            });
+        });
+
+        runner.run();
+    </script>
+</body>
+</html>
