@@ -39,7 +39,7 @@ export class ChatMessages extends LitElement {
         const id = `stream-${Date.now()}`;
         this.messages = [...this.messages, {
             id, role: 'assistant', content: '',
-            streaming: true, timestamp: Date.now()
+            streaming: true, statusMessages: [], timestamp: Date.now()
         }];
         this.updateComplete.then(() => this._scrollToBottom());
         return id;
@@ -54,6 +54,20 @@ export class ChatMessages extends LitElement {
         this.messages = this.messages.map(msg =>
             msg.id === id
                 ? { ...msg, content: msg.content + chunk }
+                : msg
+        );
+        this.updateComplete.then(() => this._scrollToBottom());
+    }
+
+    /**
+     * Añade un mensaje de estado al log de proceso en tiempo real del mensaje streaming.
+     * @param {string} id - ID del mensaje de streaming
+     * @param {string} message - Texto del status message
+     */
+    updateStreamingStatus(id, message) {
+        this.messages = this.messages.map(msg =>
+            msg.id === id
+                ? { ...msg, statusMessages: [...(msg.statusMessages || []), { message, timestamp: Date.now() }] }
                 : msg
         );
         this.updateComplete.then(() => this._scrollToBottom());
@@ -106,11 +120,39 @@ export class ChatMessages extends LitElement {
                     <div class="role-label">${this._getRoleLabel(msg.role)}</div>
                     <div class="message-body">
                         ${msg.streaming
-                            ? html`<div class="text-content">${msg.content}<span class="cursor">▊</span></div>`
+                            ? html`
+                                ${msg.statusMessages?.length
+                                    ? this._renderProcessLog(msg.statusMessages)
+                                    : ''}
+                                ${msg.content
+                                    ? html`<div class="text-content">${msg.content}<span class="cursor">▊</span></div>`
+                                    : html`<div class="streaming-waiting"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>`
+                                }
+                              `
                             : this._renderContent(msg.role, msg.content)
                         }
                     </div>
                 </div>
+            </div>
+        `;
+    }
+
+    /**
+     * Renderiza el log de proceso en tiempo real durante streaming.
+     * El último paso muestra animación de puntos ("activo").
+     */
+    _renderProcessLog(statusMessages) {
+        return html`
+            <div class="process-log">
+                ${statusMessages.map((step, i) => {
+                    const isLast = i === statusMessages.length - 1;
+                    return html`
+                        <div class="process-step ${isLast ? 'active' : 'done'}">
+                            <span class="step-text">${step.message}</span>
+                            ${isLast ? html`<span class="step-pulse"><span class="dot"></span><span class="dot"></span><span class="dot"></span></span>` : ''}
+                        </div>
+                    `;
+                })}
             </div>
         `;
     }

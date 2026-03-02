@@ -101,7 +101,7 @@ export class ChatDebugInfo extends LitElement {
                                 class="tab-btn ${this._activeTab === 'live' ? 'active' : ''}" 
                                 @click=${() => this._activeTab = 'live'}
                             >
-                                Live (${info.statusLog.length})
+                                Log (${info.statusLog.length})
                             </button>
                         ` : ''}
 

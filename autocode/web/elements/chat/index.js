@@ -37,6 +37,7 @@ export class AutocodeChat extends AutoFunctionController {
         this.conversationHistory = [];
         this._pendingUserMessage = null;
         this._chatConfig = null;
+        this._useStreaming = true; // Toggle streaming (controlado desde settings)
         
         // Inicializar params vacíos (se llenarán con defaults al cargar funcInfo)
         this.params = {
@@ -135,8 +136,15 @@ export class AutocodeChat extends AutoFunctionController {
     }
 
     _handleSettingsChange(e) {
-        const settings = e.detail;
-        // Actualizar params con los nuevos settings
+        const settings = { ...e.detail };
+        
+        // Extraer flags frontend-only antes de guardar como params del backend
+        if ('use_streaming' in settings) {
+            this._useStreaming = settings.use_streaming !== false;
+            delete settings.use_streaming;
+        }
+        
+        // Actualizar params con los settings del backend
         Object.entries(settings).forEach(([key, value]) => {
             this.setParam(key, value);
         });
@@ -317,8 +325,8 @@ export class AutocodeChat extends AutoFunctionController {
             });
         }
 
-        // 3. Usar streaming si disponible, sino fallback síncrono
-        if (this._streamFuncInfo?.streaming) {
+        // 3. Usar streaming si disponible Y habilitado, sino fallback síncrono
+        if (this._streamFuncInfo?.streaming && this._useStreaming) {
             await this._sendMessageStream(message);
         } else {
             await this._sendMessageSync(message);
@@ -337,6 +345,7 @@ export class AutocodeChat extends AutoFunctionController {
         const streamId = this._messages.addStreamingMessage();
         let fullText = '';
         const statusLog = [];
+        let streamFailed = false;
 
         // Resetear envelope para evitar guardar datos stale si hay error
         this.envelope = null;
@@ -359,6 +368,7 @@ export class AutocodeChat extends AutoFunctionController {
                             message: event.data.message,
                             timestamp: Date.now()
                         });
+                        this._messages.updateStreamingStatus(streamId, event.data.message);
                         break;
 
                     case 'complete': {
@@ -372,12 +382,31 @@ export class AutocodeChat extends AutoFunctionController {
                     }
 
                     case 'error':
-                        this._messages.finalizeStreaming(streamId, {
-                            ...event.data, _isError: true, _statusLog: statusLog
-                        });
-                        this._setStatus('error', event.data.message);
+                        if (event.data.streaming_incompatible) {
+                            // Modelo no soporta streaming → fallback automático a sync
+                            this._messages.updateStreamingStatus(streamId, 
+                                '⚠️ ' + event.data.message
+                            );
+                            this._messages.finalizeStreaming(streamId, {
+                                message: event.data.message,
+                                _statusLog: statusLog
+                            });
+                            this._setStatus('loading', 'Reintentando en modo estándar...');
+                            streamFailed = true;
+                        } else {
+                            this._messages.finalizeStreaming(streamId, {
+                                ...event.data, _isError: true, _statusLog: statusLog
+                            });
+                            this._setStatus('error', event.data.message);
+                        }
                         break;
                 }
+            }
+
+            // Fallback automático: reintentar con endpoint síncrono
+            if (streamFailed) {
+                await this._sendMessageSync(message);
+                return;
             }
 
             // Actualizar historial de conversación

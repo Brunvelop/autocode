@@ -418,6 +418,19 @@ export class ChatSettings extends LitElement {
             ${this._showAdvanced ? html`
                 <div class="advanced-controls">
                     <div class="control-group">
+                        <label class="control-label" title="Recibe la respuesta token a token en tiempo real. Desactívalo si el modelo da errores de streaming.">
+                            ⚡ Streaming en tiempo real
+                        </label>
+                        <div class="checkbox-wrapper">
+                            <input 
+                                type="checkbox" 
+                                ?checked=${this._settings.use_streaming !== false}
+                                @change=${e => this._updateSetting('use_streaming', e.target.checked)}
+                            >
+                            <span class="checkbox-label">Respuesta incremental (tokens en tiempo real)</span>
+                        </div>
+                    </div>
+                    <div class="control-group">
                         <label class="control-label" title="Activa cache de prompts del proveedor (Anthropic/OpenAI) para reducir costos y latencia en llamadas repetidas">
                             💰 Prompt Cache (Proveedor)
                         </label>

@@ -107,6 +107,81 @@ export const chatMessagesStyles = css`
         border-left: 3px solid var(--design-primary, #6366f1);
     }
 
+    /* Waiting dots (antes de que lleguen tokens) */
+    .streaming-waiting {
+        display: flex;
+        gap: 4px;
+        align-items: center;
+        padding: 0.25rem 0;
+    }
+
+    /* Process log: pasos en tiempo real */
+    .process-log {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        background: var(--design-bg-gray-50, #f9fafb);
+        border: 1px solid var(--design-border-gray, #e5e7eb);
+        border-radius: var(--design-radius-md, 0.5rem);
+        padding: 0.5rem 0.75rem;
+        margin-bottom: 0.5rem;
+        font-size: 0.72rem;
+        font-family: var(--design-font-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace);
+    }
+
+    .process-step {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 1px 0;
+        line-height: 1.4;
+    }
+
+    .process-step.done {
+        color: var(--design-text-tertiary, #9ca3af);
+    }
+
+    .process-step.active {
+        color: var(--design-text-secondary, #4b5563);
+        font-weight: 500;
+    }
+
+    .step-text {
+        flex: 1;
+    }
+
+    /* Dots compartidos: streaming-waiting y step-pulse */
+    .dot {
+        display: inline-block;
+        width: 5px;
+        height: 5px;
+        border-radius: 50%;
+        background: var(--design-primary, #6366f1);
+        animation: dot-bounce 1.2s infinite ease-in-out;
+    }
+
+    .dot:nth-child(1) { animation-delay: 0s; }
+    .dot:nth-child(2) { animation-delay: 0.2s; }
+    .dot:nth-child(3) { animation-delay: 0.4s; }
+
+    @keyframes dot-bounce {
+        0%, 80%, 100% { opacity: 0.3; transform: scale(0.8); }
+        40% { opacity: 1; transform: scale(1.1); }
+    }
+
+    .step-pulse {
+        display: inline-flex;
+        gap: 3px;
+        align-items: center;
+        flex-shrink: 0;
+    }
+
+    .step-pulse .dot {
+        width: 4px;
+        height: 4px;
+        background: var(--design-primary, #6366f1);
+    }
+
     /* Reasoning Details */
     details.reasoning {
         background-color: var(--design-bg-gray-50, #f9fafb);

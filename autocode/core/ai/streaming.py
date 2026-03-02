@@ -31,7 +31,15 @@ class AutocodeStatusProvider(dspy.streaming.StatusMessageProvider):
     
     def tool_start_status_message(self, instance, inputs):
         tool_name = getattr(instance, 'name', str(instance))
-        return f"🛠️ Llamando herramienta: {tool_name}"
+        # Mostrar argumentos si los hay (excluir 'self' y valores vacíos)
+        if inputs and isinstance(inputs, dict):
+            args = {k: v for k, v in inputs.items() if k != 'self' and v not in (None, '', [], {})}
+            if args:
+                args_preview = ", ".join(
+                    f"{k}={repr(v)[:40]}" for k, v in list(args.items())[:3]  # máx 3 args, 40 chars c/u
+                )
+                return f"🛠️ {tool_name}({args_preview})"
+        return f"🛠️ {tool_name}()"
     
     def tool_end_status_message(self, outputs):
         return "✅ Herramienta completada"
@@ -153,6 +161,14 @@ async def stream_chat(
                 trajectory = DspyOutput.normalize_trajectory(trajectory)
                 trajectory = DspyOutput.serialize_value(trajectory)
             
+            # Capturar historial de llamadas al LM (accesible post-stream vía lm.history)
+            history = None
+            if hasattr(lm, 'history') and lm.history:
+                try:
+                    history = DspyOutput.serialize_value(lm.history)
+                except Exception as e:
+                    logger.warning(f"Could not serialize lm.history: {e}")
+            
             yield _format_sse("complete", {
                 "success": True,
                 "result": result,
@@ -160,7 +176,7 @@ async def stream_chat(
                 "reasoning": str(reasoning) if reasoning and not isinstance(reasoning, str) else reasoning,
                 "trajectory": trajectory,
                 "completions": None,
-                "history": None  # No reconstruimos history en v1
+                "history": history
             })
         else:
             yield _format_sse("complete", {
@@ -176,8 +192,31 @@ async def stream_chat(
     except (GeneratorExit, asyncio.CancelledError):
         logger.info("Client disconnected, stream cancelled")
     except Exception as e:
-        logger.error(f"Streaming error: {e}", exc_info=True)
-        yield _format_sse("error", {"message": str(e), "success": False})
+        # Desempaquetar ExceptionGroup (anyio TaskGroup) para obtener causa raíz
+        root = e
+        while hasattr(root, 'exceptions') and root.exceptions:
+            root = root.exceptions[0]
+        error_msg = str(root)
+        
+        # Detectar errores de incompatibilidad de streaming del modelo
+        is_streaming_error = any(indicator in error_msg for indicator in (
+            'streaming error',
+            'MidStreamFallbackError',
+            'finish_reason: error',
+            "finish_reason='error'",
+            "native_finish_reason='abort'",
+        ))
+        
+        logger.error(f"Streaming error (streaming_incompatible={is_streaming_error}): {error_msg}", exc_info=True)
+        
+        if is_streaming_error:
+            yield _format_sse("error", {
+                "message": "El modelo no soporta bien el streaming. Reintentando en modo estándar...",
+                "success": False,
+                "streaming_incompatible": True
+            })
+        else:
+            yield _format_sse("error", {"message": error_msg, "success": False})
 
 
 def _format_sse(event: str, data: dict) -> str:
