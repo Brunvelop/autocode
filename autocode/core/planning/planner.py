@@ -174,7 +174,16 @@ def update_commit_plan(
         context_json: JSON object de contexto (vacío = no cambiar)
         tags: Tags separados por coma (vacío = no cambiar)
     """
+    # Estados gestionados solo por el executor — no editables manualmente
+    EXECUTOR_MANAGED_STATUSES = {"executing", "completed", "failed"}
+
     try:
+        if status and status in EXECUTOR_MANAGED_STATUSES:
+            return CommitPlanOutput(
+                success=False,
+                message=f"Status '{status}' is managed by the executor and cannot be set manually",
+            )
+
         plan = _load_plan(plan_id)
         if plan is None:
             return CommitPlanOutput(success=False, message=f"Plan '{plan_id}' no encontrado")
