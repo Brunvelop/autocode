@@ -13,6 +13,8 @@ from .models import (
     CommitPlanSummary,
     CommitPlanOutput,
     CommitPlanListOutput,
+    TaskExecutionResult,
+    PlanExecutionState,
 )
 from .planner import (
     create_commit_plan,
@@ -30,6 +32,8 @@ __all__ = [
     "CommitPlanSummary",
     "CommitPlanOutput",
     "CommitPlanListOutput",
+    "TaskExecutionResult",
+    "PlanExecutionState",
     # Functions
     "create_commit_plan",
     "list_commit_plans",

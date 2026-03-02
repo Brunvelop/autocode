@@ -16,7 +16,40 @@ from autocode.interfaces.models import GenericOutput
 TaskType = Literal["create", "modify", "delete", "rename"]
 
 # Estados de un plan
-PlanStatus = Literal["draft", "ready", "abandoned"]
+PlanStatus = Literal["draft", "ready", "executing", "completed", "failed", "abandoned"]
+
+# Estados de ejecución de una tarea individual
+TaskStatus = Literal["pending", "running", "completed", "failed", "skipped"]
+
+
+class TaskExecutionResult(BaseModel):
+    """
+    Resultado de ejecución de una tarea individual.
+    
+    Registra el estado, tiempos, resumen del LLM y archivos
+    modificados durante la ejecución de una task.
+    """
+    task_index: int = Field(..., description="Índice de la tarea en el plan")
+    status: TaskStatus = Field("pending", description="Estado de ejecución")
+    started_at: str = Field("", description="Inicio de ejecución ISO")
+    completed_at: str = Field("", description="Fin de ejecución ISO")
+    error: str = Field("", description="Mensaje de error si falló")
+    llm_summary: str = Field("", description="Resumen generado por el LLM de los cambios realizados")
+    files_changed: List[str] = Field(default_factory=list, description="Archivos creados/modificados/eliminados")
+
+
+class PlanExecutionState(BaseModel):
+    """
+    Estado completo de ejecución de un plan.
+    
+    Contiene metadata de la ejecución (modelo, tiempos) y
+    los resultados individuales de cada tarea.
+    """
+    started_at: str = Field("", description="Inicio de ejecución ISO")
+    completed_at: str = Field("", description="Fin de ejecución ISO")
+    model_used: str = Field("", description="Modelo de inferencia utilizado")
+    task_results: List[TaskExecutionResult] = Field(default_factory=list, description="Resultados por tarea")
+    commit_hash: str = Field("", description="Hash del commit generado (si auto_commit)")
 
 
 class PlanTask(BaseModel):
@@ -64,6 +97,7 @@ class CommitPlan(BaseModel):
     updated_at: str = Field("", description="Fecha de última actualización ISO")
     tags: List[str] = Field(default_factory=list, description="Etiquetas de clasificación")
     conversation_log: List[dict] = Field(default_factory=list, description="Historial del chat usado para planificar")
+    execution: Optional[PlanExecutionState] = Field(None, description="Estado de ejecución (gestionado por el executor)")
 
 
 class CommitPlanSummary(BaseModel):
