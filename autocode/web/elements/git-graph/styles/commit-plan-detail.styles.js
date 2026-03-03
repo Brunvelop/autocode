@@ -486,6 +486,21 @@ export const commitPlanDetailStyles = css`
         line-height: 1.4;
     }
 
+    /* Task cost badge (inline in header) */
+    .task-cost-badge {
+        display: inline-flex;
+        align-items: center;
+        padding: 1px 6px;
+        border-radius: var(--design-radius-full, 9999px);
+        background: var(--design-indigo-50, #eef2ff);
+        color: var(--design-primary, #4f46e5);
+        font-size: 9px;
+        font-family: var(--design-font-mono, monospace);
+        font-weight: var(--design-font-weight-medium, 500);
+        white-space: nowrap;
+        flex-shrink: 0;
+    }
+
     /* Task files changed */
     .task-files {
         padding: 4px 8px;
@@ -564,6 +579,27 @@ export const commitPlanDetailStyles = css`
     @keyframes pulse {
         0%, 100% { opacity: 1; }
         50% { opacity: 0.5; }
+    }
+
+    /* Task debug wrapper (chat-debug-info component) */
+    .task-debug-wrapper {
+        margin-top: 4px;
+        padding: 0 4px;
+    }
+
+    .task-debug-wrapper chat-debug-info {
+        --debug-font-size: 10px;
+    }
+
+    /* Cost / token badges in execution summary */
+    .tokens-badge,
+    .cost-badge {
+        font-family: var(--design-font-mono, monospace);
+        font-weight: var(--design-font-weight-bold, 700);
+    }
+
+    .cost-badge {
+        color: inherit;
     }
 
     /* Actions during execution */

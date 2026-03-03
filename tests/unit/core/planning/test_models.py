@@ -54,6 +54,10 @@ class TestTaskExecutionResult:
         assert result.error == ""
         assert result.llm_summary == ""
         assert result.files_changed == []
+        assert result.prompt_tokens == 0
+        assert result.completion_tokens == 0
+        assert result.total_tokens == 0
+        assert result.total_cost == 0.0
 
     def test_all_fields(self):
         """TaskExecutionResult acepta todos los campos."""
@@ -89,6 +93,8 @@ class TestPlanExecutionState:
         assert state.model_used == ""
         assert state.task_results == []
         assert state.commit_hash == ""
+        assert state.total_tokens == 0
+        assert state.total_cost == 0.0
 
     def test_with_task_results(self):
         """PlanExecutionState contiene TaskExecutionResult list."""

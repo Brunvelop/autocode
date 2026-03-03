@@ -7,7 +7,7 @@ Flujo:
 1. Carga y valida el plan (status debe ser draft/ready/failed)
 2. Marca el plan como 'executing'
 3. Para cada task: ejecuta un agente ReAct con file tools
-4. Emite SSE events: plan_start, task_start, status, task_complete/error, plan_complete
+4. Emite SSE events: plan_start, task_start, status, task_debug, task_complete/error, plan_complete
 5. Opcionalmente hace git add + commit al finalizar
 """
 
@@ -15,10 +15,10 @@ import json
 import logging
 import subprocess
 from datetime import datetime
-from typing import AsyncGenerator, List, Optional
+from typing import AsyncGenerator, List, Union
 
 import dspy
-from dspy.streaming import StreamResponse, StatusMessage
+from dspy.streaming import StatusMessage
 
 from autocode.interfaces.registry import register_function
 from autocode.interfaces.models import GenericOutput
@@ -29,6 +29,7 @@ from autocode.core.ai.dspy_utils import (
 )
 from autocode.core.ai.streaming import AutocodeStatusProvider, _format_sse
 from autocode.core.ai.signatures import TaskExecutionSignature
+from autocode.core.ai.models import DspyOutput
 from autocode.core.planning.models import (
     CommitPlan,
     PlanTask,
@@ -131,6 +132,8 @@ async def stream_execute_plan(
         all_files_changed: List[str] = []
         tasks_completed = 0
         tasks_failed = 0
+        plan_total_tokens = 0
+        plan_total_cost = 0.0
 
         for i, task in enumerate(plan.tasks):
             yield _format_sse(
@@ -147,15 +150,29 @@ async def stream_execute_plan(
             )
 
             try:
-                task_result, task_events = await _execute_single_task(
+                # Consume the async generator — SSE events yielded in real-time
+                task_result = None
+                async for item in _execute_single_task(
                     task, plan, lm, tools, i
-                )
+                ):
+                    if isinstance(item, str):
+                        # SSE event string — forward immediately to client
+                        yield item
+                    elif isinstance(item, TaskExecutionResult):
+                        task_result = item
 
-                # Forward sub-events (status messages from ReAct)
-                for evt in task_events:
-                    yield evt
+                if task_result is None:
+                    task_result = TaskExecutionResult(
+                        task_index=i,
+                        status="failed",
+                        error="No result from task execution",
+                    )
 
                 plan.execution.task_results.append(task_result)
+
+                # Accumulate cost metrics
+                plan_total_tokens += task_result.total_tokens
+                plan_total_cost += task_result.total_cost
 
                 if task_result.status == "completed":
                     tasks_completed += 1
@@ -167,6 +184,8 @@ async def stream_execute_plan(
                             "status": "completed",
                             "summary": task_result.llm_summary,
                             "files_changed": task_result.files_changed,
+                            "total_tokens": task_result.total_tokens,
+                            "total_cost": task_result.total_cost,
                         },
                     )
                 else:
@@ -204,6 +223,8 @@ async def stream_execute_plan(
 
         # 6. Finalizar plan
         plan.execution.completed_at = datetime.now().isoformat()
+        plan.execution.total_tokens = plan_total_tokens
+        plan.execution.total_cost = plan_total_cost
         plan.status = "completed" if tasks_failed == 0 else "failed"
         _save_plan(plan)
 
@@ -214,6 +235,8 @@ async def stream_execute_plan(
                 "tasks_completed": tasks_completed,
                 "tasks_failed": tasks_failed,
                 "commit_hash": commit_hash,
+                "total_tokens": plan_total_tokens,
+                "total_cost": plan_total_cost,
             },
         )
     except Exception as e:
@@ -283,7 +306,7 @@ def execute_commit_plan(
 
 
 # ============================================================================
-# PRIVATE: SINGLE TASK EXECUTION
+# PRIVATE: SINGLE TASK EXECUTION (ASYNC GENERATOR)
 # ============================================================================
 
 
@@ -293,8 +316,11 @@ async def _execute_single_task(
     lm: dspy.LM,
     tools: list,
     task_index: int,
-) -> tuple[TaskExecutionResult, list[str]]:
+) -> AsyncGenerator[Union[str, TaskExecutionResult], None]:
     """Ejecuta una task con ReAct + streamify.
+
+    Yields SSE events en tiempo real durante la ejecución,
+    y como último item el TaskExecutionResult.
 
     Args:
         task: La tarea a ejecutar
@@ -303,8 +329,9 @@ async def _execute_single_task(
         tools: Lista de tools DSPy
         task_index: Índice de la tarea en el plan
 
-    Returns:
-        Tupla (TaskExecutionResult, list[sse_events])
+    Yields:
+        str: SSE event strings (status messages)
+        TaskExecutionResult: Final result (always last item)
     """
     started_at = datetime.now().isoformat()
     instruction = _build_task_instruction(task, plan)
@@ -324,52 +351,77 @@ async def _execute_single_task(
         status_message_provider=AutocodeStatusProvider(),
     )
 
-    # Ejecutar y recolectar
+    # Ejecutar y yield events en tiempo real
     prediction = None
-    sse_events: list[str] = []
-
     with dspy.context(lm=lm):
         async for chunk in stream_program(
             task_instruction=instruction, file_path=task.path
         ):
             if isinstance(chunk, StatusMessage) and chunk.message:
-                sse_events.append(
-                    _format_sse(
-                        "status",
-                        {"task_index": task_index, "message": chunk.message},
-                    )
+                # Yield SSE event IMMEDIATELY — no buffering
+                yield _format_sse(
+                    "status",
+                    {"task_index": task_index, "message": chunk.message},
                 )
             elif isinstance(chunk, dspy.Prediction):
                 prediction = chunk
 
-    if prediction is None:
-        return (
-            TaskExecutionResult(
-                task_index=task_index,
-                status="failed",
-                started_at=started_at,
-                completed_at=datetime.now().isoformat(),
-                error="No prediction received from LLM",
+    # Capturar métricas de coste del historial del LM
+    cost_info = _extract_cost_from_history(lm)
+
+    # Capturar y normalizar trajectory para debug
+    trajectory_raw = getattr(prediction, "trajectory", {}) if prediction else {}
+    normalized_trajectory = (
+        DspyOutput.normalize_trajectory(trajectory_raw)
+        if trajectory_raw
+        else []
+    )
+
+    # Serializar history del LM para debug
+    serialized_history = None
+    if hasattr(lm, "history") and lm.history:
+        try:
+            serialized_history = DspyOutput.serialize_value(lm.history)
+        except Exception as e:
+            logger.warning(f"Could not serialize lm.history: {e}")
+
+    # Emitir evento de debug con trajectory + history + cost
+    yield _format_sse(
+        "task_debug",
+        {
+            "task_index": task_index,
+            "trajectory": (
+                DspyOutput.serialize_value(normalized_trajectory)
+                if normalized_trajectory
+                else []
             ),
-            sse_events,
+            "history": serialized_history or [],
+            **cost_info,
+        },
+    )
+
+    files_changed = _extract_files_changed(trajectory_raw)
+
+    if prediction is None:
+        yield TaskExecutionResult(
+            task_index=task_index,
+            status="failed",
+            started_at=started_at,
+            completed_at=datetime.now().isoformat(),
+            error="No prediction received from LLM",
+            **cost_info,
         )
-
-    # Extraer info
-    summary = getattr(prediction, "completion_summary", "")
-    trajectory = getattr(prediction, "trajectory", {})
-    files_changed = _extract_files_changed(trajectory)
-
-    return (
-        TaskExecutionResult(
+    else:
+        summary = getattr(prediction, "completion_summary", "")
+        yield TaskExecutionResult(
             task_index=task_index,
             status="completed",
             started_at=started_at,
             completed_at=datetime.now().isoformat(),
             llm_summary=summary,
             files_changed=files_changed,
-        ),
-        sse_events,
-    )
+            **cost_info,
+        )
 
 
 # ============================================================================
@@ -439,6 +491,63 @@ def _extract_files_changed(trajectory) -> List[str]:
                 if path not in files:
                     files.append(path)
     return files
+
+
+def _extract_cost_from_history(lm) -> dict:
+    """Extrae métricas de coste del historial de llamadas al LM.
+
+    Recorre lm.history sumando tokens y costes de cada llamada.
+    Compatible con la estructura de LiteLLM/DSPy.
+
+    Args:
+        lm: Language Model con historial de llamadas
+
+    Returns:
+        Dict con prompt_tokens, completion_tokens, total_tokens, total_cost
+    """
+    if not hasattr(lm, "history") or not lm.history:
+        return {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0,
+            "total_cost": 0.0,
+        }
+
+    prompt_tokens = 0
+    completion_tokens = 0
+    total_cost = 0.0
+
+    for call in lm.history:
+        if not isinstance(call, dict):
+            continue
+
+        # DSPy/LiteLLM history puede tener usage en diferentes lugares
+        usage = call.get("usage") or {}
+        if isinstance(usage, dict):
+            prompt_tokens += usage.get("prompt_tokens", 0) or usage.get(
+                "input_tokens", 0
+            )
+            completion_tokens += usage.get("completion_tokens", 0) or usage.get(
+                "output_tokens", 0
+            )
+
+        # LiteLLM puede poner el coste en varios lugares
+        cost = (
+            call.get("cost")
+            or call.get("response_cost")
+            or (call.get("_hidden_params") or {}).get("response_cost")
+            or (
+                (call.get("response") or {}).get("_hidden_params") or {}
+            ).get("response_cost")
+        )
+        total_cost += cost or 0
+
+    return {
+        "prompt_tokens": prompt_tokens,
+        "completion_tokens": completion_tokens,
+        "total_tokens": prompt_tokens + completion_tokens,
+        "total_cost": total_cost,
+    }
 
 
 def _get_executor_tools() -> list:

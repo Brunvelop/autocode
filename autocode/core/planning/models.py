@@ -36,6 +36,10 @@ class TaskExecutionResult(BaseModel):
     error: str = Field("", description="Mensaje de error si falló")
     llm_summary: str = Field("", description="Resumen generado por el LLM de los cambios realizados")
     files_changed: List[str] = Field(default_factory=list, description="Archivos creados/modificados/eliminados")
+    prompt_tokens: int = Field(0, description="Tokens de prompt consumidos")
+    completion_tokens: int = Field(0, description="Tokens de completion generados")
+    total_tokens: int = Field(0, description="Total tokens consumidos")
+    total_cost: float = Field(0.0, description="Coste total en USD")
 
 
 class PlanExecutionState(BaseModel):
@@ -50,6 +54,8 @@ class PlanExecutionState(BaseModel):
     model_used: str = Field("", description="Modelo de inferencia utilizado")
     task_results: List[TaskExecutionResult] = Field(default_factory=list, description="Resultados por tarea")
     commit_hash: str = Field("", description="Hash del commit generado (si auto_commit)")
+    total_tokens: int = Field(0, description="Total tokens de todas las tareas")
+    total_cost: float = Field(0.0, description="Coste total en USD de toda la ejecución")
 
 
 class PlanTask(BaseModel):

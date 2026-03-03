@@ -9,6 +9,7 @@ import { LitElement, html } from 'https://cdn.jsdelivr.net/gh/lit/dist@3/core/li
 import { AutoFunctionController } from '../auto-element-generator.js';
 import { themeTokens } from './styles/theme.js';
 import { commitPlanDetailStyles } from './styles/commit-plan-detail.styles.js';
+import '../chat/chat-debug-info.js';
 
 // Task type icons
 const TASK_ICONS = {
@@ -318,6 +319,8 @@ export class CommitPlanDetail extends LitElement {
         const taskStatus = this._taskStatuses.get(index);
         const execStatus = taskStatus?.status || '';
         const statusIcon = TASK_STATUS_ICONS[execStatus] || '';
+        const hasCost = taskStatus?.total_tokens > 0 || taskStatus?.total_cost > 0;
+        const hasDebugData = taskStatus?.trajectory?.length > 0 || taskStatus?.history?.length > 0;
 
         return html`
             <div class="task-card ${execStatus}">
@@ -325,6 +328,12 @@ export class CommitPlanDetail extends LitElement {
                     <span>${icon}</span>
                     <span class="task-type-badge task-type-${task.type}">${task.type}</span>
                     <span class="task-path" title="${task.path}">${task.path}</span>
+                    ${hasCost ? html`
+                        <span class="task-cost-badge" title="Tokens: ${taskStatus.total_tokens}">
+                            ${this._formatTokens(taskStatus.total_tokens)}
+                            ${taskStatus.total_cost > 0 ? html` · $${taskStatus.total_cost.toFixed(4)}` : ''}
+                        </span>
+                    ` : ''}
                     ${statusIcon ? html`<span class="task-status-icon">${statusIcon}</span>` : ''}
                 </div>
                 <div class="task-body">
@@ -353,14 +362,43 @@ export class CommitPlanDetail extends LitElement {
                     </div>
                 ` : ''}
                 ${taskStatus?.messages?.length ? html`
-                    <div class="task-log">
+                    <div class="task-log" id="task-log-${index}">
                         ${taskStatus.messages.map(m => html`
                             <div class="log-line">${m}</div>
                         `)}
                     </div>
                 ` : ''}
+                ${hasDebugData ? html`
+                    <div class="task-debug-wrapper">
+                        <chat-debug-info .data=${this._buildDebugData(taskStatus)}></chat-debug-info>
+                    </div>
+                ` : ''}
             </div>
         `;
+    }
+
+    /**
+     * Build a data object compatible with chat-debug-info from task status.
+     */
+    _buildDebugData(taskStatus) {
+        return {
+            success: taskStatus.status === 'completed',
+            trajectory: taskStatus.trajectory || [],
+            history: taskStatus.history || [],
+            _statusLog: (taskStatus.messages || []).map(m => ({
+                message: m,
+                timestamp: Date.now(),
+            })),
+        };
+    }
+
+    /**
+     * Format token count for display (e.g., 1500 → "1.5k").
+     */
+    _formatTokens(tokens) {
+        if (!tokens) return '0';
+        if (tokens >= 1000) return `${(tokens / 1000).toFixed(1)}k`;
+        return String(tokens);
     }
 
     _hasContext(ctx) {
@@ -469,7 +507,26 @@ export class CommitPlanDetail extends LitElement {
                 if (ts) {
                     ts.messages.push(data.message);
                     this._taskStatuses = new Map(this._taskStatuses);
+                    // Auto-scroll the task log to show latest message
+                    this.updateComplete.then(() => {
+                        const logEl = this.shadowRoot?.getElementById(`task-log-${data.task_index}`);
+                        if (logEl) logEl.scrollTop = logEl.scrollHeight;
+                    });
                 }
+                break;
+            }
+
+            case 'task_debug': {
+                const ts = this._taskStatuses.get(data.task_index);
+                if (ts) {
+                    ts.trajectory = data.trajectory || [];
+                    ts.history = data.history || [];
+                    ts.prompt_tokens = data.prompt_tokens || 0;
+                    ts.completion_tokens = data.completion_tokens || 0;
+                    ts.total_tokens = data.total_tokens || 0;
+                    ts.total_cost = data.total_cost || 0;
+                }
+                this._taskStatuses = new Map(this._taskStatuses);
                 break;
             }
 
@@ -479,6 +536,8 @@ export class CommitPlanDetail extends LitElement {
                     ts.status = 'completed';
                     ts.summary = data.summary || '';
                     ts.files_changed = data.files_changed || [];
+                    ts.total_tokens = data.total_tokens || ts.total_tokens || 0;
+                    ts.total_cost = data.total_cost || ts.total_cost || 0;
                 }
                 this._taskStatuses = new Map(this._taskStatuses);
                 break;
@@ -500,6 +559,8 @@ export class CommitPlanDetail extends LitElement {
                     tasksCompleted: data.tasks_completed,
                     tasksFailed: data.tasks_failed,
                     commitHash: data.commit_hash || '',
+                    totalTokens: data.total_tokens || 0,
+                    totalCost: data.total_cost || 0,
                 };
                 break;
 
@@ -546,6 +607,8 @@ export class CommitPlanDetail extends LitElement {
                 <div class="summary-details">
                     ${s.tasksCompleted} tarea${s.tasksCompleted !== 1 ? 's' : ''} completada${s.tasksCompleted !== 1 ? 's' : ''}
                     ${s.tasksFailed > 0 ? html` · ${s.tasksFailed} fallida${s.tasksFailed !== 1 ? 's' : ''}` : ''}
+                    ${s.totalTokens ? html` · <span class="tokens-badge">${this._formatTokens(s.totalTokens)} tokens</span>` : ''}
+                    ${s.totalCost ? html` · <span class="cost-badge">$${s.totalCost.toFixed(4)}</span>` : ''}
                     ${s.commitHash ? html` · Commit: <span class="commit-hash">${s.commitHash.substring(0, 7)}</span>` : ''}
                 </div>
             </div>

@@ -1,10 +1,11 @@
 """
 Tests for plan executor with ReAct + streaming SSE.
 
-RED phase: These tests define the expected behavior for:
+Tests cover:
 - _build_task_instruction: prompt construction from task + plan context
 - _extract_files_changed: file path extraction from ReAct trajectory
-- stream_execute_plan: async SSE streaming with status transitions
+- _extract_cost_from_history: cost/token extraction from LM history
+- stream_execute_plan: async SSE streaming with status transitions, cost tracking
 """
 
 import json
@@ -51,6 +52,37 @@ def _parse_sse(raw_event):
     event_type = lines[0].replace("event: ", "")
     data = json.loads(lines[1].replace("data: ", ""))
     return {"event": event_type, "data": data}
+
+
+async def _mock_task_generator(task_result, status_messages=None):
+    """Helper: creates an async generator that mimics _execute_single_task.
+
+    Yields status SSE events first (if any), then the TaskExecutionResult.
+    """
+    from autocode.core.ai.streaming import _format_sse
+
+    if status_messages:
+        for msg in status_messages:
+            yield _format_sse(
+                "status",
+                {"task_index": task_result.task_index, "message": msg},
+            )
+
+    # Emit a task_debug event (like the real implementation)
+    yield _format_sse(
+        "task_debug",
+        {
+            "task_index": task_result.task_index,
+            "trajectory": [],
+            "history": [],
+            "prompt_tokens": task_result.prompt_tokens,
+            "completion_tokens": task_result.completion_tokens,
+            "total_tokens": task_result.total_tokens,
+            "total_cost": task_result.total_cost,
+        },
+    )
+
+    yield task_result
 
 
 # ==============================================================================
@@ -174,6 +206,101 @@ class TestExtractFilesChanged:
 
 
 # ==============================================================================
+# TESTS: _extract_cost_from_history
+# ==============================================================================
+
+
+class TestExtractCostFromHistory:
+    """Tests for _extract_cost_from_history helper."""
+
+    def test_no_history(self):
+        """Sin historial retorna zeros."""
+        from autocode.core.planning.executor import _extract_cost_from_history
+
+        lm = MagicMock()
+        lm.history = []
+        result = _extract_cost_from_history(lm)
+        assert result["total_tokens"] == 0
+        assert result["total_cost"] == 0.0
+
+    def test_no_history_attr(self):
+        """Sin atributo history retorna zeros."""
+        from autocode.core.planning.executor import _extract_cost_from_history
+
+        lm = MagicMock(spec=[])  # no attributes
+        result = _extract_cost_from_history(lm)
+        assert result["total_tokens"] == 0
+        assert result["total_cost"] == 0.0
+
+    def test_sums_tokens_from_usage(self):
+        """Suma tokens de usage de cada llamada."""
+        from autocode.core.planning.executor import _extract_cost_from_history
+
+        lm = MagicMock()
+        lm.history = [
+            {"usage": {"prompt_tokens": 100, "completion_tokens": 50}},
+            {"usage": {"prompt_tokens": 200, "completion_tokens": 75}},
+        ]
+        result = _extract_cost_from_history(lm)
+        assert result["prompt_tokens"] == 300
+        assert result["completion_tokens"] == 125
+        assert result["total_tokens"] == 425
+
+    def test_sums_cost_from_response_cost(self):
+        """Suma coste de response_cost de cada llamada."""
+        from autocode.core.planning.executor import _extract_cost_from_history
+
+        lm = MagicMock()
+        lm.history = [
+            {"usage": {"prompt_tokens": 100, "completion_tokens": 50}, "cost": 0.001},
+            {"usage": {"prompt_tokens": 200, "completion_tokens": 75}, "cost": 0.002},
+        ]
+        result = _extract_cost_from_history(lm)
+        assert abs(result["total_cost"] - 0.003) < 1e-9
+
+    def test_handles_input_output_tokens(self):
+        """Maneja variante input_tokens/output_tokens de LiteLLM."""
+        from autocode.core.planning.executor import _extract_cost_from_history
+
+        lm = MagicMock()
+        lm.history = [
+            {"usage": {"input_tokens": 150, "output_tokens": 60}},
+        ]
+        result = _extract_cost_from_history(lm)
+        assert result["prompt_tokens"] == 150
+        assert result["completion_tokens"] == 60
+        assert result["total_tokens"] == 210
+
+    def test_handles_hidden_params_cost(self):
+        """Extrae coste de _hidden_params.response_cost."""
+        from autocode.core.planning.executor import _extract_cost_from_history
+
+        lm = MagicMock()
+        lm.history = [
+            {
+                "usage": {"prompt_tokens": 100, "completion_tokens": 50},
+                "_hidden_params": {"response_cost": 0.005},
+            },
+        ]
+        result = _extract_cost_from_history(lm)
+        assert abs(result["total_cost"] - 0.005) < 1e-9
+
+    def test_handles_non_dict_entries(self):
+        """Ignora entradas que no son dict en el historial."""
+        from autocode.core.planning.executor import _extract_cost_from_history
+
+        lm = MagicMock()
+        lm.history = [
+            "not a dict",
+            {"usage": {"prompt_tokens": 100, "completion_tokens": 50}},
+            42,
+        ]
+        result = _extract_cost_from_history(lm)
+        assert result["prompt_tokens"] == 100
+        assert result["completion_tokens"] == 50
+
+
+# ==============================================================================
 # TESTS: stream_execute_plan
 # ==============================================================================
 
@@ -184,19 +311,32 @@ class TestStreamExecutePlan:
 
     All tests mock:
     - PLANS_DIR → tmp_path for plan persistence isolation
-    - _execute_single_task → to avoid real LLM calls
+    - _execute_single_task → async generator (new pattern)
     - get_dspy_lm → to avoid needing API keys
-    - _get_executor_tools → to avoid registry dependency (cleared by autouse fixture)
+    - _get_executor_tools → to avoid registry dependency
     """
 
     # Common patches for all tests that go through the full execution flow
     def _execution_patches(self, tmp_path):
         """Returns a contextmanager stack with common mocks."""
         from contextlib import ExitStack
+
         stack = ExitStack()
-        stack.enter_context(patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)))
-        stack.enter_context(patch("autocode.core.planning.executor.get_dspy_lm", return_value=MagicMock()))
-        stack.enter_context(patch("autocode.core.planning.executor._get_executor_tools", return_value=[]))
+        stack.enter_context(
+            patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path))
+        )
+        stack.enter_context(
+            patch(
+                "autocode.core.planning.executor.get_dspy_lm",
+                return_value=MagicMock(),
+            )
+        )
+        stack.enter_context(
+            patch(
+                "autocode.core.planning.executor._get_executor_tools",
+                return_value=[],
+            )
+        )
         return stack
 
     async def test_emits_plan_start_event(self, tmp_path):
@@ -204,18 +344,16 @@ class TestStreamExecutePlan:
         from autocode.core.planning.executor import stream_execute_plan
 
         plan = _create_test_plan(tmp_path, title="Test Plan", num_tasks=1)
+        task_result = TaskExecutionResult(
+            task_index=0, status="completed", llm_summary="Done"
+        )
 
         events = []
         with self._execution_patches(tmp_path) as stack:
             mock_exec = stack.enter_context(
                 patch("autocode.core.planning.executor._execute_single_task")
             )
-            mock_exec.return_value = (
-                TaskExecutionResult(
-                    task_index=0, status="completed", llm_summary="Done"
-                ),
-                [],
-            )
+            mock_exec.return_value = _mock_task_generator(task_result)
             async for event in stream_execute_plan(
                 plan_id=plan.id, auto_commit=False
             ):
@@ -236,11 +374,11 @@ class TestStreamExecutePlan:
             mock_exec = stack.enter_context(
                 patch("autocode.core.planning.executor._execute_single_task")
             )
-            mock_exec.return_value = (
+            # Mock returns a fresh generator for each call
+            mock_exec.side_effect = lambda task, plan, lm, tools, idx: _mock_task_generator(
                 TaskExecutionResult(
-                    task_index=0, status="completed", llm_summary="Done"
-                ),
-                [],
+                    task_index=idx, status="completed", llm_summary="Done"
+                )
             )
             async for event in stream_execute_plan(
                 plan_id=plan.id, auto_commit=False
@@ -262,9 +400,8 @@ class TestStreamExecutePlan:
             mock_exec = stack.enter_context(
                 patch("autocode.core.planning.executor._execute_single_task")
             )
-            mock_exec.return_value = (
-                TaskExecutionResult(task_index=0, status="completed"),
-                [],
+            mock_exec.return_value = _mock_task_generator(
+                TaskExecutionResult(task_index=0, status="completed")
             )
             async for event in stream_execute_plan(
                 plan_id=plan.id, auto_commit=False
@@ -293,14 +430,16 @@ class TestStreamExecutePlan:
 
         with self._execution_patches(tmp_path) as stack:
             stack.enter_context(
-                patch("autocode.core.planning.executor._save_plan", side_effect=spy_save)
+                patch(
+                    "autocode.core.planning.executor._save_plan",
+                    side_effect=spy_save,
+                )
             )
             mock_exec = stack.enter_context(
                 patch("autocode.core.planning.executor._execute_single_task")
             )
-            mock_exec.return_value = (
-                TaskExecutionResult(task_index=0, status="completed"),
-                [],
+            mock_exec.return_value = _mock_task_generator(
+                TaskExecutionResult(task_index=0, status="completed")
             )
             async for _ in stream_execute_plan(
                 plan_id=plan.id, auto_commit=False
@@ -321,11 +460,10 @@ class TestStreamExecutePlan:
             mock_exec = stack.enter_context(
                 patch("autocode.core.planning.executor._execute_single_task")
             )
-            mock_exec.return_value = (
+            mock_exec.return_value = _mock_task_generator(
                 TaskExecutionResult(
                     task_index=0, status="failed", error="LLM error"
-                ),
-                [],
+                )
             )
             async for event in stream_execute_plan(
                 plan_id=plan.id, auto_commit=False
@@ -373,13 +511,12 @@ class TestStreamExecutePlan:
             mock_git = stack.enter_context(
                 patch("autocode.core.planning.executor._git_add_and_commit")
             )
-            mock_exec.return_value = (
+            mock_exec.return_value = _mock_task_generator(
                 TaskExecutionResult(
                     task_index=0,
                     status="completed",
                     files_changed=["src/main.py"],
-                ),
-                [],
+                )
             )
             mock_git.return_value = "abc1234"
 
@@ -407,11 +544,10 @@ class TestStreamExecutePlan:
             mock_git = stack.enter_context(
                 patch("autocode.core.planning.executor._git_add_and_commit")
             )
-            mock_exec.return_value = (
+            mock_exec.return_value = _mock_task_generator(
                 TaskExecutionResult(
                     task_index=0, status="failed", error="error"
-                ),
-                [],
+                )
             )
             async for _ in stream_execute_plan(
                 plan_id=plan.id, auto_commit=True
@@ -419,3 +555,128 @@ class TestStreamExecutePlan:
                 pass
 
         mock_git.assert_not_called()
+
+    async def test_status_events_forwarded_in_realtime(self, tmp_path):
+        """Los status events se forwardean en tiempo real (no al final)."""
+        from autocode.core.planning.executor import stream_execute_plan
+
+        plan = _create_test_plan(tmp_path, num_tasks=1)
+
+        events = []
+        with self._execution_patches(tmp_path) as stack:
+            mock_exec = stack.enter_context(
+                patch("autocode.core.planning.executor._execute_single_task")
+            )
+            mock_exec.return_value = _mock_task_generator(
+                TaskExecutionResult(
+                    task_index=0, status="completed", llm_summary="Done"
+                ),
+                status_messages=[
+                    "🛠️ read_file_content(path='src/file0.py')",
+                    "✅ Herramienta completada",
+                    "🧠 Consultando al LLM...",
+                ],
+            )
+            async for event in stream_execute_plan(
+                plan_id=plan.id, auto_commit=False
+            ):
+                events.append(_parse_sse(event))
+
+        # Status events should appear between task_start and task_complete
+        event_types = [e["event"] for e in events]
+        assert "status" in event_types
+        status_events = [e for e in events if e["event"] == "status"]
+        assert len(status_events) == 3
+        assert "read_file_content" in status_events[0]["data"]["message"]
+
+    async def test_task_debug_event_emitted(self, tmp_path):
+        """Se emite un task_debug event con trajectory, history y cost info."""
+        from autocode.core.planning.executor import stream_execute_plan
+
+        plan = _create_test_plan(tmp_path, num_tasks=1)
+
+        events = []
+        with self._execution_patches(tmp_path) as stack:
+            mock_exec = stack.enter_context(
+                patch("autocode.core.planning.executor._execute_single_task")
+            )
+            mock_exec.return_value = _mock_task_generator(
+                TaskExecutionResult(
+                    task_index=0,
+                    status="completed",
+                    total_tokens=500,
+                    total_cost=0.001,
+                )
+            )
+            async for event in stream_execute_plan(
+                plan_id=plan.id, auto_commit=False
+            ):
+                events.append(_parse_sse(event))
+
+        debug_events = [e for e in events if e["event"] == "task_debug"]
+        assert len(debug_events) == 1
+        debug = debug_events[0]["data"]
+        assert "trajectory" in debug
+        assert "history" in debug
+        assert "total_tokens" in debug
+        assert "total_cost" in debug
+
+    async def test_plan_complete_includes_total_cost(self, tmp_path):
+        """plan_complete incluye total_tokens y total_cost acumulados."""
+        from autocode.core.planning.executor import stream_execute_plan
+
+        plan = _create_test_plan(tmp_path, num_tasks=2)
+
+        events = []
+        with self._execution_patches(tmp_path) as stack:
+            mock_exec = stack.enter_context(
+                patch("autocode.core.planning.executor._execute_single_task")
+            )
+            # Each task has some cost
+            mock_exec.side_effect = lambda task, plan, lm, tools, idx: _mock_task_generator(
+                TaskExecutionResult(
+                    task_index=idx,
+                    status="completed",
+                    total_tokens=500,
+                    total_cost=0.001,
+                    prompt_tokens=400,
+                    completion_tokens=100,
+                )
+            )
+            async for event in stream_execute_plan(
+                plan_id=plan.id, auto_commit=False
+            ):
+                events.append(_parse_sse(event))
+
+        plan_complete = [e for e in events if e["event"] == "plan_complete"][0]
+        assert plan_complete["data"]["total_tokens"] == 1000  # 500 * 2
+        assert abs(plan_complete["data"]["total_cost"] - 0.002) < 1e-9
+
+    async def test_task_complete_includes_cost(self, tmp_path):
+        """task_complete incluye total_tokens y total_cost de la tarea."""
+        from autocode.core.planning.executor import stream_execute_plan
+
+        plan = _create_test_plan(tmp_path, num_tasks=1)
+
+        events = []
+        with self._execution_patches(tmp_path) as stack:
+            mock_exec = stack.enter_context(
+                patch("autocode.core.planning.executor._execute_single_task")
+            )
+            mock_exec.return_value = _mock_task_generator(
+                TaskExecutionResult(
+                    task_index=0,
+                    status="completed",
+                    llm_summary="Done",
+                    total_tokens=750,
+                    total_cost=0.0025,
+                )
+            )
+            async for event in stream_execute_plan(
+                plan_id=plan.id, auto_commit=False
+            ):
+                events.append(_parse_sse(event))
+
+        task_complete = [e for e in events if e["event"] == "task_complete"][0]
+        assert task_complete["data"]["total_tokens"] == 750
+        assert abs(task_complete["data"]["total_cost"] - 0.0025) < 1e-9
