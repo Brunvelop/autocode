@@ -257,3 +257,58 @@ class MetricsHistory(BaseModel):
 class MetricsHistoryOutput(GenericOutput):
     """Output de get_metrics_history()."""
     result: Optional[MetricsHistory] = None
+
+
+# ==============================================================================
+# ARCHITECTURE MODELS
+# ==============================================================================
+
+
+class ArchitectureNode(BaseModel):
+    """Nodo de la jerarquía de arquitectura con métricas de calidad.
+
+    Representa un directorio o archivo Python con métricas agregadas.
+    Los directorios reciben promedios ponderados por LOC de sus hijos.
+    """
+
+    id: str = Field(..., description="Path del nodo (usado como ID único)")
+    parent_id: Optional[str] = Field(None, description="Path del nodo padre (None para root)")
+    name: str = Field(..., description="Nombre display del nodo")
+    type: Literal["directory", "file"] = Field(..., description="Tipo de nodo")
+    path: str = Field(..., description="Path relativo al root del proyecto")
+    loc: int = Field(0, description="Total líneas de código (incluyendo blanks y comments)")
+    sloc: int = Field(0, description="Líneas de código fuente (sin blanks ni comments)")
+    mi: float = Field(100.0, description="Índice de mantenibilidad (0-100)")
+    avg_complexity: float = Field(0.0, description="Complejidad ciclomática media")
+    max_complexity: int = Field(0, description="Complejidad ciclomática máxima")
+    functions_count: int = Field(0, description="Número de funciones/métodos")
+    classes_count: int = Field(0, description="Número de clases")
+    children_count: int = Field(0, description="Número de hijos directos")
+
+
+class ArchitectureSnapshot(BaseModel):
+    """Snapshot completo de la arquitectura del proyecto en un momento dado.
+
+    Contiene la jerarquía de nodos (adjacency list) con métricas de calidad
+    por nodo, más metadatos del commit y agregados globales.
+    """
+
+    root_id: str = Field(..., description="ID del nodo raíz")
+    nodes: List[ArchitectureNode] = Field(default_factory=list, description="Nodos del árbol")
+    # Metadatos git
+    commit_hash: str = Field(..., description="Hash completo del commit")
+    commit_short: str = Field("", description="Hash abreviado")
+    branch: str = Field("", description="Rama activa")
+    timestamp: str = Field("", description="Fecha ISO del snapshot")
+    # Agregados globales
+    total_files: int = Field(0, description="Total de archivos Python")
+    total_sloc: int = Field(0, description="Total de líneas de código fuente")
+    total_functions: int = Field(0, description="Total de funciones/métodos")
+    total_classes: int = Field(0, description="Total de clases")
+    avg_mi: float = Field(0.0, description="Índice de mantenibilidad medio")
+    avg_complexity: float = Field(0.0, description="Complejidad ciclomática media")
+
+
+class ArchitectureSnapshotOutput(GenericOutput):
+    """Output de get_architecture_snapshot()."""
+    result: Optional[ArchitectureSnapshot] = None

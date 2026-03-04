@@ -26,9 +26,14 @@ from .models import (
     MetricsHistoryPoint,
     MetricsHistory,
     MetricsHistoryOutput,
+    # Architecture models
+    ArchitectureNode,
+    ArchitectureSnapshot,
+    ArchitectureSnapshotOutput,
 )
 from .structure import get_code_structure, get_code_summary
 from .metrics import generate_code_metrics, get_metrics_snapshots, get_commit_metrics, get_metrics_history
+from .architecture import get_architecture_snapshot
 
 __all__ = [
     # Structure
@@ -59,4 +64,10 @@ __all__ = [
     'get_metrics_snapshots',
     'get_commit_metrics',
     'get_metrics_history',
+    # Architecture models
+    'ArchitectureNode',
+    'ArchitectureSnapshot',
+    'ArchitectureSnapshotOutput',
+    # Architecture functions
+    'get_architecture_snapshot',
 ]
