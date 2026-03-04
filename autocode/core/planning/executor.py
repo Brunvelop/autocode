@@ -70,7 +70,7 @@ EXECUTOR_TOOLS = {
 async def stream_execute_plan(
     plan_id: str,
     model: ModelType = "openrouter/z-ai/glm-5",
-    max_tokens: int = 16000,
+    max_tokens: int = None,
     temperature: float = 0.3,
     auto_commit: bool = True,
 ) -> AsyncGenerator[str, None]:
@@ -258,7 +258,7 @@ async def stream_execute_plan(
 def execute_commit_plan(
     plan_id: str,
     model: ModelType = "openrouter/z-ai/glm-5",
-    max_tokens: int = 16000,
+    max_tokens: int = None,
     temperature: float = 0.3,
     auto_commit: bool = True,
 ) -> GenericOutput:
@@ -399,6 +399,10 @@ async def _execute_single_task(
             **cost_info,
         },
     )
+
+    # Limpiar history para que la siguiente task no acumule métricas anteriores
+    if hasattr(lm, "history"):
+        lm.history.clear()
 
     files_changed = _extract_files_changed(trajectory_raw)
 
