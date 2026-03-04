@@ -18,6 +18,7 @@ import { architectureDashboardStyles } from './styles/architecture-dashboard.sty
 
 // Sub-components
 import './architecture-treemap.js';
+import './architecture-graph.js';
 
 export class ArchitectureDashboard extends LitElement {
     static properties = {
@@ -243,10 +244,11 @@ export class ArchitectureDashboard extends LitElement {
         // graph mode
         return html`
             <div class="content-area">
-                <div class="content-placeholder">
-                    <span class="content-placeholder-icon">🔗</span>
-                    <span>Grafo de dependencias — ${this._snapshot?.dependencies?.length || 0} conexiones</span>
-                </div>
+                <architecture-graph
+                    .nodes=${this._snapshot?.nodes?.filter(n => n.type === 'file') || []}
+                    .dependencies=${this._snapshot?.dependencies || []}
+                    .circularDependencies=${this._snapshot?.circular_dependencies || []}
+                ></architecture-graph>
             </div>
         `;
     }
