@@ -27,6 +27,7 @@ from .models import (
     MetricsHistory,
     MetricsHistoryOutput,
     # Architecture models
+    FileDependency,
     ArchitectureNode,
     ArchitectureSnapshot,
     ArchitectureSnapshotOutput,
@@ -65,6 +66,7 @@ __all__ = [
     'get_commit_metrics',
     'get_metrics_history',
     # Architecture models
+    'FileDependency',
     'ArchitectureNode',
     'ArchitectureSnapshot',
     'ArchitectureSnapshotOutput',

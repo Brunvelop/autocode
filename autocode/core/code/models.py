@@ -264,6 +264,22 @@ class MetricsHistoryOutput(GenericOutput):
 # ==============================================================================
 
 
+class FileDependency(BaseModel):
+    """File-level dependency between two Python files.
+
+    Represents a resolved import relationship where source imports from target.
+    Multiple import statements to the same target are merged into one dependency
+    with all imported names aggregated.
+    """
+
+    source: str = Field(..., description="Path del archivo que importa")
+    target: str = Field(..., description="Path del archivo importado")
+    import_names: List[str] = Field(
+        default_factory=list,
+        description="Nombres importados (clases, funciones, variables)",
+    )
+
+
 class ArchitectureNode(BaseModel):
     """Nodo de la jerarquía de arquitectura con métricas de calidad.
 
@@ -307,6 +323,15 @@ class ArchitectureSnapshot(BaseModel):
     total_classes: int = Field(0, description="Total de clases")
     avg_mi: float = Field(0.0, description="Índice de mantenibilidad medio")
     avg_complexity: float = Field(0.0, description="Complejidad ciclomática media")
+    # File-level dependencies
+    dependencies: List[FileDependency] = Field(
+        default_factory=list,
+        description="Dependencias resueltas entre archivos (imports internos)",
+    )
+    circular_dependencies: List[List[str]] = Field(
+        default_factory=list,
+        description="Pares de archivos con dependencia circular [source, target]",
+    )
 
 
 class ArchitectureSnapshotOutput(GenericOutput):

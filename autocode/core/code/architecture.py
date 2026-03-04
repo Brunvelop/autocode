@@ -5,22 +5,26 @@ Motor de análisis de arquitectura de código y endpoint registrado.
 Proporciona:
 - Snapshot de arquitectura: jerarquía de directorios/archivos con métricas de calidad
 - Propagación bottom-up de MI/CC desde archivos a directorios (ponderada por LOC)
+- Resolución de dependencias a nivel de archivo (imports internos del proyecto)
+- Detección de dependencias circulares entre archivos
 - Endpoint registrado para el frontend (treemap + grafo de dependencias)
 
 Reutiliza funciones de metrics.py: _analyze_content, _get_tracked_py_files, _git
 """
 
+import ast
 import logging
 from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Tuple, Set
 
 from autocode.interfaces.registry import register_function
 from autocode.core.code.models import (
     ArchitectureNode,
     ArchitectureSnapshot,
     ArchitectureSnapshotOutput,
+    FileDependency,
 )
 from autocode.core.code.metrics import (
     _analyze_content,
@@ -82,6 +86,9 @@ def get_architecture_snapshot(path: str = ".") -> ArchitectureSnapshotOutput:
             avg_mi = 0.0
             avg_complexity = 0.0
 
+        # Resolve file-level dependencies
+        dependencies, circular_dependencies = _resolve_file_dependencies(py_files)
+
         snapshot = ArchitectureSnapshot(
             root_id=root_id,
             nodes=nodes,
@@ -95,6 +102,8 @@ def get_architecture_snapshot(path: str = ".") -> ArchitectureSnapshotOutput:
             total_classes=total_classes,
             avg_mi=round(avg_mi, 1),
             avg_complexity=round(avg_complexity, 2),
+            dependencies=dependencies,
+            circular_dependencies=circular_dependencies,
         )
 
         return ArchitectureSnapshotOutput(
@@ -279,3 +288,185 @@ def _compute_depths(
     depths[node_id] = current_depth
     for child_id in children_map.get(node_id, []):
         _compute_depths(child_id, children_map, depths, current_depth + 1)
+
+
+# ==============================================================================
+# FILE-LEVEL DEPENDENCY RESOLUTION
+# ==============================================================================
+
+
+def _resolve_file_dependencies(
+    py_files: List[str],
+) -> Tuple[List[FileDependency], List[List[str]]]:
+    """Resolve file-level import dependencies between Python files.
+
+    Parses AST for each file, extracts import/from-import statements,
+    filters to internal project imports only (not stdlib/third-party),
+    resolves module paths to actual file paths, and detects circular dependencies.
+
+    Multiple imports from the same source→target pair are merged into a single
+    FileDependency with aggregated import_names.
+
+    Args:
+        py_files: List of relative paths to Python files (from git ls-files)
+
+    Returns:
+        Tuple of (dependencies, circular_dependencies) where:
+        - dependencies: List[FileDependency] with resolved source→target pairs
+        - circular_dependencies: List[List[str]] with [source, target] circular pairs
+    """
+    if not py_files:
+        return [], []
+
+    # Build lookup structures
+    file_set: Set[str] = set(py_files)
+    top_packages = _get_top_level_packages(py_files)
+    module_to_file = _build_module_to_file_map(py_files)
+
+    # Collect raw edges: (source_file, target_file) → set of import_names
+    edges: Dict[Tuple[str, str], Set[str]] = defaultdict(set)
+
+    for fpath in py_files:
+        try:
+            content = Path(fpath).read_text(encoding="utf-8")
+            tree = ast.parse(content, filename=fpath)
+        except Exception:
+            logger.debug(f"Skipping {fpath} for dependency analysis (parse error)")
+            continue
+
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom) and node.module:
+                # from X.Y.Z import a, b, c
+                if not _is_internal_module(node.module, top_packages):
+                    continue
+                target_file = _resolve_module_to_file(node.module, module_to_file)
+                if target_file and target_file != fpath and target_file in file_set:
+                    names = [
+                        alias.name
+                        for alias in (node.names or [])
+                        if alias.name != "*"
+                    ]
+                    edges[(fpath, target_file)].update(names)
+
+            elif isinstance(node, ast.Import):
+                # import X.Y.Z
+                for alias in node.names:
+                    if not _is_internal_module(alias.name, top_packages):
+                        continue
+                    target_file = _resolve_module_to_file(
+                        alias.name, module_to_file
+                    )
+                    if target_file and target_file != fpath and target_file in file_set:
+                        edges[(fpath, target_file)].add(alias.name)
+
+    # Build FileDependency list
+    dependencies: List[FileDependency] = []
+    for (source, target), names in sorted(edges.keys() and edges.items()):
+        dependencies.append(
+            FileDependency(
+                source=source,
+                target=target,
+                import_names=sorted(names),
+            )
+        )
+
+    # Detect circular dependencies (A→B and B→A)
+    circular_dependencies: List[List[str]] = []
+    seen_pairs: Set[Tuple[str, str]] = set()
+    edge_keys = set(edges.keys())
+
+    for source, target in edge_keys:
+        if (target, source) in edge_keys:
+            pair = tuple(sorted([source, target]))
+            if pair not in seen_pairs:
+                seen_pairs.add(pair)
+                circular_dependencies.append(list(pair))
+
+    return dependencies, circular_dependencies
+
+
+def _get_top_level_packages(py_files: List[str]) -> Set[str]:
+    """Get top-level package names from file paths.
+
+    Args:
+        py_files: List of relative Python file paths
+
+    Returns:
+        Set of top-level directory/package names
+    """
+    pkgs: Set[str] = set()
+    for f in py_files:
+        parts = f.replace("\\", "/").split("/")
+        if parts:
+            pkgs.add(parts[0])
+    return pkgs
+
+
+def _is_internal_module(module_name: str, top_packages: Set[str]) -> bool:
+    """Check if a module name belongs to the project (not stdlib/third-party).
+
+    Args:
+        module_name: Dotted module name (e.g., 'autocode.core.code.models')
+        top_packages: Set of known top-level project package names
+
+    Returns:
+        True if the module is internal to the project
+    """
+    top = module_name.split(".")[0]
+    return top in top_packages
+
+
+def _build_module_to_file_map(py_files: List[str]) -> Dict[str, str]:
+    """Build a mapping from dotted module names to file paths.
+
+    For each file path like 'autocode/core/code/models.py', creates entries:
+    - 'autocode.core.code.models' → 'autocode/core/code/models.py'
+
+    For __init__.py files like 'autocode/core/__init__.py', creates:
+    - 'autocode.core' → 'autocode/core/__init__.py'
+
+    Args:
+        py_files: List of relative Python file paths
+
+    Returns:
+        Dict mapping dotted module names to file paths
+    """
+    module_map: Dict[str, str] = {}
+    for fpath in py_files:
+        normalized = fpath.replace("\\", "/")
+        if normalized.endswith("/__init__.py"):
+            # Package: autocode/core/__init__.py → autocode.core
+            module_name = normalized[: -len("/__init__.py")].replace("/", ".")
+        elif normalized.endswith(".py"):
+            # Module: autocode/core/code/models.py → autocode.core.code.models
+            module_name = normalized[:-3].replace("/", ".")
+        else:
+            continue
+        module_map[module_name] = fpath
+    return module_map
+
+
+def _resolve_module_to_file(
+    module_name: str, module_to_file: Dict[str, str]
+) -> Optional[str]:
+    """Resolve a dotted module name to its file path.
+
+    Tries multiple resolution strategies:
+    1. Direct match: 'autocode.core.code.models' → known file
+    2. Package __init__: if module is a package directory
+
+    For 'from autocode.core import code', the module is 'autocode.core'
+    which resolves to 'autocode/core/__init__.py'.
+
+    Args:
+        module_name: Dotted module name to resolve
+        module_to_file: Pre-built module→file mapping
+
+    Returns:
+        File path if resolved, None otherwise
+    """
+    # Direct module match
+    if module_name in module_to_file:
+        return module_to_file[module_name]
+
+    return None
