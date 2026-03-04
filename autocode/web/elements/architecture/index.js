@@ -16,6 +16,9 @@ import { AutoFunctionController } from '../auto-element-generator.js';
 import { themeTokens } from './styles/theme.js';
 import { architectureDashboardStyles } from './styles/architecture-dashboard.styles.js';
 
+// Sub-components
+import './architecture-treemap.js';
+
 export class ArchitectureDashboard extends LitElement {
     static properties = {
         // Data from API
@@ -232,10 +235,7 @@ export class ArchitectureDashboard extends LitElement {
         if (this._viewMode === 'treemap') {
             return html`
                 <div class="content-area">
-                    <div class="content-placeholder">
-                        <span class="content-placeholder-icon">🗺️</span>
-                        <span>Treemap — ${subtree ? subtree.name : 'root'} (${subtree?.children?.length || 0} hijos)</span>
-                    </div>
+                    <architecture-treemap .node=${subtree}></architecture-treemap>
                 </div>
             `;
         }

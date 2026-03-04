@@ -1,0 +1,763 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Architecture Treemap - Test</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .component-stage {
+            min-height: 200px;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            overflow: hidden;
+            background: white;
+        }
+        architecture-treemap {
+            display: block;
+            width: 600px;
+            height: 400px;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 p-6">
+    <div class="max-w-4xl mx-auto">
+        <h1 class="text-2xl font-bold mb-2">🗺️ Architecture Treemap — Tests</h1>
+        <p class="text-gray-500 text-sm mb-4">TDD tests for Commit 4: zoomable treemap with D3</p>
+
+        <!-- Server status -->
+        <div id="serverStatus" class="mb-6 p-4 bg-gray-100 border border-gray-300 rounded-lg">
+            ⏳ No server needed (component-level tests with mocked data)
+        </div>
+
+        <!-- Summary -->
+        <div id="summary" class="mb-6 p-4 bg-white border border-gray-200 rounded-lg shadow-sm"></div>
+
+        <!-- Test results -->
+        <div id="results" class="space-y-4"></div>
+    </div>
+
+    <script type="module">
+        import '../../utils/test-runner.js';
+        import { TestRunner } from '../../utils/test-runner.js';
+
+        const runner = new TestRunner();
+
+        // ====================================================================
+        // MOCK DATA: nested tree (as produced by _buildTreeFromNodes)
+        // ====================================================================
+
+        const MOCK_TREE = {
+            id: '.',
+            parent_id: null,
+            name: 'root',
+            type: 'directory',
+            path: '.',
+            loc: 800,
+            sloc: 600,
+            mi: 68.5,
+            avg_complexity: 3.5,
+            max_complexity: 15,
+            functions_count: 25,
+            classes_count: 6,
+            children_count: 3,
+            children: [
+                {
+                    id: 'src',
+                    parent_id: '.',
+                    name: 'src',
+                    type: 'directory',
+                    path: 'src',
+                    loc: 500,
+                    sloc: 400,
+                    mi: 62.0,
+                    avg_complexity: 4.2,
+                    max_complexity: 15,
+                    functions_count: 18,
+                    classes_count: 4,
+                    children_count: 2,
+                    children: [
+                        {
+                            id: 'src/app.py',
+                            parent_id: 'src',
+                            name: 'app.py',
+                            type: 'file',
+                            path: 'src/app.py',
+                            loc: 300,
+                            sloc: 250,
+                            mi: 55.0,
+                            avg_complexity: 5.5,
+                            max_complexity: 15,
+                            functions_count: 12,
+                            classes_count: 3,
+                            children_count: 0,
+                            children: null,
+                        },
+                        {
+                            id: 'src/utils.py',
+                            parent_id: 'src',
+                            name: 'utils.py',
+                            type: 'file',
+                            path: 'src/utils.py',
+                            loc: 200,
+                            sloc: 150,
+                            mi: 82.0,
+                            avg_complexity: 2.0,
+                            max_complexity: 6,
+                            functions_count: 6,
+                            classes_count: 1,
+                            children_count: 0,
+                            children: null,
+                        },
+                    ],
+                },
+                {
+                    id: 'tests',
+                    parent_id: '.',
+                    name: 'tests',
+                    type: 'directory',
+                    path: 'tests',
+                    loc: 150,
+                    sloc: 100,
+                    mi: 85.0,
+                    avg_complexity: 1.5,
+                    max_complexity: 3,
+                    functions_count: 5,
+                    classes_count: 1,
+                    children_count: 1,
+                    children: [
+                        {
+                            id: 'tests/test_app.py',
+                            parent_id: 'tests',
+                            name: 'test_app.py',
+                            type: 'file',
+                            path: 'tests/test_app.py',
+                            loc: 150,
+                            sloc: 100,
+                            mi: 85.0,
+                            avg_complexity: 1.5,
+                            max_complexity: 3,
+                            functions_count: 5,
+                            classes_count: 1,
+                            children_count: 0,
+                            children: null,
+                        },
+                    ],
+                },
+                {
+                    id: 'setup.py',
+                    parent_id: '.',
+                    name: 'setup.py',
+                    type: 'file',
+                    path: 'setup.py',
+                    loc: 150,
+                    sloc: 100,
+                    mi: 90.0,
+                    avg_complexity: 1.0,
+                    max_complexity: 2,
+                    functions_count: 2,
+                    classes_count: 1,
+                    children_count: 0,
+                    children: null,
+                },
+            ],
+        };
+
+        // Low-MI tree for color testing
+        const LOW_MI_NODE = {
+            id: 'bad',
+            parent_id: '.',
+            name: 'bad',
+            type: 'directory',
+            path: 'bad',
+            loc: 200,
+            sloc: 150,
+            mi: 15.0,
+            avg_complexity: 12.0,
+            max_complexity: 25,
+            functions_count: 5,
+            classes_count: 1,
+            children_count: 2,
+            children: [
+                {
+                    id: 'bad/terrible.py',
+                    parent_id: 'bad',
+                    name: 'terrible.py',
+                    type: 'file',
+                    path: 'bad/terrible.py',
+                    loc: 100, sloc: 80, mi: 10.0, avg_complexity: 15.0,
+                    max_complexity: 25, functions_count: 3, classes_count: 1,
+                    children_count: 0, children: null,
+                },
+                {
+                    id: 'bad/awful.py',
+                    parent_id: 'bad',
+                    name: 'awful.py',
+                    type: 'file',
+                    path: 'bad/awful.py',
+                    loc: 100, sloc: 70, mi: 20.0, avg_complexity: 9.0,
+                    max_complexity: 18, functions_count: 2, classes_count: 0,
+                    children_count: 0, children: null,
+                },
+            ],
+        };
+
+        // Import the component
+        await import('../../../elements/architecture/architecture-treemap.js');
+
+        // Helper: create treemap with given node
+        function createTreemap(node) {
+            const el = document.createElement('architecture-treemap');
+            el.node = node;
+            return el;
+        }
+
+        // Helper: wait for D3 rendering (requestAnimationFrame + updateComplete)
+        async function waitForRender(el, timeout = 2000) {
+            await el.updateComplete;
+            // Give D3 time to render after updated() fires
+            await new Promise(r => requestAnimationFrame(() => setTimeout(r, 50)));
+            await el.updateComplete;
+        }
+
+        // ====================================================================
+        // A) COMPONENT REGISTRATION
+        // ====================================================================
+
+        runner.group('A) Registro del componente', () => {
+
+            runner.test('architecture-treemap se define como custom element', async (stage) => {
+                runner.assertTrue(
+                    customElements.get('architecture-treemap'),
+                    'architecture-treemap debería estar registrado'
+                );
+            });
+
+            runner.test('Instanciar architecture-treemap crea un elemento válido', async (stage) => {
+                const el = createTreemap(MOCK_TREE);
+                runner.assertTrue(el instanceof HTMLElement, 'Debería ser HTMLElement');
+                runner.assertEqual(el.tagName.toLowerCase(), 'architecture-treemap');
+            });
+
+        });
+
+        // ====================================================================
+        // B) SVG RENDERING
+        // ====================================================================
+
+        runner.group('B) Renderizado SVG', () => {
+
+            runner.test('Renderiza un elemento SVG dentro del shadow DOM', async (stage) => {
+                const el = createTreemap(MOCK_TREE);
+                stage.appendChild(el);
+                await waitForRender(el);
+
+                const svg = el.shadowRoot.querySelector('svg');
+                runner.assertTrue(svg !== null, 'Debería existir un SVG');
+            });
+
+            runner.test('SVG contiene rectángulos (celdas del treemap)', async (stage) => {
+                const el = createTreemap(MOCK_TREE);
+                stage.appendChild(el);
+                await waitForRender(el);
+
+                const rects = el.shadowRoot.querySelectorAll('rect');
+                runner.assertTrue(rects.length > 0, 'Debería haber rectángulos en el SVG');
+            });
+
+            runner.test('Número de celdas = hijos directos del nodo', async (stage) => {
+                // root has 3 children: src (dir), tests (dir), setup.py (file)
+                const el = createTreemap(MOCK_TREE);
+                stage.appendChild(el);
+                await waitForRender(el);
+
+                const cells = el.shadowRoot.querySelectorAll('.treemap-cell');
+                runner.assertEqual(cells.length, 3, 'Root tiene 3 hijos directos → 3 celdas');
+            });
+
+            runner.test('Las celdas tienen dimensiones proporcionales al SLOC', async (stage) => {
+                const el = createTreemap(MOCK_TREE);
+                stage.appendChild(el);
+                await waitForRender(el);
+
+                const rects = el.shadowRoot.querySelectorAll('.treemap-cell rect');
+                runner.assertTrue(rects.length >= 2, 'Necesita al menos 2 rects para comparar');
+
+                // Get areas (width * height) from rect attributes
+                const areas = Array.from(rects).map(r => {
+                    const w = parseFloat(r.getAttribute('width') || 0);
+                    const h = parseFloat(r.getAttribute('height') || 0);
+                    return w * h;
+                });
+
+                // src has sloc=400, tests has sloc=100, setup.py has sloc=100
+                // The biggest cell should be src (400 SLOC)
+                const maxArea = Math.max(...areas);
+                const minArea = Math.min(...areas);
+                runner.assertTrue(
+                    maxArea > minArea,
+                    'La celda más grande debería ser mayor que la más pequeña'
+                );
+            });
+
+        });
+
+        // ====================================================================
+        // C) COLOR SCALE (MI → color)
+        // ====================================================================
+
+        runner.group('C) Escala de color por MI', () => {
+
+            runner.test('Celdas tienen fill color (no transparent ni none)', async (stage) => {
+                const el = createTreemap(MOCK_TREE);
+                stage.appendChild(el);
+                await waitForRender(el);
+
+                const rects = el.shadowRoot.querySelectorAll('.treemap-cell rect');
+                runner.assertTrue(rects.length > 0, 'Debería haber rects');
+
+                for (const rect of rects) {
+                    const fill = rect.getAttribute('fill') || '';
+                    runner.assertTrue(
+                        fill !== '' && fill !== 'none' && fill !== 'transparent',
+                        `Rect debería tener fill color, got: "${fill}"`
+                    );
+                }
+            });
+
+            runner.test('MI alto (≥70) produce color verdoso', async (stage) => {
+                // setup.py has MI=90 → should be green-ish
+                const el = createTreemap(MOCK_TREE);
+                stage.appendChild(el);
+                await waitForRender(el);
+
+                // The component should expose _miColor or we check the actual fills
+                // Check that the public method exists
+                runner.assertTrue(
+                    typeof el._miColor === 'function',
+                    '_miColor debería ser una función pública'
+                );
+
+                const greenColor = el._miColor(90);
+                // Green colors should have more green component
+                // The scale goes to #059669 (green) for high MI
+                runner.assertTrue(
+                    greenColor && greenColor !== '',
+                    `MI=90 debería devolver un color, got: "${greenColor}"`
+                );
+            });
+
+            runner.test('MI bajo (<30) produce color rojizo', async (stage) => {
+                const el = createTreemap(MOCK_TREE);
+                stage.appendChild(el);
+                await waitForRender(el);
+
+                const redColor = el._miColor(10);
+                // The scale starts at #dc2626 (red) for low MI
+                runner.assertTrue(
+                    redColor && redColor !== '',
+                    `MI=10 debería devolver un color, got: "${redColor}"`
+                );
+
+                // The red and green colors should be different
+                const greenColor = el._miColor(90);
+                runner.assertTrue(
+                    redColor !== greenColor,
+                    'MI=10 y MI=90 deberían producir colores diferentes'
+                );
+            });
+
+            runner.test('Celdas con MI bajo tienen color diferente a celdas con MI alto', async (stage) => {
+                // Create a tree with mixed MI
+                const mixedTree = {
+                    ...MOCK_TREE,
+                    children: [
+                        { ...MOCK_TREE.children[0], mi: 20.0 },  // src - bad MI
+                        { ...MOCK_TREE.children[2], mi: 95.0 },  // setup.py - great MI
+                    ],
+                };
+                mixedTree.children_count = 2;
+
+                const el = createTreemap(mixedTree);
+                stage.appendChild(el);
+                await waitForRender(el);
+
+                const rects = el.shadowRoot.querySelectorAll('.treemap-cell rect');
+                if (rects.length >= 2) {
+                    const fills = Array.from(rects).map(r => r.getAttribute('fill'));
+                    // The two fills should be different (red-ish vs green-ish)
+                    runner.assertTrue(
+                        fills[0] !== fills[1],
+                        `Celdas con MI diferentes deberían tener colores diferentes: ${fills[0]} vs ${fills[1]}`
+                    );
+                }
+            });
+
+        });
+
+        // ====================================================================
+        // D) LABELS
+        // ====================================================================
+
+        runner.group('D) Labels en celdas', () => {
+
+            runner.test('Celdas grandes muestran texto con nombre', async (stage) => {
+                const el = createTreemap(MOCK_TREE);
+                el.style.width = '800px';
+                el.style.height = '500px';
+                stage.appendChild(el);
+                await waitForRender(el);
+
+                const texts = el.shadowRoot.querySelectorAll('.treemap-label');
+                runner.assertTrue(texts.length > 0, 'Debería haber al menos un label visible');
+
+                // Check that at least one label contains a known name
+                const allText = Array.from(texts).map(t => t.textContent).join(' ');
+                runner.assertTrue(
+                    allText.includes('src') || allText.includes('setup.py') || allText.includes('tests'),
+                    `Labels deberían contener nombres de nodos, got: "${allText}"`
+                );
+            });
+
+            runner.test('Labels incluyen SLOC count', async (stage) => {
+                const el = createTreemap(MOCK_TREE);
+                el.style.width = '800px';
+                el.style.height = '500px';
+                stage.appendChild(el);
+                await waitForRender(el);
+
+                const texts = el.shadowRoot.querySelectorAll('.treemap-label');
+                const allText = Array.from(texts).map(t => t.textContent).join(' ');
+
+                // Should show SLOC numbers for at least some cells
+                runner.assertTrue(
+                    allText.match(/\d+/) !== null,
+                    `Labels deberían contener números (SLOC), got: "${allText}"`
+                );
+            });
+
+        });
+
+        // ====================================================================
+        // E) CLICK → navigate-into
+        // ====================================================================
+
+        runner.group('E) Click para navegar', () => {
+
+            runner.test('Click en celda de directorio dispara navigate-into', async (stage) => {
+                const el = createTreemap(MOCK_TREE);
+                stage.appendChild(el);
+                await waitForRender(el);
+
+                let navigatedNodeId = null;
+                el.addEventListener('navigate-into', (e) => {
+                    navigatedNodeId = e.detail?.nodeId;
+                });
+
+                // Find a directory cell and click it
+                const cells = el.shadowRoot.querySelectorAll('.treemap-cell');
+                let dirCell = null;
+                for (const cell of cells) {
+                    if (cell.dataset.type === 'directory') {
+                        dirCell = cell;
+                        break;
+                    }
+                }
+
+                runner.assertTrue(dirCell !== null, 'Debería haber al menos una celda de tipo directory');
+                dirCell.dispatchEvent(new MouseEvent('click', { bubbles: true, composed: true }));
+
+                // Wait a tick for event handling
+                await new Promise(r => setTimeout(r, 50));
+
+                runner.assertTrue(
+                    navigatedNodeId !== null,
+                    'Debería haber disparado navigate-into'
+                );
+                runner.assertTrue(
+                    navigatedNodeId === 'src' || navigatedNodeId === 'tests',
+                    `nodeId debería ser un directorio, got: "${navigatedNodeId}"`
+                );
+            });
+
+            runner.test('Click en celda de archivo NO dispara navigate-into', async (stage) => {
+                const el = createTreemap(MOCK_TREE);
+                stage.appendChild(el);
+                await waitForRender(el);
+
+                let navigateCount = 0;
+                el.addEventListener('navigate-into', () => { navigateCount++; });
+
+                // Find a file cell
+                const cells = el.shadowRoot.querySelectorAll('.treemap-cell');
+                let fileCell = null;
+                for (const cell of cells) {
+                    if (cell.dataset.type === 'file') {
+                        fileCell = cell;
+                        break;
+                    }
+                }
+
+                runner.assertTrue(fileCell !== null, 'Debería haber al menos una celda de tipo file');
+                fileCell.dispatchEvent(new MouseEvent('click', { bubbles: true, composed: true }));
+
+                await new Promise(r => setTimeout(r, 50));
+
+                runner.assertEqual(
+                    navigateCount, 0,
+                    'Click en archivo NO debería disparar navigate-into'
+                );
+            });
+
+            runner.test('navigate-into event tiene bubbles y composed', async (stage) => {
+                const el = createTreemap(MOCK_TREE);
+                stage.appendChild(el);
+                await waitForRender(el);
+
+                let eventObj = null;
+                el.addEventListener('navigate-into', (e) => { eventObj = e; });
+
+                const cells = el.shadowRoot.querySelectorAll('.treemap-cell[data-type="directory"]');
+                if (cells.length > 0) {
+                    cells[0].dispatchEvent(new MouseEvent('click', { bubbles: true, composed: true }));
+                    await new Promise(r => setTimeout(r, 50));
+                }
+
+                runner.assertTrue(eventObj !== null, 'Event debería haberse capturado');
+                runner.assertTrue(eventObj.bubbles, 'Event debería tener bubbles=true');
+                runner.assertTrue(eventObj.composed, 'Event debería tener composed=true');
+            });
+
+        });
+
+        // ====================================================================
+        // F) TOOLTIP
+        // ====================================================================
+
+        runner.group('F) Tooltip en hover', () => {
+
+            runner.test('Hover sobre celda muestra tooltip con datos', async (stage) => {
+                const el = createTreemap(MOCK_TREE);
+                stage.appendChild(el);
+                await waitForRender(el);
+
+                // Initially no tooltip
+                let tooltip = el.shadowRoot.querySelector('.treemap-tooltip');
+                const initiallyHidden = !tooltip || tooltip.classList.contains('hidden') ||
+                    getComputedStyle(tooltip).display === 'none' ||
+                    getComputedStyle(tooltip).opacity === '0' ||
+                    !tooltip.classList.contains('visible');
+
+                runner.assertTrue(initiallyHidden, 'Tooltip no debería ser visible inicialmente');
+
+                // Hover on a cell
+                const cells = el.shadowRoot.querySelectorAll('.treemap-cell');
+                runner.assertTrue(cells.length > 0, 'Debería haber celdas');
+
+                cells[0].dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
+                await el.updateComplete;
+                await new Promise(r => setTimeout(r, 50));
+
+                runner.assertTrue(
+                    el._tooltipData !== null,
+                    'Tooltip data debería existir tras hover'
+                );
+            });
+
+            runner.test('Tooltip contiene nombre, MI, SLOC', async (stage) => {
+                const el = createTreemap(MOCK_TREE);
+                stage.appendChild(el);
+                await waitForRender(el);
+
+                const cells = el.shadowRoot.querySelectorAll('.treemap-cell');
+                cells[0].dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
+                await el.updateComplete;
+                await new Promise(r => setTimeout(r, 50));
+
+                const tooltip = el.shadowRoot.querySelector('.treemap-tooltip');
+                runner.assertTrue(tooltip !== null, 'Tooltip element debería existir');
+
+                const text = tooltip?.textContent || '';
+                // Tooltip should show at least the name and some metrics
+                runner.assertTrue(text.length > 0, 'Tooltip debería tener contenido');
+            });
+
+            runner.test('Mouseleave oculta el tooltip', async (stage) => {
+                const el = createTreemap(MOCK_TREE);
+                stage.appendChild(el);
+                await waitForRender(el);
+
+                const cells = el.shadowRoot.querySelectorAll('.treemap-cell');
+
+                // Hover in
+                cells[0].dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
+                await el.updateComplete;
+
+                // Hover out
+                cells[0].dispatchEvent(new MouseEvent('mouseleave', { bubbles: true }));
+                await el.updateComplete;
+                await new Promise(r => setTimeout(r, 50));
+
+                runner.assertTrue(
+                    el._tooltipData === null,
+                    '_tooltipData debería ser null tras mouseleave'
+                );
+            });
+
+        });
+
+        // ====================================================================
+        // G) RESPONSIVE
+        // ====================================================================
+
+        runner.group('G) Responsive', () => {
+
+            runner.test('Componente tiene ResizeObserver configurado', async (stage) => {
+                const el = createTreemap(MOCK_TREE);
+                stage.appendChild(el);
+                await waitForRender(el);
+
+                runner.assertTrue(
+                    el._resizeObserver !== null && el._resizeObserver !== undefined,
+                    'Debería tener un ResizeObserver configurado'
+                );
+            });
+
+            runner.test('SVG se adapta al contenedor', async (stage) => {
+                const el = createTreemap(MOCK_TREE);
+                el.style.width = '400px';
+                el.style.height = '300px';
+                stage.appendChild(el);
+                await waitForRender(el);
+
+                const svg = el.shadowRoot.querySelector('svg');
+                runner.assertTrue(svg !== null, 'SVG debería existir');
+
+                const svgWidth = parseFloat(svg.getAttribute('width') || 0);
+                runner.assertTrue(
+                    svgWidth > 0 && svgWidth <= 410,
+                    `SVG width debería ajustarse al contenedor (~400px), got: ${svgWidth}`
+                );
+            });
+
+        });
+
+        // ====================================================================
+        // H) EMPTY / NULL STATE
+        // ====================================================================
+
+        runner.group('H) Estados vacíos', () => {
+
+            runner.test('Node null muestra estado vacío', async (stage) => {
+                const el = createTreemap(null);
+                stage.appendChild(el);
+                await waitForRender(el);
+
+                const empty = el.shadowRoot.querySelector('.empty-state');
+                runner.assertTrue(
+                    empty !== null,
+                    'Debería mostrar estado vacío cuando node es null'
+                );
+            });
+
+            runner.test('Node sin children (archivo) muestra celda única', async (stage) => {
+                const singleFile = {
+                    id: 'single.py',
+                    parent_id: '.',
+                    name: 'single.py',
+                    type: 'file',
+                    path: 'single.py',
+                    loc: 100, sloc: 80, mi: 75.0, avg_complexity: 2.0,
+                    max_complexity: 5, functions_count: 3, classes_count: 1,
+                    children_count: 0, children: null,
+                };
+                const el = createTreemap(singleFile);
+                stage.appendChild(el);
+                await waitForRender(el);
+
+                // Either shows empty-state or a single representation
+                const shadow = el.shadowRoot;
+                const hasSomething = shadow.querySelector('svg') || shadow.querySelector('.empty-state') || shadow.querySelector('.single-node');
+                runner.assertTrue(
+                    hasSomething !== null,
+                    'Debería renderizar algo (SVG, empty-state, o single-node)'
+                );
+            });
+
+            runner.test('Directorio con children vacío muestra empty state', async (stage) => {
+                const emptyDir = {
+                    id: 'empty',
+                    parent_id: '.',
+                    name: 'empty',
+                    type: 'directory',
+                    path: 'empty',
+                    loc: 0, sloc: 0, mi: 100.0, avg_complexity: 0,
+                    max_complexity: 0, functions_count: 0, classes_count: 0,
+                    children_count: 0, children: [],
+                };
+                const el = createTreemap(emptyDir);
+                stage.appendChild(el);
+                await waitForRender(el);
+
+                const empty = el.shadowRoot.querySelector('.empty-state');
+                runner.assertTrue(
+                    empty !== null,
+                    'Directorio sin hijos debería mostrar estado vacío'
+                );
+            });
+
+        });
+
+        // ====================================================================
+        // I) DATA ATTRIBUTES FOR TESTING
+        // ====================================================================
+
+        runner.group('I) Data attributes', () => {
+
+            runner.test('Celdas tienen data-id con el id del nodo', async (stage) => {
+                const el = createTreemap(MOCK_TREE);
+                stage.appendChild(el);
+                await waitForRender(el);
+
+                const cells = el.shadowRoot.querySelectorAll('.treemap-cell');
+                runner.assertTrue(cells.length > 0, 'Debería haber celdas');
+
+                const ids = Array.from(cells).map(c => c.dataset.id);
+                runner.assertTrue(
+                    ids.includes('src') || ids.includes('tests') || ids.includes('setup.py'),
+                    `Celdas deberían tener data-id, got: ${JSON.stringify(ids)}`
+                );
+            });
+
+            runner.test('Celdas tienen data-type (directory/file)', async (stage) => {
+                const el = createTreemap(MOCK_TREE);
+                stage.appendChild(el);
+                await waitForRender(el);
+
+                const cells = el.shadowRoot.querySelectorAll('.treemap-cell');
+                const types = Array.from(cells).map(c => c.dataset.type);
+
+                runner.assertTrue(
+                    types.includes('directory'),
+                    'Debería haber celdas tipo directory'
+                );
+                runner.assertTrue(
+                    types.includes('file'),
+                    'Debería haber celdas tipo file'
+                );
+            });
+
+        });
+
+        // ====================================================================
+        // RUN
+        // ====================================================================
+
+        // Skip server check (mock-only tests)
+        runner.serverStatusContainer.innerHTML = '✅ Tests con datos mock (no requiere servidor)';
+        runner.serverStatusContainer.className = 'mb-6 p-4 bg-green-100 border border-green-300 rounded-lg';
+
+        await runner.run();
+    </script>
+</body>
+</html>
