@@ -76,9 +76,12 @@ async def stream_execute_plan(
     max_tokens: int = None,
     temperature: float = 0.3,
     auto_commit: bool = True,
-    task_timeout_s: float = 300,
 ) -> AsyncGenerator[str, None]:
     """Async generator que ejecuta un plan y emite SSE events.
+
+    No se aplica timeout por tiempo absoluto. La protección contra conexiones
+    muertas la proveen las capas inferiores (httpx/LiteLLM connection timeouts).
+    Si el LLM está activamente generando, la tarea puede tardar lo que necesite.
 
     Args:
         plan_id: ID del plan a ejecutar
@@ -86,7 +89,6 @@ async def stream_execute_plan(
         max_tokens: Número máximo de tokens por iteración
         temperature: Temperature para generación (baja para código preciso)
         auto_commit: Si hacer git commit automático al terminar exitosamente
-        task_timeout_s: Timeout en segundos por tarea (default 300s). 0 = sin timeout.
 
     Yields:
         Strings formateados como eventos SSE
@@ -169,35 +171,20 @@ async def stream_execute_plan(
                 # Consume the async generator with heartbeat keepalive.
                 # _with_heartbeat wraps the generator and emits heartbeat
                 # SSE events every 8s to keep the connection alive.
-                # asyncio.timeout provides a safety net per task.
+                # No hard timeout: if the LLM is actively working, let it
+                # finish. Connection-level timeouts (httpx/LiteLLM) handle
+                # truly dead connections.
                 task_result = None
                 task_gen = _with_heartbeat(
                     _execute_single_task(task, plan, lm, tools, i),
                     task_index=i,
                 )
 
-                timeout_ctx = (
-                    asyncio.timeout(task_timeout_s)
-                    if task_timeout_s and task_timeout_s > 0
-                    else _nullcontext()
-                )
-                try:
-                    async with timeout_ctx:
-                        async for item in task_gen:
-                            if isinstance(item, str):
-                                yield item
-                            elif isinstance(item, TaskExecutionResult):
-                                task_result = item
-                except TimeoutError:
-                    timeout_msg = (
-                        f"Task timed out after {task_timeout_s}s"
-                    )
-                    logger.warning(f"  ⏰ Task {i}: {timeout_msg}")
-                    task_result = TaskExecutionResult(
-                        task_index=i,
-                        status="failed",
-                        error=timeout_msg,
-                    )
+                async for item in task_gen:
+                    if isinstance(item, str):
+                        yield item
+                    elif isinstance(item, TaskExecutionResult):
+                        task_result = item
 
                 if task_result is None:
                     task_result = TaskExecutionResult(
@@ -488,18 +475,8 @@ async def _execute_single_task(
 
 
 # ============================================================================
-# PRIVATE HELPERS: HEARTBEAT & TIMEOUT
+# PRIVATE HELPERS: HEARTBEAT
 # ============================================================================
-
-
-class _nullcontext:
-    """Async context manager that does nothing (fallback when no timeout)."""
-
-    async def __aenter__(self):
-        return self
-
-    async def __aexit__(self, *exc):
-        return False
 
 
 async def _with_heartbeat(
