@@ -607,4 +607,126 @@ export const commitPlanDetailStyles = css`
         opacity: 0.4;
         pointer-events: none;
     }
+
+    /* ===== CANCEL BUTTON ===== */
+    .cancel-btn {
+        display: flex;
+        align-items: center;
+        gap: 3px;
+        padding: 4px 10px;
+        background: transparent;
+        border: 1px solid var(--design-error-border, #fca5a5);
+        border-radius: var(--design-radius-md, 0.5rem);
+        color: var(--design-error-text, #991b1b);
+        font-size: 11px;
+        cursor: pointer;
+        transition: all var(--design-transition-fast, 0.1s);
+        white-space: nowrap;
+        flex-shrink: 0;
+    }
+
+    .cancel-btn:hover {
+        background: var(--design-error-bg, #fef2f2);
+    }
+
+    /* ===== EXECUTION STATUS ROW (timer + heartbeat) ===== */
+    .execute-status-row {
+        display: flex;
+        align-items: center;
+        gap: var(--design-spacing-sm, 0.5rem);
+        margin-top: 4px;
+        font-size: 11px;
+    }
+
+    .elapsed-timer {
+        font-family: var(--design-font-mono, monospace);
+        font-size: 11px;
+        color: var(--design-text-secondary, #6b7280);
+        font-weight: var(--design-font-weight-medium, 500);
+    }
+
+    .activity-indicator {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        font-size: 10px;
+        color: var(--design-text-tertiary, #9ca3af);
+    }
+
+    .activity-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        flex-shrink: 0;
+    }
+
+    .activity-dot.active {
+        background: #22c55e;
+        box-shadow: 0 0 4px rgba(34, 197, 94, 0.5);
+    }
+
+    .activity-dot.inactive {
+        background: #ef4444;
+        box-shadow: 0 0 4px rgba(239, 68, 68, 0.3);
+    }
+
+    /* ===== RECOVERY BANNER ===== */
+    .recovery-banner {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: var(--design-spacing-sm, 0.5rem);
+        padding: 8px 12px;
+        background: #fffbeb;
+        border: 1px solid #fbbf24;
+        border-radius: var(--design-radius-md, 0.5rem);
+        font-size: 12px;
+    }
+
+    .recovery-text {
+        color: #92400e;
+        font-weight: var(--design-font-weight-medium, 500);
+    }
+
+    .recovery-actions {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex-shrink: 0;
+    }
+
+    .recovery-btn {
+        display: flex;
+        align-items: center;
+        gap: 3px;
+        padding: 3px 8px;
+        border-radius: var(--design-radius-sm, 0.25rem);
+        font-size: 10px;
+        font-weight: var(--design-font-weight-semibold, 600);
+        cursor: pointer;
+        transition: all var(--design-transition-fast, 0.1s);
+        white-space: nowrap;
+        border: 1px solid;
+    }
+
+    .recovery-btn.reset {
+        background: var(--design-bg-white, #ffffff);
+        border-color: var(--design-border-gray, #e5e7eb);
+        color: var(--design-text-secondary, #6b7280);
+    }
+
+    .recovery-btn.reset:hover {
+        background: var(--design-bg-gray-50, #f9fafb);
+        border-color: var(--design-text-tertiary, #9ca3af);
+    }
+
+    .recovery-btn.reexecute {
+        background: linear-gradient(to right, #4f46e5, #7c3aed);
+        border-color: transparent;
+        color: white;
+    }
+
+    .recovery-btn.reexecute:hover {
+        opacity: 0.9;
+    }
 `;

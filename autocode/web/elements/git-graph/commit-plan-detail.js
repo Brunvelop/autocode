@@ -29,7 +29,7 @@ const TASK_STATUS_ICONS = {
 };
 
 // Statuses from which a plan can be executed
-const EXECUTABLE_STATUSES = new Set(['draft', 'ready', 'failed']);
+const EXECUTABLE_STATUSES = new Set(['draft', 'ready', 'failed', 'executing']);
 
 // Default model for execution
 const DEFAULT_MODEL = 'openrouter/z-ai/glm-5';
@@ -45,6 +45,8 @@ export class CommitPlanDetail extends LitElement {
         _executionSummary: { state: true }, // Final result {success, tasksCompleted, tasksFailed, commitHash}
         _selectedModel: { state: true }, // Selected model for execution
         _modelChoices: { state: true },  // Available models from registry
+        _elapsedDisplay: { state: true }, // Elapsed time string "1m 23s"
+        _lastHeartbeat: { state: true },  // Timestamp of last heartbeat event
     };
 
     static styles = [themeTokens, commitPlanDetailStyles];
@@ -60,11 +62,23 @@ export class CommitPlanDetail extends LitElement {
         this._executionSummary = null;
         this._selectedModel = DEFAULT_MODEL;
         this._modelChoices = [];
+        // Timer & heartbeat
+        this._elapsedDisplay = '';
+        this._lastHeartbeat = null;
+        this._executionStartTime = null;
+        this._elapsedInterval = null;
+        // Abort controller for cancelling execution
+        this._abortController = null;
     }
 
     connectedCallback() {
         super.connectedCallback();
         this._loadModelChoices();
+    }
+
+    disconnectedCallback() {
+        super.disconnectedCallback();
+        this._stopElapsedTimer();
     }
 
     willUpdate(changed) {
@@ -132,6 +146,9 @@ export class CommitPlanDetail extends LitElement {
                 ${plan.description ? html`
                     <div class="description-section">${plan.description}</div>
                 ` : ''}
+
+                <!-- Recovery banner for zombie plans -->
+                ${this._renderRecoveryBanner(status)}
 
                 <!-- Execution Summary (if available) -->
                 ${this._renderExecutionSummary()}
@@ -205,7 +222,22 @@ export class CommitPlanDetail extends LitElement {
                                     <div class="spinner-sm"></div> Ejecutando...
                                 ` : '▶️ Ejecutar'}
                             </button>
+                            ${this._isExecuting ? html`
+                                <button class="cancel-btn" @click=${this._cancelExecution}
+                                    title="Cancelar ejecución">⏹ Cancelar</button>
+                            ` : ''}
                         </div>
+                        ${this._isExecuting ? html`
+                            <div class="execute-status-row">
+                                ${this._elapsedDisplay ? html`
+                                    <span class="elapsed-timer">${this._elapsedDisplay}</span>
+                                ` : ''}
+                                <span class="activity-indicator">
+                                    <span class="activity-dot ${this._isHeartbeatActive() ? 'active' : 'inactive'}"></span>
+                                    ${this._isHeartbeatActive() ? 'Activo' : this._lastHeartbeat ? 'Sin respuesta' : 'Conectando...'}
+                                </span>
+                            </div>
+                        ` : ''}
                     </div>
                 ` : ''}
 
@@ -244,11 +276,53 @@ export class CommitPlanDetail extends LitElement {
                 { plan_id: this.planId }
             );
             this._plan = result;
+            this._restoreExecutionState(result);
         } catch (error) {
             this._error = error.message || 'Error cargando plan';
             console.error('❌ Error loading commit plan:', error);
         } finally {
             this._loading = false;
+        }
+    }
+
+    /**
+     * Restore execution state from plan.execution data (persisted on server).
+     * Called after loading plan to reconstruct UI state after page refresh.
+     */
+    _restoreExecutionState(plan) {
+        if (!plan?.execution?.task_results?.length) return;
+
+        // Don't overwrite live execution state
+        if (this._isExecuting) return;
+
+        const newStatuses = new Map();
+        for (const tr of plan.execution.task_results) {
+            newStatuses.set(tr.task_index, {
+                status: tr.status,
+                summary: tr.llm_summary || '',
+                error: tr.error || '',
+                files_changed: tr.files_changed || [],
+                messages: [],
+                total_tokens: tr.total_tokens || 0,
+                total_cost: tr.total_cost || 0,
+                prompt_tokens: tr.prompt_tokens || 0,
+                completion_tokens: tr.completion_tokens || 0,
+            });
+        }
+        this._taskStatuses = newStatuses;
+
+        // Restore execution summary if plan finished
+        if (plan.status === 'completed' || plan.status === 'failed') {
+            const tasksCompleted = plan.execution.task_results.filter(r => r.status === 'completed').length;
+            const tasksFailed = plan.execution.task_results.filter(r => r.status === 'failed').length;
+            this._executionSummary = {
+                success: plan.status === 'completed',
+                tasksCompleted,
+                tasksFailed,
+                commitHash: plan.execution.commit_hash || '',
+                totalTokens: plan.execution.total_tokens || 0,
+                totalCost: plan.execution.total_cost || 0,
+            };
         }
     }
 
@@ -438,6 +512,7 @@ export class CommitPlanDetail extends LitElement {
     /**
      * Execute the plan via SSE streaming endpoint.
      * Consumes events from execute_commit_plan and updates task statuses in real-time.
+     * Includes AbortController for cancellation and elapsed timer.
      */
     async _executePlan() {
         if (this._isExecuting) return;
@@ -445,6 +520,10 @@ export class CommitPlanDetail extends LitElement {
         this._isExecuting = true;
         this._taskStatuses = new Map();
         this._executionSummary = null;
+        this._abortController = new AbortController();
+
+        // Start elapsed timer
+        this._startElapsedTimer();
 
         // Optimistically update the badge to "executing"
         this._plan = { ...this._plan, status: 'executing' };
@@ -456,21 +535,36 @@ export class CommitPlanDetail extends LitElement {
 
             for await (const { event, data } of controller.callStreamAPI(
                 'execute_commit_plan',
-                { plan_id: this.planId, model: this._selectedModel, auto_commit: true }
+                { plan_id: this.planId, model: this._selectedModel, auto_commit: true },
+                null,
+                { signal: this._abortController.signal }
             )) {
                 this._handleSSEEvent(event, data);
             }
         } catch (error) {
-            console.error('❌ Execution error:', error);
-            this._executionSummary = {
-                success: false,
-                tasksCompleted: 0,
-                tasksFailed: 0,
-                commitHash: '',
-                errorMessage: error.message,
-            };
+            if (error.name === 'AbortError') {
+                console.log('⏹ Execution cancelled by user');
+                this._executionSummary = {
+                    success: false,
+                    tasksCompleted: 0,
+                    tasksFailed: 0,
+                    commitHash: '',
+                    errorMessage: 'Ejecución cancelada por el usuario',
+                };
+            } else {
+                console.error('❌ Execution error:', error);
+                this._executionSummary = {
+                    success: false,
+                    tasksCompleted: 0,
+                    tasksFailed: 0,
+                    commitHash: '',
+                    errorMessage: error.message,
+                };
+            }
         } finally {
             this._isExecuting = false;
+            this._abortController = null;
+            this._stopElapsedTimer();
             // Refresh plan data from server to get final status
             await this._loadPlan();
             // Notify parent to refresh graph (new commit may have been created)
@@ -478,6 +572,15 @@ export class CommitPlanDetail extends LitElement {
                 bubbles: true,
                 composed: true,
             }));
+        }
+    }
+
+    /**
+     * Cancel the current execution via AbortController.
+     */
+    _cancelExecution() {
+        if (this._abortController) {
+            this._abortController.abort();
         }
     }
 
@@ -564,6 +667,10 @@ export class CommitPlanDetail extends LitElement {
                 };
                 break;
 
+            case 'heartbeat':
+                this._lastHeartbeat = Date.now();
+                break;
+
             case 'error':
                 console.error('❌ Executor error:', data.message);
                 this._executionSummary = {
@@ -613,6 +720,98 @@ export class CommitPlanDetail extends LitElement {
                 </div>
             </div>
         `;
+    }
+
+    // ========================================================================
+    // RECOVERY
+    // ========================================================================
+
+    /**
+     * Render recovery banner for zombie plans (stuck in "executing" without active execution).
+     */
+    _renderRecoveryBanner(status) {
+        // Only show when plan is "executing" but no active execution in this session
+        if (status !== 'executing' || this._isExecuting) return '';
+
+        return html`
+            <div class="recovery-banner">
+                <div class="recovery-text">⚠️ Ejecución anterior interrumpida</div>
+                <div class="recovery-actions">
+                    <button class="recovery-btn reset" @click=${this._resetToDraft}>↩️ Reset a draft</button>
+                    <button class="recovery-btn reexecute" @click=${this._executePlan}>▶️ Re-ejecutar</button>
+                </div>
+            </div>
+        `;
+    }
+
+    /**
+     * Reset a zombie plan back to draft status (clears execution state).
+     */
+    async _resetToDraft() {
+        try {
+            await AutoFunctionController.executeFunction(
+                'update_commit_plan',
+                { plan_id: this.planId, status: 'draft' }
+            );
+            this._taskStatuses = new Map();
+            this._executionSummary = null;
+            await this._loadPlan();
+            this.dispatchEvent(new CustomEvent('plan-updated', {
+                bubbles: true,
+                composed: true,
+            }));
+        } catch (error) {
+            console.error('❌ Error resetting plan to draft:', error);
+        }
+    }
+
+    // ========================================================================
+    // TIMER & HEARTBEAT
+    // ========================================================================
+
+    /**
+     * Start the elapsed time display timer.
+     */
+    _startElapsedTimer() {
+        this._executionStartTime = Date.now();
+        this._elapsedDisplay = '0s';
+        this._lastHeartbeat = null;
+        this._elapsedInterval = setInterval(() => {
+            this._elapsedDisplay = this._formatElapsed(Date.now() - this._executionStartTime);
+        }, 1000);
+    }
+
+    /**
+     * Stop and clean up the elapsed timer.
+     */
+    _stopElapsedTimer() {
+        if (this._elapsedInterval) {
+            clearInterval(this._elapsedInterval);
+            this._elapsedInterval = null;
+        }
+        this._executionStartTime = null;
+        this._lastHeartbeat = null;
+    }
+
+    /**
+     * Format milliseconds as human-readable elapsed time (e.g., "1m 23s").
+     */
+    _formatElapsed(ms) {
+        const totalSeconds = Math.floor(ms / 1000);
+        const minutes = Math.floor(totalSeconds / 60);
+        const seconds = totalSeconds % 60;
+        if (minutes > 0) {
+            return `${minutes}m ${seconds}s`;
+        }
+        return `${seconds}s`;
+    }
+
+    /**
+     * Check if the heartbeat is considered active (last heartbeat within 15s).
+     */
+    _isHeartbeatActive() {
+        if (!this._lastHeartbeat) return false;
+        return (Date.now() - this._lastHeartbeat) < 15000;
     }
 
     // ========================================================================

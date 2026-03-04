@@ -384,13 +384,14 @@ export class AutoFunctionController extends LitElement {
      * @param {object|null} funcInfo - FuncInfo para procesamiento de tipos (opcional)
      * @yields {{ event: string, data: object|string }} Eventos SSE parseados
      */
-    async *callStreamAPI(endpoint, params, funcInfo = null) {
+    async *callStreamAPI(endpoint, params, funcInfo = null, options = {}) {
         const processedParams = this._processParams(params, funcInfo);
 
         const response = await fetch(`/${endpoint}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(processedParams)
+            body: JSON.stringify(processedParams),
+            signal: options.signal,
         });
 
         if (!response.ok) {
