@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Architecture Dashboard - Test</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Stage areas for component rendering */
+        .component-stage {
+            min-height: 200px;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            overflow: hidden;
+            background: white;
+        }
+        architecture-dashboard {
+            display: block;
+            height: 500px;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 p-6">
+    <div class="max-w-4xl mx-auto">
+        <h1 class="text-2xl font-bold mb-2">🏗️ Architecture Dashboard — Tests</h1>
+        <p class="text-gray-500 text-sm mb-4">TDD tests for Commit 3: container, cards, breadcrumb, view tabs</p>
+
+        <!-- Server status -->
+        <div id="serverStatus" class="mb-6 p-4 bg-gray-100 border border-gray-300 rounded-lg">
+            ⏳ Verificando servidor...
+        </div>
+
+        <!-- Summary -->
+        <div id="summary" class="mb-6 p-4 bg-white border border-gray-200 rounded-lg shadow-sm"></div>
+
+        <!-- Test results -->
+        <div id="results" class="space-y-4"></div>
+    </div>
+
+    <script type="module">
+        import '../../utils/test-runner.js';
+        import { TestRunner } from '../../utils/test-runner.js';
+
+        const runner = new TestRunner();
+
+        // ====================================================================
+        // MOCK: Intercept AutoFunctionController before component loads
+        // ====================================================================
+
+        const MOCK_SNAPSHOT = {
+            root_id: '.',
+            nodes: [
+                { id: '.', parent_id: null, name: 'root', type: 'directory', path: '.', loc: 650, sloc: 500, mi: 72.5, avg_complexity: 3.2, max_complexity: 15, functions_count: 20, classes_count: 5, children_count: 2 },
+                { id: 'src', parent_id: '.', name: 'src', type: 'directory', path: 'src', loc: 500, sloc: 400, mi: 68.0, avg_complexity: 3.8, max_complexity: 15, functions_count: 16, classes_count: 4, children_count: 2 },
+                { id: 'src/app.py', parent_id: 'src', name: 'app.py', type: 'file', path: 'src/app.py', loc: 300, sloc: 250, mi: 60.0, avg_complexity: 5.0, max_complexity: 15, functions_count: 10, classes_count: 3, children_count: 0 },
+                { id: 'src/utils.py', parent_id: 'src', name: 'utils.py', type: 'file', path: 'src/utils.py', loc: 200, sloc: 150, mi: 80.0, avg_complexity: 2.0, max_complexity: 6, functions_count: 6, classes_count: 1, children_count: 0 },
+                { id: 'setup.py', parent_id: '.', name: 'setup.py', type: 'file', path: 'setup.py', loc: 150, sloc: 100, mi: 85.0, avg_complexity: 1.5, max_complexity: 3, functions_count: 4, classes_count: 1, children_count: 0 },
+            ],
+            commit_hash: 'abc123def456789',
+            commit_short: 'abc123d',
+            branch: 'main',
+            timestamp: '2025-06-01T12:00:00',
+            total_files: 3,
+            total_sloc: 500,
+            total_functions: 20,
+            total_classes: 5,
+            avg_mi: 72.5,
+            avg_complexity: 3.2,
+            dependencies: [
+                { source: 'src/app.py', target: 'src/utils.py', import_names: ['helper', 'format_output'] },
+            ],
+            circular_dependencies: [],
+        };
+
+        // Intercept the AutoFunctionController globally
+        let mockBehavior = 'success'; // 'success' | 'error' | 'loading'
+        let executeCallCount = 0;
+        let lastExecutedFunction = null;
+
+        // We need to mock before the component imports AutoFunctionController.
+        // The component uses dynamic import, so we can set up the mock on window.
+        // We'll patch it after importing the module.
+
+        // Import component
+        const componentModule = import('../../../elements/architecture/index.js');
+
+        // After import, patch the controller
+        await componentModule;
+
+        // Get reference to AutoFunctionController from the module system
+        const autoGenModule = await import('../../../elements/auto-element-generator.js');
+        const originalExecute = autoGenModule.AutoFunctionController.executeFunction;
+
+        autoGenModule.AutoFunctionController.executeFunction = async function(funcName, params) {
+            executeCallCount++;
+            lastExecutedFunction = funcName;
+
+            if (mockBehavior === 'error') {
+                throw new Error('Mock API error: server unavailable');
+            }
+            if (mockBehavior === 'loading') {
+                // Never resolve — simulates infinite loading
+                return new Promise(() => {});
+            }
+            if (funcName === 'get_architecture_snapshot') {
+                return MOCK_SNAPSHOT;
+            }
+            return originalExecute.call(this, funcName, params);
+        };
+
+        // Helper: create a fresh component instance
+        function createDashboard() {
+            const el = document.createElement('architecture-dashboard');
+            return el;
+        }
+
+        // Helper: wait for component to finish loading
+        async function waitForLoaded(el, timeout = 3000) {
+            const start = Date.now();
+            while (el._loading && (Date.now() - start < timeout)) {
+                await new Promise(r => setTimeout(r, 50));
+            }
+            await el.updateComplete;
+        }
+
+        // ====================================================================
+        // A) COMPONENT REGISTRATION
+        // ====================================================================
+
+        runner.group('A) Registro del componente', () => {
+
+            runner.test('architecture-dashboard se define como custom element', async (stage) => {
+                runner.assertTrue(
+                    customElements.get('architecture-dashboard'),
+                    'architecture-dashboard debería estar registrado'
+                );
+            });
+
+            runner.test('Instanciar architecture-dashboard crea un elemento válido', async (stage) => {
+                const el = createDashboard();
+                runner.assertTrue(el instanceof HTMLElement, 'Debería ser HTMLElement');
+                runner.assertEqual(el.tagName.toLowerCase(), 'architecture-dashboard');
+            });
+
+        });
+
+        // ====================================================================
+        // B) DATA LOADING
+        // ====================================================================
+
+        runner.group('B) Carga de datos', () => {
+
+            runner.test('connectedCallback dispara refresh() y llama al API', async (stage) => {
+                mockBehavior = 'success';
+                const prevCount = executeCallCount;
+
+                const el = createDashboard();
+                stage.appendChild(el);
+                await waitForLoaded(el);
+
+                runner.assertTrue(
+                    executeCallCount > prevCount,
+                    'Debería haber llamado a executeFunction'
+                );
+                runner.assertEqual(lastExecutedFunction, 'get_architecture_snapshot');
+            });
+
+            runner.test('Tras cargar, _snapshot contiene los datos del API', async (stage) => {
+                mockBehavior = 'success';
+                const el = createDashboard();
+                stage.appendChild(el);
+                await waitForLoaded(el);
+
+                runner.assertTrue(el._snapshot !== null, '_snapshot no debería ser null');
+                runner.assertEqual(el._snapshot.root_id, '.');
+                runner.assertEqual(el._snapshot.total_files, 3);
+                runner.assertEqual(el._snapshot.total_sloc, 500);
+            });
+
+            runner.test('_loading es false después de cargar', async (stage) => {
+                mockBehavior = 'success';
+                const el = createDashboard();
+                stage.appendChild(el);
+                await waitForLoaded(el);
+
+                runner.assertFalse(el._loading, '_loading debería ser false');
+            });
+
+        });
+
+        // ====================================================================
+        // C) LOADING STATE
+        // ====================================================================
+
+        runner.group('C) Estado de loading', () => {
+
+            runner.test('Muestra spinner mientras carga', async (stage) => {
+                mockBehavior = 'loading';
+                const el = createDashboard();
+                stage.appendChild(el);
+
+                // Wait a tick for render
+                await new Promise(r => setTimeout(r, 100));
+                await el.updateComplete;
+
+                const shadow = el.shadowRoot;
+                const spinner = shadow.querySelector('.spinner');
+                runner.assertTrue(spinner !== null, 'Debería mostrar un spinner');
+
+                // Clean up — remove element to stop pending promise
+                stage.removeChild(el);
+                mockBehavior = 'success';
+            });
+
+        });
+
+        // ====================================================================
+        // D) ERROR STATE
+        // ====================================================================
+
+        runner.group('D) Estado de error', () => {
+
+            runner.test('Muestra error cuando el API falla', async (stage) => {
+                mockBehavior = 'error';
+                const el = createDashboard();
+                stage.appendChild(el);
+                await waitForLoaded(el);
+
+                const shadow = el.shadowRoot;
+                const errorMsg = shadow.querySelector('.error-msg');
+                runner.assertTrue(errorMsg !== null, 'Debería mostrar mensaje de error');
+                runner.assertContains(errorMsg.textContent, 'Mock API error');
+
+                mockBehavior = 'success';
+            });
+
+            runner.test('Botón retry existe en estado de error', async (stage) => {
+                mockBehavior = 'error';
+                const el = createDashboard();
+                stage.appendChild(el);
+                await waitForLoaded(el);
+
+                const shadow = el.shadowRoot;
+                const retryBtn = shadow.querySelector('.retry-btn');
+                runner.assertTrue(retryBtn !== null, 'Debería mostrar botón retry');
+
+                mockBehavior = 'success';
+            });
+
+            runner.test('Click en retry recarga los datos', async (stage) => {
+                mockBehavior = 'error';
+                const el = createDashboard();
+                stage.appendChild(el);
+                await waitForLoaded(el);
+
+                // Now switch to success and click retry
+                mockBehavior = 'success';
+                const retryBtn = el.shadowRoot.querySelector('.retry-btn');
+                retryBtn.click();
+                await waitForLoaded(el);
+
+                runner.assertTrue(el._snapshot !== null, 'Tras retry, _snapshot debería tener datos');
+                runner.assertFalse(el._error !== null && el._error !== '', 'Error debería ser null tras retry exitoso');
+            });
+
+        });
+
+        // ====================================================================
+        // E) SUMMARY CARDS
+        // ====================================================================
+
+        runner.group('E) Summary Cards', () => {
+
+            runner.test('Renderiza 6 tarjetas de resumen', async (stage) => {
+                mockBehavior = 'success';
+                const el = createDashboard();
+                stage.appendChild(el);
+                await waitForLoaded(el);
+
+                const cards = el.shadowRoot.querySelectorAll('.summary-card');
+                runner.assertEqual(cards.length, 6, 'Deberían existir 6 tarjetas');
+            });
+
+            runner.test('Cards muestran valores correctos de métricas', async (stage) => {
+                mockBehavior = 'success';
+                const el = createDashboard();
+                stage.appendChild(el);
+                await waitForLoaded(el);
+
+                const cards = el.shadowRoot.querySelectorAll('.summary-card');
+                const cardTexts = Array.from(cards).map(c => c.textContent);
+                const allText = cardTexts.join(' ');
+
+                // Check key values are present
+                runner.assertContains(allText, '3', 'Debería mostrar total_files=3');
+                runner.assertContains(allText, '500', 'Debería mostrar total_sloc=500');
+                runner.assertContains(allText, '20', 'Debería mostrar total_functions=20');
+                runner.assertContains(allText, '5', 'Debería mostrar total_classes=5');
+            });
+
+            runner.test('MI card muestra indicador de estado (✅/⚠️/🔴)', async (stage) => {
+                mockBehavior = 'success';
+                const el = createDashboard();
+                stage.appendChild(el);
+                await waitForLoaded(el);
+
+                const statuses = el.shadowRoot.querySelectorAll('.card-status');
+                runner.assertTrue(statuses.length > 0, 'Debería haber al menos un indicador de estado');
+
+                // MI=72.5 → ✅, CC=3.2 → ✅
+                const statusTexts = Array.from(statuses).map(s => s.textContent.trim());
+                runner.assertTrue(
+                    statusTexts.some(s => s === '✅'),
+                    'Con MI=72.5 y CC=3.2 debería haber al menos un ✅'
+                );
+            });
+
+        });
+
+        // ====================================================================
+        // F) BREADCRUMB
+        // ====================================================================
+
+        runner.group('F) Breadcrumb', () => {
+
+            runner.test('Breadcrumb muestra "root" inicialmente', async (stage) => {
+                mockBehavior = 'success';
+                const el = createDashboard();
+                stage.appendChild(el);
+                await waitForLoaded(el);
+
+                const breadcrumb = el.shadowRoot.querySelector('.breadcrumb');
+                runner.assertTrue(breadcrumb !== null, 'Debería existir el breadcrumb');
+                runner.assertContains(breadcrumb.textContent, 'root', 'Breadcrumb debería contener "root"');
+            });
+
+            runner.test('Breadcrumb se actualiza al navegar into', async (stage) => {
+                mockBehavior = 'success';
+                const el = createDashboard();
+                stage.appendChild(el);
+                await waitForLoaded(el);
+
+                // Navigate into 'src'
+                el._navigateInto('src');
+                await el.updateComplete;
+
+                const breadcrumb = el.shadowRoot.querySelector('.breadcrumb');
+                runner.assertContains(breadcrumb.textContent, 'root', 'Breadcrumb debería contener root');
+                runner.assertContains(breadcrumb.textContent, 'src', 'Breadcrumb debería contener src');
+            });
+
+            runner.test('Click en segmento de breadcrumb navega arriba', async (stage) => {
+                mockBehavior = 'success';
+                const el = createDashboard();
+                stage.appendChild(el);
+                await waitForLoaded(el);
+
+                // Navigate deep
+                el._navigateInto('src');
+                await el.updateComplete;
+                runner.assertEqual(el._currentNodeId, 'src');
+
+                // Click on root segment
+                const segments = el.shadowRoot.querySelectorAll('.breadcrumb-segment');
+                runner.assertTrue(segments.length >= 1, 'Debería haber segmentos clickeables');
+
+                // First segment should be root
+                segments[0].click();
+                await el.updateComplete;
+
+                runner.assertEqual(el._currentNodeId, '.', 'Debería haber navegado de vuelta al root');
+            });
+
+        });
+
+        // ====================================================================
+        // G) VIEW TABS
+        // ====================================================================
+
+        runner.group('G) View Tabs', () => {
+
+            runner.test('Tabs Treemap y Dependencies son visibles', async (stage) => {
+                mockBehavior = 'success';
+                const el = createDashboard();
+                stage.appendChild(el);
+                await waitForLoaded(el);
+
+                const tabs = el.shadowRoot.querySelectorAll('.view-tab');
+                runner.assertEqual(tabs.length, 2, 'Deberían existir 2 tabs');
+
+                const tabTexts = Array.from(tabs).map(t => t.textContent.trim().toLowerCase());
+                runner.assertTrue(
+                    tabTexts.some(t => t.includes('treemap')),
+                    'Debería existir tab Treemap'
+                );
+                runner.assertTrue(
+                    tabTexts.some(t => t.includes('dependenc')),
+                    'Debería existir tab Dependencies'
+                );
+            });
+
+            runner.test('Treemap es el tab activo por defecto', async (stage) => {
+                mockBehavior = 'success';
+                const el = createDashboard();
+                stage.appendChild(el);
+                await waitForLoaded(el);
+
+                runner.assertEqual(el._viewMode, 'treemap', 'viewMode default debería ser treemap');
+
+                const activeTab = el.shadowRoot.querySelector('.view-tab.active');
+                runner.assertTrue(activeTab !== null, 'Debería haber un tab activo');
+                runner.assertContains(
+                    activeTab.textContent.toLowerCase(), 'treemap',
+                    'Tab activo debería ser Treemap'
+                );
+            });
+
+            runner.test('Click en tab Dependencies cambia viewMode', async (stage) => {
+                mockBehavior = 'success';
+                const el = createDashboard();
+                stage.appendChild(el);
+                await waitForLoaded(el);
+
+                const tabs = el.shadowRoot.querySelectorAll('.view-tab');
+                const depTab = Array.from(tabs).find(t => t.textContent.toLowerCase().includes('dependenc'));
+                runner.assertTrue(depTab !== null, 'Debería encontrar tab Dependencies');
+
+                depTab.click();
+                await el.updateComplete;
+
+                runner.assertEqual(el._viewMode, 'graph', 'viewMode debería ser graph');
+            });
+
+        });
+
+        // ====================================================================
+        // H) TREE BUILDING
+        // ====================================================================
+
+        runner.group('H) Reconstrucción de árbol', () => {
+
+            runner.test('_buildTreeFromNodes reconstruye árbol con children', async (stage) => {
+                mockBehavior = 'success';
+                const el = createDashboard();
+                stage.appendChild(el);
+                await waitForLoaded(el);
+
+                const tree = el._buildTreeFromNodes(MOCK_SNAPSHOT.nodes, '.');
+                runner.assertTrue(tree !== null, 'Árbol no debería ser null');
+                runner.assertEqual(tree.id, '.', 'Root id debería ser "."');
+                runner.assertTrue(Array.isArray(tree.children), 'Root debería tener children array');
+                runner.assertEqual(tree.children.length, 2, 'Root debería tener 2 hijos (src, setup.py)');
+            });
+
+            runner.test('_buildTreeFromNodes genera hijos anidados correctamente', async (stage) => {
+                mockBehavior = 'success';
+                const el = createDashboard();
+                stage.appendChild(el);
+                await waitForLoaded(el);
+
+                const tree = el._buildTreeFromNodes(MOCK_SNAPSHOT.nodes, '.');
+                const srcNode = tree.children.find(c => c.id === 'src');
+                runner.assertTrue(srcNode !== null, 'Debería encontrar nodo src');
+                runner.assertEqual(srcNode.type, 'directory');
+                runner.assertTrue(Array.isArray(srcNode.children), 'src debería tener children');
+                runner.assertEqual(srcNode.children.length, 2, 'src debería tener 2 hijos');
+            });
+
+            runner.test('_getCurrentSubtree devuelve subárbol correcto', async (stage) => {
+                mockBehavior = 'success';
+                const el = createDashboard();
+                stage.appendChild(el);
+                await waitForLoaded(el);
+
+                // Navigate into src
+                el._navigateInto('src');
+                await el.updateComplete;
+
+                const subtree = el._getCurrentSubtree();
+                runner.assertTrue(subtree !== null, 'Subárbol no debería ser null');
+                runner.assertEqual(subtree.id, 'src', 'Subárbol debería ser src');
+                runner.assertEqual(subtree.children.length, 2, 'src debería tener 2 hijos');
+            });
+
+        });
+
+        // ====================================================================
+        // I) NAVIGATION
+        // ====================================================================
+
+        runner.group('I) Navegación', () => {
+
+            runner.test('_currentNodeId empieza en root_id', async (stage) => {
+                mockBehavior = 'success';
+                const el = createDashboard();
+                stage.appendChild(el);
+                await waitForLoaded(el);
+
+                runner.assertEqual(el._currentNodeId, '.', 'currentNodeId debería empezar en root');
+            });
+
+            runner.test('_navigateInto actualiza _currentNodeId', async (stage) => {
+                mockBehavior = 'success';
+                const el = createDashboard();
+                stage.appendChild(el);
+                await waitForLoaded(el);
+
+                el._navigateInto('src');
+                runner.assertEqual(el._currentNodeId, 'src');
+            });
+
+            runner.test('navigate-into event actualiza _currentNodeId', async (stage) => {
+                mockBehavior = 'success';
+                const el = createDashboard();
+                stage.appendChild(el);
+                await waitForLoaded(el);
+
+                // Simulate event from child (treemap)
+                el.dispatchEvent(new CustomEvent('navigate-into', {
+                    detail: { nodeId: 'src' },
+                    bubbles: true,
+                    composed: true,
+                }));
+                await el.updateComplete;
+
+                runner.assertEqual(el._currentNodeId, 'src', 'Debería haber navegado a src');
+            });
+
+            runner.test('Navegación profunda y vuelta al root funciona', async (stage) => {
+                mockBehavior = 'success';
+                const el = createDashboard();
+                stage.appendChild(el);
+                await waitForLoaded(el);
+
+                // Navigate into src
+                el._navigateInto('src');
+                runner.assertEqual(el._currentNodeId, 'src');
+
+                // Navigate back to root
+                el._navigateUp('.');
+                runner.assertEqual(el._currentNodeId, '.');
+            });
+
+        });
+
+        // ====================================================================
+        // J) CONTENT AREA
+        // ====================================================================
+
+        runner.group('J) Content area', () => {
+
+            runner.test('Existe un área de contenido para treemap/graph', async (stage) => {
+                mockBehavior = 'success';
+                const el = createDashboard();
+                stage.appendChild(el);
+                await waitForLoaded(el);
+
+                const contentArea = el.shadowRoot.querySelector('.content-area');
+                runner.assertTrue(contentArea !== null, 'Debería existir .content-area');
+            });
+
+            runner.test('Contenido placeholder visible (Treemap aquí)', async (stage) => {
+                mockBehavior = 'success';
+                const el = createDashboard();
+                stage.appendChild(el);
+                await waitForLoaded(el);
+
+                const contentArea = el.shadowRoot.querySelector('.content-area');
+                // Should have some placeholder text or element
+                runner.assertTrue(
+                    contentArea.textContent.length > 0 || contentArea.children.length > 0,
+                    'Content area debería tener contenido placeholder'
+                );
+            });
+
+        });
+
+        // ====================================================================
+        // K) SNAPSHOT INFO
+        // ====================================================================
+
+        runner.group('K) Snapshot info', () => {
+
+            runner.test('Muestra info del commit y branch', async (stage) => {
+                mockBehavior = 'success';
+                const el = createDashboard();
+                stage.appendChild(el);
+                await waitForLoaded(el);
+
+                const snapshotInfo = el.shadowRoot.querySelector('.snapshot-info');
+                runner.assertTrue(snapshotInfo !== null, 'Debería existir .snapshot-info');
+                runner.assertContains(snapshotInfo.textContent, 'abc123d', 'Debería mostrar commit_short');
+                runner.assertContains(snapshotInfo.textContent, 'main', 'Debería mostrar branch');
+            });
+
+        });
+
+        // ====================================================================
+        // RUN
+        // ====================================================================
+
+        await runner.run();
+    </script>
+</body>
+</html>
