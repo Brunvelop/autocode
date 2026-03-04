@@ -2,6 +2,7 @@
  * commit-detail.js
  * Panel de detalle de un commit seleccionado.
  * Lazy-loads the commit detail (files changed, stats) via API.
+ * Shows a combined table merging file changes with code metrics.
  */
 
 import { LitElement, html } from 'https://cdn.jsdelivr.net/gh/lit/dist@3/core/lit-core.min.js';
@@ -22,14 +23,12 @@ const STATUS_ICONS = {
 export class CommitDetail extends LitElement {
     static properties = {
         commitHash: { type: String, attribute: 'commit-hash' },
-        commitSummary: { type: Object },  // Basic info passed from parent (for instant display)
-        _detail: { state: true },          // Full detail loaded from API
+        commitSummary: { type: Object },
+        _detail: { state: true },
         _loading: { state: true },
         _error: { state: true },
-        // Commit metrics — always visible
         _metrics: { state: true },
         _metricsLoading: { state: true },
-        _metricsCollapsed: { state: true },
     };
 
     static styles = [themeTokens, commitDetailStyles];
@@ -41,16 +40,13 @@ export class CommitDetail extends LitElement {
         this._detail = null;
         this._loading = false;
         this._error = null;
-        // Metrics — expanded by default
         this._metrics = null;
         this._metricsLoading = false;
-        this._metricsCollapsed = false;
     }
 
     willUpdate(changed) {
         if (changed.has('commitHash') && this.commitHash) {
             this._loadDetail();
-            // Auto-load metrics alongside detail
             this._metrics = null;
             this._loadMetrics();
         }
@@ -121,31 +117,8 @@ export class CommitDetail extends LitElement {
                     <div class="message-section">${detail.message_full}</div>
                 ` : ''}
 
-                <!-- Stats bar -->
-                ${detail.stats ? html`
-                    <div class="stats-bar">
-                        <span class="stat-item stat-files">
-                            📄 ${detail.stats.files_changed || 0} archivos
-                        </span>
-                        <span class="stat-item stat-add">
-                            +${detail.stats.total_additions || 0}
-                        </span>
-                        <span class="stat-item stat-del">
-                            −${detail.stats.total_deletions || 0}
-                        </span>
-                    </div>
-                ` : ''}
-
-                <!-- Files list -->
-                ${detail.files && detail.files.length > 0 ? html`
-                    <div class="files-section">
-                        <div class="files-header">Archivos cambiados</div>
-                        ${detail.files.map(f => this._renderFileItem(f))}
-                    </div>
-                ` : ''}
-
-                <!-- Code Metrics (expandable) -->
-                ${this._renderMetricsSection()}
+                <!-- Combined files + metrics table -->
+                ${this._renderCombinedTable()}
             </div>
         `;
     }
@@ -156,7 +129,6 @@ export class CommitDetail extends LitElement {
 
     async _loadDetail() {
         if (!this.commitHash) return;
-
         this._loading = true;
         this._error = null;
         this._detail = null;
@@ -166,7 +138,6 @@ export class CommitDetail extends LitElement {
                 'get_commit_detail',
                 { commit_hash: this.commitHash }
             );
-
             this._detail = result;
         } catch (error) {
             this._error = error.message || 'Error cargando detalle del commit';
@@ -176,30 +147,309 @@ export class CommitDetail extends LitElement {
         }
     }
 
+    async _loadMetrics() {
+        if (!this.commitHash) return;
+        this._metricsLoading = true;
+        try {
+            const result = await AutoFunctionController.executeFunction(
+                'get_commit_metrics',
+                { commit_hash: this.commitHash }
+            );
+            this._metrics = result;
+        } catch (e) {
+            console.error('❌ Error loading commit metrics:', e);
+            this._metrics = { files: [], summary: {} };
+        } finally {
+            this._metricsLoading = false;
+        }
+    }
+
+    // ========================================================================
+    // COMBINED TABLE
+    // ========================================================================
+
+    /**
+     * Merge detail.files (all changed files) with metrics.files (.py metrics)
+     * Returns array of { path, status, additions, deletions, metrics: {before, after, delta_*} | null }
+     */
+    _mergeFilesWithMetrics() {
+        const detailFiles = this._detail?.files || [];
+        const metricsFiles = this._metrics?.files || [];
+
+        // Build lookup by path from metrics
+        const metricsMap = new Map();
+        for (const mf of metricsFiles) {
+            metricsMap.set(mf.path, mf);
+        }
+
+        return detailFiles.map(f => ({
+            path: f.path,
+            status: f.status,
+            additions: f.additions || 0,
+            deletions: f.deletions || 0,
+            metrics: metricsMap.get(f.path) || null,
+        }));
+    }
+
+    _renderCombinedTable() {
+        const detailFiles = this._detail?.files;
+        if (!detailFiles || detailFiles.length === 0) {
+            return html``;
+        }
+
+        const merged = this._mergeFilesWithMetrics();
+        const hasAnyMetrics = merged.some(f => f.metrics != null);
+
+        // Compute totals
+        const totals = this._computeTotals(merged);
+
+        return html`
+            <div class="table-section">
+                <div class="table-section-header">
+                    <span>📊 Archivos cambiados</span>
+                    ${this._metricsLoading ? html`<div class="spinner-sm"></div>` : ''}
+                    ${!this._metricsLoading && hasAnyMetrics ? html`
+                        <span class="table-py-count">${merged.filter(f => f.metrics).length} .py con métricas</span>
+                    ` : ''}
+                </div>
+                <div class="table-scroll-wrapper">
+                    <table class="combined-table">
+                        <thead>
+                            <tr>
+                                <th class="th-status"></th>
+                                <th class="th-path">Archivo</th>
+                                <th class="th-loc">LOC</th>
+                                ${hasAnyMetrics ? html`
+                                    <th class="th-metric">SLOC</th>
+                                    <th class="th-metric">CC</th>
+                                    <th class="th-metric">MaxCC</th>
+                                    <th class="th-metric">MI</th>
+                                    <th class="th-metric">Fn</th>
+                                    <th class="th-metric">Cls</th>
+                                    <th class="th-metric">Nest</th>
+                                ` : ''}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${merged.map(f => this._renderTableRow(f, hasAnyMetrics))}
+                        </tbody>
+                        <tfoot>
+                            ${this._renderTotalsRow(totals, hasAnyMetrics)}
+                        </tfoot>
+                    </table>
+                </div>
+            </div>
+        `;
+    }
+
+    _renderTableRow(f, hasAnyMetrics) {
+        const icon = STATUS_ICONS[f.status] || '📄';
+        const m = f.metrics;
+        const after = m?.after || {};
+        const before = m?.before || {};
+
+        return html`
+            <tr class="file-row" title="${f.path}">
+                <td class="td-status">${icon}</td>
+                <td class="td-path">${this._breakablePath(f.path)}</td>
+                <td class="td-loc">
+                    ${f.additions > 0 ? html`<span class="loc-bad">+${f.additions}</span>` : ''}
+                    ${f.deletions > 0 ? html`<span class="loc-good">-${f.deletions}</span>` : ''}
+                    ${f.additions === 0 && f.deletions === 0 ? html`<span class="loc-zero">—</span>` : ''}
+                </td>
+                ${hasAnyMetrics ? html`
+                    ${m ? html`
+                        <!-- SLOC -->
+                        <td class="td-metric">
+                            <span class="metric-val">${after.sloc ?? '—'}</span>
+                            ${this._renderDelta(m.delta_sloc, true)}
+                        </td>
+                        <!-- CC avg -->
+                        <td class="td-metric">
+                            <span class="metric-val">${after.avg_complexity?.toFixed(1) ?? '—'}</span>
+                            ${this._renderDelta(m.delta_complexity, true, true)}
+                        </td>
+                        <!-- Max CC -->
+                        <td class="td-metric">
+                            <span class="metric-val">${after.max_complexity ?? '—'}</span>
+                            ${this._renderDelta((after.max_complexity || 0) - (before.max_complexity || 0), true)}
+                        </td>
+                        <!-- MI -->
+                        <td class="td-metric">
+                            <span class="metric-val ${this._miClass(after.maintainability_index)}">${after.maintainability_index?.toFixed(0) ?? '—'}</span>
+                            ${this._renderDelta(m.delta_mi, false, true, true)}
+                        </td>
+                        <!-- Functions -->
+                        <td class="td-metric">
+                            <span class="metric-val">${after.functions_count ?? '—'}</span>
+                            ${this._renderDelta((after.functions_count || 0) - (before.functions_count || 0))}
+                        </td>
+                        <!-- Classes -->
+                        <td class="td-metric">
+                            <span class="metric-val">${after.classes_count ?? '—'}</span>
+                            ${this._renderDelta((after.classes_count || 0) - (before.classes_count || 0))}
+                        </td>
+                        <!-- Max Nesting -->
+                        <td class="td-metric">
+                            <span class="metric-val">${after.max_nesting ?? '—'}</span>
+                            ${this._renderDelta((after.max_nesting || 0) - (before.max_nesting || 0), true)}
+                        </td>
+                    ` : html`
+                        <td class="td-metric td-na" colspan="7">—</td>
+                    `}
+                ` : ''}
+            </tr>
+        `;
+    }
+
+    _computeTotals(merged) {
+        let totalAdd = 0, totalDel = 0;
+        let totalSlocAfter = 0, totalSlocBefore = 0;
+        let totalFnAfter = 0, totalFnBefore = 0;
+        let totalClsAfter = 0, totalClsBefore = 0;
+        let sumMiAfter = 0, sumMiBefore = 0;
+        let sumCcAfter = 0, sumCcBefore = 0;
+        let maxCcAfter = 0, maxCcBefore = 0;
+        let maxNestAfter = 0, maxNestBefore = 0;
+        let metricsCount = 0;
+
+        for (const f of merged) {
+            totalAdd += f.additions;
+            totalDel += f.deletions;
+
+            if (f.metrics) {
+                const a = f.metrics.after || {};
+                const b = f.metrics.before || {};
+                totalSlocAfter += a.sloc || 0;
+                totalSlocBefore += b.sloc || 0;
+                totalFnAfter += a.functions_count || 0;
+                totalFnBefore += b.functions_count || 0;
+                totalClsAfter += a.classes_count || 0;
+                totalClsBefore += b.classes_count || 0;
+                sumMiAfter += a.maintainability_index || 0;
+                sumMiBefore += b.maintainability_index || 0;
+                sumCcAfter += a.avg_complexity || 0;
+                sumCcBefore += b.avg_complexity || 0;
+                maxCcAfter = Math.max(maxCcAfter, a.max_complexity || 0);
+                maxCcBefore = Math.max(maxCcBefore, b.max_complexity || 0);
+                maxNestAfter = Math.max(maxNestAfter, a.max_nesting || 0);
+                maxNestBefore = Math.max(maxNestBefore, b.max_nesting || 0);
+                metricsCount++;
+            }
+        }
+
+        const avgMiAfter = metricsCount ? sumMiAfter / metricsCount : 0;
+        const avgMiBefore = metricsCount ? sumMiBefore / metricsCount : 0;
+        const avgCcAfter = metricsCount ? sumCcAfter / metricsCount : 0;
+        const avgCcBefore = metricsCount ? sumCcBefore / metricsCount : 0;
+
+        return {
+            fileCount: merged.length,
+            pyCount: metricsCount,
+            totalAdd,
+            totalDel,
+            slocAfter: totalSlocAfter,
+            deltaSloc: totalSlocAfter - totalSlocBefore,
+            avgCc: avgCcAfter,
+            deltaCc: avgCcAfter - avgCcBefore,
+            maxCcAfter,
+            deltaMaxCc: maxCcAfter - maxCcBefore,
+            avgMi: avgMiAfter,
+            deltaMi: avgMiAfter - avgMiBefore,
+            fnAfter: totalFnAfter,
+            deltaFn: totalFnAfter - totalFnBefore,
+            clsAfter: totalClsAfter,
+            deltaCls: totalClsAfter - totalClsBefore,
+            maxNestAfter,
+            deltaMaxNest: maxNestAfter - maxNestBefore,
+            hasMetrics: metricsCount > 0,
+        };
+    }
+
+    _renderTotalsRow(t, hasAnyMetrics) {
+        return html`
+            <tr class="totals-row">
+                <td class="td-status">Σ</td>
+                <td class="td-path totals-label">
+                    ${t.fileCount} archivo${t.fileCount !== 1 ? 's' : ''}
+                    ${t.pyCount > 0 ? html` <span class="totals-py">(${t.pyCount} .py)</span>` : ''}
+                </td>
+                <td class="td-loc">
+                    ${t.totalAdd > 0 ? html`<span class="loc-bad">+${t.totalAdd}</span>` : ''}
+                    ${t.totalDel > 0 ? html`<span class="loc-good">-${t.totalDel}</span>` : ''}
+                </td>
+                ${hasAnyMetrics ? html`
+                    ${t.hasMetrics ? html`
+                        <td class="td-metric">
+                            <span class="metric-val">${t.slocAfter}</span>
+                            ${this._renderDelta(t.deltaSloc, true)}
+                        </td>
+                        <td class="td-metric">
+                            <span class="metric-val">${t.avgCc.toFixed(1)}</span>
+                            ${this._renderDelta(t.deltaCc, true, true)}
+                        </td>
+                        <td class="td-metric">
+                            <span class="metric-val">${t.maxCcAfter}</span>
+                            ${this._renderDelta(t.deltaMaxCc, true)}
+                        </td>
+                        <td class="td-metric">
+                            <span class="metric-val ${this._miClass(t.avgMi)}">${t.avgMi.toFixed(0)}</span>
+                            ${this._renderDelta(t.deltaMi, false, true, true)}
+                        </td>
+                        <td class="td-metric">
+                            <span class="metric-val">${t.fnAfter}</span>
+                            ${this._renderDelta(t.deltaFn)}
+                        </td>
+                        <td class="td-metric">
+                            <span class="metric-val">${t.clsAfter}</span>
+                            ${this._renderDelta(t.deltaCls)}
+                        </td>
+                        <td class="td-metric">
+                            <span class="metric-val">${t.maxNestAfter}</span>
+                            ${this._renderDelta(t.deltaMaxNest, true)}
+                        </td>
+                    ` : html`
+                        <td class="td-metric td-na" colspan="7">—</td>
+                    `}
+                ` : ''}
+            </tr>
+        `;
+    }
+
     // ========================================================================
     // RENDER HELPERS
     // ========================================================================
 
-    _renderFileItem(file) {
-        const icon = STATUS_ICONS[file.status] || '📄';
-        const hasStats = file.additions > 0 || file.deletions > 0;
+    _renderDelta(delta, lowerBetter = false, isFloat = false, higherBetter = false) {
+        if (delta == null || delta === 0) return html`<span class="delta delta-neutral">—</span>`;
+        let cls = 'delta-neutral';
+        if (lowerBetter) cls = delta < 0 ? 'delta-positive' : 'delta-negative';
+        else if (higherBetter) cls = delta > 0 ? 'delta-positive' : 'delta-negative';
+        const sign = delta > 0 ? '+' : '';
+        const val = isFloat ? delta.toFixed(1) : delta;
+        return html`<span class="delta ${cls}">${sign}${val}</span>`;
+    }
 
-        return html`
-            <div class="file-item" title="${file.path}">
-                <span class="file-status-icon">${icon}</span>
-                <span class="file-path">${file.path}</span>
-                ${hasStats ? html`
-                    <span class="file-stats">
-                        ${file.additions > 0 ? html`
-                            <span class="file-stat-add">+${file.additions}</span>
-                        ` : ''}
-                        ${file.deletions > 0 ? html`
-                            <span class="file-stat-del">-${file.deletions}</span>
-                        ` : ''}
-                    </span>
-                ` : ''}
-            </div>
-        `;
+    /** Returns MI color class based on value */
+    _miClass(mi) {
+        if (mi == null) return '';
+        if (mi >= 60) return 'mi-good';
+        if (mi >= 40) return 'mi-warn';
+        return 'mi-bad';
+    }
+
+    /**
+     * Makes a file path breakable by inserting <wbr> after each '/'.
+     * This allows long paths to wrap naturally in table cells.
+     */
+    _breakablePath(p) {
+        if (!p) return '';
+        const parts = p.split('/');
+        const result = [];
+        for (let i = 0; i < parts.length; i++) {
+            result.push(html`${i > 0 ? html`/<wbr>` : ''}${parts[i]}`);
+        }
+        return result;
     }
 
     _isMultilineMessage(msg) {
@@ -222,227 +472,6 @@ export class CommitDetail extends LitElement {
         } catch {
             return isoDate;
         }
-    }
-
-    // ========================================================================
-    // COMMIT METRICS (always visible, detailed)
-    // ========================================================================
-
-    _renderMetricsSection() {
-        const isCollapsed = this._metricsCollapsed;
-        return html`
-            <div class="metrics-header-bar" @click=${this._toggleMetrics}>
-                <span class="metrics-toggle-icon">${isCollapsed ? '▸' : '▾'}</span>
-                <span class="metrics-header-label">📊 Métricas de código</span>
-                ${this._metricsLoading ? html`<div class="spinner-sm"></div>` : ''}
-                ${!this._metricsLoading && this._metrics?.files?.length ? html`
-                    <span class="metrics-header-count">${this._metrics.files.length} .py</span>
-                ` : ''}
-            </div>
-            ${!isCollapsed ? this._renderMetricsContent() : ''}
-        `;
-    }
-
-    _renderMetricsContent() {
-        if (this._metricsLoading) {
-            return html`<div class="metrics-loading">
-                <div class="spinner-sm"></div>
-                <span>Analizando métricas...</span>
-            </div>`;
-        }
-        if (!this._metrics || !this._metrics.files || this._metrics.files.length === 0) {
-            return html`<div class="metrics-empty">Sin archivos .py en este commit</div>`;
-        }
-
-        const m = this._metrics;
-        const s = m.summary || {};
-
-        // Aggregate totals from file data for detailed summary
-        const totalBefore = { sloc: 0, funcs: 0, classes: 0, maxCC: 0 };
-        const totalAfter = { sloc: 0, funcs: 0, classes: 0, maxCC: 0 };
-        let totalMiBefore = 0, totalMiAfter = 0, miCount = 0;
-
-        for (const f of m.files) {
-            if (f.before) {
-                totalBefore.sloc += f.before.sloc || 0;
-                totalBefore.funcs += f.before.functions_count || 0;
-                totalBefore.classes += f.before.classes_count || 0;
-                totalBefore.maxCC = Math.max(totalBefore.maxCC, f.before.max_complexity || 0);
-                totalMiBefore += f.before.maintainability_index || 0;
-            }
-            if (f.after) {
-                totalAfter.sloc += f.after.sloc || 0;
-                totalAfter.funcs += f.after.functions_count || 0;
-                totalAfter.classes += f.after.classes_count || 0;
-                totalAfter.maxCC = Math.max(totalAfter.maxCC, f.after.max_complexity || 0);
-                totalMiAfter += f.after.maintainability_index || 0;
-            }
-            if (f.after || f.before) miCount++;
-        }
-
-        const avgMiBefore = miCount ? totalMiBefore / miCount : 0;
-        const avgMiAfter = miCount ? totalMiAfter / miCount : 0;
-        const deltaMi = avgMiAfter - avgMiBefore;
-        const deltaFuncs = totalAfter.funcs - totalBefore.funcs;
-        const deltaClasses = totalAfter.classes - totalBefore.classes;
-
-        return html`
-            <div class="metrics-content">
-                <!-- Summary cards -->
-                <div class="metrics-summary-grid">
-                    ${this._metricCard('SLOC', s.delta_sloc, totalAfter.sloc, true)}
-                    ${this._metricCard('CC Media', s.delta_avg_complexity, null, true, true)}
-                    ${this._metricCard('MI Media', deltaMi, avgMiAfter?.toFixed(1), false, true, true)}
-                    ${this._metricCard('Funciones', deltaFuncs, totalAfter.funcs)}
-                    ${this._metricCard('Clases', deltaClasses, totalAfter.classes)}
-                    ${this._metricCard('Max CC', totalAfter.maxCC - totalBefore.maxCC, totalAfter.maxCC, true)}
-                </div>
-
-                <!-- Per-file detailed cards -->
-                <div class="metrics-files-detailed">
-                    ${m.files.map(f => this._renderFileMetrics(f))}
-                </div>
-            </div>
-        `;
-    }
-
-    _metricCard(label, delta, value, lowerBetter = false, isFloat = false, higherBetter = false) {
-        let deltaClass = 'delta-neutral';
-        if (delta != null && delta !== 0) {
-            if (lowerBetter) deltaClass = delta < 0 ? 'delta-positive' : 'delta-negative';
-            else if (higherBetter) deltaClass = delta > 0 ? 'delta-positive' : 'delta-negative';
-        }
-        const sign = delta > 0 ? '+' : '';
-        const deltaStr = delta != null && delta !== 0
-            ? (isFloat ? `${sign}${delta.toFixed(2)}` : `${sign}${delta}`)
-            : '—';
-
-        return html`
-            <div class="mc-card">
-                <span class="mc-label">${label}</span>
-                ${value != null ? html`<span class="mc-value">${value}</span>` : ''}
-                <span class="mc-delta ${deltaClass}">${deltaStr}</span>
-            </div>
-        `;
-    }
-
-    _renderFileMetrics(f) {
-        const statusIcons = { added: '✅', modified: '🔄', deleted: '❌' };
-        const icon = statusIcons[f.status] || '📄';
-        const after = f.after || {};
-        const before = f.before || {};
-
-        // MI status indicator
-        const mi = after.maintainability_index ?? 0;
-        const miIcon = mi >= 60 ? '✅' : mi >= 40 ? '⚠️' : '🔴';
-
-        return html`
-            <div class="mf-card">
-                <div class="mf-card-header">
-                    <span class="mf-status-icon">${icon}</span>
-                    <span class="mf-card-path" title="${f.path}">${this._shortPath(f.path)}</span>
-                    <span class="mf-status-badge mf-status-${f.status}">${f.status}</span>
-                </div>
-
-                ${f.status === 'deleted' ? html`
-                    <div class="mf-deleted-info">Archivo eliminado (${before.sloc || 0} SLOC)</div>
-                ` : html`
-                    <!-- Metrics grid -->
-                    <div class="mf-metrics-grid">
-                        <div class="mf-metric">
-                            <span class="mf-metric-label">SLOC</span>
-                            <span class="mf-metric-value">${after.sloc || 0}</span>
-                            ${this._renderDelta(f.delta_sloc, true)}
-                        </div>
-                        <div class="mf-metric">
-                            <span class="mf-metric-label">Funciones</span>
-                            <span class="mf-metric-value">${after.functions_count || 0}</span>
-                            ${this._renderDelta((after.functions_count || 0) - (before.functions_count || 0))}
-                        </div>
-                        <div class="mf-metric">
-                            <span class="mf-metric-label">Clases</span>
-                            <span class="mf-metric-value">${after.classes_count || 0}</span>
-                            ${this._renderDelta((after.classes_count || 0) - (before.classes_count || 0))}
-                        </div>
-                        <div class="mf-metric">
-                            <span class="mf-metric-label">CC Media</span>
-                            <span class="mf-metric-value">${after.avg_complexity?.toFixed(1) || '0'}</span>
-                            ${this._renderDelta(f.delta_complexity, true, true)}
-                        </div>
-                        <div class="mf-metric">
-                            <span class="mf-metric-label">Max CC</span>
-                            <span class="mf-metric-value">${after.max_complexity || 0}</span>
-                            ${this._renderDelta((after.max_complexity || 0) - (before.max_complexity || 0), true)}
-                        </div>
-                        <div class="mf-metric">
-                            <span class="mf-metric-label">Max Nest</span>
-                            <span class="mf-metric-value">${after.max_nesting || 0}</span>
-                            ${this._renderDelta((after.max_nesting || 0) - (before.max_nesting || 0), true)}
-                        </div>
-                        <div class="mf-metric mf-metric-wide">
-                            <span class="mf-metric-label">MI ${miIcon}</span>
-                            <span class="mf-metric-value">${mi.toFixed(1)}</span>
-                            ${this._renderDelta(f.delta_mi, false, true, true)}
-                        </div>
-                    </div>
-
-                    <!-- Top complex functions (if any) -->
-                    ${after.functions && after.functions.length > 0 ? html`
-                        <div class="mf-functions">
-                            <div class="mf-functions-title">Funciones (por CC)</div>
-                            ${[...after.functions]
-                                .sort((a, b) => b.complexity - a.complexity)
-                                .slice(0, 5)
-                                .map(fn => html`
-                                    <div class="mf-func-row">
-                                        <span class="mf-func-name" title="${fn.name}">${fn.name}</span>
-                                        <span class="mf-func-cc">CC ${fn.complexity}</span>
-                                        <span class="rank-badge rank-${fn.rank}">${fn.rank}</span>
-                                        <span class="mf-func-nest">↕${fn.nesting_depth}</span>
-                                    </div>
-                                `)}
-                        </div>
-                    ` : ''}
-                `}
-            </div>
-        `;
-    }
-
-    _renderDelta(delta, lowerBetter = false, isFloat = false, higherBetter = false) {
-        if (delta == null || delta === 0) return html`<span class="mc-delta delta-neutral">—</span>`;
-        let cls = 'delta-neutral';
-        if (lowerBetter) cls = delta < 0 ? 'delta-positive' : 'delta-negative';
-        else if (higherBetter) cls = delta > 0 ? 'delta-positive' : 'delta-negative';
-        const sign = delta > 0 ? '+' : '';
-        const val = isFloat ? delta.toFixed(1) : delta;
-        return html`<span class="mc-delta ${cls}">${sign}${val}</span>`;
-    }
-
-    _toggleMetrics() {
-        this._metricsCollapsed = !this._metricsCollapsed;
-    }
-
-    async _loadMetrics() {
-        if (!this.commitHash) return;
-        this._metricsLoading = true;
-        try {
-            const result = await AutoFunctionController.executeFunction(
-                'get_commit_metrics',
-                { commit_hash: this.commitHash }
-            );
-            this._metrics = result;
-        } catch (e) {
-            console.error('❌ Error loading commit metrics:', e);
-            this._metrics = { files: [], summary: {} };
-        } finally {
-            this._metricsLoading = false;
-        }
-    }
-
-    _shortPath(p) {
-        if (!p) return '';
-        const parts = p.split('/');
-        return parts.length > 2 ? '…/' + parts.slice(-2).join('/') : p;
     }
 
     // ========================================================================
