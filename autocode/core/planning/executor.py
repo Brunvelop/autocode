@@ -11,9 +11,11 @@ Flujo:
 5. Opcionalmente hace git add + commit al finalizar
 """
 
+import asyncio
 import json
 import logging
 import subprocess
+import time
 from datetime import datetime
 from typing import AsyncGenerator, List, Union
 
@@ -47,7 +49,8 @@ logger = logging.getLogger(__name__)
 # ============================================================================
 
 # Statuses desde los que se puede ejecutar un plan
-EXECUTOR_ALLOWED_STATUSES = {"draft", "ready", "failed"}
+# Includes "executing" to allow recovery/re-execution of stuck plans
+EXECUTOR_ALLOWED_STATUSES = {"draft", "ready", "failed", "executing"}
 
 # Tools que modifican archivos (para extraer files_changed de la trajectory)
 WRITE_TOOLS = {"write_file_content", "replace_in_file", "delete_file"}
@@ -73,6 +76,7 @@ async def stream_execute_plan(
     max_tokens: int = None,
     temperature: float = 0.3,
     auto_commit: bool = True,
+    task_timeout_s: float = 300,
 ) -> AsyncGenerator[str, None]:
     """Async generator que ejecuta un plan y emite SSE events.
 
@@ -82,10 +86,12 @@ async def stream_execute_plan(
         max_tokens: Número máximo de tokens por iteración
         temperature: Temperature para generación (baja para código preciso)
         auto_commit: Si hacer git commit automático al terminar exitosamente
+        task_timeout_s: Timeout en segundos por tarea (default 300s). 0 = sin timeout.
 
     Yields:
         Strings formateados como eventos SSE
     """
+    plan_start_time = time.monotonic()
     try:
         # 1. Cargar y validar plan
         plan = _load_plan(plan_id)
@@ -114,6 +120,11 @@ async def stream_execute_plan(
         )
         _save_plan(plan)
 
+        logger.info(
+            f"▶ Executing plan '{plan.id}': {plan.title} "
+            f"({len(plan.tasks)} tasks, model={model})"
+        )
+
         yield _format_sse(
             "plan_start",
             {
@@ -136,6 +147,11 @@ async def stream_execute_plan(
         plan_total_cost = 0.0
 
         for i, task in enumerate(plan.tasks):
+            task_start_mono = time.monotonic()
+            logger.info(
+                f"  ▶ Task {i}/{len(plan.tasks)-1}: [{task.type}] {task.path} — {task.description}"
+            )
+
             yield _format_sse(
                 "task_start",
                 {
@@ -150,16 +166,38 @@ async def stream_execute_plan(
             )
 
             try:
-                # Consume the async generator — SSE events yielded in real-time
+                # Consume the async generator with heartbeat keepalive.
+                # _with_heartbeat wraps the generator and emits heartbeat
+                # SSE events every 8s to keep the connection alive.
+                # asyncio.timeout provides a safety net per task.
                 task_result = None
-                async for item in _execute_single_task(
-                    task, plan, lm, tools, i
-                ):
-                    if isinstance(item, str):
-                        # SSE event string — forward immediately to client
-                        yield item
-                    elif isinstance(item, TaskExecutionResult):
-                        task_result = item
+                task_gen = _with_heartbeat(
+                    _execute_single_task(task, plan, lm, tools, i),
+                    task_index=i,
+                )
+
+                timeout_ctx = (
+                    asyncio.timeout(task_timeout_s)
+                    if task_timeout_s and task_timeout_s > 0
+                    else _nullcontext()
+                )
+                try:
+                    async with timeout_ctx:
+                        async for item in task_gen:
+                            if isinstance(item, str):
+                                yield item
+                            elif isinstance(item, TaskExecutionResult):
+                                task_result = item
+                except TimeoutError:
+                    timeout_msg = (
+                        f"Task timed out after {task_timeout_s}s"
+                    )
+                    logger.warning(f"  ⏰ Task {i}: {timeout_msg}")
+                    task_result = TaskExecutionResult(
+                        task_index=i,
+                        status="failed",
+                        error=timeout_msg,
+                    )
 
                 if task_result is None:
                     task_result = TaskExecutionResult(
@@ -174,9 +212,14 @@ async def stream_execute_plan(
                 plan_total_tokens += task_result.total_tokens
                 plan_total_cost += task_result.total_cost
 
+                task_elapsed = time.monotonic() - task_start_mono
                 if task_result.status == "completed":
                     tasks_completed += 1
                     all_files_changed.extend(task_result.files_changed)
+                    logger.info(
+                        f"  ✅ Task {i} completed in {task_elapsed:.1f}s "
+                        f"({task_result.total_tokens} tokens, ${task_result.total_cost:.4f})"
+                    )
                     yield _format_sse(
                         "task_complete",
                         {
@@ -190,6 +233,9 @@ async def stream_execute_plan(
                     )
                 else:
                     tasks_failed += 1
+                    logger.warning(
+                        f"  ❌ Task {i} failed in {task_elapsed:.1f}s: {task_result.error}"
+                    )
                     yield _format_sse(
                         "task_error",
                         {
@@ -199,7 +245,12 @@ async def stream_execute_plan(
                         },
                     )
             except Exception as e:
+                task_elapsed = time.monotonic() - task_start_mono
                 tasks_failed += 1
+                logger.error(
+                    f"  ❌ Task {i} exception after {task_elapsed:.1f}s: {e}",
+                    exc_info=True,
+                )
                 task_result = TaskExecutionResult(
                     task_index=i, status="failed", error=str(e)
                 )
@@ -227,6 +278,14 @@ async def stream_execute_plan(
         plan.execution.total_cost = plan_total_cost
         plan.status = "completed" if tasks_failed == 0 else "failed"
         _save_plan(plan)
+
+        plan_elapsed = time.monotonic() - plan_start_time
+        result_icon = "✅" if tasks_failed == 0 else "❌"
+        logger.info(
+            f"{result_icon} Plan '{plan.id}' finished in {plan_elapsed:.1f}s — "
+            f"{tasks_completed} completed, {tasks_failed} failed, "
+            f"{plan_total_tokens} tokens, ${plan_total_cost:.4f}"
+        )
 
         yield _format_sse(
             "plan_complete",
@@ -426,6 +485,99 @@ async def _execute_single_task(
             files_changed=files_changed,
             **cost_info,
         )
+
+
+# ============================================================================
+# PRIVATE HELPERS: HEARTBEAT & TIMEOUT
+# ============================================================================
+
+
+class _nullcontext:
+    """Async context manager that does nothing (fallback when no timeout)."""
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc):
+        return False
+
+
+async def _with_heartbeat(
+    async_gen: AsyncGenerator[Union[str, TaskExecutionResult], None],
+    task_index: int,
+    interval: float = 8.0,
+) -> AsyncGenerator[Union[str, TaskExecutionResult], None]:
+    """Wraps an async generator, interleaving heartbeat SSE events.
+
+    Runs a heartbeat timer in parallel with the source generator.
+    Every `interval` seconds of silence, emits a heartbeat SSE event
+    to keep the connection alive and provide elapsed time feedback.
+
+    Args:
+        async_gen: The source async generator to wrap
+        task_index: Task index for heartbeat event metadata
+        interval: Seconds between heartbeats (default 8s)
+
+    Yields:
+        Items from the source generator, interleaved with heartbeat SSE strings
+    """
+    queue: asyncio.Queue = asyncio.Queue()
+    _SENTINEL = object()
+    start_time = time.monotonic()
+
+    async def _producer():
+        """Consume source generator and put items into queue."""
+        try:
+            async for item in async_gen:
+                await queue.put(item)
+        except Exception as e:
+            await queue.put(e)
+        finally:
+            await queue.put(_SENTINEL)
+
+    async def _heartbeat():
+        """Emit heartbeat events at regular intervals."""
+        while True:
+            await asyncio.sleep(interval)
+            elapsed = time.monotonic() - start_time
+            heartbeat_event = _format_sse(
+                "heartbeat",
+                {
+                    "task_index": task_index,
+                    "elapsed_s": round(elapsed, 1),
+                    "timestamp": datetime.now().isoformat(),
+                },
+            )
+            await queue.put(heartbeat_event)
+            if elapsed > 60 and int(elapsed) % 60 < int(interval):
+                logger.warning(
+                    f"  ⚠ Task {task_index}: {elapsed:.0f}s elapsed, still running"
+                )
+
+    producer_task = asyncio.create_task(_producer())
+    heartbeat_task = asyncio.create_task(_heartbeat())
+
+    try:
+        while True:
+            item = await queue.get()
+            if item is _SENTINEL:
+                break
+            if isinstance(item, Exception):
+                raise item
+            yield item
+    finally:
+        heartbeat_task.cancel()
+        try:
+            await heartbeat_task
+        except asyncio.CancelledError:
+            pass
+        # Ensure producer finishes (it should already be done)
+        if not producer_task.done():
+            producer_task.cancel()
+            try:
+                await producer_task
+            except asyncio.CancelledError:
+                pass
 
 
 # ============================================================================

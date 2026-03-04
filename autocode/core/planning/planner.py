@@ -178,15 +178,33 @@ def update_commit_plan(
     EXECUTOR_MANAGED_STATUSES = {"executing", "completed", "failed"}
 
     try:
+        plan = _load_plan(plan_id)
+        if plan is None:
+            return CommitPlanOutput(success=False, message=f"Plan '{plan_id}' no encontrado")
+
+        # Recovery: plan stuck en "executing" sin completed_at → permitir reset a draft
+        # Esto ocurre cuando la ejecución murió (crash, timeout, refresh del navegador)
+        if (
+            status == "draft"
+            and plan.status == "executing"
+            and (plan.execution is None or not plan.execution.completed_at)
+        ):
+            plan.status = "draft"
+            plan.execution = None  # Limpiar para fresh start
+            plan.updated_at = datetime.now().isoformat()
+            _save_plan(plan)
+            logger.info(f"Plan '{plan_id}' recovered from stuck executing → draft")
+            return CommitPlanOutput(
+                success=True,
+                result=plan,
+                message=f"Plan '{plan_id}' recovered from stuck executing state",
+            )
+
         if status and status in EXECUTOR_MANAGED_STATUSES:
             return CommitPlanOutput(
                 success=False,
                 message=f"Status '{status}' is managed by the executor and cannot be set manually",
             )
-
-        plan = _load_plan(plan_id)
-        if plan is None:
-            return CommitPlanOutput(success=False, message=f"Plan '{plan_id}' no encontrado")
 
         # Actualización parcial
         if title:

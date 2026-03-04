@@ -475,7 +475,7 @@ class TestStreamExecutePlan:
         assert last["data"]["success"] is False
 
     async def test_rejects_invalid_plan_status(self, tmp_path):
-        """Rechaza ejecutar un plan que ya está completed/executing."""
+        """Rechaza ejecutar un plan que ya está completed o abandoned."""
         from autocode.core.planning.executor import stream_execute_plan
 
         plan = _create_test_plan(tmp_path, status="completed")
@@ -680,3 +680,272 @@ class TestStreamExecutePlan:
         task_complete = [e for e in events if e["event"] == "task_complete"][0]
         assert task_complete["data"]["total_tokens"] == 750
         assert abs(task_complete["data"]["total_cost"] - 0.0025) < 1e-9
+
+    async def test_can_reexecute_plan_in_executing_status(self, tmp_path):
+        """Un plan stuck en 'executing' puede re-ejecutarse (recovery)."""
+        from autocode.core.planning.executor import stream_execute_plan
+
+        # Create a plan already in "executing" status (simulating a stuck plan)
+        plan = _create_test_plan(tmp_path, num_tasks=1, status="executing")
+
+        events = []
+        with self._execution_patches(tmp_path) as stack:
+            mock_exec = stack.enter_context(
+                patch("autocode.core.planning.executor._execute_single_task")
+            )
+            mock_exec.return_value = _mock_task_generator(
+                TaskExecutionResult(
+                    task_index=0, status="completed", llm_summary="Re-executed"
+                )
+            )
+            async for event in stream_execute_plan(
+                plan_id=plan.id, auto_commit=False
+            ):
+                events.append(_parse_sse(event))
+
+        # Should execute successfully, not reject
+        event_types = [e["event"] for e in events]
+        assert "plan_start" in event_types
+        assert "plan_complete" in event_types
+        plan_complete = [e for e in events if e["event"] == "plan_complete"][0]
+        assert plan_complete["data"]["success"] is True
+
+
+# ==============================================================================
+# TESTS: _with_heartbeat
+# ==============================================================================
+
+
+@pytest.mark.asyncio
+class TestWithHeartbeat:
+    """Tests for _with_heartbeat async generator wrapper."""
+
+    async def test_forwards_all_items_from_source(self):
+        """Todos los items del source generator se forwardean sin modificación."""
+        from autocode.core.planning.executor import _with_heartbeat
+
+        async def _source():
+            yield "event_1"
+            yield "event_2"
+            yield TaskExecutionResult(task_index=0, status="completed")
+
+        items = []
+        async for item in _with_heartbeat(_source(), task_index=0, interval=100):
+            items.append(item)
+
+        assert items[0] == "event_1"
+        assert items[1] == "event_2"
+        assert isinstance(items[2], TaskExecutionResult)
+        assert items[2].status == "completed"
+
+    async def test_emits_heartbeat_during_delay(self):
+        """Emite heartbeat events cuando el source generator tarda."""
+        import asyncio
+        from autocode.core.planning.executor import _with_heartbeat
+
+        async def _slow_source():
+            await asyncio.sleep(0.25)  # Enough for 2 heartbeats at 0.1s interval
+            yield TaskExecutionResult(task_index=0, status="completed")
+
+        items = []
+        async for item in _with_heartbeat(
+            _slow_source(), task_index=0, interval=0.1
+        ):
+            items.append(item)
+
+        # Should have heartbeat events + the final TaskExecutionResult
+        heartbeat_items = [
+            i for i in items if isinstance(i, str) and "heartbeat" in i
+        ]
+        assert len(heartbeat_items) >= 1, "Expected at least 1 heartbeat event"
+
+        # Verify heartbeat content
+        hb = _parse_sse(heartbeat_items[0])
+        assert hb["event"] == "heartbeat"
+        assert hb["data"]["task_index"] == 0
+        assert "elapsed_s" in hb["data"]
+        assert "timestamp" in hb["data"]
+
+    async def test_heartbeat_cancelled_after_completion(self):
+        """El heartbeat task se cancela después de que el source termina."""
+        import asyncio
+        from autocode.core.planning.executor import _with_heartbeat
+
+        async def _fast_source():
+            yield "done"
+
+        items = []
+        async for item in _with_heartbeat(
+            _fast_source(), task_index=0, interval=0.05
+        ):
+            items.append(item)
+
+        # Wait a bit — no more heartbeats should appear
+        await asyncio.sleep(0.15)
+        # If we got here without errors, heartbeat was properly cancelled
+        assert items == ["done"]
+
+    async def test_propagates_exception_from_source(self):
+        """Excepciones del source generator se propagan correctamente."""
+        from autocode.core.planning.executor import _with_heartbeat
+
+        async def _failing_source():
+            yield "first"
+            raise ValueError("source error")
+
+        items = []
+        with pytest.raises(ValueError, match="source error"):
+            async for item in _with_heartbeat(
+                _failing_source(), task_index=0, interval=100
+            ):
+                items.append(item)
+
+        assert items == ["first"]
+
+    async def test_heartbeat_includes_elapsed_time(self):
+        """El campo elapsed_s del heartbeat refleja tiempo real transcurrido."""
+        import asyncio
+        from autocode.core.planning.executor import _with_heartbeat
+
+        async def _slow_source():
+            await asyncio.sleep(0.15)
+            yield "done"
+
+        heartbeats = []
+        async for item in _with_heartbeat(
+            _slow_source(), task_index=5, interval=0.05
+        ):
+            if isinstance(item, str) and "heartbeat" in item:
+                heartbeats.append(_parse_sse(item))
+
+        assert len(heartbeats) >= 1
+        # First heartbeat should be ~0.05s, check it's reasonable
+        assert heartbeats[0]["data"]["elapsed_s"] >= 0.04
+        assert heartbeats[0]["data"]["task_index"] == 5
+
+
+# ==============================================================================
+# TESTS: Timeout safety net
+# ==============================================================================
+
+
+@pytest.mark.asyncio
+class TestTaskTimeout:
+    """Tests for task timeout in stream_execute_plan."""
+
+    def _execution_patches(self, tmp_path):
+        """Returns a contextmanager stack with common mocks."""
+        from contextlib import ExitStack
+
+        stack = ExitStack()
+        stack.enter_context(
+            patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path))
+        )
+        stack.enter_context(
+            patch(
+                "autocode.core.planning.executor.get_dspy_lm",
+                return_value=MagicMock(),
+            )
+        )
+        stack.enter_context(
+            patch(
+                "autocode.core.planning.executor._get_executor_tools",
+                return_value=[],
+            )
+        )
+        return stack
+
+    async def test_timeout_fails_task_gracefully(self, tmp_path):
+        """Una tarea que excede el timeout se marca como failed y el plan continúa."""
+        import asyncio
+        from autocode.core.planning.executor import stream_execute_plan
+
+        plan = _create_test_plan(tmp_path, num_tasks=2)
+
+        async def _hanging_generator(task, plan, lm, tools, idx):
+            """Task 0 hangs forever, task 1 completes normally."""
+            if idx == 0:
+                # This will hang until timeout
+                await asyncio.sleep(999)
+                yield TaskExecutionResult(task_index=0, status="completed")
+            else:
+                yield TaskExecutionResult(
+                    task_index=1, status="completed", llm_summary="Done"
+                )
+
+        events = []
+        with self._execution_patches(tmp_path) as stack:
+            mock_exec = stack.enter_context(
+                patch("autocode.core.planning.executor._execute_single_task")
+            )
+            mock_exec.side_effect = _hanging_generator
+
+            async for event in stream_execute_plan(
+                plan_id=plan.id,
+                auto_commit=False,
+                task_timeout_s=0.2,  # Very short timeout for test
+            ):
+                events.append(_parse_sse(event))
+
+        event_types = [e["event"] for e in events]
+
+        # Task 0 should fail with timeout
+        task_errors = [e for e in events if e["event"] == "task_error"]
+        assert len(task_errors) >= 1
+        assert "timed out" in task_errors[0]["data"]["error"].lower()
+
+        # Task 1 should complete normally
+        task_completes = [e for e in events if e["event"] == "task_complete"]
+        assert len(task_completes) == 1
+        assert task_completes[0]["data"]["task_index"] == 1
+
+        # Plan should still complete (with failures)
+        plan_complete = [e for e in events if e["event"] == "plan_complete"]
+        assert len(plan_complete) == 1
+        assert plan_complete[0]["data"]["success"] is False
+        assert plan_complete[0]["data"]["tasks_failed"] == 1
+        assert plan_complete[0]["data"]["tasks_completed"] == 1
+
+    async def test_no_timeout_when_zero(self, tmp_path):
+        """Con task_timeout_s=0, no se aplica timeout."""
+        from autocode.core.planning.executor import stream_execute_plan
+
+        plan = _create_test_plan(tmp_path, num_tasks=1)
+
+        events = []
+        with self._execution_patches(tmp_path) as stack:
+            mock_exec = stack.enter_context(
+                patch("autocode.core.planning.executor._execute_single_task")
+            )
+            mock_exec.return_value = _mock_task_generator(
+                TaskExecutionResult(
+                    task_index=0, status="completed", llm_summary="Done"
+                )
+            )
+            async for event in stream_execute_plan(
+                plan_id=plan.id,
+                auto_commit=False,
+                task_timeout_s=0,  # Disabled
+            ):
+                events.append(_parse_sse(event))
+
+        plan_complete = [e for e in events if e["event"] == "plan_complete"][0]
+        assert plan_complete["data"]["success"] is True
+
+
+# ==============================================================================
+# TESTS: _nullcontext
+# ==============================================================================
+
+
+@pytest.mark.asyncio
+class TestNullContext:
+    """Tests for _nullcontext async context manager."""
+
+    async def test_does_nothing(self):
+        """_nullcontext entra y sale sin efectos."""
+        from autocode.core.planning.executor import _nullcontext
+
+        async with _nullcontext() as ctx:
+            assert ctx is not None  # Returns self
+            pass  # No exception
