@@ -400,6 +400,29 @@ export const commitPlanDetailStyles = css`
         cursor: not-allowed;
     }
 
+    /* ===== REVIEW MODE SELECT ===== */
+    .review-mode-select {
+        padding: 4px 6px;
+        border: 1px solid var(--design-border-gray, #e5e7eb);
+        border-radius: var(--design-radius-md, 0.5rem);
+        background: var(--design-bg-white, #ffffff);
+        font-size: 10px;
+        color: var(--design-text-primary, #1f2937);
+        cursor: pointer;
+        outline: none;
+        flex-shrink: 0;
+    }
+
+    .review-mode-select:focus {
+        border-color: var(--design-primary, #4f46e5);
+        box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.15);
+    }
+
+    .review-mode-select:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+
     .execute-btn {
         display: flex;
         align-items: center;
@@ -949,6 +972,17 @@ export const commitPlanDetailStyles = css`
         border-radius: var(--design-radius-md, 0.5rem);
         font-size: 12px;
         color: #9a3412;
+    }
+
+    /* ===== NO METRICS MESSAGE ===== */
+    .no-metrics-msg {
+        padding: 8px 12px;
+        background: var(--design-bg-gray-50, #f9fafb);
+        border: 1px solid var(--design-border-gray, #e5e7eb);
+        border-radius: var(--design-radius-md, 0.5rem);
+        font-size: 11px;
+        color: var(--design-text-tertiary, #9ca3af);
+        text-align: center;
     }
 
     /* ===== COMBINED METRICS TABLE (from commit-detail pattern) ===== */

@@ -57,6 +57,7 @@ export class CommitPlanDetail extends LitElement {
         _executionSummary: { state: true }, // Final result {success, tasksCompleted, tasksFailed, commitHash}
         _selectedModel: { state: true }, // Selected model for execution
         _modelChoices: { state: true },  // Available models from registry
+        _selectedReviewMode: { state: true }, // Review mode: "human" or "auto"
         _elapsedDisplay: { state: true }, // Elapsed time string "1m 23s"
         _lastHeartbeat: { state: true },  // Timestamp of last heartbeat event
         _isApproving: { state: true },    // Approve in progress
@@ -77,6 +78,7 @@ export class CommitPlanDetail extends LitElement {
         this._executionSummary = null;
         this._selectedModel = DEFAULT_MODEL;
         this._modelChoices = [];
+        this._selectedReviewMode = 'human';
         // Timer & heartbeat
         this._elapsedDisplay = '';
         this._lastHeartbeat = null;
@@ -253,6 +255,14 @@ export class CommitPlanDetail extends LitElement {
                                     `)}
                                 </select>
                             ` : ''}
+                            <select class="review-mode-select"
+                                .value=${this._selectedReviewMode}
+                                ?disabled=${this._isExecuting}
+                                @change=${e => this._selectedReviewMode = e.target.value}
+                                title="Modo de review post-ejecución">
+                                <option value="human" ?selected=${this._selectedReviewMode === 'human'}>👤 Review manual</option>
+                                <option value="auto" ?selected=${this._selectedReviewMode === 'auto'}>🤖 Auto-review</option>
+                            </select>
                             <button class="execute-btn"
                                 ?disabled=${this._isExecuting}
                                 @click=${this._executePlan}>
@@ -578,7 +588,7 @@ export class CommitPlanDetail extends LitElement {
 
             for await (const { event, data } of controller.callStreamAPI(
                 'execute_commit_plan',
-                { plan_id: this.planId, model: this._selectedModel, auto_commit: true },
+                { plan_id: this.planId, model: this._selectedModel, review_mode: this._selectedReviewMode },
                 null,
                 { signal: this._abortController.signal }
             )) {
@@ -912,8 +922,15 @@ export class CommitPlanDetail extends LitElement {
                     </div>
                 ` : ''}
 
-                <!-- Metrics Table -->
-                ${this._renderReviewMetricsTable(review.file_metrics)}
+                <!-- Metrics Table or "no metrics" message -->
+                ${review.file_metrics?.length > 0
+                    ? this._renderReviewMetricsTable(review.file_metrics)
+                    : html`
+                        <div class="no-metrics-msg">
+                            ℹ️ Sin archivos .py analizados — las métricas solo se calculan para archivos Python
+                        </div>
+                    `
+                }
 
                 <!-- Approve / Revert buttons -->
                 <div class="review-actions">
