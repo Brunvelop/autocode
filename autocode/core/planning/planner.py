@@ -174,8 +174,11 @@ def update_commit_plan(
         context_json: JSON object de contexto (vacío = no cambiar)
         tags: Tags separados por coma (vacío = no cambiar)
     """
-    # Estados gestionados solo por el executor — no editables manualmente
-    EXECUTOR_MANAGED_STATUSES = {"executing", "completed", "failed"}
+    # Estados gestionados por el executor/approve/revert — no editables manualmente
+    EXECUTOR_MANAGED_STATUSES = {
+        "executing", "completed", "failed",
+        "pending_review", "pending_commit", "reverted",
+    }
 
     try:
         plan = _load_plan(plan_id)
@@ -260,6 +263,132 @@ def delete_commit_plan(plan_id: str) -> GenericOutput:
     except Exception as e:
         logger.error(f"Error eliminando plan {plan_id}: {e}")
         return GenericOutput(success=False, result=None, message=str(e))
+
+
+# ==============================================================================
+# REGISTERED ENDPOINTS — APPROVE / REVERT
+# ==============================================================================
+
+# Statuses from which a plan can be approved or reverted
+_REVIEWABLE_STATUSES = {"pending_review", "pending_commit"}
+
+
+@register_function(http_methods=["POST"], interfaces=["api", "mcp"])
+def approve_plan(plan_id: str, commit_message: str = "") -> CommitPlanOutput:
+    """Aprueba un plan en pending_review: git add + commit → completed.
+
+    Ejecuta git add para cada archivo cambiado, luego git commit
+    con el título del plan (o un mensaje personalizado).
+    Almacena el commit hash resultante en execution.commit_hash.
+
+    Args:
+        plan_id: ID del plan a aprobar
+        commit_message: Mensaje de commit personalizado (vacío = usar plan.title)
+    """
+    try:
+        plan = _load_plan(plan_id)
+        if plan is None:
+            return CommitPlanOutput(
+                success=False,
+                message=f"Plan '{plan_id}' no encontrado",
+            )
+
+        if plan.status not in _REVIEWABLE_STATUSES:
+            return CommitPlanOutput(
+                success=False,
+                message=(
+                    f"Cannot approve plan in status '{plan.status}'. "
+                    f"Must be in: {', '.join(sorted(_REVIEWABLE_STATUSES))}"
+                ),
+            )
+
+        # Get files to commit from execution state
+        files = (
+            plan.execution.files_changed
+            if plan.execution and plan.execution.files_changed
+            else []
+        )
+
+        # git add + commit
+        message = commit_message or plan.title
+        for f in files:
+            _git("add", f)
+        _git("commit", "-m", message)
+        commit_hash = _git("rev-parse", "HEAD")
+
+        # Update plan state
+        if plan.execution:
+            plan.execution.commit_hash = commit_hash
+        plan.status = "completed"
+        plan.updated_at = datetime.now().isoformat()
+        _save_plan(plan)
+
+        logger.info(f"Plan '{plan_id}' approved and committed: {commit_hash}")
+        return CommitPlanOutput(
+            success=True,
+            result=plan,
+            message=f"Plan '{plan_id}' approved. Commit: {commit_hash}",
+        )
+    except Exception as e:
+        logger.error(f"Error approving plan {plan_id}: {e}")
+        return CommitPlanOutput(success=False, message=str(e))
+
+
+@register_function(http_methods=["POST"], interfaces=["api", "mcp"])
+def revert_plan(plan_id: str) -> CommitPlanOutput:
+    """Revierte cambios de un plan: git checkout -- files → reverted.
+
+    Restaura cada archivo modificado al estado del parent_commit
+    del plan usando git checkout. Marca el plan como 'reverted'.
+
+    Args:
+        plan_id: ID del plan a revertir
+    """
+    try:
+        plan = _load_plan(plan_id)
+        if plan is None:
+            return CommitPlanOutput(
+                success=False,
+                message=f"Plan '{plan_id}' no encontrado",
+            )
+
+        if plan.status not in _REVIEWABLE_STATUSES:
+            return CommitPlanOutput(
+                success=False,
+                message=(
+                    f"Cannot revert plan in status '{plan.status}'. "
+                    f"Must be in: {', '.join(sorted(_REVIEWABLE_STATUSES))}"
+                ),
+            )
+
+        # Get files to revert from execution state
+        files = (
+            plan.execution.files_changed
+            if plan.execution and plan.execution.files_changed
+            else []
+        )
+
+        # git checkout {parent_commit} -- file1 file2 ...
+        ref = plan.parent_commit or "HEAD"
+        for f in files:
+            _git("checkout", ref, "--", f)
+
+        # Update plan state
+        plan.status = "reverted"
+        plan.updated_at = datetime.now().isoformat()
+        _save_plan(plan)
+
+        logger.info(
+            f"Plan '{plan_id}' reverted: {len(files)} files restored to {ref}"
+        )
+        return CommitPlanOutput(
+            success=True,
+            result=plan,
+            message=f"Plan '{plan_id}' reverted. {len(files)} files restored.",
+        )
+    except Exception as e:
+        logger.error(f"Error reverting plan {plan_id}: {e}")
+        return CommitPlanOutput(success=False, message=str(e))
 
 
 # ==============================================================================

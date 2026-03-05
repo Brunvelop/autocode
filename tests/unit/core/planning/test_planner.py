@@ -1,12 +1,15 @@
 """
-Tests for status transition validation in update_commit_plan.
+Tests for planner.py — CRUD + approve/revert endpoints.
 
-Verifica que los estados gestionados por el executor (executing, completed, failed)
-no pueden ser seteados manualmente via update_commit_plan().
-Incluye tests de recovery para planes zombie (stuck en executing).
+Covers:
+- Status transition validation in update_commit_plan
+- Recovery of zombie plans (stuck in executing)
+- approve_plan: pending_review → git commit → completed
+- revert_plan: pending_review → git checkout → reverted
+- New executor-managed statuses blocked from manual setting
 """
 import json
-from unittest.mock import patch
+from unittest.mock import patch, call
 
 import pytest
 
@@ -14,6 +17,15 @@ from autocode.core.planning.planner import (
     create_commit_plan,
     update_commit_plan,
     list_commit_plans,
+    approve_plan,
+    revert_plan,
+)
+from autocode.core.planning.models import (
+    CommitPlan,
+    PlanExecutionState,
+    TaskExecutionResult,
+    ReviewResult,
+    ReviewFileMetrics,
 )
 
 
@@ -186,3 +198,326 @@ class TestRecoveryFromStuckExecuting:
             result = update_commit_plan(plan_id=plan_id, status="draft")
             assert result.success is True
             assert "recover" in result.message.lower()
+
+
+# ==============================================================================
+# TESTS: approve_plan
+# ==============================================================================
+
+
+class TestApprovePlan:
+    """Tests for approve_plan endpoint.
+
+    Verifies that a plan in pending_review can be approved,
+    which triggers git add + commit and transitions to completed.
+    """
+
+    def _create_pending_review_plan(self, tmp_path, plan_id="20260501-120000",
+                                     title="feat: add feature",
+                                     files_changed=None,
+                                     parent_commit="abc123"):
+        """Helper: creates a plan in pending_review with execution data."""
+        if files_changed is None:
+            files_changed = ["src/main.py", "src/utils.py"]
+        plan_data = {
+            "id": plan_id,
+            "title": title,
+            "status": "pending_review",
+            "parent_commit": parent_commit,
+            "branch": "main",
+            "tasks": [
+                {"type": "modify", "path": "src/main.py", "description": "Add feature"},
+            ],
+            "created_at": "2026-05-01T12:00:00",
+            "updated_at": "2026-05-01T12:00:00",
+            "execution": {
+                "started_at": "2026-05-01T12:00:01",
+                "completed_at": "2026-05-01T12:05:00",
+                "model_used": "openrouter/z-ai/glm-5",
+                "task_results": [
+                    {
+                        "task_index": 0,
+                        "status": "completed",
+                        "started_at": "2026-05-01T12:00:01",
+                        "completed_at": "2026-05-01T12:05:00",
+                        "files_changed": files_changed,
+                        "llm_summary": "Added feature",
+                    }
+                ],
+                "files_changed": files_changed,
+                "commit_hash": "",
+                "total_tokens": 1000,
+                "total_cost": 0.005,
+                "review": {
+                    "mode": "human",
+                    "verdict": "needs_changes",
+                    "summary": "Awaiting human review",
+                    "reviewed_by": "",
+                },
+            },
+        }
+        (tmp_path / f"{plan_id}.json").write_text(json.dumps(plan_data))
+        return plan_id
+
+    def test_approve_commits_and_completes(self, tmp_path):
+        """Plan en pending_review → approve → git add+commit → completed."""
+        plan_id = self._create_pending_review_plan(tmp_path)
+
+        with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)), \
+             patch("autocode.core.planning.planner._git") as mock_git:
+            # git rev-parse HEAD returns commit hash after commit
+            mock_git.return_value = "new_commit_hash_abc"
+
+            result = approve_plan(plan_id=plan_id)
+
+        assert result.success is True
+        assert result.result.status == "completed"
+        # Verify git was called for add + commit
+        git_calls = [str(c) for c in mock_git.call_args_list]
+        # Should have git add calls and a git commit call
+        assert any("add" in c for c in git_calls)
+        assert any("commit" in c for c in git_calls)
+
+    def test_approve_rejects_wrong_status(self, tmp_path):
+        """Plan en draft → approve → error."""
+        plan_data = {
+            "id": "20260501-130000",
+            "title": "Draft Plan",
+            "status": "draft",
+            "tasks": [],
+            "created_at": "2026-05-01T13:00:00",
+        }
+        (tmp_path / "20260501-130000.json").write_text(json.dumps(plan_data))
+
+        with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)):
+            result = approve_plan(plan_id="20260501-130000")
+
+        assert result.success is False
+        assert "status" in result.message.lower() or "pending_review" in result.message.lower()
+
+    def test_approve_stores_commit_hash(self, tmp_path):
+        """Tras approve, execution.commit_hash se rellena con el hash del commit."""
+        plan_id = self._create_pending_review_plan(tmp_path)
+
+        with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)), \
+             patch("autocode.core.planning.planner._git") as mock_git:
+            mock_git.return_value = "def456789"
+
+            result = approve_plan(plan_id=plan_id)
+
+        assert result.success is True
+        assert result.result.execution.commit_hash == "def456789"
+
+    def test_approve_with_custom_message(self, tmp_path):
+        """approve con commit_message usa ese mensaje en vez del plan title."""
+        plan_id = self._create_pending_review_plan(tmp_path, title="original title")
+
+        with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)), \
+             patch("autocode.core.planning.planner._git") as mock_git:
+            mock_git.return_value = "abc123"
+
+            result = approve_plan(plan_id=plan_id, commit_message="custom: my message")
+
+        assert result.success is True
+        # Verify the commit call used the custom message
+        commit_calls = [c for c in mock_git.call_args_list
+                        if "commit" in str(c)]
+        assert len(commit_calls) >= 1
+        assert "custom: my message" in str(commit_calls[0])
+
+    def test_approve_nonexistent_plan(self, tmp_path):
+        """approve_plan con plan inexistente → error."""
+        with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)):
+            result = approve_plan(plan_id="nonexistent")
+
+        assert result.success is False
+        assert "no encontrado" in result.message.lower() or "not found" in result.message.lower()
+
+
+# ==============================================================================
+# TESTS: revert_plan
+# ==============================================================================
+
+
+class TestRevertPlan:
+    """Tests for revert_plan endpoint.
+
+    Verifies that a plan in pending_review can be reverted,
+    which triggers git checkout to restore files and transitions to reverted.
+    """
+
+    def _create_pending_review_plan(self, tmp_path, plan_id="20260501-140000",
+                                     files_changed=None,
+                                     parent_commit="abc123"):
+        """Helper: creates a plan in pending_review with execution data."""
+        if files_changed is None:
+            files_changed = ["src/main.py", "src/utils.py"]
+        plan_data = {
+            "id": plan_id,
+            "title": "feat: add feature",
+            "status": "pending_review",
+            "parent_commit": parent_commit,
+            "branch": "main",
+            "tasks": [
+                {"type": "modify", "path": "src/main.py", "description": "Add feature"},
+            ],
+            "created_at": "2026-05-01T14:00:00",
+            "updated_at": "2026-05-01T14:00:00",
+            "execution": {
+                "started_at": "2026-05-01T14:00:01",
+                "completed_at": "2026-05-01T14:05:00",
+                "model_used": "openrouter/z-ai/glm-5",
+                "task_results": [
+                    {
+                        "task_index": 0,
+                        "status": "completed",
+                        "started_at": "2026-05-01T14:00:01",
+                        "completed_at": "2026-05-01T14:05:00",
+                        "files_changed": files_changed,
+                        "llm_summary": "Added feature",
+                    }
+                ],
+                "files_changed": files_changed,
+                "commit_hash": "",
+                "total_tokens": 1000,
+                "total_cost": 0.005,
+                "review": {
+                    "mode": "human",
+                    "verdict": "needs_changes",
+                    "summary": "Awaiting human review",
+                    "reviewed_by": "",
+                },
+            },
+        }
+        (tmp_path / f"{plan_id}.json").write_text(json.dumps(plan_data))
+        return plan_id
+
+    def test_revert_restores_files(self, tmp_path):
+        """Plan en pending_review → revert → git checkout para cada archivo → reverted."""
+        plan_id = self._create_pending_review_plan(
+            tmp_path, files_changed=["src/main.py", "src/utils.py"]
+        )
+
+        with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)), \
+             patch("autocode.core.planning.planner._git") as mock_git:
+            result = revert_plan(plan_id=plan_id)
+
+        assert result.success is True
+        assert result.result.status == "reverted"
+        # Verify git checkout was called with the files
+        git_calls = [str(c) for c in mock_git.call_args_list]
+        assert any("checkout" in c for c in git_calls)
+        assert any("src/main.py" in c for c in git_calls)
+        assert any("src/utils.py" in c for c in git_calls)
+
+    def test_revert_rejects_wrong_status(self, tmp_path):
+        """Plan en draft → revert → error."""
+        plan_data = {
+            "id": "20260501-150000",
+            "title": "Draft Plan",
+            "status": "draft",
+            "tasks": [],
+            "created_at": "2026-05-01T15:00:00",
+        }
+        (tmp_path / "20260501-150000.json").write_text(json.dumps(plan_data))
+
+        with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)):
+            result = revert_plan(plan_id="20260501-150000")
+
+        assert result.success is False
+        assert "status" in result.message.lower() or "pending_review" in result.message.lower()
+
+    def test_revert_marks_as_reverted(self, tmp_path):
+        """Tras revert, el status es 'reverted'."""
+        plan_id = self._create_pending_review_plan(tmp_path)
+
+        with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)), \
+             patch("autocode.core.planning.planner._git"):
+            result = revert_plan(plan_id=plan_id)
+
+        assert result.success is True
+        assert result.result.status == "reverted"
+
+    def test_revert_uses_files_from_execution(self, tmp_path):
+        """Revert usa execution.files_changed para saber qué archivos restaurar."""
+        specific_files = ["src/feature.py", "tests/test_feature.py", "README.md"]
+        plan_id = self._create_pending_review_plan(
+            tmp_path, files_changed=specific_files
+        )
+
+        with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)), \
+             patch("autocode.core.planning.planner._git") as mock_git:
+            result = revert_plan(plan_id=plan_id)
+
+        assert result.success is True
+        # Verify the checkout call includes all the specific files
+        git_calls_str = str(mock_git.call_args_list)
+        for f in specific_files:
+            assert f in git_calls_str, f"Expected '{f}' in git checkout calls"
+
+    def test_revert_uses_parent_commit(self, tmp_path):
+        """Revert usa parent_commit del plan como referencia para checkout."""
+        plan_id = self._create_pending_review_plan(
+            tmp_path, parent_commit="deadbeef123"
+        )
+
+        with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)), \
+             patch("autocode.core.planning.planner._git") as mock_git:
+            result = revert_plan(plan_id=plan_id)
+
+        assert result.success is True
+        git_calls_str = str(mock_git.call_args_list)
+        assert "deadbeef123" in git_calls_str
+
+    def test_revert_nonexistent_plan(self, tmp_path):
+        """revert_plan con plan inexistente → error."""
+        with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)):
+            result = revert_plan(plan_id="nonexistent")
+
+        assert result.success is False
+        assert "no encontrado" in result.message.lower() or "not found" in result.message.lower()
+
+
+# ==============================================================================
+# TESTS: Status transitions — new executor-managed statuses
+# ==============================================================================
+
+
+class TestStatusTransitionsUpdated:
+    """Tests that pending_review, pending_commit, and reverted
+    cannot be set manually via update_commit_plan.
+
+    These states are managed by the executor (pending_review, pending_commit)
+    and approve/revert endpoints (reverted).
+    """
+
+    def test_pending_review_not_manually_settable(self, tmp_path):
+        """update_commit_plan rechaza status='pending_review'."""
+        with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)), \
+             patch("autocode.core.planning.planner._git", return_value="abc123"):
+            create_result = create_commit_plan(title="Test Plan")
+            plan_id = create_result.result.id
+
+            result = update_commit_plan(plan_id=plan_id, status="pending_review")
+            assert result.success is False
+            assert "managed" in result.message.lower() or "executor" in result.message.lower()
+
+    def test_pending_commit_not_manually_settable(self, tmp_path):
+        """update_commit_plan rechaza status='pending_commit'."""
+        with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)), \
+             patch("autocode.core.planning.planner._git", return_value="abc123"):
+            create_result = create_commit_plan(title="Test Plan")
+            plan_id = create_result.result.id
+
+            result = update_commit_plan(plan_id=plan_id, status="pending_commit")
+            assert result.success is False
+
+    def test_reverted_not_manually_settable(self, tmp_path):
+        """update_commit_plan rechaza status='reverted'."""
+        with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)), \
+             patch("autocode.core.planning.planner._git", return_value="abc123"):
+            create_result = create_commit_plan(title="Test Plan")
+            plan_id = create_result.result.id
+
+            result = update_commit_plan(plan_id=plan_id, status="reverted")
+            assert result.success is False
