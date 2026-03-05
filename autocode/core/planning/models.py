@@ -16,10 +16,46 @@ from autocode.interfaces.models import GenericOutput
 # Los iconos de la UI están en commit-plan-detail.js TASK_ICONS
 
 # Estados de un plan
-PlanStatus = Literal["draft", "ready", "executing", "completed", "failed", "abandoned"]
+PlanStatus = Literal[
+    "draft", "ready", "executing",
+    "pending_review", "pending_commit",  # review flow
+    "completed", "failed",
+    "reverted", "abandoned",             # reverted = post-review revert
+]
 
 # Estados de ejecución de una tarea individual
 TaskStatus = Literal["pending", "running", "completed", "failed", "skipped"]
+
+
+class ReviewFileMetrics(BaseModel):
+    """
+    Métricas before/after de un archivo individual durante review.
+    
+    Permite comparar el estado del archivo antes y después de la
+    ejecución del plan para evaluar quality gates.
+    """
+    path: str = Field(..., description="Ruta del archivo analizado")
+    before: dict = Field(default_factory=dict, description="Métricas pre-cambio {sloc, avg_complexity, max_complexity, mi, ...}")
+    after: dict = Field(default_factory=dict, description="Métricas post-cambio")
+    deltas: dict = Field(default_factory=dict, description="Diferencias calculadas {delta_sloc, delta_complexity, ...}")
+
+
+class ReviewResult(BaseModel):
+    """
+    Resultado de la revisión post-ejecución de un plan.
+    
+    Contiene el veredicto (approved/rejected/needs_changes),
+    métricas por archivo y estado de quality gates.
+    """
+    mode: Literal["auto", "human"] = Field(..., description="Modo de review: auto o human")
+    verdict: Literal["approved", "rejected", "needs_changes"] = Field(..., description="Veredicto de la revisión")
+    summary: str = Field("", description="Resumen de la revisión")
+    issues: List[str] = Field(default_factory=list, description="Problemas encontrados")
+    suggestions: List[str] = Field(default_factory=list, description="Sugerencias de mejora")
+    file_metrics: List[ReviewFileMetrics] = Field(default_factory=list, description="Métricas before/after por archivo")
+    quality_gates: dict = Field(default_factory=dict, description="Estado de quality gates {gate_name: passed}")
+    reviewed_at: str = Field("", description="Fecha de revisión ISO")
+    reviewed_by: str = Field("", description="Quién revisó: 'auto' o nombre del usuario")
 
 
 class TaskExecutionResult(BaseModel):
@@ -56,6 +92,7 @@ class PlanExecutionState(BaseModel):
     commit_hash: str = Field("", description="Hash del commit generado (si auto_commit)")
     total_tokens: int = Field(0, description="Total tokens de todas las tareas")
     total_cost: float = Field(0.0, description="Coste total en USD de toda la ejecución")
+    review: Optional[ReviewResult] = Field(None, description="Resultado de la revisión post-ejecución")
 
 
 class PlanTask(BaseModel):
