@@ -392,6 +392,70 @@ def revert_plan(plan_id: str) -> CommitPlanOutput:
 
 
 # ==============================================================================
+# REGISTERED ENDPOINTS — REVIEW METRICS
+# ==============================================================================
+
+
+@register_function(http_methods=["GET"], interfaces=["api"])
+def get_plan_review_metrics(plan_id: str) -> GenericOutput:
+    """Retorna métricas de review de un plan para la UI.
+
+    Extrae file_metrics, quality_gates y summary del ReviewResult
+    almacenado en plan.execution.review. Formato compatible con
+    la tabla combinada de commit-detail.js.
+
+    Args:
+        plan_id: ID del plan
+    """
+    try:
+        plan = _load_plan(plan_id)
+        if plan is None:
+            return GenericOutput(
+                success=False, result=None,
+                message=f"Plan '{plan_id}' no encontrado",
+            )
+
+        review = plan.execution.review if plan.execution else None
+        if review is None:
+            return GenericOutput(
+                success=True,
+                result={"files": [], "summary": {}, "quality_gates": {}},
+                message="No review data available",
+            )
+
+        # Transform file_metrics to flat format compatible with commit-detail table
+        files = []
+        for fm in review.file_metrics:
+            files.append({
+                "path": fm.path,
+                "before": fm.before,
+                "after": fm.after,
+                **fm.deltas,
+            })
+
+        return GenericOutput(
+            success=True,
+            result={
+                "files": files,
+                "summary": {
+                    "verdict": review.verdict,
+                    "summary": review.summary,
+                    "mode": review.mode,
+                    "reviewed_at": review.reviewed_at,
+                    "reviewed_by": review.reviewed_by,
+                    "issues": review.issues,
+                    "suggestions": review.suggestions,
+                },
+                "quality_gates": review.quality_gates,
+            },
+            message=f"Review metrics for plan '{plan_id}'",
+        )
+    except Exception as e:
+        logger.error(f"Error getting review metrics for {plan_id}: {e}")
+        return GenericOutput(success=False, result=None, message=str(e))
+
+
+# ==============================================================================
 # PLAN PERSISTENCE
 # ==============================================================================
 

@@ -100,6 +100,22 @@ export const commitPlanNodeStyles = css`
         color: #991b1b;
     }
 
+    .plan-badge.pending_review {
+        background: #fff7ed;
+        color: #9a3412;
+        animation: pulse 1.5s infinite;
+    }
+
+    .plan-badge.pending_commit {
+        background: #dbeafe;
+        color: #1e40af;
+    }
+
+    .plan-badge.reverted {
+        background: #fef2f2;
+        color: #991b1b;
+    }
+
     @keyframes pulse {
         0%, 100% { opacity: 1; }
         50% { opacity: 0.5; }

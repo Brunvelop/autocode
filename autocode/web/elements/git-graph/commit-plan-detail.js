@@ -35,6 +35,14 @@ const TASK_STATUS_ICONS = {
 // Statuses from which a plan can be executed
 const EXECUTABLE_STATUSES = new Set(['draft', 'ready', 'failed', 'executing']);
 
+// Statuses that show review section
+const REVIEW_STATUSES = new Set(['pending_review', 'pending_commit']);
+
+// Statuses where manual status change / execute are NOT available
+const NON_EDITABLE_STATUSES = new Set([
+    'pending_review', 'pending_commit', 'reverted', 'completed',
+]);
+
 // Default model for execution
 const DEFAULT_MODEL = 'openrouter/z-ai/glm-5';
 
@@ -51,6 +59,9 @@ export class CommitPlanDetail extends LitElement {
         _modelChoices: { state: true },  // Available models from registry
         _elapsedDisplay: { state: true }, // Elapsed time string "1m 23s"
         _lastHeartbeat: { state: true },  // Timestamp of last heartbeat event
+        _isApproving: { state: true },    // Approve in progress
+        _isReverting: { state: true },    // Revert in progress
+        _isAnalyzingReview: { state: true }, // Review analysis in progress (SSE)
     };
 
     static styles = [themeTokens, commitPlanDetailStyles];
@@ -73,6 +84,10 @@ export class CommitPlanDetail extends LitElement {
         this._elapsedInterval = null;
         // Abort controller for cancelling execution
         this._abortController = null;
+        // Review state
+        this._isApproving = false;
+        this._isReverting = false;
+        this._isAnalyzingReview = false;
     }
 
     connectedCallback() {
@@ -156,6 +171,25 @@ export class CommitPlanDetail extends LitElement {
 
                 <!-- Execution Summary (if available) -->
                 ${this._renderExecutionSummary()}
+
+                <!-- Review analyzing banner (during SSE) -->
+                ${this._isAnalyzingReview ? html`
+                    <div class="review-analyzing">
+                        <div class="spinner-sm"></div>
+                        <span>Analizando métricas de calidad...</span>
+                    </div>
+                ` : ''}
+
+                <!-- Reverted banner -->
+                ${status === 'reverted' ? html`
+                    <div class="reverted-banner">
+                        <span class="reverted-icon">↩️</span>
+                        <span class="reverted-text">Cambios revertidos — los archivos han sido restaurados al estado anterior</span>
+                    </div>
+                ` : ''}
+
+                <!-- Review section (pending_review / pending_commit) -->
+                ${this._renderReviewSection(status)}
 
                 <!-- Tasks -->
                 ${plan.tasks && plan.tasks.length > 0 ? html`
@@ -245,20 +279,22 @@ export class CommitPlanDetail extends LitElement {
                     </div>
                 ` : ''}
 
-                <!-- Actions -->
-                <div class="actions-section">
-                    <select class="status-select ${this._isExecuting ? 'disabled' : ''}"
-                        .value=${status}
-                        ?disabled=${this._isExecuting}
-                        @change=${this._updateStatus}>
-                        <option value="draft" ?selected=${status === 'draft'}>Draft</option>
-                        <option value="ready" ?selected=${status === 'ready'}>Ready</option>
-                        <option value="abandoned" ?selected=${status === 'abandoned'}>Abandoned</option>
-                    </select>
-                    <button class="delete-btn ${this._isExecuting ? 'disabled' : ''}"
-                        ?disabled=${this._isExecuting}
-                        @click=${this._delete}>🗑️ Eliminar</button>
-                </div>
+                <!-- Actions (hidden for non-editable statuses) -->
+                ${!NON_EDITABLE_STATUSES.has(status) ? html`
+                    <div class="actions-section">
+                        <select class="status-select ${this._isExecuting ? 'disabled' : ''}"
+                            .value=${status}
+                            ?disabled=${this._isExecuting}
+                            @change=${this._updateStatus}>
+                            <option value="draft" ?selected=${status === 'draft'}>Draft</option>
+                            <option value="ready" ?selected=${status === 'ready'}>Ready</option>
+                            <option value="abandoned" ?selected=${status === 'abandoned'}>Abandoned</option>
+                        </select>
+                        <button class="delete-btn ${this._isExecuting ? 'disabled' : ''}"
+                            ?disabled=${this._isExecuting}
+                            @click=${this._delete}>🗑️ Eliminar</button>
+                    </div>
+                ` : ''}
             </div>
         `;
     }
@@ -315,12 +351,15 @@ export class CommitPlanDetail extends LitElement {
         }
         this._taskStatuses = newStatuses;
 
-        // Restore execution summary if plan finished
-        if (plan.status === 'completed' || plan.status === 'failed') {
+        // Restore execution summary if plan finished or in review
+        const summaryStatuses = new Set([
+            'completed', 'failed', 'pending_review', 'pending_commit', 'reverted',
+        ]);
+        if (summaryStatuses.has(plan.status)) {
             const tasksCompleted = plan.execution.task_results.filter(r => r.status === 'completed').length;
             const tasksFailed = plan.execution.task_results.filter(r => r.status === 'failed').length;
             this._executionSummary = {
-                success: plan.status === 'completed',
+                success: tasksFailed === 0,
                 tasksCompleted,
                 tasksFailed,
                 commitHash: plan.execution.commit_hash || '',
@@ -675,8 +714,19 @@ export class CommitPlanDetail extends LitElement {
                 this._lastHeartbeat = Date.now();
                 break;
 
+            case 'review_start':
+                console.log(`🔍 Review started: mode=${data.review_mode}, files=${data.files_changed?.length}`);
+                this._isAnalyzingReview = true;
+                break;
+
+            case 'review_complete':
+                console.log(`📋 Review complete: verdict=${data.verdict}`);
+                this._isAnalyzingReview = false;
+                break;
+
             case 'error':
                 console.error('❌ Executor error:', data.message);
+                this._isAnalyzingReview = false;
                 this._executionSummary = {
                     success: false,
                     tasksCompleted: 0,
@@ -816,6 +866,362 @@ export class CommitPlanDetail extends LitElement {
     _isHeartbeatActive() {
         if (!this._lastHeartbeat) return false;
         return (Date.now() - this._lastHeartbeat) < 15000;
+    }
+
+    // ========================================================================
+    // REVIEW SECTION
+    // ========================================================================
+
+    /**
+     * Render the full review section (metrics table + quality gates + actions).
+     * Visible when status is pending_review or pending_commit.
+     */
+    _renderReviewSection(status) {
+        if (!REVIEW_STATUSES.has(status)) return '';
+
+        const review = this._plan?.execution?.review;
+        if (!review) return '';
+
+        return html`
+            <div class="review-section">
+                <!-- Header: title + verdict -->
+                <div class="review-header">
+                    <div class="review-title">
+                        📊 Review de métricas
+                        ${review.verdict ? html`
+                            <span class="review-verdict ${review.verdict}">${review.verdict}</span>
+                        ` : ''}
+                    </div>
+                    ${review.summary ? html`
+                        <div class="review-summary">${review.summary}</div>
+                    ` : ''}
+                </div>
+
+                <!-- Quality Gates -->
+                ${this._renderQualityGates(review.quality_gates)}
+
+                <!-- Issues & Suggestions -->
+                ${(review.issues?.length || review.suggestions?.length) ? html`
+                    <div class="review-issues">
+                        ${(review.issues || []).map(i => html`
+                            <div class="review-issue">${i}</div>
+                        `)}
+                        ${(review.suggestions || []).map(s => html`
+                            <div class="review-suggestion">${s}</div>
+                        `)}
+                    </div>
+                ` : ''}
+
+                <!-- Metrics Table -->
+                ${this._renderReviewMetricsTable(review.file_metrics)}
+
+                <!-- Approve / Revert buttons -->
+                <div class="review-actions">
+                    <button class="approve-btn"
+                        ?disabled=${this._isApproving || this._isReverting}
+                        @click=${this._approvePlan}>
+                        ${this._isApproving ? html`<div class="spinner-sm"></div>` : ''}
+                        ✅ Aprobar y Commit
+                    </button>
+                    <button class="revert-btn"
+                        ?disabled=${this._isApproving || this._isReverting}
+                        @click=${this._revertPlan}>
+                        ${this._isReverting ? html`<div class="spinner-sm"></div>` : ''}
+                        ↩️ Revertir cambios
+                    </button>
+                </div>
+            </div>
+        `;
+    }
+
+    /**
+     * Render quality gates as a list of ✅/❌ badges.
+     */
+    _renderQualityGates(gates) {
+        if (!gates || Object.keys(gates).length === 0) return '';
+
+        return html`
+            <div class="quality-gates-section">
+                ${Object.entries(gates).map(([name, passed]) => html`
+                    <span class="quality-gate-item ${passed ? 'passed' : 'failed'}">
+                        ${passed ? '✅' : '❌'} ${name.replace(/_/g, ' ')}
+                    </span>
+                `)}
+            </div>
+        `;
+    }
+
+    // ========================================================================
+    // REVIEW METRICS TABLE (commit-detail.js pattern)
+    // ========================================================================
+
+    /**
+     * Render combined metrics table for review file_metrics.
+     * Replicates the pattern from commit-detail.js.
+     */
+    _renderReviewMetricsTable(fileMetrics) {
+        if (!fileMetrics || fileMetrics.length === 0) return '';
+
+        const totals = this._computeReviewTotals(fileMetrics);
+
+        return html`
+            <div class="table-section">
+                <div class="table-section-header">
+                    <span>📈 Archivos analizados</span>
+                    <span class="table-py-count">${fileMetrics.length} .py con métricas</span>
+                </div>
+                <div class="table-scroll-wrapper">
+                    <table class="combined-table">
+                        <thead>
+                            <tr>
+                                <th class="th-status"></th>
+                                <th class="th-path">Archivo</th>
+                                <th class="th-metric">SLOC</th>
+                                <th class="th-metric">CC</th>
+                                <th class="th-metric">MaxCC</th>
+                                <th class="th-metric">MI</th>
+                                <th class="th-metric">Fn</th>
+                                <th class="th-metric">Cls</th>
+                                <th class="th-metric">Nest</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${fileMetrics.map(fm => this._renderReviewTableRow(fm))}
+                        </tbody>
+                        <tfoot>
+                            ${this._renderReviewTotalsRow(totals)}
+                        </tfoot>
+                    </table>
+                </div>
+            </div>
+        `;
+    }
+
+    _renderReviewTableRow(fm) {
+        const after = fm.after || {};
+        const before = fm.before || {};
+        const isNew = Object.keys(before).length === 0;
+        const isDeleted = Object.keys(after).length === 0;
+        const icon = isNew ? '✅' : isDeleted ? '❌' : '🔄';
+
+        return html`
+            <tr class="file-row" title="${fm.path}">
+                <td class="td-status">${icon}</td>
+                <td class="td-path">${this._breakablePath(fm.path)}</td>
+                <!-- SLOC -->
+                <td class="td-metric">
+                    <span class="metric-val">${after.sloc ?? '—'}</span>
+                    ${this._renderDelta(fm.deltas?.delta_sloc, true)}
+                </td>
+                <!-- CC avg -->
+                <td class="td-metric">
+                    <span class="metric-val">${after.avg_complexity?.toFixed?.(1) ?? '—'}</span>
+                    ${this._renderDelta(fm.deltas?.delta_avg_complexity, true, true)}
+                </td>
+                <!-- Max CC -->
+                <td class="td-metric">
+                    <span class="metric-val">${after.max_complexity ?? '—'}</span>
+                    ${this._renderDelta(fm.deltas?.delta_max_complexity, true)}
+                </td>
+                <!-- MI -->
+                <td class="td-metric">
+                    <span class="metric-val ${this._miClass(after.maintainability_index)}">${after.maintainability_index?.toFixed?.(0) ?? '—'}</span>
+                    ${this._renderDelta(fm.deltas?.delta_maintainability_index, false, true, true)}
+                </td>
+                <!-- Functions -->
+                <td class="td-metric">
+                    <span class="metric-val">${after.functions_count ?? '—'}</span>
+                    ${this._renderDelta(fm.deltas?.delta_functions_count)}
+                </td>
+                <!-- Classes -->
+                <td class="td-metric">
+                    <span class="metric-val">${after.classes_count ?? '—'}</span>
+                    ${this._renderDelta(fm.deltas?.delta_classes_count)}
+                </td>
+                <!-- Max Nesting -->
+                <td class="td-metric">
+                    <span class="metric-val">${after.max_nesting ?? '—'}</span>
+                    ${this._renderDelta(fm.deltas?.delta_max_nesting, true)}
+                </td>
+            </tr>
+        `;
+    }
+
+    _computeReviewTotals(fileMetrics) {
+        let totalSlocAfter = 0, totalSlocBefore = 0;
+        let totalFnAfter = 0, totalFnBefore = 0;
+        let totalClsAfter = 0, totalClsBefore = 0;
+        let sumMiAfter = 0, sumMiBefore = 0;
+        let sumCcAfter = 0, sumCcBefore = 0;
+        let maxCcAfter = 0, maxCcBefore = 0;
+        let maxNestAfter = 0, maxNestBefore = 0;
+        let count = 0;
+
+        for (const fm of fileMetrics) {
+            const a = fm.after || {};
+            const b = fm.before || {};
+            totalSlocAfter += a.sloc || 0;
+            totalSlocBefore += b.sloc || 0;
+            totalFnAfter += a.functions_count || 0;
+            totalFnBefore += b.functions_count || 0;
+            totalClsAfter += a.classes_count || 0;
+            totalClsBefore += b.classes_count || 0;
+            sumMiAfter += a.maintainability_index || 0;
+            sumMiBefore += b.maintainability_index || 0;
+            sumCcAfter += a.avg_complexity || 0;
+            sumCcBefore += b.avg_complexity || 0;
+            maxCcAfter = Math.max(maxCcAfter, a.max_complexity || 0);
+            maxCcBefore = Math.max(maxCcBefore, b.max_complexity || 0);
+            maxNestAfter = Math.max(maxNestAfter, a.max_nesting || 0);
+            maxNestBefore = Math.max(maxNestBefore, b.max_nesting || 0);
+            count++;
+        }
+
+        const avgMiAfter = count ? sumMiAfter / count : 0;
+        const avgMiBefore = count ? sumMiBefore / count : 0;
+        const avgCcAfter = count ? sumCcAfter / count : 0;
+        const avgCcBefore = count ? sumCcBefore / count : 0;
+
+        return {
+            fileCount: count,
+            slocAfter: totalSlocAfter, deltaSloc: totalSlocAfter - totalSlocBefore,
+            avgCc: avgCcAfter, deltaCc: avgCcAfter - avgCcBefore,
+            maxCcAfter, deltaMaxCc: maxCcAfter - maxCcBefore,
+            avgMi: avgMiAfter, deltaMi: avgMiAfter - avgMiBefore,
+            fnAfter: totalFnAfter, deltaFn: totalFnAfter - totalFnBefore,
+            clsAfter: totalClsAfter, deltaCls: totalClsAfter - totalClsBefore,
+            maxNestAfter, deltaMaxNest: maxNestAfter - maxNestBefore,
+        };
+    }
+
+    _renderReviewTotalsRow(t) {
+        return html`
+            <tr class="totals-row">
+                <td class="td-status">Σ</td>
+                <td class="td-path totals-label">
+                    ${t.fileCount} archivo${t.fileCount !== 1 ? 's' : ''} .py
+                </td>
+                <td class="td-metric">
+                    <span class="metric-val">${t.slocAfter}</span>
+                    ${this._renderDelta(t.deltaSloc, true)}
+                </td>
+                <td class="td-metric">
+                    <span class="metric-val">${t.avgCc.toFixed(1)}</span>
+                    ${this._renderDelta(t.deltaCc, true, true)}
+                </td>
+                <td class="td-metric">
+                    <span class="metric-val">${t.maxCcAfter}</span>
+                    ${this._renderDelta(t.deltaMaxCc, true)}
+                </td>
+                <td class="td-metric">
+                    <span class="metric-val ${this._miClass(t.avgMi)}">${t.avgMi.toFixed(0)}</span>
+                    ${this._renderDelta(t.deltaMi, false, true, true)}
+                </td>
+                <td class="td-metric">
+                    <span class="metric-val">${t.fnAfter}</span>
+                    ${this._renderDelta(t.deltaFn)}
+                </td>
+                <td class="td-metric">
+                    <span class="metric-val">${t.clsAfter}</span>
+                    ${this._renderDelta(t.deltaCls)}
+                </td>
+                <td class="td-metric">
+                    <span class="metric-val">${t.maxNestAfter}</span>
+                    ${this._renderDelta(t.deltaMaxNest, true)}
+                </td>
+            </tr>
+        `;
+    }
+
+    // ========================================================================
+    // REVIEW RENDER HELPERS (from commit-detail.js)
+    // ========================================================================
+
+    _renderDelta(delta, lowerBetter = false, isFloat = false, higherBetter = false) {
+        if (delta == null || delta === 0) return html`<span class="delta delta-neutral">—</span>`;
+        let cls = 'delta-neutral';
+        if (lowerBetter) cls = delta < 0 ? 'delta-positive' : 'delta-negative';
+        else if (higherBetter) cls = delta > 0 ? 'delta-positive' : 'delta-negative';
+        const sign = delta > 0 ? '+' : '';
+        const val = isFloat ? delta.toFixed(1) : delta;
+        return html`<span class="delta ${cls}">${sign}${val}</span>`;
+    }
+
+    /** Returns MI color class based on value */
+    _miClass(mi) {
+        if (mi == null) return '';
+        if (mi >= 60) return 'mi-good';
+        if (mi >= 40) return 'mi-warn';
+        return 'mi-bad';
+    }
+
+    /**
+     * Makes a file path breakable by inserting <wbr> after each '/'.
+     */
+    _breakablePath(p) {
+        if (!p) return '';
+        const parts = p.split('/');
+        const result = [];
+        for (let i = 0; i < parts.length; i++) {
+            result.push(html`${i > 0 ? html`/<wbr>` : ''}${parts[i]}`);
+        }
+        return result;
+    }
+
+    // ========================================================================
+    // APPROVE / REVERT ACTIONS
+    // ========================================================================
+
+    /**
+     * Approve the plan: git add + commit → completed.
+     */
+    async _approvePlan() {
+        if (this._isApproving) return;
+        this._isApproving = true;
+
+        try {
+            await AutoFunctionController.executeFunction(
+                'approve_plan',
+                { plan_id: this.planId }
+            );
+            // Reload plan to get updated status + commit hash
+            await this._loadPlan();
+            this.dispatchEvent(new CustomEvent('plan-updated', {
+                bubbles: true,
+                composed: true,
+            }));
+        } catch (error) {
+            console.error('❌ Error approving plan:', error);
+        } finally {
+            this._isApproving = false;
+        }
+    }
+
+    /**
+     * Revert the plan: git checkout -- files → reverted.
+     */
+    async _revertPlan() {
+        if (this._isReverting) return;
+        if (!confirm('¿Revertir todos los cambios del plan? Los archivos volverán a su estado anterior.')) return;
+
+        this._isReverting = true;
+
+        try {
+            await AutoFunctionController.executeFunction(
+                'revert_plan',
+                { plan_id: this.planId }
+            );
+            // Reload plan to get updated status
+            await this._loadPlan();
+            this.dispatchEvent(new CustomEvent('plan-updated', {
+                bubbles: true,
+                composed: true,
+            }));
+        } catch (error) {
+            console.error('❌ Error reverting plan:', error);
+        } finally {
+            this._isReverting = false;
+        }
     }
 
     // ========================================================================

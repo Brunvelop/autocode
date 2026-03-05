@@ -1,0 +1,630 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Commit Plan Detail — Review Panel Tests</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .component-stage {
+            min-height: 200px;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            overflow: hidden;
+            background: white;
+        }
+        commit-plan-detail {
+            display: block;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 p-6">
+    <div class="max-w-4xl mx-auto">
+        <h1 class="text-2xl font-bold mb-2">📋 Commit Plan Detail — Review Panel Tests</h1>
+        <p class="text-gray-500 text-sm mb-4">TDD tests for Commit 6: review panel UI, approve/revert, metrics table, status badges</p>
+
+        <!-- Server status -->
+        <div id="serverStatus" class="mb-6 p-4 bg-gray-100 border border-gray-300 rounded-lg">
+            ⏳ Verificando servidor...
+        </div>
+
+        <!-- Summary -->
+        <div id="summary" class="mb-6 p-4 bg-white border border-gray-200 rounded-lg shadow-sm"></div>
+
+        <!-- Test results -->
+        <div id="results" class="space-y-4"></div>
+    </div>
+
+    <script type="module">
+        import { TestRunner } from '../../utils/test-runner.js';
+
+        const runner = new TestRunner();
+
+        // ====================================================================
+        // MOCK DATA
+        // ====================================================================
+
+        const MOCK_REVIEW = {
+            mode: 'human',
+            verdict: 'needs_changes',
+            summary: 'Awaiting human review. 2 file(s) analyzed, 4/4 quality gates passed.',
+            issues: [],
+            suggestions: ['⚠️ sloc_growth: src/app.py — sloc increased 20% (approaching 50% limit)'],
+            file_metrics: [
+                {
+                    path: 'src/app.py',
+                    before: { sloc: 100, avg_complexity: 3.0, max_complexity: 8, maintainability_index: 72, functions_count: 10, classes_count: 2, max_nesting: 3 },
+                    after: { sloc: 120, avg_complexity: 3.5, max_complexity: 10, maintainability_index: 68, functions_count: 12, classes_count: 2, max_nesting: 4 },
+                    deltas: { delta_sloc: 20, delta_avg_complexity: 0.5, delta_max_complexity: 2, delta_maintainability_index: -4, delta_functions_count: 2, delta_classes_count: 0, delta_max_nesting: 1 },
+                },
+                {
+                    path: 'src/utils.py',
+                    before: { sloc: 50, avg_complexity: 1.5, max_complexity: 3, maintainability_index: 85, functions_count: 5, classes_count: 0, max_nesting: 2 },
+                    after: { sloc: 55, avg_complexity: 1.6, max_complexity: 3, maintainability_index: 83, functions_count: 6, classes_count: 0, max_nesting: 2 },
+                    deltas: { delta_sloc: 5, delta_avg_complexity: 0.1, delta_max_complexity: 0, delta_maintainability_index: -2, delta_functions_count: 1, delta_classes_count: 0, delta_max_nesting: 0 },
+                },
+            ],
+            quality_gates: {
+                complexity_increase: true,
+                mi_minimum: true,
+                max_nesting: true,
+                sloc_growth: true,
+            },
+            reviewed_at: '2025-06-03T12:01:00',
+            reviewed_by: 'auto',
+        };
+
+        const MOCK_REVIEW_FAILED_GATES = {
+            ...MOCK_REVIEW,
+            verdict: 'rejected',
+            issues: ['❌ mi_minimum: Maintainability index dropped below 40'],
+            quality_gates: {
+                complexity_increase: true,
+                mi_minimum: false,
+                max_nesting: true,
+                sloc_growth: false,
+            },
+        };
+
+        function makePlan(overrides = {}) {
+            return {
+                id: '20250603-120000',
+                title: 'feat: add review panel',
+                description: 'Add review panel to commit plan detail',
+                status: 'pending_review',
+                branch: 'main',
+                parent_commit: 'abc1234567890',
+                created_at: '2025-06-03T12:00:00',
+                updated_at: '2025-06-03T12:01:00',
+                tasks: [
+                    { type: 'modify', path: 'src/app.py', description: 'Add review logic', details: '', acceptance_criteria: [] },
+                    { type: 'modify', path: 'src/utils.py', description: 'Add helper', details: '', acceptance_criteria: [] },
+                ],
+                context: {},
+                tags: ['review'],
+                execution: {
+                    started_at: '2025-06-03T12:00:30',
+                    completed_at: '2025-06-03T12:01:00',
+                    model_used: 'test-model',
+                    files_changed: ['src/app.py', 'src/utils.py'],
+                    task_results: [
+                        { task_index: 0, status: 'completed', llm_summary: 'Added review', files_changed: ['src/app.py'], total_tokens: 500, total_cost: 0.001 },
+                        { task_index: 1, status: 'completed', llm_summary: 'Added helper', files_changed: ['src/utils.py'], total_tokens: 300, total_cost: 0.0005 },
+                    ],
+                    commit_hash: '',
+                    total_tokens: 800,
+                    total_cost: 0.0015,
+                    review: MOCK_REVIEW,
+                },
+                ...overrides,
+            };
+        }
+
+        // ====================================================================
+        // MOCK: Intercept AutoFunctionController
+        // ====================================================================
+
+        let currentMockPlan = makePlan();
+        let lastApproveCall = null;
+        let lastRevertCall = null;
+
+        const autoGenModule = await import('../../../elements/auto-element-generator.js');
+        const originalExecute = autoGenModule.AutoFunctionController.executeFunction;
+
+        autoGenModule.AutoFunctionController.executeFunction = async function(funcName, params) {
+            if (funcName === 'get_commit_plan') {
+                return { ...currentMockPlan };
+            }
+            if (funcName === 'approve_plan') {
+                lastApproveCall = { ...params };
+                currentMockPlan = { ...currentMockPlan, status: 'completed' };
+                if (currentMockPlan.execution) currentMockPlan.execution.commit_hash = 'abc1234';
+                return currentMockPlan;
+            }
+            if (funcName === 'revert_plan') {
+                lastRevertCall = { ...params };
+                currentMockPlan = { ...currentMockPlan, status: 'reverted' };
+                return currentMockPlan;
+            }
+            if (funcName === 'update_commit_plan') {
+                currentMockPlan = { ...currentMockPlan, status: params.status || currentMockPlan.status };
+                return currentMockPlan;
+            }
+            if (funcName === 'delete_commit_plan') {
+                return { success: true };
+            }
+            if (funcName === 'list_commit_plans') {
+                return [];
+            }
+            return originalExecute.call(this, funcName, params);
+        };
+
+        // Import component
+        await import('../../../elements/git-graph/commit-plan-detail.js');
+
+        // Helper: create and load a commit-plan-detail element
+        async function createDetail(planOverrides = {}, stage = null) {
+            currentMockPlan = makePlan(planOverrides);
+            lastApproveCall = null;
+            lastRevertCall = null;
+
+            const el = document.createElement('commit-plan-detail');
+            el.planId = currentMockPlan.id;
+            if (stage) stage.appendChild(el);
+
+            // Wait for load
+            const start = Date.now();
+            while (el._loading && (Date.now() - start < 3000)) {
+                await new Promise(r => setTimeout(r, 50));
+            }
+            await el.updateComplete;
+            await new Promise(r => setTimeout(r, 50));
+            await el.updateComplete;
+            return el;
+        }
+
+        // ====================================================================
+        // A) STATUS BADGES
+        // ====================================================================
+
+        runner.group('A) Status badges para nuevos estados', () => {
+
+            runner.test('Badge pending_review se renderiza con clase correcta', async (stage) => {
+                const el = await createDetail({ status: 'pending_review' }, stage);
+                const badge = el.shadowRoot.querySelector('.status-badge');
+                runner.assertTrue(badge !== null, 'Badge debería existir');
+                runner.assertTrue(badge.classList.contains('pending_review'), 'Debería tener clase pending_review');
+                runner.assertContains(badge.textContent, 'pending_review');
+            });
+
+            runner.test('Badge pending_commit se renderiza con clase correcta', async (stage) => {
+                const el = await createDetail({ status: 'pending_commit' }, stage);
+                const badge = el.shadowRoot.querySelector('.status-badge');
+                runner.assertTrue(badge !== null, 'Badge debería existir');
+                runner.assertTrue(badge.classList.contains('pending_commit'), 'Debería tener clase pending_commit');
+            });
+
+            runner.test('Badge reverted se renderiza con clase correcta', async (stage) => {
+                const el = await createDetail({ status: 'reverted' }, stage);
+                const badge = el.shadowRoot.querySelector('.status-badge');
+                runner.assertTrue(badge !== null, 'Badge debería existir');
+                runner.assertTrue(badge.classList.contains('reverted'), 'Debería tener clase reverted');
+            });
+
+        });
+
+        // ====================================================================
+        // B) REVIEW SECTION RENDERING
+        // ====================================================================
+
+        runner.group('B) Review section rendering', () => {
+
+            runner.test('Review section aparece cuando status=pending_review', async (stage) => {
+                const el = await createDetail({ status: 'pending_review' }, stage);
+                const section = el.shadowRoot.querySelector('.review-section');
+                runner.assertTrue(section !== null, 'review-section debería existir en el DOM');
+            });
+
+            runner.test('Review section NO aparece cuando status=draft', async (stage) => {
+                const el = await createDetail({ status: 'draft' }, stage);
+                const section = el.shadowRoot.querySelector('.review-section');
+                runner.assertTrue(section === null, 'review-section NO debería existir en draft');
+            });
+
+            runner.test('Review section NO aparece cuando status=completed', async (stage) => {
+                const el = await createDetail({ status: 'completed' }, stage);
+                const section = el.shadowRoot.querySelector('.review-section');
+                runner.assertTrue(section === null, 'review-section NO debería existir en completed');
+            });
+
+            runner.test('Review title y verdict badge se muestran', async (stage) => {
+                const el = await createDetail({ status: 'pending_review' }, stage);
+                const title = el.shadowRoot.querySelector('.review-title');
+                runner.assertTrue(title !== null, 'review-title debería existir');
+                runner.assertContains(title.textContent, 'Review');
+
+                const verdict = el.shadowRoot.querySelector('.review-verdict');
+                runner.assertTrue(verdict !== null, 'verdict badge debería existir');
+                runner.assertTrue(verdict.classList.contains('needs_changes'), 'Debería tener clase needs_changes');
+            });
+
+            runner.test('Review summary se muestra', async (stage) => {
+                const el = await createDetail({ status: 'pending_review' }, stage);
+                const summary = el.shadowRoot.querySelector('.review-summary');
+                runner.assertTrue(summary !== null, 'review-summary debería existir');
+                runner.assertContains(summary.textContent, 'Awaiting human review');
+            });
+
+        });
+
+        // ====================================================================
+        // C) QUALITY GATES
+        // ====================================================================
+
+        runner.group('C) Quality Gates display', () => {
+
+            runner.test('Quality gates se muestran con ✅ cuando pasan', async (stage) => {
+                const el = await createDetail({ status: 'pending_review' }, stage);
+                const gates = el.shadowRoot.querySelectorAll('.quality-gate-item');
+                runner.assertTrue(gates.length === 4, `Debería haber 4 gates, hay ${gates.length}`);
+
+                const allPassed = Array.from(gates).every(g => g.classList.contains('passed'));
+                runner.assertTrue(allPassed, 'Todos los gates deberían tener clase "passed"');
+            });
+
+            runner.test('Quality gates muestran ❌ cuando fallan', async (stage) => {
+                const el = await createDetail({
+                    status: 'pending_review',
+                    execution: {
+                        ...makePlan().execution,
+                        review: MOCK_REVIEW_FAILED_GATES,
+                    },
+                }, stage);
+                const gates = el.shadowRoot.querySelectorAll('.quality-gate-item');
+                const failed = Array.from(gates).filter(g => g.classList.contains('failed'));
+                runner.assertTrue(failed.length === 2, `Debería haber 2 gates fallidos, hay ${failed.length}`);
+            });
+
+            runner.test('Issues se muestran cuando existen', async (stage) => {
+                const el = await createDetail({
+                    status: 'pending_review',
+                    execution: {
+                        ...makePlan().execution,
+                        review: MOCK_REVIEW_FAILED_GATES,
+                    },
+                }, stage);
+                const issues = el.shadowRoot.querySelectorAll('.review-issue');
+                runner.assertTrue(issues.length >= 1, 'Debería haber al menos 1 issue');
+                runner.assertContains(issues[0].textContent, 'mi_minimum');
+            });
+
+            runner.test('Suggestions se muestran cuando existen', async (stage) => {
+                const el = await createDetail({ status: 'pending_review' }, stage);
+                const suggestions = el.shadowRoot.querySelectorAll('.review-suggestion');
+                runner.assertTrue(suggestions.length >= 1, 'Debería haber al menos 1 suggestion');
+                runner.assertContains(suggestions[0].textContent, 'sloc_growth');
+            });
+
+        });
+
+        // ====================================================================
+        // D) METRICS TABLE
+        // ====================================================================
+
+        runner.group('D) Metrics table rendering', () => {
+
+            runner.test('Tabla de métricas se renderiza con archivos .py', async (stage) => {
+                const el = await createDetail({ status: 'pending_review' }, stage);
+                const table = el.shadowRoot.querySelector('.combined-table');
+                runner.assertTrue(table !== null, 'combined-table debería existir');
+            });
+
+            runner.test('Tabla tiene columnas correctas (SLOC, CC, MaxCC, MI, Fn, Cls, Nest)', async (stage) => {
+                const el = await createDetail({ status: 'pending_review' }, stage);
+                const headers = el.shadowRoot.querySelectorAll('.combined-table th');
+                const headerTexts = Array.from(headers).map(h => h.textContent.trim());
+                runner.assertTrue(headerTexts.includes('SLOC'), 'Debería tener columna SLOC');
+                runner.assertTrue(headerTexts.includes('CC'), 'Debería tener columna CC');
+                runner.assertTrue(headerTexts.includes('MI'), 'Debería tener columna MI');
+                runner.assertTrue(headerTexts.includes('Nest'), 'Debería tener columna Nest');
+            });
+
+            runner.test('Tabla muestra 2 filas de archivos', async (stage) => {
+                const el = await createDetail({ status: 'pending_review' }, stage);
+                const rows = el.shadowRoot.querySelectorAll('.combined-table tbody tr');
+                runner.assertTrue(rows.length === 2, `Debería haber 2 filas, hay ${rows.length}`);
+            });
+
+            runner.test('Fila de totales se renderiza con Σ', async (stage) => {
+                const el = await createDetail({ status: 'pending_review' }, stage);
+                const totalsRow = el.shadowRoot.querySelector('.totals-row');
+                runner.assertTrue(totalsRow !== null, 'totals-row debería existir');
+                runner.assertContains(totalsRow.textContent, 'Σ');
+                runner.assertContains(totalsRow.textContent, '2 archivos');
+            });
+
+            runner.test('Deltas se muestran con colores correctos', async (stage) => {
+                const el = await createDetail({ status: 'pending_review' }, stage);
+                const deltas = el.shadowRoot.querySelectorAll('.delta');
+                runner.assertTrue(deltas.length > 0, 'Debería haber deltas renderizados');
+
+                // SLOC delta is +20 → should be delta-negative (lower is better for SLOC)
+                const negativeDeltas = el.shadowRoot.querySelectorAll('.delta-negative');
+                runner.assertTrue(negativeDeltas.length > 0, 'Debería haber al menos un delta negativo (SLOC/CC increase)');
+            });
+
+            runner.test('MI muestra clase de color correcta', async (stage) => {
+                const el = await createDetail({ status: 'pending_review' }, stage);
+                const miGood = el.shadowRoot.querySelectorAll('.mi-good');
+                runner.assertTrue(miGood.length > 0, 'Debería haber al menos un MI con clase mi-good (>=60)');
+            });
+
+            runner.test('Paths de archivos son breakable', async (stage) => {
+                const el = await createDetail({ status: 'pending_review' }, stage);
+                const paths = el.shadowRoot.querySelectorAll('.td-path');
+                runner.assertTrue(paths.length >= 2, 'Debería haber paths de archivos');
+                // Check that wbr elements are present for paths with /
+                const wbrs = paths[0].querySelectorAll('wbr');
+                runner.assertTrue(wbrs.length > 0, 'Path debería contener <wbr> para break');
+            });
+
+        });
+
+        // ====================================================================
+        // E) APPROVE ACTION
+        // ====================================================================
+
+        runner.group('E) Approve action', () => {
+
+            runner.test('Botón "Aprobar y Commit" visible cuando pending_review', async (stage) => {
+                const el = await createDetail({ status: 'pending_review' }, stage);
+                const btn = el.shadowRoot.querySelector('.approve-btn');
+                runner.assertTrue(btn !== null, 'approve-btn debería existir');
+                runner.assertContains(btn.textContent, 'Aprobar');
+            });
+
+            runner.test('Botón "Aprobar" NO visible cuando status=draft', async (stage) => {
+                const el = await createDetail({ status: 'draft' }, stage);
+                const btn = el.shadowRoot.querySelector('.approve-btn');
+                runner.assertTrue(btn === null, 'approve-btn NO debería existir en draft');
+            });
+
+            runner.test('Click en aprobar llama approve_plan con plan_id correcto', async (stage) => {
+                const el = await createDetail({ status: 'pending_review' }, stage);
+                const btn = el.shadowRoot.querySelector('.approve-btn');
+                btn.click();
+                // Wait for async
+                await new Promise(r => setTimeout(r, 200));
+                await el.updateComplete;
+
+                runner.assertTrue(lastApproveCall !== null, 'approve_plan debería haber sido llamado');
+                runner.assertEqual(lastApproveCall.plan_id, '20250603-120000', 'plan_id debería ser correcto');
+            });
+
+            runner.test('Tras aprobar, status cambia a completed', async (stage) => {
+                const el = await createDetail({ status: 'pending_review' }, stage);
+                const btn = el.shadowRoot.querySelector('.approve-btn');
+                btn.click();
+                await new Promise(r => setTimeout(r, 300));
+                await el.updateComplete;
+                await new Promise(r => setTimeout(r, 100));
+                await el.updateComplete;
+
+                const badge = el.shadowRoot.querySelector('.status-badge');
+                runner.assertContains(badge.textContent, 'completed');
+            });
+
+        });
+
+        // ====================================================================
+        // F) REVERT ACTION
+        // ====================================================================
+
+        runner.group('F) Revert action', () => {
+
+            runner.test('Botón "Revertir" visible cuando pending_review', async (stage) => {
+                const el = await createDetail({ status: 'pending_review' }, stage);
+                const btn = el.shadowRoot.querySelector('.revert-btn');
+                runner.assertTrue(btn !== null, 'revert-btn debería existir');
+                runner.assertContains(btn.textContent, 'Revertir');
+            });
+
+            runner.test('Botón "Revertir" NO visible cuando status=draft', async (stage) => {
+                const el = await createDetail({ status: 'draft' }, stage);
+                const btn = el.shadowRoot.querySelector('.revert-btn');
+                runner.assertTrue(btn === null, 'revert-btn NO debería existir en draft');
+            });
+
+            runner.test('Click en revertir llama revert_plan (con confirm mock)', async (stage) => {
+                // Mock window.confirm to auto-confirm
+                const origConfirm = window.confirm;
+                window.confirm = () => true;
+
+                try {
+                    const el = await createDetail({ status: 'pending_review' }, stage);
+                    const btn = el.shadowRoot.querySelector('.revert-btn');
+                    btn.click();
+                    await new Promise(r => setTimeout(r, 300));
+                    await el.updateComplete;
+
+                    runner.assertTrue(lastRevertCall !== null, 'revert_plan debería haber sido llamado');
+                    runner.assertEqual(lastRevertCall.plan_id, '20250603-120000', 'plan_id debería ser correcto');
+                } finally {
+                    window.confirm = origConfirm;
+                }
+            });
+
+            runner.test('Tras revertir, status cambia a reverted', async (stage) => {
+                const origConfirm = window.confirm;
+                window.confirm = () => true;
+
+                try {
+                    const el = await createDetail({ status: 'pending_review' }, stage);
+                    const btn = el.shadowRoot.querySelector('.revert-btn');
+                    btn.click();
+                    await new Promise(r => setTimeout(r, 300));
+                    await el.updateComplete;
+                    await new Promise(r => setTimeout(r, 100));
+                    await el.updateComplete;
+
+                    const badge = el.shadowRoot.querySelector('.status-badge');
+                    runner.assertContains(badge.textContent, 'reverted');
+                } finally {
+                    window.confirm = origConfirm;
+                }
+            });
+
+        });
+
+        // ====================================================================
+        // G) REVERTED STATE
+        // ====================================================================
+
+        runner.group('G) Reverted state', () => {
+
+            runner.test('Banner "reverted" se muestra cuando status=reverted', async (stage) => {
+                const el = await createDetail({ status: 'reverted' }, stage);
+                const banner = el.shadowRoot.querySelector('.reverted-banner');
+                runner.assertTrue(banner !== null, 'reverted-banner debería existir');
+                runner.assertContains(banner.textContent, 'revertidos');
+            });
+
+            runner.test('Botones aprobar/revertir NO visibles cuando reverted', async (stage) => {
+                const el = await createDetail({ status: 'reverted' }, stage);
+                const approveBtn = el.shadowRoot.querySelector('.approve-btn');
+                const revertBtn = el.shadowRoot.querySelector('.revert-btn');
+                runner.assertTrue(approveBtn === null, 'approve-btn NO debería existir en reverted');
+                runner.assertTrue(revertBtn === null, 'revert-btn NO debería existir en reverted');
+            });
+
+            runner.test('Botón ejecutar NO visible cuando reverted', async (stage) => {
+                const el = await createDetail({ status: 'reverted' }, stage);
+                const executeBtn = el.shadowRoot.querySelector('.execute-btn');
+                runner.assertTrue(executeBtn === null, 'execute-btn NO debería existir en reverted');
+            });
+
+            runner.test('Actions section (status select) oculta en reverted', async (stage) => {
+                const el = await createDetail({ status: 'reverted' }, stage);
+                const actionsSection = el.shadowRoot.querySelector('.actions-section');
+                runner.assertTrue(actionsSection === null, 'actions-section NO debería existir en reverted');
+            });
+
+        });
+
+        // ====================================================================
+        // H) SSE EVENTS
+        // ====================================================================
+
+        runner.group('H) SSE event handling', () => {
+
+            runner.test('review_start event activa _isAnalyzingReview', async (stage) => {
+                const el = await createDetail({ status: 'executing' }, stage);
+                runner.assertFalse(el._isAnalyzingReview, 'Debería empezar en false');
+
+                el._handleSSEEvent('review_start', { review_mode: 'human', files_changed: ['a.py'] });
+                runner.assertTrue(el._isAnalyzingReview, 'Debería ser true tras review_start');
+            });
+
+            runner.test('review_complete event desactiva _isAnalyzingReview', async (stage) => {
+                const el = await createDetail({ status: 'executing' }, stage);
+                el._isAnalyzingReview = true;
+
+                el._handleSSEEvent('review_complete', { verdict: 'approved', summary: 'OK' });
+                runner.assertFalse(el._isAnalyzingReview, 'Debería ser false tras review_complete');
+            });
+
+            runner.test('Review analyzing banner se muestra cuando _isAnalyzingReview=true', async (stage) => {
+                const el = await createDetail({ status: 'executing' }, stage);
+                el._isAnalyzingReview = true;
+                await el.updateComplete;
+
+                const banner = el.shadowRoot.querySelector('.review-analyzing');
+                runner.assertTrue(banner !== null, 'review-analyzing banner debería existir');
+                runner.assertContains(banner.textContent, 'Analizando');
+            });
+
+        });
+
+        // ====================================================================
+        // I) EXECUTION STATE RESTORATION
+        // ====================================================================
+
+        runner.group('I) Execution state restoration', () => {
+
+            runner.test('_restoreExecutionState restaura task statuses de pending_review plan', async (stage) => {
+                const el = await createDetail({ status: 'pending_review' }, stage);
+
+                runner.assertTrue(el._taskStatuses.size === 2, `Debería tener 2 task statuses, tiene ${el._taskStatuses.size}`);
+                runner.assertEqual(el._taskStatuses.get(0).status, 'completed', 'Task 0 debería ser completed');
+                runner.assertEqual(el._taskStatuses.get(1).status, 'completed', 'Task 1 debería ser completed');
+            });
+
+            runner.test('Execution summary se muestra junto con review section', async (stage) => {
+                const el = await createDetail({ status: 'pending_review' }, stage);
+
+                runner.assertTrue(el._executionSummary !== null, 'executionSummary debería estar restaurado');
+                runner.assertTrue(el._executionSummary.success, 'success debería ser true');
+                runner.assertEqual(el._executionSummary.tasksCompleted, 2, 'tasksCompleted debería ser 2');
+
+                const summaryBanner = el.shadowRoot.querySelector('.execution-summary');
+                runner.assertTrue(summaryBanner !== null, 'execution-summary banner debería existir');
+
+                const reviewSection = el.shadowRoot.querySelector('.review-section');
+                runner.assertTrue(reviewSection !== null, 'review-section debería existir junto con summary');
+            });
+
+            runner.test('Plan con review.file_metrics vacío no muestra tabla', async (stage) => {
+                const el = await createDetail({
+                    status: 'pending_review',
+                    execution: {
+                        ...makePlan().execution,
+                        review: { ...MOCK_REVIEW, file_metrics: [] },
+                    },
+                }, stage);
+
+                const table = el.shadowRoot.querySelector('.combined-table');
+                runner.assertTrue(table === null, 'combined-table NO debería existir sin file_metrics');
+            });
+
+        });
+
+        // ====================================================================
+        // J) NON-EDITABLE STATUS BEHAVIOR
+        // ====================================================================
+
+        runner.group('J) Non-editable status behavior', () => {
+
+            runner.test('Actions section oculta en pending_review', async (stage) => {
+                const el = await createDetail({ status: 'pending_review' }, stage);
+                const actionsSection = el.shadowRoot.querySelector('.actions-section');
+                runner.assertTrue(actionsSection === null, 'actions-section NO debería existir en pending_review');
+            });
+
+            runner.test('Actions section oculta en completed', async (stage) => {
+                const el = await createDetail({ status: 'completed' }, stage);
+                const actionsSection = el.shadowRoot.querySelector('.actions-section');
+                runner.assertTrue(actionsSection === null, 'actions-section NO debería existir en completed');
+            });
+
+            runner.test('Actions section visible en draft', async (stage) => {
+                const el = await createDetail({ status: 'draft' }, stage);
+                const actionsSection = el.shadowRoot.querySelector('.actions-section');
+                runner.assertTrue(actionsSection !== null, 'actions-section DEBERÍA existir en draft');
+            });
+
+            runner.test('Execute button NOT visible en pending_review', async (stage) => {
+                const el = await createDetail({ status: 'pending_review' }, stage);
+                const executeBtn = el.shadowRoot.querySelector('.execute-btn');
+                runner.assertTrue(executeBtn === null, 'execute-btn NO debería existir en pending_review');
+            });
+
+        });
+
+        // ====================================================================
+        // RUN
+        // ====================================================================
+
+        await runner.run();
+    </script>
+</body>
+</html>
