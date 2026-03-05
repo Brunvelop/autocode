@@ -78,7 +78,7 @@ EXECUTOR_TOOLS = {
 async def stream_execute_plan(
     plan_id: str,
     model: ModelType = "openrouter/z-ai/glm-5",
-    max_tokens: int = None,
+    max_tokens: int = 100000,
     temperature: float = 0.3,
     review_mode: str = "human",
 ) -> AsyncGenerator[str, None]:
@@ -388,7 +388,7 @@ async def stream_execute_plan(
 def execute_commit_plan(
     plan_id: str,
     model: ModelType = "openrouter/z-ai/glm-5",
-    max_tokens: int = None,
+    max_tokens: int = 100000,
     temperature: float = 0.3,
     review_mode: str = "human",
 ) -> GenericOutput:
