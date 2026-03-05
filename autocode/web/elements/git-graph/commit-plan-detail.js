@@ -17,6 +17,10 @@ const TASK_ICONS = {
     modify: '🔄',
     delete: '❌',
     rename: '📝',
+    refactor: '♻️',
+    fix: '🔧',
+    enhance: '✨',
+    test: '🧪',
 };
 
 // Task execution status icons

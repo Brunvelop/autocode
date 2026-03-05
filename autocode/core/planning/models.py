@@ -12,8 +12,8 @@ from pydantic import BaseModel, Field
 from autocode.interfaces.models import GenericOutput
 
 
-# Tipos de tarea soportados
-TaskType = Literal["create", "modify", "delete", "rename"]
+# Tipos de tarea soportados (no restrictivo — str libre con ejemplos sugeridos)
+# Los iconos de la UI están en commit-plan-detail.js TASK_ICONS
 
 # Estados de un plan
 PlanStatus = Literal["draft", "ready", "executing", "completed", "failed", "abandoned"]
@@ -65,7 +65,7 @@ class PlanTask(BaseModel):
     Representa una operación atómica sobre un archivo:
     crear, modificar, eliminar o renombrar.
     """
-    type: TaskType = Field(..., description="Tipo de operación: create, modify, delete, rename")
+    type: str = Field(..., description="Tipo de operación (ej: create, modify, delete, rename, refactor, fix, enhance, test)")
     path: str = Field(..., description="Archivo objetivo de la operación")
     description: str = Field(..., description="Qué hacer (1 línea)")
     details: str = Field("", description="Instrucciones detalladas de implementación")

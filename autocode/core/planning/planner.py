@@ -55,7 +55,7 @@ def create_commit_plan(
     Args:
         title: Mensaje de commit futuro
         description: Por qué este commit es necesario
-        tasks_json: JSON array de tareas [{type, path, description, details?, acceptance_criteria?}]
+        tasks_json: JSON array de tareas [{type: "create|modify|delete|rename|refactor|fix|enhance|test", path: "ruta/archivo", description: "qué hacer", details?: "instrucciones detalladas", acceptance_criteria?: ["criterio1"]}]
         context_json: JSON object de contexto {relevant_files?, relevant_dccs?, architectural_notes?}
         tags: Tags separados por coma
     """
@@ -170,7 +170,7 @@ def update_commit_plan(
         title: Nuevo título (vacío = no cambiar)
         description: Nueva descripción (vacío = no cambiar)
         status: Nuevo estado: draft, ready, abandoned (vacío = no cambiar)
-        tasks_json: JSON array de tareas (vacío = no cambiar)
+        tasks_json: JSON array de tareas [{type: "create|modify|delete|rename|refactor|fix|enhance|test", path: "ruta/archivo", description: "qué hacer", details?: "instrucciones detalladas", acceptance_criteria?: ["criterio1"]}] (vacío = no cambiar)
         context_json: JSON object de contexto (vacío = no cambiar)
         tags: Tags separados por coma (vacío = no cambiar)
     """
