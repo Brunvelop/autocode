@@ -86,6 +86,35 @@ export class GitGraph extends LitElement {
         this.addEventListener('plan-closed', this._handlePlanClosed.bind(this));
         this.addEventListener('plan-deleted', this._handlePlanDeleted.bind(this));
         this.addEventListener('plan-updated', this._handlePlanUpdated.bind(this));
+
+        // Listen for global plans-changed event (e.g. from chat creating a plan)
+        this._boundPlansChanged = () => this._debouncedLoadPlans();
+        window.addEventListener('plans-changed', this._boundPlansChanged);
+
+        // Start polling for plan changes (covers backend-initiated changes)
+        this._planPollInterval = setInterval(() => this._loadPlans(), 10000);
+    }
+
+    disconnectedCallback() {
+        super.disconnectedCallback();
+
+        // Clean up global event listener
+        if (this._boundPlansChanged) {
+            window.removeEventListener('plans-changed', this._boundPlansChanged);
+            this._boundPlansChanged = null;
+        }
+
+        // Stop polling
+        if (this._planPollInterval) {
+            clearInterval(this._planPollInterval);
+            this._planPollInterval = null;
+        }
+
+        // Clear any pending debounce
+        if (this._loadPlansDebounce) {
+            clearTimeout(this._loadPlansDebounce);
+            this._loadPlansDebounce = null;
+        }
     }
 
     render() {
@@ -527,6 +556,15 @@ export class GitGraph extends LitElement {
             this._selectedCommit = commit;
             this._selectedPlan = null; // Deselect plan when selecting commit
         }
+    }
+
+    /**
+     * Debounced version of _loadPlans — collapses rapid calls into one.
+     * Used by the 'plans-changed' window event listener.
+     */
+    _debouncedLoadPlans() {
+        clearTimeout(this._loadPlansDebounce);
+        this._loadPlansDebounce = setTimeout(() => this._loadPlans(), 300);
     }
 
     /**

@@ -378,6 +378,8 @@ export class AutocodeChat extends AutoFunctionController {
                         this.result = event.data.result;
                         this.success = event.data.success;
                         this._setStatus('success', 'Completado');
+                        // Notify other components (e.g. git-graph) that plans may have changed
+                        window.dispatchEvent(new CustomEvent('plans-changed'));
                         break;
                     }
 
@@ -440,6 +442,9 @@ export class AutocodeChat extends AutoFunctionController {
             await this.execute();
             // Procesar siempre el envelope para conservar success/message + metadata DSPy
             this._processResult(this.envelope || this.result);
+
+            // Notify other components (e.g. git-graph) that plans may have changed
+            window.dispatchEvent(new CustomEvent('plans-changed'));
 
             // Auto-save si estamos en sesión (después de respuesta del asistente)
             if (this._sessionManager?.hasActiveSession() && this.envelope && this.envelope.success !== false && !this.envelope._isError) {

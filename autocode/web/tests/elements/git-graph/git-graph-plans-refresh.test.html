@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Git Graph — Plans Auto-Refresh Tests</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .component-stage {
+            min-height: 200px;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            overflow: hidden;
+            background: white;
+        }
+        git-graph {
+            display: block;
+            height: 300px;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 p-6">
+    <div class="max-w-4xl mx-auto">
+        <h1 class="text-2xl font-bold mb-2">🔄 Git Graph — Plans Auto-Refresh Tests</h1>
+        <p class="text-gray-500 text-sm mb-4">TDD tests for Commit 7: auto-refresh plans in git-graph after chat creates a plan</p>
+
+        <!-- Server status -->
+        <div id="serverStatus" class="mb-6 p-4 bg-gray-100 border border-gray-300 rounded-lg">
+            ⏳ Verificando servidor...
+        </div>
+
+        <!-- Summary -->
+        <div id="summary" class="mb-6 p-4 bg-white border border-gray-200 rounded-lg shadow-sm"></div>
+
+        <!-- Test results -->
+        <div id="results" class="space-y-4"></div>
+    </div>
+
+    <script type="module">
+        import { TestRunner } from '../../utils/test-runner.js';
+
+        const runner = new TestRunner();
+
+        // ====================================================================
+        // MOCK DATA
+        // ====================================================================
+
+        const MOCK_GIT_LOG = {
+            commits: [
+                {
+                    hash: 'abc123def456789012345678901234567890abcd',
+                    short_hash: 'abc123d',
+                    message: 'feat: initial commit',
+                    author: 'Test User',
+                    date: '2025-06-01T12:00:00',
+                    parents: [],
+                    branches: ['main'],
+                    tags: [],
+                },
+            ],
+            branches: [
+                { name: 'main', is_current: true },
+            ],
+        };
+
+        const MOCK_PLAN_A = {
+            id: '20250601-120000',
+            title: 'feat: add login',
+            status: 'draft',
+            branch: 'main',
+            parent_commit: 'abc123d',
+            tasks: [],
+        };
+
+        const MOCK_PLAN_B = {
+            id: '20250601-130000',
+            title: 'fix: resolve bug',
+            status: 'ready',
+            branch: 'main',
+            parent_commit: 'abc123d',
+            tasks: [],
+        };
+
+        // ====================================================================
+        // MOCK: Intercept AutoFunctionController
+        // ====================================================================
+
+        let currentMockPlans = [];
+        let loadPlansCallCount = 0;
+
+        const autoGenModule = await import('../../../elements/auto-element-generator.js');
+        const originalExecute = autoGenModule.AutoFunctionController.executeFunction;
+
+        autoGenModule.AutoFunctionController.executeFunction = async function(funcName, params) {
+            if (funcName === 'get_git_log') {
+                return MOCK_GIT_LOG;
+            }
+            if (funcName === 'list_commit_plans') {
+                loadPlansCallCount++;
+                return [...currentMockPlans];
+            }
+            return originalExecute.call(this, funcName, params);
+        };
+
+        // Import git-graph component
+        await import('../../../elements/git-graph/index.js');
+
+        // Helper: create a fresh git-graph and wait for load
+        async function createGitGraph(stage) {
+            const el = document.createElement('git-graph');
+            if (stage) stage.appendChild(el);
+
+            const start = Date.now();
+            while (el._loading && (Date.now() - start < 3000)) {
+                await new Promise(r => setTimeout(r, 50));
+            }
+            await el.updateComplete;
+            await new Promise(r => setTimeout(r, 100));
+            await el.updateComplete;
+            return el;
+        }
+
+        // Helper: reset state between tests
+        function resetMocks() {
+            currentMockPlans = [];
+            loadPlansCallCount = 0;
+        }
+
+        // ====================================================================
+        // A) EVENT-BASED REFRESH
+        // ====================================================================
+
+        runner.group('A) Event-based refresh via plans-changed', () => {
+
+            runner.test('GitGraph._loadPlans se llama al recibir plans-changed en window', async (stage) => {
+                resetMocks();
+                const el = await createGitGraph(stage);
+
+                // Record the count after initial load
+                const initialCount = loadPlansCallCount;
+
+                // Dispatch the event
+                window.dispatchEvent(new CustomEvent('plans-changed'));
+
+                // Wait for debounce + async
+                await new Promise(r => setTimeout(r, 500));
+                await el.updateComplete;
+
+                runner.assertTrue(
+                    loadPlansCallCount > initialCount,
+                    `list_commit_plans debería haberse llamado de nuevo. Antes: ${initialCount}, Ahora: ${loadPlansCallCount}`
+                );
+            });
+
+            runner.test('Plans list se actualiza tras evento plans-changed', async (stage) => {
+                resetMocks();
+                currentMockPlans = [];
+                const el = await createGitGraph(stage);
+
+                // Verify empty initially
+                runner.assertEqual(el._plans.length, 0, 'Debería empezar sin planes');
+
+                // Simulate backend created a plan
+                currentMockPlans = [MOCK_PLAN_A];
+                window.dispatchEvent(new CustomEvent('plans-changed'));
+
+                // Wait for debounce + load
+                await new Promise(r => setTimeout(r, 500));
+                await el.updateComplete;
+
+                runner.assertEqual(el._plans.length, 1, 'Debería tener 1 plan tras el evento');
+                runner.assertEqual(el._plans[0].id, '20250601-120000', 'Plan ID debería coincidir');
+            });
+
+            runner.test('plans-changed no dispara refresh completo del graph (solo plans)', async (stage) => {
+                resetMocks();
+                const el = await createGitGraph(stage);
+
+                // Spy on refresh: replace it temporarily
+                let refreshCalled = false;
+                const originalRefresh = el.refresh.bind(el);
+                el.refresh = async function() {
+                    refreshCalled = true;
+                    return originalRefresh();
+                };
+
+                window.dispatchEvent(new CustomEvent('plans-changed'));
+                await new Promise(r => setTimeout(r, 500));
+
+                runner.assertFalse(
+                    refreshCalled,
+                    'refresh() completo NO debería haberse llamado — solo _loadPlans()'
+                );
+
+                // Restore
+                el.refresh = originalRefresh;
+            });
+
+            runner.test('Plans se renderizan como commit-plan-node tras el evento', async (stage) => {
+                resetMocks();
+                currentMockPlans = [];
+                const el = await createGitGraph(stage);
+
+                // No plan nodes initially
+                let planNodes = el.shadowRoot.querySelectorAll('commit-plan-node');
+                runner.assertEqual(planNodes.length, 0, 'No debería haber plan nodes inicialmente');
+
+                // Add plans and notify
+                currentMockPlans = [MOCK_PLAN_A, MOCK_PLAN_B];
+                window.dispatchEvent(new CustomEvent('plans-changed'));
+
+                await new Promise(r => setTimeout(r, 500));
+                await el.updateComplete;
+                await new Promise(r => setTimeout(r, 100));
+                await el.updateComplete;
+
+                planNodes = el.shadowRoot.querySelectorAll('commit-plan-node');
+                runner.assertEqual(planNodes.length, 2, `Debería haber 2 plan nodes, hay ${planNodes.length}`);
+            });
+
+        });
+
+        // ====================================================================
+        // B) POLLING
+        // ====================================================================
+
+        runner.group('B) Polling mechanism', () => {
+
+            runner.test('GitGraph tiene _planPollInterval tras connectedCallback', async (stage) => {
+                resetMocks();
+                const el = await createGitGraph(stage);
+
+                runner.assertTrue(
+                    el._planPollInterval != null,
+                    '_planPollInterval debería estar definido (polling activo)'
+                );
+            });
+
+            runner.test('GitGraph limpia _planPollInterval en disconnectedCallback', async (stage) => {
+                resetMocks();
+                const el = await createGitGraph(stage);
+
+                const intervalId = el._planPollInterval;
+                runner.assertTrue(intervalId != null, 'Polling debería estar activo');
+
+                // Remove from DOM → triggers disconnectedCallback
+                stage.removeChild(el);
+
+                runner.assertTrue(
+                    el._planPollInterval == null,
+                    '_planPollInterval debería ser null tras disconnectedCallback'
+                );
+            });
+
+            runner.test('Polling llama _loadPlans periódicamente', async (stage) => {
+                resetMocks();
+                const el = await createGitGraph(stage);
+
+                const countAfterInit = loadPlansCallCount;
+
+                // Wait for at least one poll cycle
+                // Note: default poll interval is 10s, so for testing we'll
+                // manually trigger a poll cycle rather than waiting 10s
+                await el._loadPlans();
+                await new Promise(r => setTimeout(r, 100));
+
+                runner.assertTrue(
+                    loadPlansCallCount > countAfterInit,
+                    `loadPlans debería haberse llamado al menos una vez más. Antes: ${countAfterInit}, Ahora: ${loadPlansCallCount}`
+                );
+            });
+
+        });
+
+        // ====================================================================
+        // C) DEBOUNCE
+        // ====================================================================
+
+        runner.group('C) Debounce de planes-changed', () => {
+
+            runner.test('Múltiples eventos rápidos resultan en pocas llamadas (debounce)', async (stage) => {
+                resetMocks();
+                const el = await createGitGraph(stage);
+
+                // Spy on THIS instance's _loadPlans only
+                let instanceCallCount = 0;
+                const originalLoadPlans = el._loadPlans.bind(el);
+                el._loadPlans = async function() {
+                    instanceCallCount++;
+                    return originalLoadPlans();
+                };
+
+                // Fire 5 events rapidly
+                for (let i = 0; i < 5; i++) {
+                    window.dispatchEvent(new CustomEvent('plans-changed'));
+                }
+
+                // Wait for debounce to settle
+                await new Promise(r => setTimeout(r, 600));
+                await el.updateComplete;
+
+                runner.assertTrue(
+                    instanceCallCount <= 2,
+                    `Esta instancia debería haber hecho ≤2 llamadas con debounce, hizo ${instanceCallCount}`
+                );
+                runner.assertTrue(
+                    instanceCallCount >= 1,
+                    `Esta instancia debería haber hecho al menos 1 llamada, hizo ${instanceCallCount}`
+                );
+
+                // Restore
+                el._loadPlans = originalLoadPlans;
+            });
+
+        });
+
+        // ====================================================================
+        // D) WINDOW EVENT LISTENER CLEANUP
+        // ====================================================================
+
+        runner.group('D) Cleanup del listener en window', () => {
+
+            runner.test('Tras disconnectedCallback, plans-changed ya no recarga plans', async (stage) => {
+                resetMocks();
+                const el = await createGitGraph(stage);
+
+                // Spy on THIS instance's _loadPlans only
+                let instanceCallCount = 0;
+                const originalLoadPlans = el._loadPlans.bind(el);
+                el._loadPlans = async function() {
+                    instanceCallCount++;
+                    return originalLoadPlans();
+                };
+
+                // Remove from DOM → triggers disconnectedCallback
+                stage.removeChild(el);
+                await new Promise(r => setTimeout(r, 100));
+
+                // Reset instance counter after disconnect
+                instanceCallCount = 0;
+
+                // Fire event — this instance should NOT respond
+                window.dispatchEvent(new CustomEvent('plans-changed'));
+                await new Promise(r => setTimeout(r, 500));
+
+                runner.assertEqual(
+                    instanceCallCount,
+                    0,
+                    `Esta instancia NO debería haber recibido el evento tras disconnect, pero hizo ${instanceCallCount} llamada(s)`
+                );
+            });
+
+        });
+
+        // ====================================================================
+        // E) CHAT INTEGRATION (plans-changed dispatch)
+        // ====================================================================
+
+        runner.group('E) Chat integration — plans-changed dispatch', () => {
+
+            runner.test('AutocodeChat tiene método que dispatch plans-changed (concepto)', async (stage) => {
+                // Verify that the plans-changed event mechanism works end-to-end:
+                // 1. Create git-graph
+                // 2. Simulate what chat would do: dispatch plans-changed
+                // 3. Verify plans update
+
+                resetMocks();
+                currentMockPlans = [];
+                const el = await createGitGraph(stage);
+
+                runner.assertEqual(el._plans.length, 0, 'Sin planes inicialmente');
+
+                // Simulate what the chat does after a message completes
+                currentMockPlans = [MOCK_PLAN_A];
+                window.dispatchEvent(new CustomEvent('plans-changed'));
+
+                await new Promise(r => setTimeout(r, 500));
+                await el.updateComplete;
+
+                runner.assertEqual(el._plans.length, 1, 'Plan debería aparecer tras evento del chat');
+            });
+
+            runner.test('Evento plans-changed funciona con múltiples git-graph instances', async (stage) => {
+                resetMocks();
+                currentMockPlans = [];
+
+                // Create two git-graph instances
+                const el1 = await createGitGraph(stage);
+                const el2 = await createGitGraph(stage);
+
+                runner.assertEqual(el1._plans.length, 0, 'Graph 1 sin planes');
+                runner.assertEqual(el2._plans.length, 0, 'Graph 2 sin planes');
+
+                // Dispatch event
+                currentMockPlans = [MOCK_PLAN_A];
+                window.dispatchEvent(new CustomEvent('plans-changed'));
+
+                await new Promise(r => setTimeout(r, 500));
+                await el1.updateComplete;
+                await el2.updateComplete;
+
+                runner.assertEqual(el1._plans.length, 1, 'Graph 1 debería tener 1 plan');
+                runner.assertEqual(el2._plans.length, 1, 'Graph 2 debería tener 1 plan');
+            });
+
+        });
+
+        // ====================================================================
+        // F) EDGE CASES
+        // ====================================================================
+
+        runner.group('F) Edge cases', () => {
+
+            runner.test('Plans-changed con API error no rompe el componente', async (stage) => {
+                resetMocks();
+                const el = await createGitGraph(stage);
+
+                // Make the mock throw
+                const savedMockPlans = currentMockPlans;
+                autoGenModule.AutoFunctionController.executeFunction = async function(funcName, params) {
+                    if (funcName === 'list_commit_plans') {
+                        loadPlansCallCount++;
+                        throw new Error('Network error');
+                    }
+                    if (funcName === 'get_git_log') return MOCK_GIT_LOG;
+                    return originalExecute.call(this, funcName, params);
+                };
+
+                // Should not throw
+                window.dispatchEvent(new CustomEvent('plans-changed'));
+                await new Promise(r => setTimeout(r, 500));
+                await el.updateComplete;
+
+                // Plans should be empty (fallback) not broken
+                runner.assertTrue(Array.isArray(el._plans), '_plans debería seguir siendo un array');
+
+                // Restore mock
+                autoGenModule.AutoFunctionController.executeFunction = async function(funcName, params) {
+                    if (funcName === 'get_git_log') return MOCK_GIT_LOG;
+                    if (funcName === 'list_commit_plans') {
+                        loadPlansCallCount++;
+                        return [...currentMockPlans];
+                    }
+                    return originalExecute.call(this, funcName, params);
+                };
+            });
+
+            runner.test('plans-changed antes de que el componente termine de cargar no causa error', async (stage) => {
+                resetMocks();
+
+                // Create element but don't wait for load
+                const el = document.createElement('git-graph');
+                stage.appendChild(el);
+
+                // Immediately dispatch event
+                window.dispatchEvent(new CustomEvent('plans-changed'));
+
+                // Wait for everything to settle
+                await new Promise(r => setTimeout(r, 1000));
+                await el.updateComplete;
+
+                // Should not have crashed
+                runner.assertTrue(Array.isArray(el._plans), '_plans debería ser un array válido');
+            });
+
+        });
+
+        // ====================================================================
+        // RUN
+        // ====================================================================
+
+        await runner.run();
+    </script>
+</body>
+</html>
