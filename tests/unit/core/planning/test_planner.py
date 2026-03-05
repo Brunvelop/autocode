@@ -19,6 +19,7 @@ from autocode.core.planning.planner import (
     list_commit_plans,
     approve_plan,
     revert_plan,
+    _git_checked,
 )
 from autocode.core.planning.models import (
     CommitPlan,
@@ -264,7 +265,7 @@ class TestApprovePlan:
         plan_id = self._create_pending_review_plan(tmp_path)
 
         with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)), \
-             patch("autocode.core.planning.planner._git") as mock_git:
+             patch("autocode.core.planning.planner._git_checked") as mock_git:
             # git rev-parse HEAD returns commit hash after commit
             mock_git.return_value = "new_commit_hash_abc"
 
@@ -300,7 +301,7 @@ class TestApprovePlan:
         plan_id = self._create_pending_review_plan(tmp_path)
 
         with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)), \
-             patch("autocode.core.planning.planner._git") as mock_git:
+             patch("autocode.core.planning.planner._git_checked") as mock_git:
             mock_git.return_value = "def456789"
 
             result = approve_plan(plan_id=plan_id)
@@ -313,7 +314,7 @@ class TestApprovePlan:
         plan_id = self._create_pending_review_plan(tmp_path, title="original title")
 
         with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)), \
-             patch("autocode.core.planning.planner._git") as mock_git:
+             patch("autocode.core.planning.planner._git_checked") as mock_git:
             mock_git.return_value = "abc123"
 
             result = approve_plan(plan_id=plan_id, commit_message="custom: my message")
@@ -324,6 +325,32 @@ class TestApprovePlan:
                         if "commit" in str(c)]
         assert len(commit_calls) >= 1
         assert "custom: my message" in str(commit_calls[0])
+
+    def test_approve_git_failure_returns_error(self, tmp_path):
+        """approve con git commit que falla → success=False con mensaje de error."""
+        plan_id = self._create_pending_review_plan(tmp_path)
+
+        with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)), \
+             patch("autocode.core.planning.planner._git_checked",
+                   side_effect=RuntimeError("git error: nothing to commit")):
+            result = approve_plan(plan_id=plan_id)
+
+        assert result.success is False
+        assert "git error" in result.message.lower()
+
+    def test_approve_git_failure_does_not_change_status(self, tmp_path):
+        """Si git falla durante approve, el plan sigue en pending_review."""
+        plan_id = self._create_pending_review_plan(tmp_path)
+
+        with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)), \
+             patch("autocode.core.planning.planner._git_checked",
+                   side_effect=RuntimeError("git error: fatal")):
+            approve_plan(plan_id=plan_id)
+
+        # Verify plan is still pending_review (not completed)
+        plan_file = tmp_path / f"{plan_id}.json"
+        plan_data = json.loads(plan_file.read_text())
+        assert plan_data["status"] == "pending_review"
 
     def test_approve_nonexistent_plan(self, tmp_path):
         """approve_plan con plan inexistente → error."""
@@ -399,7 +426,7 @@ class TestRevertPlan:
         )
 
         with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)), \
-             patch("autocode.core.planning.planner._git") as mock_git:
+             patch("autocode.core.planning.planner._git_checked") as mock_git:
             result = revert_plan(plan_id=plan_id)
 
         assert result.success is True
@@ -432,7 +459,7 @@ class TestRevertPlan:
         plan_id = self._create_pending_review_plan(tmp_path)
 
         with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)), \
-             patch("autocode.core.planning.planner._git"):
+             patch("autocode.core.planning.planner._git_checked"):
             result = revert_plan(plan_id=plan_id)
 
         assert result.success is True
@@ -446,7 +473,7 @@ class TestRevertPlan:
         )
 
         with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)), \
-             patch("autocode.core.planning.planner._git") as mock_git:
+             patch("autocode.core.planning.planner._git_checked") as mock_git:
             result = revert_plan(plan_id=plan_id)
 
         assert result.success is True
@@ -462,12 +489,50 @@ class TestRevertPlan:
         )
 
         with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)), \
-             patch("autocode.core.planning.planner._git") as mock_git:
+             patch("autocode.core.planning.planner._git_checked") as mock_git:
             result = revert_plan(plan_id=plan_id)
 
         assert result.success is True
         git_calls_str = str(mock_git.call_args_list)
         assert "deadbeef123" in git_calls_str
+
+    def test_revert_git_failure_returns_error(self, tmp_path):
+        """revert con git checkout que falla → success=False con mensaje de error."""
+        plan_id = self._create_pending_review_plan(tmp_path)
+
+        with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)), \
+             patch("autocode.core.planning.planner._git_checked",
+                   side_effect=RuntimeError("git error: pathspec 'src/main.py' did not match")):
+            result = revert_plan(plan_id=plan_id)
+
+        assert result.success is False
+        assert "git error" in result.message.lower()
+
+    def test_revert_git_failure_does_not_change_status(self, tmp_path):
+        """Si git falla durante revert, el plan sigue en pending_review."""
+        plan_id = self._create_pending_review_plan(tmp_path)
+
+        with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)), \
+             patch("autocode.core.planning.planner._git_checked",
+                   side_effect=RuntimeError("git error: fatal")):
+            revert_plan(plan_id=plan_id)
+
+        # Verify plan is still pending_review (not reverted)
+        plan_file = tmp_path / f"{plan_id}.json"
+        plan_data = json.loads(plan_file.read_text())
+        assert plan_data["status"] == "pending_review"
+
+    def test_revert_empty_files_returns_error(self, tmp_path):
+        """revert con files_changed vacío → success=False."""
+        plan_id = self._create_pending_review_plan(
+            tmp_path, files_changed=[]
+        )
+
+        with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)):
+            result = revert_plan(plan_id=plan_id)
+
+        assert result.success is False
+        assert "no files" in result.message.lower() or "empty" in result.message.lower()
 
     def test_revert_nonexistent_plan(self, tmp_path):
         """revert_plan con plan inexistente → error."""
@@ -476,6 +541,50 @@ class TestRevertPlan:
 
         assert result.success is False
         assert "no encontrado" in result.message.lower() or "not found" in result.message.lower()
+
+
+# ==============================================================================
+# TESTS: Status transitions — new executor-managed statuses
+# ==============================================================================
+
+
+# ==============================================================================
+# TESTS: _git_checked helper
+# ==============================================================================
+
+
+class TestGitChecked:
+    """Tests for _git_checked helper that raises on git failures."""
+
+    def test_git_checked_returns_stdout_on_success(self):
+        """_git_checked returns stdout when git succeeds."""
+        with patch("autocode.core.planning.planner.subprocess.run") as mock_run:
+            mock_run.return_value.returncode = 0
+            mock_run.return_value.stdout = "abc123\n"
+            mock_run.return_value.stderr = ""
+
+            result = _git_checked("rev-parse", "HEAD")
+            assert result == "abc123"
+
+    def test_git_checked_raises_on_failure(self):
+        """_git_checked raises RuntimeError when git fails."""
+        with patch("autocode.core.planning.planner.subprocess.run") as mock_run:
+            mock_run.return_value.returncode = 128
+            mock_run.return_value.stdout = ""
+            mock_run.return_value.stderr = "fatal: not a git repository"
+
+            with pytest.raises(RuntimeError, match="git error.*not a git repository"):
+                _git_checked("rev-parse", "HEAD")
+
+    def test_git_checked_uses_fallback_message_when_no_stderr(self):
+        """_git_checked provides fallback error message when stderr is empty."""
+        with patch("autocode.core.planning.planner.subprocess.run") as mock_run:
+            mock_run.return_value.returncode = 1
+            mock_run.return_value.stdout = ""
+            mock_run.return_value.stderr = ""
+
+            with pytest.raises(RuntimeError, match="git.*failed with code 1"):
+                _git_checked("checkout", "HEAD", "--", "file.py")
 
 
 # ==============================================================================

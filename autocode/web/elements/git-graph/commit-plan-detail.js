@@ -289,9 +289,9 @@ export class CommitPlanDetail extends LitElement {
                     </div>
                 ` : ''}
 
-                <!-- Actions (hidden for non-editable statuses) -->
-                ${!NON_EDITABLE_STATUSES.has(status) ? html`
-                    <div class="actions-section">
+                <!-- Actions: status select (editable statuses only) + delete (always) -->
+                <div class="actions-section">
+                    ${!NON_EDITABLE_STATUSES.has(status) ? html`
                         <select class="status-select ${this._isExecuting ? 'disabled' : ''}"
                             .value=${status}
                             ?disabled=${this._isExecuting}
@@ -300,11 +300,11 @@ export class CommitPlanDetail extends LitElement {
                             <option value="ready" ?selected=${status === 'ready'}>Ready</option>
                             <option value="abandoned" ?selected=${status === 'abandoned'}>Abandoned</option>
                         </select>
-                        <button class="delete-btn ${this._isExecuting ? 'disabled' : ''}"
-                            ?disabled=${this._isExecuting}
-                            @click=${this._delete}>🗑️ Eliminar</button>
-                    </div>
-                ` : ''}
+                    ` : ''}
+                    <button class="delete-btn ${this._isExecuting ? 'disabled' : ''}"
+                        ?disabled=${this._isExecuting}
+                        @click=${this._delete}>🗑️ Eliminar</button>
+                </div>
             </div>
         `;
     }
@@ -1191,16 +1191,18 @@ export class CommitPlanDetail extends LitElement {
 
     /**
      * Approve the plan: git add + commit → completed.
+     * Checks backend success and shows error if operation failed.
      */
     async _approvePlan() {
         if (this._isApproving) return;
         this._isApproving = true;
 
         try {
-            await AutoFunctionController.executeFunction(
-                'approve_plan',
-                { plan_id: this.planId }
-            );
+            const envelope = await this._callAndCheckSuccess('approve_plan', { plan_id: this.planId });
+            if (!envelope.success) {
+                alert(`❌ Error al aprobar: ${envelope.message || 'Error desconocido'}`);
+                return;
+            }
             // Reload plan to get updated status + commit hash
             await this._loadPlan();
             this.dispatchEvent(new CustomEvent('plan-updated', {
@@ -1209,6 +1211,7 @@ export class CommitPlanDetail extends LitElement {
             }));
         } catch (error) {
             console.error('❌ Error approving plan:', error);
+            alert(`❌ Error al aprobar: ${error.message}`);
         } finally {
             this._isApproving = false;
         }
@@ -1216,6 +1219,7 @@ export class CommitPlanDetail extends LitElement {
 
     /**
      * Revert the plan: git checkout -- files → reverted.
+     * Checks backend success and shows error if operation failed.
      */
     async _revertPlan() {
         if (this._isReverting) return;
@@ -1224,10 +1228,11 @@ export class CommitPlanDetail extends LitElement {
         this._isReverting = true;
 
         try {
-            await AutoFunctionController.executeFunction(
-                'revert_plan',
-                { plan_id: this.planId }
-            );
+            const envelope = await this._callAndCheckSuccess('revert_plan', { plan_id: this.planId });
+            if (!envelope.success) {
+                alert(`❌ Error al revertir: ${envelope.message || 'Error desconocido'}`);
+                return;
+            }
             // Reload plan to get updated status
             await this._loadPlan();
             this.dispatchEvent(new CustomEvent('plan-updated', {
@@ -1236,9 +1241,25 @@ export class CommitPlanDetail extends LitElement {
             }));
         } catch (error) {
             console.error('❌ Error reverting plan:', error);
+            alert(`❌ Error al revertir: ${error.message}`);
         } finally {
             this._isReverting = false;
         }
+    }
+
+    /**
+     * Call an API function and return the full envelope {success, result, message}.
+     * Unlike executeFunction which only returns result, this gives access to success/message.
+     */
+    async _callAndCheckSuccess(funcName, params) {
+        const controller = new AutoFunctionController();
+        controller.funcName = funcName;
+        await controller.loadFunctionInfo();
+        Object.entries(params).forEach(([key, value]) => {
+            controller.setParam(key, value);
+        });
+        await controller.execute();
+        return { success: controller.success, result: controller.result, message: controller.message };
     }
 
     // ========================================================================

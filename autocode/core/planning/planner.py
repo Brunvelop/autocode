@@ -309,12 +309,12 @@ def approve_plan(plan_id: str, commit_message: str = "") -> CommitPlanOutput:
             else []
         )
 
-        # git add + commit
+        # git add + commit (use _git_checked to detect failures)
         message = commit_message or plan.title
         for f in files:
-            _git("add", f)
-        _git("commit", "-m", message)
-        commit_hash = _git("rev-parse", "HEAD")
+            _git_checked("add", f)
+        _git_checked("commit", "-m", message)
+        commit_hash = _git_checked("rev-parse", "HEAD")
 
         # Update plan state
         if plan.execution:
@@ -368,10 +368,16 @@ def revert_plan(plan_id: str) -> CommitPlanOutput:
             else []
         )
 
-        # git checkout {parent_commit} -- file1 file2 ...
+        if not files:
+            return CommitPlanOutput(
+                success=False,
+                message=f"Plan '{plan_id}' has no files to revert (files_changed is empty)",
+            )
+
+        # git checkout {parent_commit} -- file1 file2 ... (use _git_checked to detect failures)
         ref = plan.parent_commit or "HEAD"
         for f in files:
-            _git("checkout", ref, "--", f)
+            _git_checked("checkout", ref, "--", f)
 
         # Update plan state
         plan.status = "reverted"
@@ -519,9 +525,21 @@ def _list_plan_summaries(status_filter: str = "") -> list[CommitPlanSummary]:
 
 
 def _git(*args: str) -> str:
-    """Run a git command and return stripped stdout."""
+    """Run a git command and return stripped stdout (errors silenced)."""
     result = subprocess.run(
         ["git"] + list(args),
         capture_output=True, text=True, check=False,
     )
+    return result.stdout.strip()
+
+
+def _git_checked(*args: str) -> str:
+    """Run a git command, raising on failure. For critical operations."""
+    result = subprocess.run(
+        ["git"] + list(args),
+        capture_output=True, text=True, check=False,
+    )
+    if result.returncode != 0:
+        stderr = result.stderr.strip() or f"git {args[0]} failed with code {result.returncode}"
+        raise RuntimeError(f"git error: {stderr}")
     return result.stdout.strip()
