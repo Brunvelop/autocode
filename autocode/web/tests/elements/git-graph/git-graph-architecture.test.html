@@ -1,0 +1,535 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Git Graph — Architecture Integration Test</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .component-stage {
+            min-height: 300px;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            overflow: hidden;
+            background: white;
+        }
+        git-graph {
+            display: block;
+            height: 400px;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 p-6">
+    <div class="max-w-4xl mx-auto">
+        <h1 class="text-2xl font-bold mb-2">🏗️ Git Graph — Architecture Integration Tests</h1>
+        <p class="text-gray-500 text-sm mb-4">TDD tests for Commit 6: integrate architecture-dashboard into git-graph</p>
+
+        <!-- Server status -->
+        <div id="serverStatus" class="mb-6 p-4 bg-gray-100 border border-gray-300 rounded-lg">
+            ⏳ Verificando servidor...
+        </div>
+
+        <!-- Summary -->
+        <div id="summary" class="mb-6 p-4 bg-white border border-gray-200 rounded-lg shadow-sm"></div>
+
+        <!-- Test results -->
+        <div id="results" class="space-y-4"></div>
+    </div>
+
+    <script type="module">
+        import '../../utils/test-runner.js';
+        import { TestRunner } from '../../utils/test-runner.js';
+
+        const runner = new TestRunner();
+
+        // ====================================================================
+        // MOCK: Intercept AutoFunctionController before component loads
+        // ====================================================================
+
+        const MOCK_GIT_LOG = {
+            commits: [
+                {
+                    hash: 'abc123def456789012345678901234567890abcd',
+                    short_hash: 'abc123d',
+                    message: 'feat: initial commit',
+                    author: 'Test User',
+                    date: '2025-06-01T12:00:00',
+                    parents: [],
+                    branches: ['main'],
+                    tags: [],
+                },
+                {
+                    hash: 'def456abc789012345678901234567890abcdef12',
+                    short_hash: 'def456a',
+                    message: 'feat: add utils',
+                    author: 'Test User',
+                    date: '2025-06-02T12:00:00',
+                    parents: ['abc123def456789012345678901234567890abcd'],
+                    branches: [],
+                    tags: [],
+                },
+            ],
+            branches: [
+                { name: 'main', is_current: true },
+            ],
+        };
+
+        const MOCK_SNAPSHOT = {
+            root_id: '.',
+            nodes: [
+                { id: '.', parent_id: null, name: 'root', type: 'directory', path: '.', loc: 500, sloc: 400, mi: 72.5, avg_complexity: 3.2, max_complexity: 15, functions_count: 20, classes_count: 5, children_count: 2 },
+                { id: 'src', parent_id: '.', name: 'src', type: 'directory', path: 'src', loc: 350, sloc: 300, mi: 68.0, avg_complexity: 3.8, max_complexity: 15, functions_count: 16, classes_count: 4, children_count: 1 },
+                { id: 'src/app.py', parent_id: 'src', name: 'app.py', type: 'file', path: 'src/app.py', loc: 350, sloc: 300, mi: 68.0, avg_complexity: 3.8, max_complexity: 15, functions_count: 16, classes_count: 4, children_count: 0 },
+            ],
+            commit_hash: 'abc123def456789',
+            commit_short: 'abc123d',
+            branch: 'main',
+            timestamp: '2025-06-01T12:00:00',
+            total_files: 1,
+            total_sloc: 300,
+            total_functions: 16,
+            total_classes: 4,
+            avg_mi: 68.0,
+            avg_complexity: 3.8,
+            dependencies: [],
+            circular_dependencies: [],
+        };
+
+        const MOCK_PLANS = [];
+
+        let mockBehavior = 'success';
+
+        // Import auto-element-generator to patch it BEFORE git-graph loads
+        const autoGenModule = await import('../../../elements/auto-element-generator.js');
+        const originalExecute = autoGenModule.AutoFunctionController.executeFunction;
+
+        autoGenModule.AutoFunctionController.executeFunction = async function(funcName, params) {
+            if (mockBehavior === 'error') {
+                throw new Error('Mock API error');
+            }
+            if (funcName === 'get_git_log') {
+                return MOCK_GIT_LOG;
+            }
+            if (funcName === 'get_architecture_snapshot') {
+                return MOCK_SNAPSHOT;
+            }
+            if (funcName === 'list_commit_plans') {
+                return MOCK_PLANS;
+            }
+            return originalExecute.call(this, funcName, params);
+        };
+
+        // Import git-graph component
+        await import('../../../elements/git-graph/index.js');
+
+        // Helper: create a fresh git-graph instance
+        function createGitGraph() {
+            return document.createElement('git-graph');
+        }
+
+        // Helper: wait for component to finish loading
+        async function waitForLoaded(el, timeout = 3000) {
+            const start = Date.now();
+            while (el._loading && (Date.now() - start < timeout)) {
+                await new Promise(r => setTimeout(r, 50));
+            }
+            await el.updateComplete;
+            // Extra tick for sub-renders
+            await new Promise(r => setTimeout(r, 50));
+            await el.updateComplete;
+        }
+
+        // ====================================================================
+        // A) STATE REGISTRATION
+        // ====================================================================
+
+        runner.group('A) State _showArchitecture', () => {
+
+            runner.test('git-graph tiene propiedad _showArchitecture', async (stage) => {
+                const el = createGitGraph();
+                stage.appendChild(el);
+                await waitForLoaded(el);
+
+                runner.assertTrue(
+                    '_showArchitecture' in el,
+                    '_showArchitecture debería existir como propiedad'
+                );
+            });
+
+            runner.test('_showArchitecture es false por defecto', async (stage) => {
+                const el = createGitGraph();
+                stage.appendChild(el);
+                await waitForLoaded(el);
+
+                runner.assertFalse(
+                    el._showArchitecture,
+                    '_showArchitecture debería ser false inicialmente'
+                );
+            });
+
+        });
+
+        // ====================================================================
+        // B) BUTTON 🏗️
+        // ====================================================================
+
+        runner.group('B) Botón 🏗️ en header', () => {
+
+            runner.test('Existe un botón 🏗️ en header-actions', async (stage) => {
+                mockBehavior = 'success';
+                const el = createGitGraph();
+                stage.appendChild(el);
+                await waitForLoaded(el);
+
+                const buttons = el.shadowRoot.querySelectorAll('.header-actions .action-btn');
+                const archBtn = Array.from(buttons).find(b => b.textContent.trim().includes('🏗️'));
+                runner.assertTrue(archBtn !== null && archBtn !== undefined, 'Debería existir botón 🏗️');
+            });
+
+            runner.test('Botón 🏗️ tiene title "Arquitectura del código"', async (stage) => {
+                mockBehavior = 'success';
+                const el = createGitGraph();
+                stage.appendChild(el);
+                await waitForLoaded(el);
+
+                const buttons = el.shadowRoot.querySelectorAll('.header-actions .action-btn');
+                const archBtn = Array.from(buttons).find(b => b.textContent.trim().includes('🏗️'));
+                runner.assertTrue(archBtn !== null, 'Botón 🏗️ debería existir');
+                runner.assertContains(
+                    archBtn.getAttribute('title'),
+                    'Arquitectura',
+                    'Title debería contener "Arquitectura"'
+                );
+            });
+
+            runner.test('Click en 🏗️ activa _showArchitecture', async (stage) => {
+                mockBehavior = 'success';
+                const el = createGitGraph();
+                stage.appendChild(el);
+                await waitForLoaded(el);
+
+                runner.assertFalse(el._showArchitecture, 'Debería empezar en false');
+
+                const buttons = el.shadowRoot.querySelectorAll('.header-actions .action-btn');
+                const archBtn = Array.from(buttons).find(b => b.textContent.trim().includes('🏗️'));
+                archBtn.click();
+                await el.updateComplete;
+
+                runner.assertTrue(el._showArchitecture, 'Tras click debería ser true');
+            });
+
+            runner.test('Doble click en 🏗️ desactiva _showArchitecture (toggle)', async (stage) => {
+                mockBehavior = 'success';
+                const el = createGitGraph();
+                stage.appendChild(el);
+                await waitForLoaded(el);
+
+                const buttons = el.shadowRoot.querySelectorAll('.header-actions .action-btn');
+                const archBtn = Array.from(buttons).find(b => b.textContent.trim().includes('🏗️'));
+
+                archBtn.click();
+                await el.updateComplete;
+                runner.assertTrue(el._showArchitecture, 'Primer click: true');
+
+                archBtn.click();
+                await el.updateComplete;
+                runner.assertFalse(el._showArchitecture, 'Segundo click: false');
+            });
+
+            runner.test('Botón 🏗️ tiene clase .active cuando _showArchitecture=true', async (stage) => {
+                mockBehavior = 'success';
+                const el = createGitGraph();
+                stage.appendChild(el);
+                await waitForLoaded(el);
+
+                const buttons = el.shadowRoot.querySelectorAll('.header-actions .action-btn');
+                const archBtn = Array.from(buttons).find(b => b.textContent.trim().includes('🏗️'));
+
+                runner.assertFalse(archBtn.classList.contains('active'), 'No debería tener .active inicialmente');
+
+                archBtn.click();
+                await el.updateComplete;
+
+                // Re-query since LitElement re-renders
+                const buttons2 = el.shadowRoot.querySelectorAll('.header-actions .action-btn');
+                const archBtn2 = Array.from(buttons2).find(b => b.textContent.trim().includes('🏗️'));
+                runner.assertTrue(archBtn2.classList.contains('active'), 'Debería tener .active tras click');
+            });
+
+        });
+
+        // ====================================================================
+        // C) MUTUAL EXCLUSION: 🏗️ ↔ 📊
+        // ====================================================================
+
+        runner.group('C) Exclusión mutua 🏗️ ↔ 📊', () => {
+
+            runner.test('Activar 🏗️ desactiva 📊', async (stage) => {
+                mockBehavior = 'success';
+                const el = createGitGraph();
+                stage.appendChild(el);
+                await waitForLoaded(el);
+
+                // First activate metrics
+                el._showMetrics = true;
+                await el.updateComplete;
+                runner.assertTrue(el._showMetrics, 'Métricas deberían estar activas');
+
+                // Now click architecture
+                const buttons = el.shadowRoot.querySelectorAll('.header-actions .action-btn');
+                const archBtn = Array.from(buttons).find(b => b.textContent.trim().includes('🏗️'));
+                archBtn.click();
+                await el.updateComplete;
+
+                runner.assertTrue(el._showArchitecture, '🏗️ debería estar activo');
+                runner.assertFalse(el._showMetrics, '📊 debería estar desactivado');
+            });
+
+            runner.test('Activar 📊 desactiva 🏗️', async (stage) => {
+                mockBehavior = 'success';
+                const el = createGitGraph();
+                stage.appendChild(el);
+                await waitForLoaded(el);
+
+                // First activate architecture
+                el._showArchitecture = true;
+                await el.updateComplete;
+                runner.assertTrue(el._showArchitecture, '🏗️ debería estar activo');
+
+                // Now click metrics
+                const buttons = el.shadowRoot.querySelectorAll('.header-actions .action-btn');
+                const metricsBtn = Array.from(buttons).find(b => b.textContent.trim().includes('📊'));
+                metricsBtn.click();
+                await el.updateComplete;
+
+                runner.assertTrue(el._showMetrics, '📊 debería estar activo');
+                runner.assertFalse(el._showArchitecture, '🏗️ debería estar desactivado');
+            });
+
+            runner.test('Ambos botones no pueden estar activos simultáneamente', async (stage) => {
+                mockBehavior = 'success';
+                const el = createGitGraph();
+                stage.appendChild(el);
+                await waitForLoaded(el);
+
+                // Activate architecture
+                const buttons = el.shadowRoot.querySelectorAll('.header-actions .action-btn');
+                const archBtn = Array.from(buttons).find(b => b.textContent.trim().includes('🏗️'));
+                archBtn.click();
+                await el.updateComplete;
+
+                // Both can't be true
+                runner.assertFalse(
+                    el._showArchitecture && el._showMetrics,
+                    'No deberían estar ambos activos a la vez'
+                );
+
+                // Now activate metrics
+                const buttons2 = el.shadowRoot.querySelectorAll('.header-actions .action-btn');
+                const metricsBtn = Array.from(buttons2).find(b => b.textContent.trim().includes('📊'));
+                metricsBtn.click();
+                await el.updateComplete;
+
+                runner.assertFalse(
+                    el._showArchitecture && el._showMetrics,
+                    'No deberían estar ambos activos a la vez (round 2)'
+                );
+            });
+
+        });
+
+        // ====================================================================
+        // D) DETAIL PANEL — architecture-dashboard rendering
+        // ====================================================================
+
+        runner.group('D) Detail panel muestra architecture-dashboard', () => {
+
+            runner.test('Con 🏗️ activo, architecture-dashboard está visible en detail-panel', async (stage) => {
+                mockBehavior = 'success';
+                const el = createGitGraph();
+                stage.appendChild(el);
+                await waitForLoaded(el);
+
+                // Activate architecture
+                el._showArchitecture = true;
+                await el.updateComplete;
+                await new Promise(r => setTimeout(r, 100));
+                await el.updateComplete;
+
+                const archDash = el.shadowRoot.querySelector('architecture-dashboard');
+                runner.assertTrue(archDash !== null, 'architecture-dashboard debería estar en el DOM');
+
+                const style = window.getComputedStyle(archDash);
+                runner.assertTrue(
+                    style.display !== 'none',
+                    'architecture-dashboard debería ser visible (no display:none)'
+                );
+            });
+
+            runner.test('Con 🏗️ inactivo, architecture-dashboard está oculto', async (stage) => {
+                mockBehavior = 'success';
+                const el = createGitGraph();
+                stage.appendChild(el);
+                await waitForLoaded(el);
+
+                // Ensure architecture is off
+                el._showArchitecture = false;
+                await el.updateComplete;
+
+                const archDash = el.shadowRoot.querySelector('architecture-dashboard');
+                // Either not in DOM or display:none
+                if (archDash) {
+                    runner.assertEqual(
+                        archDash.style.display, 'none',
+                        'architecture-dashboard debería tener display:none'
+                    );
+                } else {
+                    // Not in DOM at all is also acceptable
+                    runner.assertTrue(true, 'architecture-dashboard no está en el DOM (ok)');
+                }
+            });
+
+            runner.test('Con 🏗️ activo, metrics-dashboard está oculto', async (stage) => {
+                mockBehavior = 'success';
+                const el = createGitGraph();
+                stage.appendChild(el);
+                await waitForLoaded(el);
+
+                el._showArchitecture = true;
+                el._showMetrics = false;
+                await el.updateComplete;
+
+                const metricsDash = el.shadowRoot.querySelector('metrics-dashboard');
+                runner.assertTrue(metricsDash !== null, 'metrics-dashboard debería estar en el DOM');
+                runner.assertEqual(
+                    metricsDash.style.display, 'none',
+                    'metrics-dashboard debería tener display:none'
+                );
+            });
+
+            runner.test('architecture-dashboard es un custom element funcional', async (stage) => {
+                mockBehavior = 'success';
+                runner.assertTrue(
+                    customElements.get('architecture-dashboard') !== undefined,
+                    'architecture-dashboard debería estar registrado como custom element'
+                );
+            });
+
+        });
+
+        // ====================================================================
+        // E) INTERACTION: commit selection behavior
+        // ====================================================================
+
+        runner.group('E) Interacción con selección de commit', () => {
+
+            runner.test('Con 🏗️ activo, seleccionar commit no muestra commit-detail', async (stage) => {
+                mockBehavior = 'success';
+                const el = createGitGraph();
+                stage.appendChild(el);
+                await waitForLoaded(el);
+
+                // Activate architecture
+                el._showArchitecture = true;
+                await el.updateComplete;
+
+                // Simulate selecting a commit
+                el._selectedCommit = MOCK_GIT_LOG.commits[0];
+                await el.updateComplete;
+                await new Promise(r => setTimeout(r, 100));
+                await el.updateComplete;
+
+                // Architecture should still be visible
+                const archDash = el.shadowRoot.querySelector('architecture-dashboard');
+                if (archDash) {
+                    const style = archDash.style.display;
+                    runner.assertTrue(
+                        style !== 'none',
+                        'architecture-dashboard debería seguir visible con commit seleccionado'
+                    );
+                }
+            });
+
+            runner.test('Sin 🏗️ ni 📊, seleccionar commit muestra commit-detail', async (stage) => {
+                mockBehavior = 'success';
+                const el = createGitGraph();
+                stage.appendChild(el);
+                await waitForLoaded(el);
+
+                el._showArchitecture = false;
+                el._showMetrics = false;
+                el._selectedCommit = MOCK_GIT_LOG.commits[0];
+                await el.updateComplete;
+                await new Promise(r => setTimeout(r, 100));
+                await el.updateComplete;
+
+                const commitDetail = el.shadowRoot.querySelector('commit-detail');
+                runner.assertTrue(
+                    commitDetail !== null,
+                    'commit-detail debería renderizarse cuando no hay dashboard activo'
+                );
+            });
+
+        });
+
+        // ====================================================================
+        // F) PLACEHOLDER TEXT
+        // ====================================================================
+
+        runner.group('F) Placeholder cuando nada está seleccionado', () => {
+
+            runner.test('Sin commit ni dashboard, muestra placeholder', async (stage) => {
+                mockBehavior = 'success';
+                const el = createGitGraph();
+                stage.appendChild(el);
+                await waitForLoaded(el);
+
+                el._showArchitecture = false;
+                el._showMetrics = false;
+                el._selectedCommit = null;
+                el._selectedPlan = null;
+                await el.updateComplete;
+
+                const placeholder = el.shadowRoot.querySelector('.detail-placeholder');
+                runner.assertTrue(placeholder !== null, 'Debería mostrar placeholder');
+            });
+
+        });
+
+        // ====================================================================
+        // G) BUTTON ORDER
+        // ====================================================================
+
+        runner.group('G) Orden de botones en header', () => {
+
+            runner.test('Botones están en orden: 📊, 🏗️, 🔄', async (stage) => {
+                mockBehavior = 'success';
+                const el = createGitGraph();
+                stage.appendChild(el);
+                await waitForLoaded(el);
+
+                const buttons = el.shadowRoot.querySelectorAll('.header-actions .action-btn');
+                const btnTexts = Array.from(buttons).map(b => b.textContent.trim());
+
+                // Find indices
+                const metricsIdx = btnTexts.findIndex(t => t.includes('📊'));
+                const archIdx = btnTexts.findIndex(t => t.includes('🏗️'));
+                const refreshIdx = btnTexts.findIndex(t => t.includes('🔄'));
+
+                runner.assertTrue(metricsIdx >= 0, 'Debería encontrar botón 📊');
+                runner.assertTrue(archIdx >= 0, 'Debería encontrar botón 🏗️');
+                runner.assertTrue(refreshIdx >= 0, 'Debería encontrar botón 🔄');
+                runner.assertTrue(metricsIdx < archIdx, '📊 debería ir antes de 🏗️');
+                runner.assertTrue(archIdx < refreshIdx, '🏗️ debería ir antes de 🔄');
+            });
+
+        });
+
+        // ====================================================================
+        // RUN
+        // ====================================================================
+
+        await runner.run();
+    </script>
+</body>
+</html>

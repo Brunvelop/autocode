@@ -20,6 +20,7 @@ import './commit-detail.js';
 import './commit-plan-node.js';
 import './commit-plan-detail.js';
 import './metrics-dashboard.js';
+import '../architecture/index.js';
 
 export class GitGraph extends LitElement {
     static properties = {
@@ -39,6 +40,9 @@ export class GitGraph extends LitElement {
 
         // Metrics dashboard toggle
         _showMetrics: { state: true },
+
+        // Architecture dashboard toggle
+        _showArchitecture: { state: true },
 
         // Collapsible commit panel
         _panelCollapsed: { state: true },
@@ -63,6 +67,7 @@ export class GitGraph extends LitElement {
         this._error = null;
         this._layoutData = null;
         this._showMetrics = false;
+        this._showArchitecture = false;
         this._panelCollapsed = false;
         this._plans = [];
         this._selectedPlan = null;
@@ -125,9 +130,20 @@ export class GitGraph extends LitElement {
                     </select>
                     <button 
                         class="action-btn ${this._showMetrics ? 'active' : ''}" 
-                        @click=${() => { this._showMetrics = !this._showMetrics; }}
+                        @click=${() => {
+                            this._showMetrics = !this._showMetrics;
+                            if (this._showMetrics) this._showArchitecture = false;
+                        }}
                         title="Métricas de código"
                     >📊</button>
+                    <button 
+                        class="action-btn ${this._showArchitecture ? 'active' : ''}" 
+                        @click=${() => {
+                            this._showArchitecture = !this._showArchitecture;
+                            if (this._showArchitecture) this._showMetrics = false;
+                        }}
+                        title="Arquitectura del código"
+                    >🏗️</button>
                     <button class="action-btn" @click=${this.refresh} title="Recargar">
                         🔄
                     </button>
@@ -223,10 +239,12 @@ export class GitGraph extends LitElement {
     // ========================================================================
 
     _renderDetailPanel() {
-        const showDashboard = this._showMetrics;
-        const showPlanDetail = !showDashboard && this._selectedPlan;
-        const showCommitDetail = !showDashboard && !this._selectedPlan && this._selectedCommit;
-        const showPlaceholder = !showDashboard && !this._selectedPlan && !this._selectedCommit;
+        const showMetrics = this._showMetrics;
+        const showArchitecture = this._showArchitecture;
+        const showAnyDashboard = showMetrics || showArchitecture;
+        const showPlanDetail = !showAnyDashboard && this._selectedPlan;
+        const showCommitDetail = !showAnyDashboard && !this._selectedPlan && this._selectedCommit;
+        const showPlaceholder = !showAnyDashboard && !this._selectedPlan && !this._selectedCommit;
 
         return html`
             <div class="detail-panel">
@@ -234,7 +252,8 @@ export class GitGraph extends LitElement {
                     <button class="panel-toggle-collapsed" @click=${() => { this._panelCollapsed = false; }} title="Mostrar commits">▶</button>
                 ` : ''}
                 <!-- Always in DOM, toggle visibility via style -->
-                <metrics-dashboard style="display: ${showDashboard ? 'block' : 'none'}"></metrics-dashboard>
+                <metrics-dashboard style="display: ${showMetrics ? 'block' : 'none'}"></metrics-dashboard>
+                <architecture-dashboard style="display: ${showArchitecture ? 'block' : 'none'}"></architecture-dashboard>
                 ${showPlanDetail ? html`
                     <commit-plan-detail
                         .planId=${this._selectedPlan.id}
@@ -251,7 +270,7 @@ export class GitGraph extends LitElement {
                         <span class="detail-placeholder-icon">${this._panelCollapsed ? '📊' : '👈'}</span>
                         <span class="detail-placeholder-text">
                             ${this._panelCollapsed 
-                                ? 'Usa 📊 para ver métricas o expande el panel de commits'
+                                ? 'Usa 📊 o 🏗️ para ver dashboards, o expande el panel de commits'
                                 : 'Selecciona un commit para ver sus detalles'}
                         </span>
                     </div>
