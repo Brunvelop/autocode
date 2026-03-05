@@ -92,6 +92,7 @@ class PlanExecutionState(BaseModel):
     commit_hash: str = Field("", description="Hash del commit generado (si auto_commit)")
     total_tokens: int = Field(0, description="Total tokens de todas las tareas")
     total_cost: float = Field(0.0, description="Coste total en USD de toda la ejecución")
+    files_changed: List[str] = Field(default_factory=list, description="Archivos modificados durante ejecución (para revert)")
     review: Optional[ReviewResult] = Field(None, description="Resultado de la revisión post-ejecución")
 
 

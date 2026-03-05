@@ -7,8 +7,11 @@ Flujo:
 1. Carga y valida el plan (status debe ser draft/ready/failed)
 2. Marca el plan como 'executing'
 3. Para cada task: ejecuta un agente ReAct con file tools
-4. Emite SSE events: plan_start, task_start, status, task_debug, task_complete/error, plan_complete
-5. Opcionalmente hace git add + commit al finalizar
+4. Emite SSE events: plan_start, task_start, status, task_debug, task_complete/error
+5. Post-ejecución: review según review_mode
+   - "human": pending_review (humano aprueba/revierte)
+   - "auto": auto_review con quality gates → approved → commit / rejected → pending_review
+6. Emite review_start, review_complete, plan_complete
 """
 
 import asyncio
@@ -38,8 +41,10 @@ from autocode.core.planning.models import (
     PlanContext,
     TaskExecutionResult,
     PlanExecutionState,
+    ReviewResult,
 )
 from autocode.core.planning.planner import _save_plan, _load_plan
+from autocode.core.planning.reviewer import auto_review, compute_review_metrics
 
 logger = logging.getLogger(__name__)
 
@@ -75,7 +80,7 @@ async def stream_execute_plan(
     model: ModelType = "openrouter/z-ai/glm-5",
     max_tokens: int = None,
     temperature: float = 0.3,
-    auto_commit: bool = True,
+    review_mode: str = "human",
 ) -> AsyncGenerator[str, None]:
     """Async generator que ejecuta un plan y emite SSE events.
 
@@ -83,12 +88,18 @@ async def stream_execute_plan(
     muertas la proveen las capas inferiores (httpx/LiteLLM connection timeouts).
     Si el LLM está activamente generando, la tarea puede tardar lo que necesite.
 
+    Flujo post-ejecución según review_mode:
+    - "human": siempre → pending_review (humano aprueba/revierte desde UI)
+    - "auto": ejecuta auto_review con quality gates
+      - approved → git commit → completed
+      - rejected → pending_review (humano decide)
+
     Args:
         plan_id: ID del plan a ejecutar
         model: Modelo de inferencia a utilizar
         max_tokens: Número máximo de tokens por iteración
         temperature: Temperature para generación (baja para código preciso)
-        auto_commit: Si hacer git commit automático al terminar exitosamente
+        review_mode: Modo de review post-ejecución ("human" o "auto")
 
     Yields:
         Strings formateados como eventos SSE
@@ -247,30 +258,101 @@ async def stream_execute_plan(
                     {"task_index": i, "status": "failed", "error": str(e)},
                 )
 
-        # 5. Auto-commit si procede
-        commit_hash = ""
-        if auto_commit and tasks_failed == 0 and all_files_changed:
-            try:
-                unique_files = list(
-                    dict.fromkeys(all_files_changed)
-                )  # Dedup preservando orden
-                commit_hash = _git_add_and_commit(unique_files, plan.title)
-                plan.execution.commit_hash = commit_hash
-            except Exception as e:
-                logger.error(f"Auto-commit failed: {e}")
+        # 5. Store files_changed in execution for later revert
+        unique_files = list(dict.fromkeys(all_files_changed))  # Dedup preservando orden
+        plan.execution.files_changed = unique_files
 
-        # 6. Finalizar plan
-        plan.execution.completed_at = datetime.now().isoformat()
-        plan.execution.total_tokens = plan_total_tokens
-        plan.execution.total_cost = plan_total_cost
-        plan.status = "completed" if tasks_failed == 0 else "failed"
-        _save_plan(plan)
+        # 6. Post-execution: review + optional commit
+        commit_hash = ""
+
+        if tasks_failed > 0:
+            # Tasks failed → mark as failed, skip review
+            plan.execution.completed_at = datetime.now().isoformat()
+            plan.execution.total_tokens = plan_total_tokens
+            plan.execution.total_cost = plan_total_cost
+            plan.status = "failed"
+            _save_plan(plan)
+        else:
+            # All tasks completed → run review flow
+            yield _format_sse(
+                "review_start",
+                {
+                    "review_mode": review_mode,
+                    "files_changed": unique_files,
+                },
+            )
+
+            review_result = None
+            if review_mode == "auto":
+                # Auto-review: run quality gates
+                try:
+                    review_result = auto_review(
+                        unique_files,
+                        parent_commit=plan.parent_commit or "HEAD",
+                    )
+                except Exception as e:
+                    logger.error(f"Auto-review failed: {e}")
+                    review_result = ReviewResult(
+                        mode="auto",
+                        verdict="needs_changes",
+                        summary=f"Auto-review error: {e}",
+                        reviewed_by="auto",
+                    )
+            else:
+                # Human mode: compute metrics only, no verdict
+                try:
+                    file_metrics = compute_review_metrics(
+                        unique_files,
+                        parent_commit=plan.parent_commit or "HEAD",
+                    )
+                except Exception as e:
+                    logger.warning(f"Could not compute review metrics: {e}")
+                    file_metrics = []
+                review_result = ReviewResult(
+                    mode="human",
+                    verdict="needs_changes",
+                    summary="Awaiting human review",
+                    file_metrics=file_metrics,
+                    reviewed_by="",
+                )
+
+            plan.execution.review = review_result
+
+            yield _format_sse(
+                "review_complete",
+                {
+                    "verdict": review_result.verdict,
+                    "summary": review_result.summary,
+                    "review_mode": review_mode,
+                    "issues": review_result.issues,
+                },
+            )
+
+            # Determine final status based on review verdict
+            if review_mode == "auto" and review_result.verdict == "approved":
+                # Auto-approved → commit and complete
+                if unique_files:
+                    try:
+                        commit_hash = _git_add_and_commit(unique_files, plan.title)
+                        plan.execution.commit_hash = commit_hash
+                    except Exception as e:
+                        logger.error(f"Auto-commit failed: {e}")
+                plan.status = "completed"
+            else:
+                # Human mode or auto-rejected → pending_review
+                plan.status = "pending_review"
+
+            plan.execution.completed_at = datetime.now().isoformat()
+            plan.execution.total_tokens = plan_total_tokens
+            plan.execution.total_cost = plan_total_cost
+            _save_plan(plan)
 
         plan_elapsed = time.monotonic() - plan_start_time
         result_icon = "✅" if tasks_failed == 0 else "❌"
         logger.info(
             f"{result_icon} Plan '{plan.id}' finished in {plan_elapsed:.1f}s — "
             f"{tasks_completed} completed, {tasks_failed} failed, "
+            f"status={plan.status}, "
             f"{plan_total_tokens} tokens, ${plan_total_cost:.4f}"
         )
 
@@ -283,6 +365,8 @@ async def stream_execute_plan(
                 "commit_hash": commit_hash,
                 "total_tokens": plan_total_tokens,
                 "total_cost": plan_total_cost,
+                "status": plan.status,
+                "review_mode": review_mode,
             },
         )
     except Exception as e:
@@ -306,20 +390,22 @@ def execute_commit_plan(
     model: ModelType = "openrouter/z-ai/glm-5",
     max_tokens: int = None,
     temperature: float = 0.3,
-    auto_commit: bool = True,
+    review_mode: str = "human",
 ) -> GenericOutput:
     """Ejecuta un plan de commit de forma autónoma.
 
     Usa un agente ReAct con file tools para implementar cada tarea del plan.
     Emite SSE events en tiempo real para feedback de progreso.
-    Opcionalmente hace git commit al finalizar exitosamente.
+    El review_mode controla el flujo post-ejecución:
+    - "human": siempre queda en pending_review para aprobación manual
+    - "auto": ejecuta quality gates, si pasan → commit automático
 
     Args:
         plan_id: ID del plan a ejecutar
         model: Modelo de inferencia a utilizar
         max_tokens: Número máximo de tokens por iteración
         temperature: Temperature para generación (baja para código preciso)
-        auto_commit: Si hacer git commit automático al terminar exitosamente
+        review_mode: Modo de review post-ejecución ("human" o "auto")
     """
     # Sync fallback: recolecta eventos del stream y retorna resultado final
     import asyncio
@@ -329,7 +415,7 @@ def execute_commit_plan(
     async def _collect():
         nonlocal final_result
         async for event in stream_execute_plan(
-            plan_id, model, max_tokens, temperature, auto_commit
+            plan_id, model, max_tokens, temperature, review_mode
         ):
             if "plan_complete" in event or "error" in event:
                 final_result = event
