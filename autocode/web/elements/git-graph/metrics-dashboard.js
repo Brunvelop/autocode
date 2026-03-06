@@ -23,6 +23,10 @@ export class MetricsDashboard extends LitElement {
         _data: { state: true },       // MetricsComparison from API
         _loading: { state: true },
         _error: { state: true },
+
+        // When embedded in architecture-dashboard, summary cards are shown
+        // by the parent. Set this attribute to hide the duplicate summary.
+        hideSummary: { type: Boolean, attribute: 'hide-summary' },
     };
 
     static styles = [themeTokens, metricsDashboardStyles];
@@ -32,6 +36,7 @@ export class MetricsDashboard extends LitElement {
         this._data = null;
         this._loading = false;
         this._error = null;
+        this.hideSummary = false;
     }
 
     connectedCallback() {
@@ -77,7 +82,7 @@ export class MetricsDashboard extends LitElement {
 
         return html`
             <div class="dashboard">
-                ${this._renderSummary(snap, before)}
+                ${this.hideSummary ? '' : this._renderSummary(snap, before)}
                 <!-- Metrics evolution chart (over commits) -->
                 <metrics-chart></metrics-chart>
                 ${this._renderDistribution(snap)}

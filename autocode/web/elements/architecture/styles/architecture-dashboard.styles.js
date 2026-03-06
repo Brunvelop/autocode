@@ -226,6 +226,21 @@ export const architectureDashboardStyles = css`
         overflow: hidden;
     }
 
+    /* Code tab: code-explorer has its own theme, let it fill */
+    .content-area--code {
+        background: transparent;
+        border: none;
+        border-radius: var(--design-radius-md, 0.5rem);
+        overflow: auto;
+    }
+
+    .content-area--code code-explorer {
+        width: 100%;
+        height: 100%;
+        border-radius: var(--design-radius-md, 0.5rem);
+        overflow: hidden;
+    }
+
     /* Metrics tab: metrics-dashboard has its own layout, let it fill */
     .content-area--metrics {
         display: block;

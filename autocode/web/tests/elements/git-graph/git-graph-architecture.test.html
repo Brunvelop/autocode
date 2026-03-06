@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Git Graph — Code Explorer Integration Test</title>
+    <title>Git Graph — Code Explorer Integration Test (5 tabs)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         .component-stage {
@@ -22,7 +22,7 @@
 <body class="bg-gray-50 p-6">
     <div class="max-w-4xl mx-auto">
         <h1 class="text-2xl font-bold mb-2">🗂️ Git Graph — Code Explorer Integration Tests</h1>
-        <p class="text-gray-500 text-sm mb-4">Tests for unified Code Explorer panel (files, treemap, dependencies, metrics)</p>
+        <p class="text-gray-500 text-sm mb-4">Tests for unified Code Explorer panel (files, code, treemap, dependencies, metrics)</p>
 
         <!-- Server status -->
         <div id="serverStatus" class="mb-6 p-4 bg-gray-100 border border-gray-300 rounded-lg">
@@ -118,6 +118,12 @@
             }
             if (funcName === 'get_git_tree') {
                 return { root_id: '.', nodes: [{ id: '.', parent_id: null, name: 'root', type: 'directory', path: '.', size: 0 }] };
+            }
+            if (funcName === 'get_code_structure') {
+                return {
+                    total_files: 1, total_loc: 300, total_functions: 16, total_classes: 4, languages: ['python'],
+                    graph: { root_id: '.', nodes: [{ id: '.', parent_id: null, name: 'root', type: 'directory', path: '.', loc: 300, children: null }] }
+                };
             }
             if (funcName === 'generate_code_metrics') {
                 return { after: MOCK_SNAPSHOT, before: null, delta_sloc: 0, delta_functions: 0, delta_classes: 0, delta_avg_complexity: 0, delta_avg_mi: 0 };
@@ -491,6 +497,191 @@
                 runner.assertTrue(explorerIdx >= 0, 'Debería encontrar botón 🗂️');
                 runner.assertTrue(refreshIdx >= 0, 'Debería encontrar botón 🔄');
                 runner.assertTrue(explorerIdx < refreshIdx, '🗂️ debería ir antes de 🔄');
+            });
+
+        });
+
+        // ====================================================================
+        // H) ARCHITECTURE-DASHBOARD: 5 TABS
+        // ====================================================================
+
+        runner.group('H) architecture-dashboard tiene 5 pestañas', () => {
+
+            runner.test('architecture-dashboard tiene 5 view-tabs', async (stage) => {
+                mockBehavior = 'success';
+                const el = createGitGraph();
+                stage.appendChild(el);
+                await waitForLoaded(el);
+
+                el._showExplorer = true;
+                await el.updateComplete;
+                await new Promise(r => setTimeout(r, 200));
+                await el.updateComplete;
+
+                const archDash = el.shadowRoot.querySelector('architecture-dashboard');
+                runner.assertTrue(archDash !== null, 'architecture-dashboard debería existir');
+
+                await archDash.updateComplete;
+                const tabs = archDash.shadowRoot.querySelectorAll('.view-tab');
+                runner.assertEqual(tabs.length, 5, 'Debería haber 5 pestañas');
+            });
+
+            runner.test('Las pestañas son: Files, Code, Treemap, Dependencies, Metrics', async (stage) => {
+                mockBehavior = 'success';
+                const el = createGitGraph();
+                stage.appendChild(el);
+                await waitForLoaded(el);
+
+                el._showExplorer = true;
+                await el.updateComplete;
+                await new Promise(r => setTimeout(r, 200));
+                await el.updateComplete;
+
+                const archDash = el.shadowRoot.querySelector('architecture-dashboard');
+                await archDash.updateComplete;
+                const tabs = archDash.shadowRoot.querySelectorAll('.view-tab');
+                const tabTexts = Array.from(tabs).map(t => t.textContent.trim());
+
+                runner.assertTrue(tabTexts.some(t => t.includes('Files')), 'Debería existir tab Files');
+                runner.assertTrue(tabTexts.some(t => t.includes('Code')), 'Debería existir tab Code');
+                runner.assertTrue(tabTexts.some(t => t.includes('Treemap')), 'Debería existir tab Treemap');
+                runner.assertTrue(tabTexts.some(t => t.includes('Dependencies')), 'Debería existir tab Dependencies');
+                runner.assertTrue(tabTexts.some(t => t.includes('Metrics')), 'Debería existir tab Metrics');
+            });
+
+            runner.test('Click en tab Code muestra code-explorer', async (stage) => {
+                mockBehavior = 'success';
+                const el = createGitGraph();
+                stage.appendChild(el);
+                await waitForLoaded(el);
+
+                el._showExplorer = true;
+                await el.updateComplete;
+                await new Promise(r => setTimeout(r, 200));
+                await el.updateComplete;
+
+                const archDash = el.shadowRoot.querySelector('architecture-dashboard');
+                await archDash.updateComplete;
+
+                // Click "Code" tab
+                const tabs = archDash.shadowRoot.querySelectorAll('.view-tab');
+                const codeTab = Array.from(tabs).find(t => t.textContent.trim().includes('Code'));
+                runner.assertTrue(codeTab !== null, 'Tab Code debería existir');
+                codeTab.click();
+                await archDash.updateComplete;
+                await new Promise(r => setTimeout(r, 100));
+                await archDash.updateComplete;
+
+                const codeExplorer = archDash.shadowRoot.querySelector('code-explorer');
+                runner.assertTrue(codeExplorer !== null, 'code-explorer debería estar en el DOM tras click en tab Code');
+            });
+
+        });
+
+        // ====================================================================
+        // I) SUMMARY CARDS CONSISTENCY
+        // ====================================================================
+
+        runner.group('I) Summary cards consistentes en todas las pestañas', () => {
+
+            runner.test('Summary cards visibles en tab Treemap (default)', async (stage) => {
+                mockBehavior = 'success';
+                const el = createGitGraph();
+                stage.appendChild(el);
+                await waitForLoaded(el);
+
+                el._showExplorer = true;
+                await el.updateComplete;
+                await new Promise(r => setTimeout(r, 200));
+                await el.updateComplete;
+
+                const archDash = el.shadowRoot.querySelector('architecture-dashboard');
+                await archDash.updateComplete;
+
+                const summaryGrid = archDash.shadowRoot.querySelector('.summary-grid');
+                runner.assertTrue(summaryGrid !== null, 'summary-grid debería existir en tab Treemap');
+            });
+
+            runner.test('Summary cards visibles en tab Metrics', async (stage) => {
+                mockBehavior = 'success';
+                const el = createGitGraph();
+                stage.appendChild(el);
+                await waitForLoaded(el);
+
+                el._showExplorer = true;
+                await el.updateComplete;
+                await new Promise(r => setTimeout(r, 200));
+                await el.updateComplete;
+
+                const archDash = el.shadowRoot.querySelector('architecture-dashboard');
+                await archDash.updateComplete;
+
+                // Switch to Metrics tab
+                const tabs = archDash.shadowRoot.querySelectorAll('.view-tab');
+                const metricsTab = Array.from(tabs).find(t => t.textContent.trim().includes('Metrics'));
+                metricsTab.click();
+                await archDash.updateComplete;
+                await new Promise(r => setTimeout(r, 100));
+                await archDash.updateComplete;
+
+                const summaryGrid = archDash.shadowRoot.querySelector('.summary-grid');
+                runner.assertTrue(summaryGrid !== null, 'summary-grid debería existir también en tab Metrics');
+            });
+
+            runner.test('metrics-dashboard embebido tiene atributo hide-summary', async (stage) => {
+                mockBehavior = 'success';
+                const el = createGitGraph();
+                stage.appendChild(el);
+                await waitForLoaded(el);
+
+                el._showExplorer = true;
+                await el.updateComplete;
+                await new Promise(r => setTimeout(r, 200));
+                await el.updateComplete;
+
+                const archDash = el.shadowRoot.querySelector('architecture-dashboard');
+                await archDash.updateComplete;
+
+                // Switch to Metrics tab
+                const tabs = archDash.shadowRoot.querySelectorAll('.view-tab');
+                const metricsTab = Array.from(tabs).find(t => t.textContent.trim().includes('Metrics'));
+                metricsTab.click();
+                await archDash.updateComplete;
+                await new Promise(r => setTimeout(r, 100));
+                await archDash.updateComplete;
+
+                const metricsDash = archDash.shadowRoot.querySelector('metrics-dashboard');
+                runner.assertTrue(metricsDash !== null, 'metrics-dashboard debería existir en tab Metrics');
+                runner.assertTrue(
+                    metricsDash.hasAttribute('hide-summary'),
+                    'metrics-dashboard debería tener atributo hide-summary'
+                );
+            });
+
+            runner.test('Snapshot info visible en tab Metrics', async (stage) => {
+                mockBehavior = 'success';
+                const el = createGitGraph();
+                stage.appendChild(el);
+                await waitForLoaded(el);
+
+                el._showExplorer = true;
+                await el.updateComplete;
+                await new Promise(r => setTimeout(r, 200));
+                await el.updateComplete;
+
+                const archDash = el.shadowRoot.querySelector('architecture-dashboard');
+                await archDash.updateComplete;
+
+                // Switch to Metrics tab
+                const tabs = archDash.shadowRoot.querySelectorAll('.view-tab');
+                const metricsTab = Array.from(tabs).find(t => t.textContent.trim().includes('Metrics'));
+                metricsTab.click();
+                await archDash.updateComplete;
+                await new Promise(r => setTimeout(r, 100));
+                await archDash.updateComplete;
+
+                const snapshotInfo = archDash.shadowRoot.querySelector('.snapshot-info');
+                runner.assertTrue(snapshotInfo !== null, 'snapshot-info debería existir en tab Metrics');
             });
 
         });

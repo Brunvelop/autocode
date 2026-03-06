@@ -2,8 +2,9 @@
  * index.js
  * ArchitectureDashboard — Panel unificado de exploración de código.
  *
- * Integra 4 vistas en tabs:
+ * Integra 5 vistas en tabs:
  *   📁 Files        — Árbol de archivos (file-explorer)
+ *   🧬 Code         — Estructura de código: clases, funciones, métodos (code-explorer)
  *   🗺️ Treemap     — Treemap zoomable de arquitectura
  *   🔗 Dependencies — Grafo de dependencias entre archivos
  *   📊 Metrics      — Dashboard completo de métricas de código
@@ -25,6 +26,7 @@ import './architecture-graph.js';
 
 // Sub-components: embedded panels (lazy-loaded via tabs)
 import '../file-explorer/index.js';
+import '../code-explorer/index.js';
 import '../git-graph/metrics-dashboard.js';
 
 export class ArchitectureDashboard extends LitElement {
@@ -35,7 +37,7 @@ export class ArchitectureDashboard extends LitElement {
         // Navigation state
         _currentNodeId: { state: true },
 
-        // View mode: 'files' | 'treemap' | 'graph' | 'metrics'
+        // View mode: 'files' | 'code' | 'treemap' | 'graph' | 'metrics'
         _viewMode: { state: true },
 
         // Loading / error
@@ -47,6 +49,7 @@ export class ArchitectureDashboard extends LitElement {
 
         // Lazy activation flags for embedded components
         _filesActivated: { state: true },
+        _codeActivated: { state: true },
         _metricsActivated: { state: true },
     };
 
@@ -61,6 +64,7 @@ export class ArchitectureDashboard extends LitElement {
         this._error = null;
         this._tree = null;
         this._filesActivated = false;
+        this._codeActivated = false;
         this._metricsActivated = false;
     }
 
@@ -129,16 +133,15 @@ export class ArchitectureDashboard extends LitElement {
         if (!this._snapshot) return html``;
 
         const snap = this._snapshot;
-        const isMetrics = this._viewMode === 'metrics';
 
         return html`
             <div class="dashboard">
-                ${!isMetrics ? this._renderSummary(snap) : ''}
+                ${this._renderSummary(snap)}
                 ${this._viewMode === 'treemap' || this._viewMode === 'graph'
                     ? this._renderBreadcrumb() : ''}
                 ${this._renderViewTabs()}
                 ${this._renderContentArea()}
-                ${!isMetrics ? this._renderSnapshotInfo(snap) : ''}
+                ${this._renderSnapshotInfo(snap)}
             </div>
         `;
     }
@@ -229,6 +232,7 @@ export class ArchitectureDashboard extends LitElement {
     _renderViewTabs() {
         const tabs = [
             { id: 'files',   label: '📁 Files' },
+            { id: 'code',    label: '🧬 Code' },
             { id: 'treemap', label: '🗺️ Treemap' },
             { id: 'graph',   label: '🔗 Dependencies' },
             { id: 'metrics', label: '📊 Metrics' },
@@ -262,6 +266,15 @@ export class ArchitectureDashboard extends LitElement {
             `;
         }
 
+        // Code tab — lazy-activated code-explorer
+        if (mode === 'code') {
+            return html`
+                <div class="content-area content-area--code">
+                    <code-explorer></code-explorer>
+                </div>
+            `;
+        }
+
         // Treemap tab
         if (mode === 'treemap') {
             const subtree = this._getCurrentSubtree();
@@ -289,7 +302,7 @@ export class ArchitectureDashboard extends LitElement {
         if (mode === 'metrics') {
             return html`
                 <div class="content-area content-area--metrics">
-                    <metrics-dashboard></metrics-dashboard>
+                    <metrics-dashboard hide-summary></metrics-dashboard>
                 </div>
             `;
         }
@@ -316,13 +329,14 @@ export class ArchitectureDashboard extends LitElement {
     /**
      * Change the active view tab.
      * Activates lazy-loaded components on first access.
-     * @param {'files'|'treemap'|'graph'|'metrics'} mode
+     * @param {'files'|'code'|'treemap'|'graph'|'metrics'} mode
      */
     _setViewMode(mode) {
         if (this._viewMode === mode) return;
         this._viewMode = mode;
 
         if (mode === 'files') this._filesActivated = true;
+        if (mode === 'code') this._codeActivated = true;
         if (mode === 'metrics') this._metricsActivated = true;
     }
 
