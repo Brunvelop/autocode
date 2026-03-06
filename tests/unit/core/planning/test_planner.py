@@ -352,40 +352,6 @@ class TestApprovePlan:
         plan_data = json.loads(plan_file.read_text())
         assert plan_data["status"] == "pending_review"
 
-    def test_approve_empty_files_falls_back_to_git_diff(self, tmp_path):
-        """approve con files_changed vacío usa git diff como fallback."""
-        plan_id = self._create_pending_review_plan(
-            tmp_path, files_changed=[], parent_commit="parent123"
-        )
-
-        with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)), \
-             patch("autocode.core.planning.planner._git_diff_changed_files",
-                   return_value=["src/app.js"]) as mock_diff, \
-             patch("autocode.core.planning.planner._git_checked") as mock_git:
-            mock_git.return_value = "new_hash"
-            result = approve_plan(plan_id=plan_id)
-
-        assert result.success is True
-        assert result.result.status == "completed"
-        mock_diff.assert_called_once_with("parent123")
-        # Verify git add was called with the detected file
-        git_calls_str = str(mock_git.call_args_list)
-        assert "src/app.js" in git_calls_str
-
-    def test_approve_empty_files_and_no_git_diff_returns_error(self, tmp_path):
-        """approve con files_changed vacío y git diff vacío → error."""
-        plan_id = self._create_pending_review_plan(
-            tmp_path, files_changed=[]
-        )
-
-        with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)), \
-             patch("autocode.core.planning.planner._git_diff_changed_files",
-                   return_value=[]):
-            result = approve_plan(plan_id=plan_id)
-
-        assert result.success is False
-        assert "no changed files" in result.message.lower()
-
     def test_approve_nonexistent_plan(self, tmp_path):
         """approve_plan con plan inexistente → error."""
         with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)):
@@ -556,38 +522,17 @@ class TestRevertPlan:
         plan_data = json.loads(plan_file.read_text())
         assert plan_data["status"] == "pending_review"
 
-    def test_revert_empty_files_falls_back_to_git_diff(self, tmp_path):
-        """revert con files_changed vacío usa git diff como fallback."""
+    def test_revert_empty_files_returns_error(self, tmp_path):
+        """revert con files_changed vacío → success=False."""
         plan_id = self._create_pending_review_plan(
             tmp_path, files_changed=[]
         )
 
-        with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)), \
-             patch("autocode.core.planning.planner._git_diff_changed_files",
-                   return_value=["src/detected.js"]) as mock_diff, \
-             patch("autocode.core.planning.planner._git_checked") as mock_git:
-            result = revert_plan(plan_id=plan_id)
-
-        assert result.success is True
-        assert result.result.status == "reverted"
-        mock_diff.assert_called_once()
-        # Verify git checkout was called with the detected file
-        git_calls_str = str(mock_git.call_args_list)
-        assert "src/detected.js" in git_calls_str
-
-    def test_revert_empty_files_and_no_git_diff_returns_error(self, tmp_path):
-        """revert con files_changed vacío y git diff vacío → success=False."""
-        plan_id = self._create_pending_review_plan(
-            tmp_path, files_changed=[]
-        )
-
-        with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)), \
-             patch("autocode.core.planning.planner._git_diff_changed_files",
-                   return_value=[]):
+        with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)):
             result = revert_plan(plan_id=plan_id)
 
         assert result.success is False
-        assert "no files" in result.message.lower() or "no changes" in result.message.lower()
+        assert "no files" in result.message.lower() or "empty" in result.message.lower()
 
     def test_revert_nonexistent_plan(self, tmp_path):
         """revert_plan con plan inexistente → error."""

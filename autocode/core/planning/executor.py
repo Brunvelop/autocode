@@ -57,6 +57,9 @@ logger = logging.getLogger(__name__)
 # Includes "executing" to allow recovery/re-execution of stuck plans
 EXECUTOR_ALLOWED_STATUSES = {"draft", "ready", "failed", "executing"}
 
+# Tools que modifican archivos (para extraer files_changed de la trajectory)
+WRITE_TOOLS = {"write_file_content", "replace_in_file", "delete_file"}
+
 # Tools disponibles para el executor
 EXECUTOR_TOOLS = {
     "read_file_content",
@@ -533,8 +536,7 @@ async def _execute_single_task(
     if hasattr(lm, "history"):
         lm.history.clear()
 
-    # Detectar archivos modificados via git diff (fuente de verdad)
-    files_changed = _git_diff_changed_files(plan.parent_commit or "HEAD")
+    files_changed = _extract_files_changed(trajectory_raw)
 
     if prediction is None:
         yield TaskExecutionResult(
@@ -682,33 +684,32 @@ def _build_task_instruction(task: PlanTask, plan: CommitPlan) -> str:
     return "\n".join(parts)
 
 
-def _git_diff_changed_files(parent_commit: str) -> List[str]:
-    """Detecta archivos modificados respecto a un commit usando git.
+def _extract_files_changed(trajectory) -> List[str]:
+    """Extrae paths de archivos modificados de la trajectory de ReAct.
 
-    Usa git diff para obtener la lista real de archivos que cambiaron
-    en disco respecto al parent_commit del plan. Fuente de verdad
-    independiente del formato de trajectory de DSPy.
+    Recorre las tool calls de la trajectory y extrae los paths
+    de las operaciones que modifican archivos (write, replace, delete).
 
     Args:
-        parent_commit: Hash del commit padre contra el que comparar.
+        trajectory: Dict con la trajectory de ReAct (Action_N, Action_N_args, etc.)
 
     Returns:
-        Lista de paths relativos de archivos modificados.
+        Lista de paths únicos de archivos modificados
     """
-    try:
-        result = subprocess.run(
-            ["git", "diff", "--name-only", parent_commit],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        if result.returncode != 0:
-            logger.warning(f"git diff failed: {result.stderr.strip()}")
-            return []
-        return [f for f in result.stdout.strip().split("\n") if f]
-    except Exception as e:
-        logger.warning(f"Error detecting changed files via git: {e}")
+    if not trajectory or not isinstance(trajectory, dict):
         return []
+
+    files: List[str] = []
+    for key, value in trajectory.items():
+        if key.endswith("_args") and isinstance(value, dict):
+            # Determinar si la acción correspondiente es una escritura
+            action_key = key.replace("_args", "")
+            action_name = trajectory.get(action_key, "")
+            if action_name in WRITE_TOOLS and "path" in value:
+                path = value["path"]
+                if path not in files:
+                    files.append(path)
+    return files
 
 
 def _extract_cost_from_history(lm) -> dict:

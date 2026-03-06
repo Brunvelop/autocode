@@ -279,7 +279,6 @@ def approve_plan(plan_id: str, commit_message: str = "") -> CommitPlanOutput:
 
     Ejecuta git add para cada archivo cambiado, luego git commit
     con el título del plan (o un mensaje personalizado).
-    Si files_changed está vacío, detecta archivos via git diff.
     Almacena el commit hash resultante en execution.commit_hash.
 
     Args:
@@ -303,24 +302,12 @@ def approve_plan(plan_id: str, commit_message: str = "") -> CommitPlanOutput:
                 ),
             )
 
-        # Get files to commit: from execution state, or fallback to git diff
+        # Get files to commit from execution state
         files = (
             plan.execution.files_changed
             if plan.execution and plan.execution.files_changed
             else []
         )
-        if not files:
-            ref = plan.parent_commit or "HEAD"
-            files = _git_diff_changed_files(ref)
-            # Persist detected files in execution for consistency
-            if files and plan.execution:
-                plan.execution.files_changed = files
-
-        if not files:
-            return CommitPlanOutput(
-                success=False,
-                message=f"Plan '{plan_id}' has no changed files to commit",
-            )
 
         # git add + commit (use _git_checked to detect failures)
         message = commit_message or plan.title
@@ -374,23 +361,17 @@ def revert_plan(plan_id: str) -> CommitPlanOutput:
                 ),
             )
 
-        # Get files to revert: from execution state, or fallback to git diff
+        # Get files to revert from execution state
         files = (
             plan.execution.files_changed
             if plan.execution and plan.execution.files_changed
             else []
         )
-        if not files:
-            ref = plan.parent_commit or "HEAD"
-            files = _git_diff_changed_files(ref)
-            # Persist detected files in execution for consistency
-            if files and plan.execution:
-                plan.execution.files_changed = files
 
         if not files:
             return CommitPlanOutput(
                 success=False,
-                message=f"Plan '{plan_id}' has no files to revert (no changes detected)",
+                message=f"Plan '{plan_id}' has no files to revert (files_changed is empty)",
             )
 
         # git checkout {parent_commit} -- file1 file2 ... (use _git_checked to detect failures)
@@ -541,24 +522,6 @@ def _list_plan_summaries(status_filter: str = "") -> list[CommitPlanSummary]:
 # ==============================================================================
 # GIT HELPERS
 # ==============================================================================
-
-
-def _git_diff_changed_files(parent_commit: str) -> list[str]:
-    """Detecta archivos modificados respecto a un commit usando git diff.
-
-    Fuente de verdad para saber qué archivos cambiaron realmente en disco.
-    Funciona para cualquier tipo de archivo (.py, .js, etc.).
-
-    Args:
-        parent_commit: Hash del commit padre contra el que comparar.
-
-    Returns:
-        Lista de paths relativos de archivos modificados.
-    """
-    output = _git("diff", "--name-only", parent_commit)
-    if not output:
-        return []
-    return [f for f in output.split("\n") if f]
 
 
 def _git(*args: str) -> str:
