@@ -3,7 +3,7 @@ Tests for plan executor with ReAct + streaming SSE.
 
 Tests cover:
 - _build_task_instruction: prompt construction from task + plan context
-- _extract_files_changed: file path extraction from ReAct trajectory
+- _git_diff_changed_files: file detection via git diff
 - _extract_cost_from_history: cost/token extraction from LM history
 - stream_execute_plan: async SSE streaming with status transitions, cost tracking
 """
@@ -150,61 +150,70 @@ class TestBuildTaskInstruction:
 
 
 # ==============================================================================
-# TESTS: _extract_files_changed
+# TESTS: _git_diff_changed_files
 # ==============================================================================
 
 
-class TestExtractFilesChanged:
-    """Tests for _extract_files_changed helper."""
+class TestGitDiffChangedFiles:
+    """Tests for _git_diff_changed_files helper (git-based file detection)."""
 
-    def test_extract_from_trajectory_dict(self):
-        """Extrae paths de archivos de las tool calls en la trajectory de ReAct."""
-        from autocode.core.planning.executor import _extract_files_changed
+    def test_returns_changed_files(self):
+        """Retorna archivos modificados según git diff."""
+        from autocode.core.planning.executor import _git_diff_changed_files
 
-        trajectory = {
-            "Action_1": "write_file_content",
-            "Action_1_args": {"path": "src/main.py", "content": "..."},
-            "Action_2": "replace_in_file",
-            "Action_2_args": {
-                "path": "src/utils.py",
-                "old_string": "...",
-                "new_string": "...",
-            },
-            "Action_3": "read_file_content",
-            "Action_3_args": {"path": "src/other.py"},  # read no es un cambio
-        }
-        files = _extract_files_changed(trajectory)
-        assert "src/main.py" in files
-        assert "src/utils.py" in files
-        assert "src/other.py" not in files  # read no cuenta
+        with patch("autocode.core.planning.executor.subprocess.run") as mock_run:
+            mock_run.return_value.returncode = 0
+            mock_run.return_value.stdout = "src/main.py\nsrc/utils.js\nREADME.md\n"
+            mock_run.return_value.stderr = ""
 
-    def test_extract_deduplicates(self):
-        """No retorna duplicados si un archivo fue tocado múltiples veces."""
-        from autocode.core.planning.executor import _extract_files_changed
+            files = _git_diff_changed_files("abc123")
 
-        trajectory = {
-            "Action_1": "replace_in_file",
-            "Action_1_args": {
-                "path": "src/main.py",
-                "old_string": "a",
-                "new_string": "b",
-            },
-            "Action_2": "replace_in_file",
-            "Action_2_args": {
-                "path": "src/main.py",
-                "old_string": "c",
-                "new_string": "d",
-            },
-        }
-        files = _extract_files_changed(trajectory)
-        assert files == ["src/main.py"]
+        assert files == ["src/main.py", "src/utils.js", "README.md"]
+        # Verify git diff was called with the parent commit
+        mock_run.assert_called_once()
+        assert "abc123" in mock_run.call_args[0][0]
 
-    def test_extract_empty_trajectory(self):
-        """Trajectory vacía retorna lista vacía."""
-        from autocode.core.planning.executor import _extract_files_changed
+    def test_returns_empty_on_no_changes(self):
+        """Retorna lista vacía si no hay cambios."""
+        from autocode.core.planning.executor import _git_diff_changed_files
 
-        assert _extract_files_changed({}) == []
-        assert _extract_files_changed(None) == []
+        with patch("autocode.core.planning.executor.subprocess.run") as mock_run:
+            mock_run.return_value.returncode = 0
+            mock_run.return_value.stdout = ""
+            mock_run.return_value.stderr = ""
+
+            files = _git_diff_changed_files("abc123")
+
+        assert files == []
+
+    def test_returns_empty_on_git_failure(self):
+        """Retorna lista vacía si git diff falla."""
+        from autocode.core.planning.executor import _git_diff_changed_files
+
+        with patch("autocode.core.planning.executor.subprocess.run") as mock_run:
+            mock_run.return_value.returncode = 128
+            mock_run.return_value.stdout = ""
+            mock_run.return_value.stderr = "fatal: bad object"
+
+            files = _git_diff_changed_files("invalid_ref")
+
+        assert files == []
+
+    def test_works_with_any_file_type(self):
+        """Detecta archivos de cualquier tipo (.py, .js, .md, etc.)."""
+        from autocode.core.planning.executor import _git_diff_changed_files
+
+        with patch("autocode.core.planning.executor.subprocess.run") as mock_run:
+            mock_run.return_value.returncode = 0
+            mock_run.return_value.stdout = "app.js\nstyle.css\nindex.html\nlib.py\n"
+            mock_run.return_value.stderr = ""
+
+            files = _git_diff_changed_files("HEAD")
+
+        assert "app.js" in files
+        assert "style.css" in files
+        assert "index.html" in files
+        assert "lib.py" in files
 
 
 # ==============================================================================
