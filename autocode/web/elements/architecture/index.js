@@ -1,14 +1,17 @@
 /**
  * index.js
- * ArchitectureDashboard — Componente principal para visualización de arquitectura.
+ * ArchitectureDashboard — Panel unificado de exploración de código.
  *
- * Gestiona carga de datos, layout de summary cards, breadcrumb de navegación,
- * y tabs para alternar entre treemap y grafo de dependencias.
+ * Integra 4 vistas en tabs:
+ *   📁 Files        — Árbol de archivos (file-explorer)
+ *   🗺️ Treemap     — Treemap zoomable de arquitectura
+ *   🔗 Dependencies — Grafo de dependencias entre archivos
+ *   📊 Metrics      — Dashboard completo de métricas de código
  *
- * El backend devuelve nodos en formato plano (adjacency list con parent_id).
- * Este componente reconstruye el árbol en el cliente para navegación zoomable.
+ * Carga datos de get_architecture_snapshot para summary cards, treemap y graph.
+ * File-explorer y metrics-dashboard manejan su propia carga de datos.
  *
- * Usa AutoFunctionController.executeFunction() para llamar a get_architecture_snapshot.
+ * Usa AutoFunctionController.executeFunction() para llamar al backend.
  */
 
 import { LitElement, html } from 'https://cdn.jsdelivr.net/gh/lit/dist@3/core/lit-core.min.js';
@@ -16,9 +19,13 @@ import { AutoFunctionController } from '../auto-element-generator.js';
 import { themeTokens } from './styles/theme.js';
 import { architectureDashboardStyles } from './styles/architecture-dashboard.styles.js';
 
-// Sub-components
+// Sub-components: architecture views
 import './architecture-treemap.js';
 import './architecture-graph.js';
+
+// Sub-components: embedded panels (lazy-loaded via tabs)
+import '../file-explorer/index.js';
+import '../git-graph/metrics-dashboard.js';
 
 export class ArchitectureDashboard extends LitElement {
     static properties = {
@@ -28,7 +35,7 @@ export class ArchitectureDashboard extends LitElement {
         // Navigation state
         _currentNodeId: { state: true },
 
-        // View mode: 'treemap' | 'graph'
+        // View mode: 'files' | 'treemap' | 'graph' | 'metrics'
         _viewMode: { state: true },
 
         // Loading / error
@@ -37,6 +44,10 @@ export class ArchitectureDashboard extends LitElement {
 
         // Internal tree cache (rebuilt from flat nodes)
         _tree: { state: true },
+
+        // Lazy activation flags for embedded components
+        _filesActivated: { state: true },
+        _metricsActivated: { state: true },
     };
 
     static styles = [themeTokens, architectureDashboardStyles];
@@ -49,6 +60,8 @@ export class ArchitectureDashboard extends LitElement {
         this._loading = false;
         this._error = null;
         this._tree = null;
+        this._filesActivated = false;
+        this._metricsActivated = false;
     }
 
     connectedCallback() {
@@ -116,14 +129,16 @@ export class ArchitectureDashboard extends LitElement {
         if (!this._snapshot) return html``;
 
         const snap = this._snapshot;
+        const isMetrics = this._viewMode === 'metrics';
 
         return html`
             <div class="dashboard">
-                ${this._renderSummary(snap)}
-                ${this._renderBreadcrumb()}
+                ${!isMetrics ? this._renderSummary(snap) : ''}
+                ${this._viewMode === 'treemap' || this._viewMode === 'graph'
+                    ? this._renderBreadcrumb() : ''}
                 ${this._renderViewTabs()}
                 ${this._renderContentArea()}
-                ${this._renderSnapshotInfo(snap)}
+                ${!isMetrics ? this._renderSnapshotInfo(snap) : ''}
             </div>
         `;
     }
@@ -212,16 +227,21 @@ export class ArchitectureDashboard extends LitElement {
     // ========================================================================
 
     _renderViewTabs() {
+        const tabs = [
+            { id: 'files',   label: '📁 Files' },
+            { id: 'treemap', label: '🗺️ Treemap' },
+            { id: 'graph',   label: '🔗 Dependencies' },
+            { id: 'metrics', label: '📊 Metrics' },
+        ];
+
         return html`
             <div class="view-tabs">
-                <button
-                    class="view-tab ${this._viewMode === 'treemap' ? 'active' : ''}"
-                    @click=${() => { this._viewMode = 'treemap'; }}
-                >🗺️ Treemap</button>
-                <button
-                    class="view-tab ${this._viewMode === 'graph' ? 'active' : ''}"
-                    @click=${() => { this._viewMode = 'graph'; }}
-                >🔗 Dependencies</button>
+                ${tabs.map(tab => html`
+                    <button
+                        class="view-tab ${this._viewMode === tab.id ? 'active' : ''}"
+                        @click=${() => this._setViewMode(tab.id)}
+                    >${tab.label}</button>
+                `)}
             </div>
         `;
     }
@@ -231,9 +251,20 @@ export class ArchitectureDashboard extends LitElement {
     // ========================================================================
 
     _renderContentArea() {
-        const subtree = this._getCurrentSubtree();
+        const mode = this._viewMode;
 
-        if (this._viewMode === 'treemap') {
+        // Files tab — lazy-activated file-explorer
+        if (mode === 'files') {
+            return html`
+                <div class="content-area content-area--files">
+                    <file-explorer></file-explorer>
+                </div>
+            `;
+        }
+
+        // Treemap tab
+        if (mode === 'treemap') {
+            const subtree = this._getCurrentSubtree();
             return html`
                 <div class="content-area">
                     <architecture-treemap .node=${subtree}></architecture-treemap>
@@ -241,16 +272,29 @@ export class ArchitectureDashboard extends LitElement {
             `;
         }
 
-        // graph mode
-        return html`
-            <div class="content-area">
-                <architecture-graph
-                    .nodes=${this._snapshot?.nodes?.filter(n => n.type === 'file') || []}
-                    .dependencies=${this._snapshot?.dependencies || []}
-                    .circularDependencies=${this._snapshot?.circular_dependencies || []}
-                ></architecture-graph>
-            </div>
-        `;
+        // Dependencies graph tab
+        if (mode === 'graph') {
+            return html`
+                <div class="content-area">
+                    <architecture-graph
+                        .nodes=${this._snapshot?.nodes?.filter(n => n.type === 'file') || []}
+                        .dependencies=${this._snapshot?.dependencies || []}
+                        .circularDependencies=${this._snapshot?.circular_dependencies || []}
+                    ></architecture-graph>
+                </div>
+            `;
+        }
+
+        // Metrics tab — lazy-activated metrics-dashboard
+        if (mode === 'metrics') {
+            return html`
+                <div class="content-area content-area--metrics">
+                    <metrics-dashboard></metrics-dashboard>
+                </div>
+            `;
+        }
+
+        return html``;
     }
 
     // ========================================================================
@@ -266,12 +310,28 @@ export class ArchitectureDashboard extends LitElement {
     }
 
     // ========================================================================
+    // VIEW MODE MANAGEMENT
+    // ========================================================================
+
+    /**
+     * Change the active view tab.
+     * Activates lazy-loaded components on first access.
+     * @param {'files'|'treemap'|'graph'|'metrics'} mode
+     */
+    _setViewMode(mode) {
+        if (this._viewMode === mode) return;
+        this._viewMode = mode;
+
+        if (mode === 'files') this._filesActivated = true;
+        if (mode === 'metrics') this._metricsActivated = true;
+    }
+
+    // ========================================================================
     // TREE BUILDING
     // ========================================================================
 
     /**
      * Reconstruct a nested tree from flat adjacency-list nodes.
-     * Same pattern as CodeExplorer._buildTreeFromGraph().
      *
      * @param {Array} nodes - Flat list of nodes with parent_id
      * @param {string} rootId - ID of the root node
@@ -312,15 +372,10 @@ export class ArchitectureDashboard extends LitElement {
 
     /**
      * Get the subtree rooted at _currentNodeId.
-     * Used to pass to treemap/graph for rendering the current zoom level.
-     *
-     * @returns {Object|null} Subtree node with children
      */
     _getCurrentSubtree() {
         if (!this._tree) return null;
         if (this._currentNodeId === this._snapshot?.root_id) return this._tree;
-
-        // DFS to find the node
         return this._findNode(this._tree, this._currentNodeId);
     }
 
@@ -342,25 +397,14 @@ export class ArchitectureDashboard extends LitElement {
     // NAVIGATION
     // ========================================================================
 
-    /**
-     * Navigate into a child node (zoom in).
-     * @param {string} nodeId - ID of the node to navigate into
-     */
     _navigateInto(nodeId) {
         this._currentNodeId = nodeId;
     }
 
-    /**
-     * Navigate up to a parent node (from breadcrumb click).
-     * @param {string} nodeId - ID of the ancestor to navigate to
-     */
     _navigateUp(nodeId) {
         this._currentNodeId = nodeId;
     }
 
-    /**
-     * Handle navigate-into event from child components.
-     */
     _handleNavigateInto(e) {
         const nodeId = e.detail?.nodeId;
         if (nodeId) {

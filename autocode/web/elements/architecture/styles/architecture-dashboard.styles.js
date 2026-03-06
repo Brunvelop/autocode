@@ -211,6 +211,34 @@ export const architectureDashboardStyles = css`
         position: relative;
     }
 
+    /* Files tab: file-explorer has its own dark bg, let it fill */
+    .content-area--files {
+        background: transparent;
+        border: none;
+        border-radius: var(--design-radius-md, 0.5rem);
+        overflow: auto;
+    }
+
+    .content-area--files file-explorer {
+        width: 100%;
+        height: 100%;
+        border-radius: var(--design-radius-md, 0.5rem);
+        overflow: hidden;
+    }
+
+    /* Metrics tab: metrics-dashboard has its own layout, let it fill */
+    .content-area--metrics {
+        display: block;
+        background: transparent;
+        border: none;
+        overflow-y: auto;
+    }
+
+    .content-area--metrics metrics-dashboard {
+        width: 100%;
+        display: block;
+    }
+
     .content-placeholder {
         display: flex;
         flex-direction: column;

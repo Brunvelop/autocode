@@ -19,7 +19,6 @@ import './commit-node.js';
 import './commit-detail.js';
 import './commit-plan-node.js';
 import './commit-plan-detail.js';
-import './metrics-dashboard.js';
 import '../architecture/index.js';
 
 export class GitGraph extends LitElement {
@@ -38,11 +37,8 @@ export class GitGraph extends LitElement {
         // Graph layout computed data
         _layoutData: { state: true },
 
-        // Metrics dashboard toggle
-        _showMetrics: { state: true },
-
-        // Architecture dashboard toggle
-        _showArchitecture: { state: true },
+        // Code Explorer panel toggle (unified: files, treemap, deps, metrics)
+        _showExplorer: { state: true },
 
         // Collapsible commit panel
         _panelCollapsed: { state: true },
@@ -66,8 +62,7 @@ export class GitGraph extends LitElement {
         this._loading = false;
         this._error = null;
         this._layoutData = null;
-        this._showMetrics = false;
-        this._showArchitecture = false;
+        this._showExplorer = false;
         this._panelCollapsed = false;
         this._plans = [];
         this._selectedPlan = null;
@@ -158,21 +153,10 @@ export class GitGraph extends LitElement {
                         `)}
                     </select>
                     <button 
-                        class="action-btn ${this._showMetrics ? 'active' : ''}" 
-                        @click=${() => {
-                            this._showMetrics = !this._showMetrics;
-                            if (this._showMetrics) this._showArchitecture = false;
-                        }}
-                        title="Métricas de código"
-                    >📊</button>
-                    <button 
-                        class="action-btn ${this._showArchitecture ? 'active' : ''}" 
-                        @click=${() => {
-                            this._showArchitecture = !this._showArchitecture;
-                            if (this._showArchitecture) this._showMetrics = false;
-                        }}
-                        title="Arquitectura del código"
-                    >🏗️</button>
+                        class="action-btn ${this._showExplorer ? 'active' : ''}" 
+                        @click=${() => { this._showExplorer = !this._showExplorer; }}
+                        title="Code Explorer"
+                    >🗂️</button>
                     <button class="action-btn" @click=${this.refresh} title="Recargar">
                         🔄
                     </button>
@@ -268,21 +252,18 @@ export class GitGraph extends LitElement {
     // ========================================================================
 
     _renderDetailPanel() {
-        const showMetrics = this._showMetrics;
-        const showArchitecture = this._showArchitecture;
-        const showAnyDashboard = showMetrics || showArchitecture;
-        const showPlanDetail = !showAnyDashboard && this._selectedPlan;
-        const showCommitDetail = !showAnyDashboard && !this._selectedPlan && this._selectedCommit;
-        const showPlaceholder = !showAnyDashboard && !this._selectedPlan && !this._selectedCommit;
+        const showExplorer = this._showExplorer;
+        const showPlanDetail = !showExplorer && this._selectedPlan;
+        const showCommitDetail = !showExplorer && !this._selectedPlan && this._selectedCommit;
+        const showPlaceholder = !showExplorer && !this._selectedPlan && !this._selectedCommit;
 
         return html`
             <div class="detail-panel">
                 ${this._panelCollapsed ? html`
                     <button class="panel-toggle-collapsed" @click=${() => { this._panelCollapsed = false; }} title="Mostrar commits">▶</button>
                 ` : ''}
-                <!-- Always in DOM, toggle visibility via style -->
-                <metrics-dashboard style="display: ${showMetrics ? 'block' : 'none'}"></metrics-dashboard>
-                <architecture-dashboard style="display: ${showArchitecture ? 'block' : 'none'}"></architecture-dashboard>
+                <!-- Code Explorer: unified panel (files, treemap, deps, metrics) -->
+                <architecture-dashboard style="display: ${showExplorer ? 'block' : 'none'}; height: 100%;"></architecture-dashboard>
                 ${showPlanDetail ? html`
                     <commit-plan-detail
                         .planId=${this._selectedPlan.id}
@@ -296,10 +277,10 @@ export class GitGraph extends LitElement {
                 ` : ''}
                 ${showPlaceholder ? html`
                     <div class="detail-placeholder">
-                        <span class="detail-placeholder-icon">${this._panelCollapsed ? '📊' : '👈'}</span>
+                        <span class="detail-placeholder-icon">${this._panelCollapsed ? '🗂️' : '👈'}</span>
                         <span class="detail-placeholder-text">
                             ${this._panelCollapsed 
-                                ? 'Usa 📊 o 🏗️ para ver dashboards, o expande el panel de commits'
+                                ? 'Usa 🗂️ para explorar el código, o expande el panel de commits'
                                 : 'Selecciona un commit para ver sus detalles'}
                         </span>
                     </div>
