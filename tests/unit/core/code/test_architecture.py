@@ -1009,3 +1009,147 @@ class TestArchitectureSnapshotWithJS:
         assert "src/app.py" in node_ids
         assert "web/index.js" in node_ids
         assert "web/utils.mjs" in node_ids
+
+
+# ==============================================================================
+# I) JS FILE DEPENDENCY RESOLUTION (Commit 6)
+# ==============================================================================
+
+
+class TestResolveFileDependenciesJS:
+    """Tests for _resolve_file_dependencies() with JavaScript files."""
+
+    def test_js_relative_import_creates_dependency(self):
+        """JS relative import './foo' should create a FileDependency."""
+        from autocode.core.code.architecture import _resolve_file_dependencies
+
+        contents = {
+            "web/elements/index.js": "import { Component } from './component.js';\n",
+            "web/elements/component.js": "export class Component {}\n",
+        }
+
+        def patched_read(self, *args, **kwargs):
+            return contents.get(str(self), "")
+
+        with patch.object(Path, "read_text", patched_read):
+            deps, circulars = _resolve_file_dependencies(list(contents.keys()))
+
+        assert len(deps) == 1
+        assert deps[0].source == "web/elements/index.js"
+        assert deps[0].target == "web/elements/component.js"
+
+    def test_js_package_import_excluded(self):
+        """JS bare package imports (e.g., 'lit') should NOT create dependencies."""
+        from autocode.core.code.architecture import _resolve_file_dependencies
+
+        contents = {
+            "web/elements/index.js": (
+                "import { LitElement } from 'lit';\n"
+                "import * as d3 from 'd3';\n"
+            ),
+        }
+
+        def patched_read(self, *args, **kwargs):
+            return contents.get(str(self), "")
+
+        with patch.object(Path, "read_text", patched_read):
+            deps, circulars = _resolve_file_dependencies(list(contents.keys()))
+
+        assert deps == []
+
+    def test_js_circular_detection(self):
+        """Mutual JS relative imports should be detected as circular."""
+        from autocode.core.code.architecture import _resolve_file_dependencies
+
+        contents = {
+            "web/a.js": "import { B } from './b.js';\n",
+            "web/b.js": "import { A } from './a.js';\n",
+        }
+
+        def patched_read(self, *args, **kwargs):
+            return contents.get(str(self), "")
+
+        with patch.object(Path, "read_text", patched_read):
+            deps, circulars = _resolve_file_dependencies(list(contents.keys()))
+
+        assert len(deps) == 2
+        assert len(circulars) == 1
+        pair = sorted(circulars[0])
+        assert pair == ["web/a.js", "web/b.js"]
+
+    def test_mixed_py_and_js_dependencies(self):
+        """Mixed Python and JS files should each resolve their own imports."""
+        from autocode.core.code.architecture import _resolve_file_dependencies
+
+        contents = {
+            "pkg/app.py": "from pkg.models import Model\n",
+            "pkg/models.py": "class Model: pass\n",
+            "web/index.js": "import { utils } from './utils.js';\n",
+            "web/utils.js": "export const utils = {};\n",
+        }
+
+        def patched_read(self, *args, **kwargs):
+            return contents.get(str(self), "")
+
+        with patch.object(Path, "read_text", patched_read):
+            deps, circulars = _resolve_file_dependencies(list(contents.keys()))
+
+        # Should find 2 dependencies: py→py and js→js
+        assert len(deps) == 2
+        sources = {d.source for d in deps}
+        assert "pkg/app.py" in sources
+        assert "web/index.js" in sources
+
+    def test_js_parent_relative_import(self):
+        """JS import from '../utils.js' should resolve correctly."""
+        from autocode.core.code.architecture import _resolve_file_dependencies
+
+        contents = {
+            "web/elements/graph/index.js": "import { theme } from '../shared/theme.js';\n",
+            "web/elements/shared/theme.js": "export const theme = {};\n",
+        }
+
+        def patched_read(self, *args, **kwargs):
+            return contents.get(str(self), "")
+
+        with patch.object(Path, "read_text", patched_read):
+            deps, circulars = _resolve_file_dependencies(list(contents.keys()))
+
+        assert len(deps) == 1
+        assert deps[0].source == "web/elements/graph/index.js"
+        assert deps[0].target == "web/elements/shared/theme.js"
+
+    def test_js_import_nonexistent_target_filtered(self):
+        """JS import resolving to a file not in the tracked list should be filtered."""
+        from autocode.core.code.architecture import _resolve_file_dependencies
+
+        contents = {
+            "web/index.js": "import { foo } from './nonexistent.js';\n",
+        }
+
+        def patched_read(self, *args, **kwargs):
+            return contents.get(str(self), "")
+
+        with patch.object(Path, "read_text", patched_read):
+            deps, circulars = _resolve_file_dependencies(list(contents.keys()))
+
+        assert deps == []
+
+    def test_js_export_from_creates_dependency(self):
+        """'export { X } from './foo.js'' should create a dependency."""
+        from autocode.core.code.architecture import _resolve_file_dependencies
+
+        contents = {
+            "web/index.js": "export { Component } from './component.js';\n",
+            "web/component.js": "export class Component {}\n",
+        }
+
+        def patched_read(self, *args, **kwargs):
+            return contents.get(str(self), "")
+
+        with patch.object(Path, "read_text", patched_read):
+            deps, circulars = _resolve_file_dependencies(list(contents.keys()))
+
+        assert len(deps) == 1
+        assert deps[0].source == "web/index.js"
+        assert deps[0].target == "web/component.js"

@@ -6,14 +6,14 @@ Proporciona:
 - Snapshot de arquitectura: jerarquía de directorios/archivos con métricas de calidad
 - Propagación bottom-up de MI/CC desde archivos a directorios (ponderada por LOC)
 - Resolución de dependencias a nivel de archivo (imports internos del proyecto)
-- Detección de dependencias circulares entre archivos
+- Detección de dependencias circulares entre archivos (Python AST + JS regex)
 - Endpoint registrado para el frontend (treemap + grafo de dependencias)
-
-Reutiliza funciones de metrics.py: _analyze_content, _get_tracked_py_files, _git
 """
 
 import ast
 import logging
+import posixpath
+import re
 from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
@@ -28,6 +28,8 @@ from autocode.core.code.models import (
 )
 from autocode.core.vcs.git import git, get_tracked_files
 from autocode.core.code.analyzer import analyze_file_metrics
+
+from autocode.core.code.coupling import JS_IMPORT_RE
 
 logger = logging.getLogger(__name__)
 
@@ -86,9 +88,8 @@ def get_architecture_snapshot(path: str = ".") -> ArchitectureSnapshotOutput:
             avg_mi = 0.0
             avg_complexity = 0.0
 
-        # Resolve file-level dependencies (Python-only; TODO: JS file-level deps in commit 6)
-        py_files = [f for f in all_files if f.endswith(".py")]
-        dependencies, circular_dependencies = _resolve_file_dependencies(py_files)
+        # Resolve file-level dependencies (Python AST + JS regex)
+        dependencies, circular_dependencies = _resolve_file_dependencies(all_files)
 
         snapshot = ArchitectureSnapshot(
             root_id=root_id,
@@ -297,72 +298,50 @@ def _compute_depths(
 
 
 def _resolve_file_dependencies(
-    py_files: List[str],
+    all_files: List[str],
 ) -> Tuple[List[FileDependency], List[List[str]]]:
-    """Resolve file-level import dependencies between Python files.
+    """Resolve file-level import dependencies between Python and JS files.
 
-    Parses AST for each file, extracts import/from-import statements,
-    filters to internal project imports only (not stdlib/third-party),
-    resolves module paths to actual file paths, and detects circular dependencies.
+    For Python: parses AST, extracts import/from-import statements, filters
+    to internal project imports, resolves module paths to file paths.
+    For JS: uses regex, extracts relative imports (./  ../), resolves to
+    file paths in the tracked file set.
 
     Multiple imports from the same source→target pair are merged into a single
     FileDependency with aggregated import_names.
 
     Args:
-        py_files: List of relative paths to Python files (from git ls-files)
+        all_files: List of relative file paths (.py, .js, .mjs, .jsx)
 
     Returns:
         Tuple of (dependencies, circular_dependencies) where:
         - dependencies: List[FileDependency] with resolved source→target pairs
         - circular_dependencies: List[List[str]] with [source, target] circular pairs
     """
-    if not py_files:
+    if not all_files:
         return [], []
 
+    # Separate by language
+    py_files = [f for f in all_files if f.endswith(".py")]
+    js_files = [f for f in all_files if Path(f).suffix in JS_EXTENSIONS]
+
     # Build lookup structures
-    file_set: Set[str] = set(py_files)
-    top_packages = _get_top_level_packages(py_files)
+    file_set: Set[str] = set(all_files)
+    top_packages = _get_top_level_packages(all_files)
     module_to_file = _build_module_to_file_map(py_files)
 
     # Collect raw edges: (source_file, target_file) → set of import_names
     edges: Dict[Tuple[str, str], Set[str]] = defaultdict(set)
 
-    for fpath in py_files:
-        try:
-            content = Path(fpath).read_text(encoding="utf-8")
-            tree = ast.parse(content, filename=fpath)
-        except Exception:
-            logger.debug(f"Skipping {fpath} for dependency analysis (parse error)")
-            continue
+    # --- Python files (AST) ---
+    _collect_python_file_deps(py_files, top_packages, module_to_file, file_set, edges)
 
-        for node in ast.walk(tree):
-            if isinstance(node, ast.ImportFrom) and node.module:
-                # from X.Y.Z import a, b, c
-                if not _is_internal_module(node.module, top_packages):
-                    continue
-                target_file = _resolve_module_to_file(node.module, module_to_file)
-                if target_file and target_file != fpath and target_file in file_set:
-                    names = [
-                        alias.name
-                        for alias in (node.names or [])
-                        if alias.name != "*"
-                    ]
-                    edges[(fpath, target_file)].update(names)
-
-            elif isinstance(node, ast.Import):
-                # import X.Y.Z
-                for alias in node.names:
-                    if not _is_internal_module(alias.name, top_packages):
-                        continue
-                    target_file = _resolve_module_to_file(
-                        alias.name, module_to_file
-                    )
-                    if target_file and target_file != fpath and target_file in file_set:
-                        edges[(fpath, target_file)].add(alias.name)
+    # --- JS files (regex) ---
+    _collect_js_file_deps(js_files, file_set, edges)
 
     # Build FileDependency list
     dependencies: List[FileDependency] = []
-    for (source, target), names in sorted(edges.keys() and edges.items()):
+    for (source, target), names in sorted(edges.items()):
         dependencies.append(
             FileDependency(
                 source=source,
@@ -384,6 +363,115 @@ def _resolve_file_dependencies(
                 circular_dependencies.append(list(pair))
 
     return dependencies, circular_dependencies
+
+
+def _collect_python_file_deps(
+    py_files: List[str],
+    top_packages: Set[str],
+    module_to_file: Dict[str, str],
+    file_set: Set[str],
+    edges: Dict[Tuple[str, str], Set[str]],
+) -> None:
+    """Collect file-level dependencies from Python files using AST."""
+    for fpath in py_files:
+        try:
+            content = Path(fpath).read_text(encoding="utf-8")
+            tree = ast.parse(content, filename=fpath)
+        except Exception:
+            logger.debug(f"Skipping {fpath} for dependency analysis (parse error)")
+            continue
+
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom) and node.module:
+                if not _is_internal_module(node.module, top_packages):
+                    continue
+                target_file = _resolve_module_to_file(node.module, module_to_file)
+                if target_file and target_file != fpath and target_file in file_set:
+                    names = [
+                        alias.name
+                        for alias in (node.names or [])
+                        if alias.name != "*"
+                    ]
+                    edges[(fpath, target_file)].update(names)
+
+            elif isinstance(node, ast.Import):
+                for alias in node.names:
+                    if not _is_internal_module(alias.name, top_packages):
+                        continue
+                    target_file = _resolve_module_to_file(
+                        alias.name, module_to_file
+                    )
+                    if target_file and target_file != fpath and target_file in file_set:
+                        edges[(fpath, target_file)].add(alias.name)
+
+
+def _collect_js_file_deps(
+    js_files: List[str],
+    file_set: Set[str],
+    edges: Dict[Tuple[str, str], Set[str]],
+) -> None:
+    """Collect file-level dependencies from JS files using regex.
+
+    Only relative imports (starting with './' or '../') are processed.
+    Bare specifiers like 'lit' or 'd3' are external and skipped.
+    """
+    for fpath in js_files:
+        try:
+            content = Path(fpath).read_text(encoding="utf-8")
+        except Exception:
+            logger.debug(f"Skipping {fpath} for JS dependency analysis")
+            continue
+
+        file_dir = posixpath.dirname(fpath.replace("\\", "/"))
+
+        for match in JS_IMPORT_RE.finditer(content):
+            module = match.group("module")
+            if not module.startswith("."):
+                continue
+
+            # Resolve relative path to a project file path
+            target_file = _resolve_js_import(file_dir, module, file_set)
+            if target_file and target_file != fpath:
+                edges[(fpath, target_file)].add(module)
+
+
+def _resolve_js_import(
+    file_dir: str, module: str, file_set: Set[str]
+) -> Optional[str]:
+    """Resolve a relative JS import specifier to a tracked file path.
+
+    Tries the following resolution strategies:
+    1. Direct path: './component.js' → {dir}/component.js
+    2. Extension variants: './component' → {dir}/component.js, .mjs, .jsx
+    3. Index file: './utils' → {dir}/utils/index.js
+
+    Args:
+        file_dir: Directory of the importing file (posix-normalized)
+        module: The import specifier (e.g., './component.js', '../utils')
+        file_set: Set of all tracked file paths
+
+    Returns:
+        Resolved file path if found in file_set, None otherwise
+    """
+    resolved = posixpath.normpath(posixpath.join(file_dir, module))
+
+    # 1. Direct match (already has extension)
+    if resolved in file_set:
+        return resolved
+
+    # 2. Try adding common JS extensions
+    for ext in (".js", ".mjs", ".jsx"):
+        candidate = resolved + ext
+        if candidate in file_set:
+            return candidate
+
+    # 3. Try as directory with index file
+    for ext in (".js", ".mjs", ".jsx"):
+        candidate = resolved + "/index" + ext
+        if candidate in file_set:
+            return candidate
+
+    return None
 
 
 def _get_top_level_packages(py_files: List[str]) -> Set[str]:

@@ -320,7 +320,7 @@ class TestAnalyzeCoupling:
 
     def test_self_package_imports_excluded(self):
         """Imports within the same 2-level package should NOT create coupling edges."""
-        from autocode.core.code.coupling import analyze_coupling
+        from autocode.core.code.coupling import analyze_coupling  # noqa: F811
 
         contents = {
             "autocode/core/code/metrics.py": (
@@ -338,3 +338,218 @@ class TestAnalyzeCoupling:
         # Both files are in autocode.core → no cross-package coupling
         assert coupling == []
         assert circulars == []
+
+
+# ==============================================================================
+# D) JAVASCRIPT IMPORT EXTRACTION (Commit 6)
+# ==============================================================================
+
+
+class TestExtractJSImports:
+    """Tests for _extract_js_imports() — regex-based JS import extraction."""
+
+    def test_extracts_relative_import(self):
+        """import X from './foo' should produce (src_pkg, tgt_pkg)."""
+        from autocode.core.code.coupling import _extract_js_imports
+
+        content = "import { Component } from './component.js';\n"
+        result = _extract_js_imports(
+            "web/elements/index.js", content, {"web"}
+        )
+        # src_pkg = web.elements, tgt_pkg = web.elements (same → caller filters)
+        assert len(result) >= 1
+        src, tgt = result[0]
+        assert src == "web.elements"
+
+    def test_extracts_parent_relative_import(self):
+        """import X from '../bar' should resolve to parent directory package."""
+        from autocode.core.code.coupling import _extract_js_imports
+
+        content = "import { helper } from '../utils/helper.js';\n"
+        result = _extract_js_imports(
+            "web/elements/graph/index.js", content, {"web"}
+        )
+        # src_pkg = web.elements (from web/elements/graph/index.js → 2-level)
+        # tgt = ../utils/helper.js relative to web/elements/graph/ → web/elements/utils/helper.js
+        # tgt_pkg = web.elements
+        assert len(result) == 1
+        src, tgt = result[0]
+        assert src == "web.elements"
+
+    def test_ignores_package_import(self):
+        """import X from 'lit' (bare specifier, no ./) should be ignored as external."""
+        from autocode.core.code.coupling import _extract_js_imports
+
+        content = (
+            "import { LitElement, html, css } from 'lit';\n"
+            "import { property } from 'lit/decorators.js';\n"
+        )
+        result = _extract_js_imports(
+            "web/elements/index.js", content, {"web"}
+        )
+        assert result == []
+
+    def test_ignores_node_modules(self):
+        """import from 'lodash/get' or 'd3' should be ignored as external."""
+        from autocode.core.code.coupling import _extract_js_imports
+
+        content = (
+            "import * as d3 from 'd3';\n"
+            "import get from 'lodash/get';\n"
+        )
+        result = _extract_js_imports(
+            "web/elements/index.js", content, {"web"}
+        )
+        assert result == []
+
+    def test_extracts_named_imports(self):
+        """import { X, Y } from './foo' should be extracted."""
+        from autocode.core.code.coupling import _extract_js_imports
+
+        content = "import { theme, colors } from './styles/theme.js';\n"
+        result = _extract_js_imports(
+            "web/elements/index.js", content, {"web"}
+        )
+        assert len(result) == 1
+        src, tgt = result[0]
+        assert src == "web.elements"
+
+    def test_extracts_namespace_import(self):
+        """import * as X from './foo' should be extracted."""
+        from autocode.core.code.coupling import _extract_js_imports
+
+        content = "import * as styles from './styles/index.js';\n"
+        result = _extract_js_imports(
+            "web/elements/index.js", content, {"web"}
+        )
+        assert len(result) == 1
+
+    def test_extracts_export_from(self):
+        """export { X } from './foo' should be extracted as a dependency."""
+        from autocode.core.code.coupling import _extract_js_imports
+
+        content = "export { Component } from './component.js';\n"
+        result = _extract_js_imports(
+            "web/elements/index.js", content, {"web"}
+        )
+        assert len(result) == 1
+
+    def test_cross_package_import(self):
+        """Relative import resolving to a different 2-level package should create coupling."""
+        from autocode.core.code.coupling import _extract_js_imports
+
+        # web/elements/arch/index.js imports from ../../utils/helper.js
+        # → resolves to web/utils/helper.js → pkg = web.utils
+        content = "import { helper } from '../../utils/helper.js';\n"
+        result = _extract_js_imports(
+            "web/elements/arch/index.js", content, {"web"}
+        )
+        assert len(result) == 1
+        src, tgt = result[0]
+        assert src == "web.elements"
+        assert tgt == "web.utils"
+
+    def test_single_quoted_imports(self):
+        """Imports with single quotes should also be matched."""
+        from autocode.core.code.coupling import _extract_js_imports
+
+        content = "import { foo } from './bar.js';\n"
+        result = _extract_js_imports(
+            "web/elements/index.js", content, {"web"}
+        )
+        assert len(result) == 1
+
+
+# ==============================================================================
+# E) MIXED-LANGUAGE COUPLING ANALYSIS (Commit 6)
+# ==============================================================================
+
+
+class TestAnalyzeCouplingMixedLanguages:
+    """Tests for analyze_coupling() with Python + JS files."""
+
+    def test_mixed_py_and_js_coupling(self):
+        """Mixed Python and JS files: each language's imports analyzed correctly."""
+        from autocode.core.code.coupling import analyze_coupling
+
+        contents = {
+            # Python file importing from autocode.interfaces
+            "autocode/core/code/metrics.py": (
+                "from autocode.interfaces.registry import register_function\n"
+            ),
+            "autocode/interfaces/registry.py": "x = 1\n",
+            # JS file with only external imports (no coupling)
+            "autocode/web/elements/index.js": (
+                "import { LitElement } from 'lit';\n"
+            ),
+        }
+
+        def patched_read(self, *args, **kwargs):
+            return contents.get(str(self), "")
+
+        with patch.object(Path, "read_text", patched_read):
+            coupling, circulars = analyze_coupling(list(contents.keys()))
+
+        pkg_map = {c.name: c for c in coupling}
+        # Python coupling should still work
+        assert "autocode.core" in pkg_map
+        assert "autocode.interfaces" in pkg_map
+        assert pkg_map["autocode.core"].ce == 1
+
+    def test_js_only_coupling(self):
+        """JS-only project with relative imports should produce coupling."""
+        from autocode.core.code.coupling import analyze_coupling
+
+        contents = {
+            # web/elements/arch/index.js imports from web/elements/shared
+            "web/elements/arch/index.js": (
+                "import { theme } from '../../shared/styles.js';\n"
+            ),
+            "web/shared/styles.js": "export const theme = {};\n",
+            "web/elements/shared/other.js": "export const x = 1;\n",
+        }
+
+        def patched_read(self, *args, **kwargs):
+            return contents.get(str(self), "")
+
+        with patch.object(Path, "read_text", patched_read):
+            coupling, circulars = analyze_coupling(list(contents.keys()))
+
+        # Should have coupling between web.elements and web.shared
+        pkg_map = {c.name: c for c in coupling}
+        assert "web.elements" in pkg_map or "web.shared" in pkg_map
+
+    def test_js_circular_detection(self):
+        """JS files with mutual relative imports should trigger circular detection."""
+        from autocode.core.code.coupling import analyze_coupling
+
+        contents = {
+            "pkg_a/core/app.js": "import { helper } from '../../pkg_b/core/helper.js';\n",
+            "pkg_b/core/helper.js": "import { util } from '../../pkg_a/core/util.js';\n",
+            "pkg_a/core/util.js": "export const util = 1;\n",
+        }
+
+        def patched_read(self, *args, **kwargs):
+            return contents.get(str(self), "")
+
+        with patch.object(Path, "read_text", patched_read):
+            coupling, circulars = analyze_coupling(list(contents.keys()))
+
+        assert len(circulars) == 1
+        pair = sorted(circulars[0])
+        assert pair == ["pkg_a.core", "pkg_b.core"]
+
+    def test_js_relative_imports_resolved_to_packages(self):
+        """JS relative imports should resolve to correct 2-level package names."""
+        from autocode.core.code.coupling import _extract_js_imports
+
+        # File in web/elements/graph/index.js importing from ../shared/styles.js
+        # Resolved: web/elements/shared/styles.js → package web.elements
+        content = "import { theme } from '../shared/styles.js';\n"
+        result = _extract_js_imports(
+            "web/elements/graph/index.js", content, {"web"}
+        )
+        assert len(result) == 1
+        src, tgt = result[0]
+        assert src == "web.elements"
+        assert tgt == "web.elements"  # same 2-level package

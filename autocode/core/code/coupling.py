@@ -2,21 +2,35 @@
 coupling.py
 Análisis de acoplamiento entre paquetes del proyecto.
 
-Extrae imports internos de archivos Python usando AST, calcula métricas
-de acoplamiento eferente (Ce) y aferente (Ca), instabilidad, y detecta
-dependencias circulares entre paquetes de 2 niveles (ej: autocode.core).
+Extrae imports internos de archivos Python (AST) y JavaScript (regex),
+calcula métricas de acoplamiento eferente (Ce) y aferente (Ca), instabilidad,
+y detecta dependencias circulares entre paquetes de 2 niveles (ej: autocode.core).
 
 Extraído de metrics.py (Commit 2) para SRP — un módulo, una responsabilidad.
+JS import extraction added in Commit 6.
 """
 
 import ast
 import logging
+import posixpath
+import re
 from collections import defaultdict
 from pathlib import Path
 
 from autocode.core.code.models import PackageCoupling
 
 logger = logging.getLogger(__name__)
+
+JS_EXTENSIONS = frozenset({".js", ".mjs", ".jsx"})
+
+# Matches: import ... from '...' and export ... from '...'
+# Captures the module specifier in the named group "module"
+JS_IMPORT_RE = re.compile(
+    r"""(?:import|export)\s+"""       # import or export keyword
+    r"""(?:.*?\s+from\s+)?"""          # optional: default/named/namespace + from
+    r"""['"](?P<module>[^'"]+)['"]""",  # quoted module specifier
+    re.MULTILINE,
+)
 
 
 def analyze_coupling(
@@ -50,7 +64,14 @@ def analyze_coupling(
         except Exception:
             continue
 
-        pairs = _extract_python_imports(fpath, content, top_pkgs)
+        ext = Path(fpath).suffix
+        if ext == ".py":
+            pairs = _extract_python_imports(fpath, content, top_pkgs)
+        elif ext in JS_EXTENSIONS:
+            pairs = _extract_js_imports(fpath, content, top_pkgs)
+        else:
+            continue
+
         for src_pkg, tgt_pkg in pairs:
             if src_pkg != tgt_pkg:
                 imports_by_pkg[src_pkg].add(tgt_pkg)
@@ -132,6 +153,68 @@ def _extract_python_imports(
             pairs.append((src_pkg, tgt_pkg))
 
     return pairs
+
+
+def _extract_js_imports(
+    fpath: str, content: str, top_pkgs: set[str]
+) -> list[tuple[str, str]]:
+    """Extract internal import pairs (src_pkg, tgt_pkg) from a JavaScript file.
+
+    Uses regex to find import/export-from statements. Only relative imports
+    (starting with './' or '../') are considered internal; bare specifiers
+    (e.g., 'lit', 'd3', 'lodash/get') are treated as external and skipped.
+
+    Relative paths are resolved against the file's directory to produce an
+    absolute project path, then mapped to a 2-level dotted package name.
+
+    Args:
+        fpath: Relative file path (e.g., "web/elements/graph/index.js")
+        content: File content string
+        top_pkgs: Set of known top-level project package names (unused for JS,
+                  kept for API symmetry with Python variant)
+
+    Returns:
+        List of (src_pkg, tgt_pkg) tuples. May include same-package pairs;
+        the caller is responsible for filtering those out.
+    """
+    src_pkg = _file_to_package(fpath)
+    file_dir = posixpath.dirname(fpath.replace("\\", "/"))
+
+    pairs: list[tuple[str, str]] = []
+
+    for match in JS_IMPORT_RE.finditer(content):
+        module = match.group("module")
+        # Only process relative imports (internal)
+        if not module.startswith("."):
+            continue
+
+        # Resolve relative path against file's directory
+        resolved = posixpath.normpath(posixpath.join(file_dir, module))
+        tgt_pkg = _file_to_package(resolved)
+
+        pairs.append((src_pkg, tgt_pkg))
+
+    return pairs
+
+
+def _file_to_package(fpath: str) -> str:
+    """Convert a file path to a 2-level dotted package name.
+
+    Examples:
+        "web/elements/graph/index.js" → "web.elements"
+        "autocode/core/code/metrics.py" → "autocode.core"
+        "setup.py" → "setup.py"
+
+    Args:
+        fpath: Relative file path
+
+    Returns:
+        Dotted 2-level package name
+    """
+    parts = fpath.replace("\\", "/").split("/")
+    if len(parts) >= 2:
+        return f"{parts[0]}.{parts[1]}"
+    return parts[0] if parts else fpath
 
 
 def _compute_coupling_metrics(

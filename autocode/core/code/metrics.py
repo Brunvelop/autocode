@@ -212,9 +212,8 @@ def _build_current_snapshot() -> MetricsSnapshot:
     for f in all_funcs:
         dist[f.rank] += 1
 
-    # Coupling (Python-only until commit 6 adds JS import analysis)
-    py_files = [f for f in all_files if f.endswith(".py")]
-    coupling, circulars = analyze_coupling(py_files)
+    # Coupling (Python + JS)
+    coupling, circulars = analyze_coupling(all_files)
 
     return MetricsSnapshot(
         commit_hash=git("rev-parse", "HEAD"),
