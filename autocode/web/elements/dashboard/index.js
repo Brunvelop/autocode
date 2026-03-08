@@ -9,6 +9,13 @@
  *   - Summary cards (6 métricas principales)
  *   - Content area placeholder
  *
+ * Commit 2: View tabs + breadcrumb + navegación
+ *   - 5 tabs: Files, Code, Treemap, Dependencies, Metrics
+ *   - Breadcrumb para navegación en árbol
+ *   - Reconstrucción de árbol desde nodos planos
+ *   - Navegación into/up
+ *   - Content area con placeholders por tab
+ *
  * Usa AutoFunctionController.executeFunction() para llamar al backend.
  */
 
@@ -20,15 +27,23 @@ export class CodeDashboard extends LitElement {
         // Data from API
         _snapshot: { state: true },
 
-        // Navigation state (placeholder for Commit 2)
+        // Navigation state
         _currentNodeId: { state: true },
 
-        // View mode (placeholder for Commit 2)
+        // View mode: 'files' | 'code' | 'treemap' | 'graph' | 'metrics'
         _viewMode: { state: true },
 
         // Loading / error
         _loading: { state: true },
         _error: { state: true },
+
+        // Internal tree cache (rebuilt from flat nodes)
+        _tree: { state: true },
+
+        // Lazy activation flags for embedded components
+        _filesActivated: { state: true },
+        _codeActivated: { state: true },
+        _metricsActivated: { state: true },
     };
 
     // Styles inline (Commit 3 extracts to separate file)
@@ -43,10 +58,12 @@ export class CodeDashboard extends LitElement {
         /* Design tokens */
         :host {
             --design-primary: #4f46e5;
+            --design-primary-dark: #4338ca;
             --design-text-primary: #1f2937;
             --design-text-secondary: #6b7280;
             --design-text-tertiary: #9ca3af;
             --design-bg-white: #ffffff;
+            --design-bg-gray-50: #f9fafb;
             --design-border-gray: #e5e7eb;
             --design-border-gray-light: #f3f4f6;
             --design-error-bg: #fef2f2;
@@ -59,6 +76,7 @@ export class CodeDashboard extends LitElement {
             --design-spacing-xl: 1.25rem;
             --design-spacing-3xl: 2rem;
             --design-radius-md: 0.5rem;
+            --design-radius-sm: 0.25rem;
             --design-font-size-sm: 0.75rem;
             --design-font-weight-medium: 500;
             --design-font-weight-semibold: 600;
@@ -172,7 +190,88 @@ export class CodeDashboard extends LitElement {
             right: 8px;
         }
 
-        /* ===== CONTENT AREA (placeholder) ===== */
+        /* ===== BREADCRUMB ===== */
+        .breadcrumb {
+            display: flex;
+            align-items: center;
+            gap: var(--design-spacing-xs);
+            font-size: var(--design-font-size-sm);
+            color: var(--design-text-secondary);
+            padding: var(--design-spacing-xs) 0;
+            flex-wrap: wrap;
+        }
+
+        .breadcrumb-segment {
+            cursor: pointer;
+            color: var(--design-primary);
+            font-weight: var(--design-font-weight-medium);
+            padding: 2px var(--design-spacing-xs);
+            border-radius: var(--design-radius-sm);
+            transition: background-color var(--design-transition-fast);
+            border: none;
+            background: none;
+            font-size: inherit;
+            font-family: inherit;
+        }
+
+        .breadcrumb-segment:hover {
+            background-color: var(--design-indigo-50);
+            color: var(--design-primary-dark);
+        }
+
+        .breadcrumb-segment.current {
+            color: var(--design-text-primary);
+            font-weight: var(--design-font-weight-semibold);
+            cursor: default;
+        }
+
+        .breadcrumb-segment.current:hover {
+            background-color: transparent;
+        }
+
+        .breadcrumb-separator {
+            color: var(--design-text-tertiary);
+            font-size: 10px;
+            user-select: none;
+        }
+
+        /* ===== VIEW TABS ===== */
+        .view-tabs {
+            display: flex;
+            gap: var(--design-spacing-xs);
+            border-bottom: 1px solid var(--design-border-gray);
+            padding-bottom: 0;
+        }
+
+        .view-tab {
+            padding: var(--design-spacing-xs) var(--design-spacing-md);
+            background: transparent;
+            border: 1px solid transparent;
+            border-bottom: 2px solid transparent;
+            border-radius: var(--design-radius-md) var(--design-radius-md) 0 0;
+            color: var(--design-text-secondary);
+            font-size: 12px;
+            font-weight: var(--design-font-weight-medium);
+            cursor: pointer;
+            transition: all var(--design-transition-fast);
+            font-family: inherit;
+            display: flex;
+            align-items: center;
+            gap: var(--design-spacing-xs);
+        }
+
+        .view-tab:hover {
+            color: var(--design-text-primary);
+            background: var(--design-bg-gray-50);
+        }
+
+        .view-tab.active {
+            color: var(--design-primary);
+            border-bottom-color: var(--design-primary);
+            background: var(--design-indigo-50);
+        }
+
+        /* ===== CONTENT AREA ===== */
         .content-area {
             flex: 1;
             min-height: 200px;
@@ -217,11 +316,23 @@ export class CodeDashboard extends LitElement {
         this._viewMode = 'treemap';
         this._loading = false;
         this._error = null;
+        this._tree = null;
+        this._filesActivated = false;
+        this._codeActivated = false;
+        this._metricsActivated = false;
     }
 
     connectedCallback() {
         super.connectedCallback();
         this.refresh();
+
+        // Listen for navigation events from child components (treemap, graph)
+        this.addEventListener('navigate-into', this._handleNavigateInto.bind(this));
+    }
+
+    disconnectedCallback() {
+        super.disconnectedCallback();
+        this.removeEventListener('navigate-into', this._handleNavigateInto.bind(this));
     }
 
     // ========================================================================
@@ -238,6 +349,11 @@ export class CodeDashboard extends LitElement {
             );
             this._snapshot = result;
             this._currentNodeId = result?.root_id || '.';
+
+            // Build tree from flat nodes
+            if (result?.nodes) {
+                this._tree = this._buildTreeFromNodes(result.nodes, result.root_id);
+            }
         } catch (e) {
             this._error = e.message || 'Error cargando arquitectura';
         } finally {
@@ -275,6 +391,9 @@ export class CodeDashboard extends LitElement {
         return html`
             <div class="dashboard">
                 ${this._renderSummary(snap)}
+                ${this._viewMode === 'treemap' || this._viewMode === 'graph'
+                    ? this._renderBreadcrumb() : ''}
+                ${this._renderViewTabs()}
                 ${this._renderContentArea()}
                 ${this._renderSnapshotInfo(snap)}
             </div>
@@ -311,18 +430,148 @@ export class CodeDashboard extends LitElement {
     }
 
     // ========================================================================
-    // CONTENT AREA (placeholder for Commit 2)
+    // BREADCRUMB
+    // ========================================================================
+
+    _renderBreadcrumb() {
+        const segments = this._getPathSegments();
+
+        return html`
+            <div class="breadcrumb">
+                ${segments.map((seg, i) => {
+                    const isLast = i === segments.length - 1;
+                    return html`
+                        ${i > 0 ? html`<span class="breadcrumb-separator">›</span>` : ''}
+                        <button
+                            class="breadcrumb-segment ${isLast ? 'current' : ''}"
+                            @click=${() => { if (!isLast) this._navigateUp(seg.id); }}
+                            ?disabled=${isLast}
+                        >${seg.name}</button>
+                    `;
+                })}
+            </div>
+        `;
+    }
+
+    /**
+     * Build breadcrumb segments from root to current node.
+     * Walks the flat node list upward via parent_id.
+     * @returns {Array<{id: string, name: string}>}
+     */
+    _getPathSegments() {
+        if (!this._snapshot?.nodes) return [{ id: '.', name: '📊 root' }];
+
+        const nodeMap = new Map(this._snapshot.nodes.map(n => [n.id, n]));
+        const segments = [];
+        let currentId = this._currentNodeId;
+
+        // Walk up to root
+        while (currentId != null) {
+            const node = nodeMap.get(currentId);
+            if (!node) break;
+            segments.unshift({
+                id: node.id,
+                name: node.id === this._snapshot.root_id ? '📊 root' : node.name,
+            });
+            currentId = node.parent_id;
+        }
+
+        return segments.length > 0 ? segments : [{ id: '.', name: '📊 root' }];
+    }
+
+    // ========================================================================
+    // VIEW TABS
+    // ========================================================================
+
+    _renderViewTabs() {
+        const tabs = [
+            { id: 'files',   label: '📁 Files' },
+            { id: 'code',    label: '🧬 Code' },
+            { id: 'treemap', label: '🗺️ Treemap' },
+            { id: 'graph',   label: '🔗 Dependencies' },
+            { id: 'metrics', label: '📊 Metrics' },
+        ];
+
+        return html`
+            <div class="view-tabs">
+                ${tabs.map(tab => html`
+                    <button
+                        class="view-tab ${this._viewMode === tab.id ? 'active' : ''}"
+                        @click=${() => this._setViewMode(tab.id)}
+                    >${tab.label}</button>
+                `)}
+            </div>
+        `;
+    }
+
+    // ========================================================================
+    // CONTENT AREA
     // ========================================================================
 
     _renderContentArea() {
-        return html`
-            <div class="content-area">
-                <div class="content-placeholder">
-                    <span class="content-placeholder-icon">📊</span>
-                    <span>Content area — tabs coming in Commit 2</span>
+        const mode = this._viewMode;
+
+        // Files tab — placeholder (Commit 8 integrates file-explorer)
+        if (mode === 'files') {
+            return html`
+                <div class="content-area">
+                    <div class="content-placeholder">
+                        <span class="content-placeholder-icon">📁</span>
+                        <span>File Explorer — coming in Commit 8</span>
+                    </div>
                 </div>
-            </div>
-        `;
+            `;
+        }
+
+        // Code tab — placeholder (Commit 8 integrates code-explorer)
+        if (mode === 'code') {
+            return html`
+                <div class="content-area">
+                    <div class="content-placeholder">
+                        <span class="content-placeholder-icon">🧬</span>
+                        <span>Code Explorer — coming in Commit 8</span>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Treemap tab — placeholder (Commit 4 integrates treemap-view)
+        if (mode === 'treemap') {
+            return html`
+                <div class="content-area">
+                    <div class="content-placeholder">
+                        <span class="content-placeholder-icon">🗺️</span>
+                        <span>Treemap View — coming in Commit 4</span>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Dependencies graph tab — placeholder (Commit 5 integrates dependency-graph)
+        if (mode === 'graph') {
+            return html`
+                <div class="content-area">
+                    <div class="content-placeholder">
+                        <span class="content-placeholder-icon">🔗</span>
+                        <span>Dependency Graph — coming in Commit 5</span>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Metrics tab — placeholder (Commit 8 integrates metrics-panel)
+        if (mode === 'metrics') {
+            return html`
+                <div class="content-area">
+                    <div class="content-placeholder">
+                        <span class="content-placeholder-icon">📊</span>
+                        <span>Metrics Panel — coming in Commit 6-8</span>
+                    </div>
+                </div>
+            `;
+        }
+
+        return html``;
     }
 
     // ========================================================================
@@ -335,6 +584,110 @@ export class CodeDashboard extends LitElement {
                 📊 Commit ${snap.commit_short} · ${snap.branch} · ${this._formatDate(snap.timestamp)}
             </div>
         `;
+    }
+
+    // ========================================================================
+    // VIEW MODE MANAGEMENT
+    // ========================================================================
+
+    /**
+     * Change the active view tab.
+     * Activates lazy-loaded components on first access.
+     * @param {'files'|'code'|'treemap'|'graph'|'metrics'} mode
+     */
+    _setViewMode(mode) {
+        if (this._viewMode === mode) return;
+        this._viewMode = mode;
+
+        if (mode === 'files') this._filesActivated = true;
+        if (mode === 'code') this._codeActivated = true;
+        if (mode === 'metrics') this._metricsActivated = true;
+    }
+
+    // ========================================================================
+    // TREE BUILDING
+    // ========================================================================
+
+    /**
+     * Reconstruct a nested tree from flat adjacency-list nodes.
+     *
+     * @param {Array} nodes - Flat list of nodes with parent_id
+     * @param {string} rootId - ID of the root node
+     * @returns {Object|null} Root node with nested children arrays
+     */
+    _buildTreeFromNodes(nodes, rootId) {
+        if (!nodes || nodes.length === 0) return null;
+
+        // Create map id → node (copy to avoid mutating original)
+        const nodeMap = new Map();
+        for (const node of nodes) {
+            nodeMap.set(node.id, { ...node, children: [] });
+        }
+
+        // Build parent-child relationships
+        for (const node of nodeMap.values()) {
+            if (node.parent_id && nodeMap.has(node.parent_id)) {
+                const parent = nodeMap.get(node.parent_id);
+                parent.children.push(node);
+            }
+        }
+
+        // Sort children: directories first, then by name
+        for (const node of nodeMap.values()) {
+            if (node.children.length > 0) {
+                node.children.sort((a, b) => {
+                    if (a.type === 'directory' && b.type !== 'directory') return -1;
+                    if (a.type !== 'directory' && b.type === 'directory') return 1;
+                    return a.name.localeCompare(b.name);
+                });
+            } else {
+                node.children = null;
+            }
+        }
+
+        return nodeMap.get(rootId) || null;
+    }
+
+    /**
+     * Get the subtree rooted at _currentNodeId.
+     */
+    _getCurrentSubtree() {
+        if (!this._tree) return null;
+        if (this._currentNodeId === this._snapshot?.root_id) return this._tree;
+        return this._findNode(this._tree, this._currentNodeId);
+    }
+
+    /**
+     * DFS to find a node by id in a nested tree.
+     */
+    _findNode(node, targetId) {
+        if (!node) return null;
+        if (node.id === targetId) return node;
+        if (!node.children) return null;
+        for (const child of node.children) {
+            const found = this._findNode(child, targetId);
+            if (found) return found;
+        }
+        return null;
+    }
+
+    // ========================================================================
+    // NAVIGATION
+    // ========================================================================
+
+    _navigateInto(nodeId) {
+        this._currentNodeId = nodeId;
+    }
+
+    _navigateUp(nodeId) {
+        this._currentNodeId = nodeId;
+    }
+
+    _handleNavigateInto(e) {
+        const nodeId = e.detail?.nodeId;
+        if (nodeId) {
+            this._navigateInto(nodeId);
+        }
     }
 
     // ========================================================================
