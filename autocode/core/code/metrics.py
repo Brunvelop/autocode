@@ -285,60 +285,20 @@ def _analyze_commit(commit_hash: str) -> CommitMetrics:
     parents_str = git("log", "-1", "--format=%P", full_hash)
     parents = parents_str.split() if parents_str else []
 
-    # Get changed .py files
-    if parents:
-        diff_output = git("diff-tree", "--no-commit-id", "-r", "--name-status", parents[0], full_hash)
-    else:
-        diff_output = git("diff-tree", "--no-commit-id", "-r", "--name-status", full_hash)
+    # Get changed files (Python + JS)
+    changed_files = _get_commit_changed_files(full_hash, parents)
 
+    # Analyze each file pair
     file_metrics: list[CommitFileMetrics] = []
     total_delta_sloc = 0
     total_delta_cc = 0.0
     count_cc = 0
 
-    for line in diff_output.strip().split("\n"):
-        if not line or "\t" not in line:
-            continue
-        parts = line.split("\t")
-        if len(parts) < 2:
-            continue
-        status_letter = parts[0].strip()[0]
-        fpath = parts[-1].strip()
-
-        ext = Path(fpath).suffix
-        if ext != ".py" and ext not in JS_EXTENSIONS:
-            continue
-
-        status = {"A": "added", "M": "modified", "D": "deleted"}.get(status_letter, "modified")
-
-        before_fm = None
-        after_fm = None
-
-        # Get "before" content (from parent)
-        if status != "added" and parents:
-            before_content = git_show(f"{parents[0]}:{fpath}")
-            if before_content:
-                before_fm = analyze_file_metrics(fpath, before_content)
-
-        # Get "after" content (from this commit)
-        if status != "deleted":
-            after_content = git_show(f"{full_hash}:{fpath}")
-            if after_content:
-                after_fm = analyze_file_metrics(fpath, after_content)
-
-        d_sloc = (after_fm.sloc if after_fm else 0) - (before_fm.sloc if before_fm else 0)
-        d_cc = (after_fm.avg_complexity if after_fm else 0) - (before_fm.avg_complexity if before_fm else 0)
-        d_mi = (after_fm.maintainability_index if after_fm else 0) - (before_fm.maintainability_index if before_fm else 0)
-
-        file_metrics.append(CommitFileMetrics(
-            path=fpath, status=status,
-            before=before_fm, after=after_fm,
-            delta_sloc=d_sloc,
-            delta_complexity=round(d_cc, 2),
-            delta_mi=round(d_mi, 1),
-        ))
-        total_delta_sloc += d_sloc
-        total_delta_cc += d_cc
+    for status, fpath in changed_files:
+        cfm = _analyze_file_pair(fpath, status, parents, full_hash)
+        file_metrics.append(cfm)
+        total_delta_sloc += cfm.delta_sloc
+        total_delta_cc += cfm.delta_complexity
         count_cc += 1
 
     avg_delta_cc = round(total_delta_cc / count_cc, 2) if count_cc else 0
@@ -352,6 +312,107 @@ def _analyze_commit(commit_hash: str) -> CommitMetrics:
             "delta_avg_complexity": avg_delta_cc,
             "files_analyzed": len(file_metrics),
         },
+    )
+
+
+def _get_commit_changed_files(
+    full_hash: str, parents: list[str]
+) -> list[tuple[str, str]]:
+    """Parse git diff-tree output and return changed files with their status.
+
+    Runs git diff-tree to get the list of files changed in a commit,
+    filters to only Python and JavaScript files, and maps git status
+    letters to human-readable status strings.
+
+    Args:
+        full_hash: Full commit hash
+        parents: List of parent commit hashes (empty for initial commit)
+
+    Returns:
+        List of (status, filepath) tuples where status is one of
+        'added', 'modified', 'deleted'
+    """
+    if parents:
+        diff_output = git(
+            "diff-tree", "--no-commit-id", "-r", "--name-status",
+            parents[0], full_hash,
+        )
+    else:
+        diff_output = git(
+            "diff-tree", "--no-commit-id", "-r", "--name-status", full_hash,
+        )
+
+    changed: list[tuple[str, str]] = []
+    for line in diff_output.strip().split("\n"):
+        if not line or "\t" not in line:
+            continue
+        parts = line.split("\t")
+        if len(parts) < 2:
+            continue
+
+        status_letter = parts[0].strip()[0]
+        fpath = parts[-1].strip()
+
+        ext = Path(fpath).suffix
+        if ext != ".py" and ext not in JS_EXTENSIONS:
+            continue
+
+        status = {"A": "added", "M": "modified", "D": "deleted"}.get(
+            status_letter, "modified"
+        )
+        changed.append((status, fpath))
+
+    return changed
+
+
+def _analyze_file_pair(
+    fpath: str, status: str, parents: list[str], full_hash: str
+) -> CommitFileMetrics:
+    """Analyze before/after metrics for a single file in a commit.
+
+    Retrieves file content at the parent and current commit using git show,
+    runs analyze_file_metrics on both versions, and computes deltas.
+
+    Args:
+        fpath: Relative file path
+        status: One of 'added', 'modified', 'deleted'
+        parents: List of parent commit hashes
+        full_hash: Full commit hash
+
+    Returns:
+        CommitFileMetrics with before/after analysis and deltas
+    """
+    before_fm = None
+    after_fm = None
+
+    # Get "before" content (from parent)
+    if status != "added" and parents:
+        before_content = git_show(f"{parents[0]}:{fpath}")
+        if before_content:
+            before_fm = analyze_file_metrics(fpath, before_content)
+
+    # Get "after" content (from this commit)
+    if status != "deleted":
+        after_content = git_show(f"{full_hash}:{fpath}")
+        if after_content:
+            after_fm = analyze_file_metrics(fpath, after_content)
+
+    d_sloc = (after_fm.sloc if after_fm else 0) - (before_fm.sloc if before_fm else 0)
+    d_cc = (after_fm.avg_complexity if after_fm else 0) - (
+        before_fm.avg_complexity if before_fm else 0
+    )
+    d_mi = (after_fm.maintainability_index if after_fm else 0) - (
+        before_fm.maintainability_index if before_fm else 0
+    )
+
+    return CommitFileMetrics(
+        path=fpath,
+        status=status,
+        before=before_fm,
+        after=after_fm,
+        delta_sloc=d_sloc,
+        delta_complexity=round(d_cc, 2),
+        delta_mi=round(d_mi, 1),
     )
 
 

@@ -339,7 +339,27 @@ def _resolve_file_dependencies(
     # --- JS files (regex) ---
     _collect_js_file_deps(js_files, file_set, edges)
 
-    # Build FileDependency list
+    # Build FileDependency list and detect circulars
+    dependencies = _build_dependency_list(edges)
+    circular_dependencies = _detect_circular_pairs(edges)
+
+    return dependencies, circular_dependencies
+
+
+def _build_dependency_list(
+    edges: Dict[Tuple[str, str], Set[str]],
+) -> List[FileDependency]:
+    """Convert raw edge dict to a sorted list of FileDependency objects.
+
+    Merges all import names for each (source, target) pair into a single
+    FileDependency with sorted import_names.
+
+    Args:
+        edges: Dict mapping (source_file, target_file) → set of import names
+
+    Returns:
+        Sorted list of FileDependency objects
+    """
     dependencies: List[FileDependency] = []
     for (source, target), names in sorted(edges.items()):
         dependencies.append(
@@ -349,8 +369,20 @@ def _resolve_file_dependencies(
                 import_names=sorted(names),
             )
         )
+    return dependencies
 
-    # Detect circular dependencies (A→B and B→A)
+
+def _detect_circular_pairs(
+    edges: Dict[Tuple[str, str], Set[str]],
+) -> List[List[str]]:
+    """Detect circular dependencies (A→B and B→A) in the edge set.
+
+    Args:
+        edges: Dict mapping (source_file, target_file) → set of import names
+
+    Returns:
+        List of [file_a, file_b] pairs (sorted) where both directions exist
+    """
     circular_dependencies: List[List[str]] = []
     seen_pairs: Set[Tuple[str, str]] = set()
     edge_keys = set(edges.keys())
@@ -362,7 +394,7 @@ def _resolve_file_dependencies(
                 seen_pairs.add(pair)
                 circular_dependencies.append(list(pair))
 
-    return dependencies, circular_dependencies
+    return circular_dependencies
 
 
 def _collect_python_file_deps(

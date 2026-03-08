@@ -262,7 +262,6 @@ def _build_tree_from_git_files(
         include_imports: Si incluir nodos de import
         nodes: Lista de nodos a poblar (se modifica in-place)
     """
-    # Determinar si es el root del proyecto
     is_project_root = root_id == '.'
     
     # Crear nodo raíz
@@ -282,14 +281,8 @@ def _build_tree_from_git_files(
     
     # Procesar cada archivo
     for file_path in file_paths:
-        # Calcular path relativo al root
-        if is_project_root:
-            # Para root del proyecto, el relative_path es el file_path completo
-            relative_path = file_path
-        elif file_path.startswith(root_id):
-            relative_path = file_path[len(root_id):].lstrip('/\\')
-        else:
-            # Archivo no está dentro del root solicitado
+        relative_path = _get_relative_path(file_path, root_id, is_project_root)
+        if relative_path is None:
             continue
         
         # Verificar profundidad
@@ -298,41 +291,87 @@ def _build_tree_from_git_files(
             if path_depth > depth:
                 continue
         
-        # Crear directorios intermedios
+        # Crear directorios intermedios y obtener el parent_id del archivo
         parts = relative_path.replace('\\', '/').split('/')
-        current_path = root_id
-        
-        for i, part in enumerate(parts[:-1]):  # Todos menos el último (el archivo)
-            # Construir dir_path correctamente
-            # Para root del proyecto, no usar "./" como prefijo
-            if is_project_root and current_path == '.':
-                dir_path = part
-            elif current_path and current_path != '.':
-                dir_path = f"{current_path}/{part}"
-            else:
-                dir_path = part
-            
-            if dir_path not in created_dirs:
-                parent_id = current_path if current_path in created_dirs else root_id
-                dir_node = CodeNode(
-                    id=dir_path,
-                    parent_id=parent_id,
-                    name=part,
-                    type="directory",
-                    path=dir_path,
-                    loc=0
-                )
-                nodes.append(dir_node)
-                created_dirs[dir_path] = dir_node
-            
-            current_path = dir_path
+        parent_id = _ensure_directory_chain(
+            parts[:-1], root_id, is_project_root, created_dirs, nodes
+        )
         
         # Agregar nodos del archivo
-        parent_id = current_path if current_path in created_dirs else root_id
         file_loc = _add_file_nodes(Path(file_path), include_imports, nodes, parent_id)
         
         # Actualizar LOC de directorios padres
         _update_parent_loc(created_dirs, parent_id, file_loc, root_id)
+
+
+def _get_relative_path(
+    file_path: str, root_id: str, is_project_root: bool
+) -> Optional[str]:
+    """Calculate the relative path of a file within the root.
+
+    Args:
+        file_path: Absolute or project-relative file path
+        root_id: ID of the root node
+        is_project_root: Whether root_id is '.' (project root)
+
+    Returns:
+        Relative path string, or None if file is outside the root
+    """
+    if is_project_root:
+        return file_path
+    if file_path.startswith(root_id):
+        return file_path[len(root_id):].lstrip('/\\')
+    return None
+
+
+def _ensure_directory_chain(
+    dir_parts: List[str],
+    root_id: str,
+    is_project_root: bool,
+    created_dirs: Dict[str, CodeNode],
+    nodes: List[CodeNode],
+) -> str:
+    """Create intermediate directory nodes for a file path.
+
+    Iterates through the directory components of a file path, creating
+    CodeNode entries for any directories that don't exist yet.
+
+    Args:
+        dir_parts: List of directory name components (excluding the filename)
+        root_id: ID of the root node
+        is_project_root: Whether root_id is '.' (project root)
+        created_dirs: Dict of already-created directory nodes (modified in-place)
+        nodes: List of all nodes (modified in-place)
+
+    Returns:
+        The parent_id to use for the file node
+    """
+    current_path = root_id
+
+    for part in dir_parts:
+        if is_project_root and current_path == '.':
+            dir_path = part
+        elif current_path and current_path != '.':
+            dir_path = f"{current_path}/{part}"
+        else:
+            dir_path = part
+
+        if dir_path not in created_dirs:
+            parent_id = current_path if current_path in created_dirs else root_id
+            dir_node = CodeNode(
+                id=dir_path,
+                parent_id=parent_id,
+                name=part,
+                type="directory",
+                path=dir_path,
+                loc=0
+            )
+            nodes.append(dir_node)
+            created_dirs[dir_path] = dir_node
+
+        current_path = dir_path
+
+    return current_path if current_path in created_dirs else root_id
 
 
 def _update_parent_loc(
