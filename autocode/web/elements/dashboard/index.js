@@ -23,6 +23,7 @@ import { LitElement, html } from 'https://cdn.jsdelivr.net/gh/lit/dist@3/core/li
 import { AutoFunctionController } from '../auto-element-generator.js';
 import { themeTokens } from './styles/theme.js';
 import { codeDashboardStyles } from './styles/code-dashboard.styles.js';
+import './treemap-view.js';
 
 export class CodeDashboard extends LitElement {
     static properties = {
@@ -277,14 +278,12 @@ export class CodeDashboard extends LitElement {
             `;
         }
 
-        // Treemap tab — placeholder (Commit 4 integrates treemap-view)
+        // Treemap tab — renders <treemap-view> with current subtree
         if (mode === 'treemap') {
+            const subtree = this._getCurrentSubtree();
             return html`
                 <div class="content-area">
-                    <div class="content-placeholder">
-                        <span class="content-placeholder-icon">🗺️</span>
-                        <span>Treemap View — coming in Commit 4</span>
-                    </div>
+                    <treemap-view .node=${subtree}></treemap-view>
                 </div>
             `;
         }
