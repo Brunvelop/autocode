@@ -19,7 +19,6 @@ import './commit-node.js';
 import './commit-detail.js';
 import './commit-plan-node.js';
 import './commit-plan-detail.js';
-import '../architecture/index.js';
 
 export class GitGraph extends LitElement {
     static properties = {
@@ -36,9 +35,6 @@ export class GitGraph extends LitElement {
 
         // Graph layout computed data
         _layoutData: { state: true },
-
-        // Code Explorer panel toggle (unified: files, treemap, deps, metrics)
-        _showExplorer: { state: true },
 
         // Collapsible commit panel
         _panelCollapsed: { state: true },
@@ -62,7 +58,6 @@ export class GitGraph extends LitElement {
         this._loading = false;
         this._error = null;
         this._layoutData = null;
-        this._showExplorer = false;
         this._panelCollapsed = false;
         this._plans = [];
         this._selectedPlan = null;
@@ -152,11 +147,6 @@ export class GitGraph extends LitElement {
                             </option>
                         `)}
                     </select>
-                    <button 
-                        class="action-btn ${this._showExplorer ? 'active' : ''}" 
-                        @click=${() => { this._showExplorer = !this._showExplorer; }}
-                        title="Code Explorer"
-                    >🗂️</button>
                     <button class="action-btn" @click=${this.refresh} title="Recargar">
                         🔄
                     </button>
@@ -252,18 +242,15 @@ export class GitGraph extends LitElement {
     // ========================================================================
 
     _renderDetailPanel() {
-        const showExplorer = this._showExplorer;
-        const showPlanDetail = !showExplorer && this._selectedPlan;
-        const showCommitDetail = !showExplorer && !this._selectedPlan && this._selectedCommit;
-        const showPlaceholder = !showExplorer && !this._selectedPlan && !this._selectedCommit;
+        const showPlanDetail = this._selectedPlan;
+        const showCommitDetail = !this._selectedPlan && this._selectedCommit;
+        const showPlaceholder = !this._selectedPlan && !this._selectedCommit;
 
         return html`
             <div class="detail-panel">
                 ${this._panelCollapsed ? html`
                     <button class="panel-toggle-collapsed" @click=${() => { this._panelCollapsed = false; }} title="Mostrar commits">▶</button>
                 ` : ''}
-                <!-- Code Explorer: unified panel (files, treemap, deps, metrics) -->
-                <architecture-dashboard style="display: ${showExplorer ? 'block' : 'none'}; height: 100%;"></architecture-dashboard>
                 ${showPlanDetail ? html`
                     <commit-plan-detail
                         .planId=${this._selectedPlan.id}
@@ -277,12 +264,8 @@ export class GitGraph extends LitElement {
                 ` : ''}
                 ${showPlaceholder ? html`
                     <div class="detail-placeholder">
-                        <span class="detail-placeholder-icon">${this._panelCollapsed ? '🗂️' : '👈'}</span>
-                        <span class="detail-placeholder-text">
-                            ${this._panelCollapsed 
-                                ? 'Usa 🗂️ para explorar el código, o expande el panel de commits'
-                                : 'Selecciona un commit para ver sus detalles'}
-                        </span>
+                        <span class="detail-placeholder-icon">👈</span>
+                        <span class="detail-placeholder-text">Selecciona un commit para ver sus detalles</span>
                     </div>
                 ` : ''}
             </div>

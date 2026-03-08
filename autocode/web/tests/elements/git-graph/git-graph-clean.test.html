@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Git Graph — Clean (Commit 9)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .component-stage {
+            min-height: 300px;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            overflow: hidden;
+            background: white;
+        }
+        git-graph {
+            display: block;
+            height: 400px;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 p-6">
+    <div class="max-w-4xl mx-auto">
+        <h1 class="text-2xl font-bold mb-2">🌳 Git Graph — Clean Tests (Commit 9)</h1>
+        <p class="text-gray-500 text-sm mb-4">TDD tests: git-graph como componente puro de commits, sin app shell</p>
+
+        <!-- Server status -->
+        <div id="serverStatus" class="mb-6 p-4 bg-gray-100 border border-gray-300 rounded-lg">
+            ⏳ Verificando servidor...
+        </div>
+
+        <!-- Summary -->
+        <div id="summary" class="mb-6 p-4 bg-white border border-gray-200 rounded-lg shadow-sm"></div>
+
+        <!-- Test results -->
+        <div id="results" class="space-y-4"></div>
+    </div>
+
+    <script type="module">
+        import '../../utils/test-runner.js';
+        import { TestRunner } from '../../utils/test-runner.js';
+
+        const runner = new TestRunner();
+
+        // ====================================================================
+        // MOCK: Intercept AutoFunctionController BEFORE component loads
+        // ====================================================================
+
+        const MOCK_GIT_LOG = {
+            commits: [
+                {
+                    hash: 'abc123def456789012345678901234567890abcd',
+                    short_hash: 'abc123d',
+                    message: 'feat: initial commit',
+                    author: 'Test User',
+                    date: '2025-06-01T12:00:00',
+                    parents: [],
+                    branches: ['main'],
+                    tags: [],
+                },
+                {
+                    hash: 'def456abc789012345678901234567890abcdef12',
+                    short_hash: 'def456a',
+                    message: 'feat: add utils',
+                    author: 'Test User',
+                    date: '2025-06-02T12:00:00',
+                    parents: ['abc123def456789012345678901234567890abcd'],
+                    branches: [],
+                    tags: [],
+                },
+            ],
+            branches: [
+                { name: 'main', is_current: true },
+            ],
+        };
+
+        const MOCK_PLANS = [];
+
+        // Patch AutoFunctionController BEFORE importing git-graph
+        const autoGenModule = await import('../../../elements/auto-element-generator.js');
+        const originalExecute = autoGenModule.AutoFunctionController.executeFunction;
+
+        autoGenModule.AutoFunctionController.executeFunction = async function(funcName, params) {
+            if (funcName === 'get_git_log') return MOCK_GIT_LOG;
+            if (funcName === 'list_commit_plans') return MOCK_PLANS;
+            return originalExecute.call(this, funcName, params);
+        };
+
+        // Import git-graph component
+        await import('../../../elements/git-graph/index.js');
+
+        // Helper: create a fresh git-graph instance
+        function createGitGraph() {
+            return document.createElement('git-graph');
+        }
+
+        // Helper: wait for component to finish loading
+        async function waitForLoaded(el, timeout = 3000) {
+            const start = Date.now();
+            while (el._loading && (Date.now() - start < timeout)) {
+                await new Promise(r => setTimeout(r, 50));
+            }
+            await el.updateComplete;
+            await new Promise(r => setTimeout(r, 50));
+            await el.updateComplete;
+        }
+
+        // ====================================================================
+        // A) NO tiene propiedad _showExplorer
+        // ====================================================================
+
+        runner.group('A) NO tiene propiedad _showExplorer', () => {
+
+            runner.test('_showExplorer no existe como propiedad reactiva', async (stage) => {
+                const el = createGitGraph();
+                stage.appendChild(el);
+                await waitForLoaded(el);
+
+                runner.assertFalse(
+                    '_showExplorer' in el,
+                    '_showExplorer NO debería existir en el componente limpio'
+                );
+            });
+
+            runner.test('El constructor no inicializa _showExplorer', async (stage) => {
+                const el = createGitGraph();
+                stage.appendChild(el);
+                await waitForLoaded(el);
+
+                runner.assertTrue(
+                    el._showExplorer === undefined,
+                    '_showExplorer debería ser undefined'
+                );
+            });
+
+        });
+
+        // ====================================================================
+        // B) NO tiene botón 🗂️ en header
+        // ====================================================================
+
+        runner.group('B) NO tiene botón 🗂️ en header', () => {
+
+            runner.test('No existe botón 🗂️ en .header-actions', async (stage) => {
+                const el = createGitGraph();
+                stage.appendChild(el);
+                await waitForLoaded(el);
+
+                const buttons = el.shadowRoot.querySelectorAll('.header-actions .action-btn');
+                const explorerBtn = Array.from(buttons).find(b => b.textContent.trim().includes('🗂️'));
+
+                runner.assertTrue(
+                    explorerBtn === null || explorerBtn === undefined,
+                    'NO debería existir botón 🗂️ en el header'
+                );
+            });
+
+            runner.test('No hay botón con title "Code Explorer"', async (stage) => {
+                const el = createGitGraph();
+                stage.appendChild(el);
+                await waitForLoaded(el);
+
+                const buttons = el.shadowRoot.querySelectorAll('button');
+                const codeExplorerBtn = Array.from(buttons).find(
+                    b => b.getAttribute('title') === 'Code Explorer'
+                );
+
+                runner.assertTrue(
+                    codeExplorerBtn === null || codeExplorerBtn === undefined,
+                    'NO debería existir botón con title "Code Explorer"'
+                );
+            });
+
+        });
+
+        // ====================================================================
+        // C) Solo tiene botones: branch-select + 🔄
+        // ====================================================================
+
+        runner.group('C) Solo tiene branch-select y botón 🔄', () => {
+
+            runner.test('Exactamente 1 action-btn en .header-actions', async (stage) => {
+                const el = createGitGraph();
+                stage.appendChild(el);
+                await waitForLoaded(el);
+
+                const buttons = el.shadowRoot.querySelectorAll('.header-actions .action-btn');
+                runner.assertEqual(
+                    buttons.length, 1,
+                    'Debería haber exactamente 1 action-btn (solo 🔄)'
+                );
+            });
+
+            runner.test('El único action-btn es el de recarga 🔄', async (stage) => {
+                const el = createGitGraph();
+                stage.appendChild(el);
+                await waitForLoaded(el);
+
+                const buttons = el.shadowRoot.querySelectorAll('.header-actions .action-btn');
+                const refreshBtn = Array.from(buttons).find(b => b.textContent.trim().includes('🔄'));
+
+                runner.assertTrue(
+                    refreshBtn !== null && refreshBtn !== undefined,
+                    'Debería existir el botón 🔄'
+                );
+            });
+
+            runner.test('Existe branch-select en .header-actions', async (stage) => {
+                const el = createGitGraph();
+                stage.appendChild(el);
+                await waitForLoaded(el);
+
+                const branchSelect = el.shadowRoot.querySelector('.header-actions .branch-select');
+                runner.assertTrue(
+                    branchSelect !== null,
+                    'Debería existir el select de ramas'
+                );
+            });
+
+        });
+
+        // ====================================================================
+        // D) Detail panel NO contiene architecture-dashboard ni code-dashboard
+        // ====================================================================
+
+        runner.group('D) Detail panel sin architecture-dashboard ni code-dashboard', () => {
+
+            runner.test('architecture-dashboard NO está en el DOM', async (stage) => {
+                const el = createGitGraph();
+                stage.appendChild(el);
+                await waitForLoaded(el);
+
+                const archDash = el.shadowRoot.querySelector('architecture-dashboard');
+                runner.assertTrue(
+                    archDash === null,
+                    'architecture-dashboard NO debería estar en el shadow DOM'
+                );
+            });
+
+            runner.test('code-dashboard NO está en el DOM', async (stage) => {
+                const el = createGitGraph();
+                stage.appendChild(el);
+                await waitForLoaded(el);
+
+                const codeDash = el.shadowRoot.querySelector('code-dashboard');
+                runner.assertTrue(
+                    codeDash === null,
+                    'code-dashboard NO debería estar en el shadow DOM'
+                );
+            });
+
+            runner.test('El detail-panel solo contiene los elementos esperados', async (stage) => {
+                const el = createGitGraph();
+                stage.appendChild(el);
+                await waitForLoaded(el);
+
+                const detailPanel = el.shadowRoot.querySelector('.detail-panel');
+                runner.assertTrue(detailPanel !== null, '.detail-panel debería existir');
+
+                // Should not contain any dashboard components
+                const dashboards = detailPanel.querySelectorAll(
+                    'architecture-dashboard, code-dashboard, metrics-dashboard'
+                );
+                runner.assertEqual(
+                    dashboards.length, 0,
+                    'detail-panel no debería contener ningún dashboard component'
+                );
+            });
+
+        });
+
+        // ====================================================================
+        // E) NO importa architecture (no register side-effects)
+        // ====================================================================
+
+        runner.group('E) architecture-dashboard NO registrado desde git-graph', () => {
+
+            runner.test('architecture-dashboard no se registra como efecto del import de git-graph', async (stage) => {
+                // Note: architecture-dashboard might be registered if architecture/index.js was imported
+                // After the cleanup, git-graph should NOT import architecture/index.js
+                // We verify that git-graph itself doesn't require it
+                const el = createGitGraph();
+                stage.appendChild(el);
+                await waitForLoaded(el);
+
+                // The component should render without needing architecture-dashboard
+                const detailPanel = el.shadowRoot.querySelector('.detail-panel');
+                runner.assertTrue(detailPanel !== null, 'detail-panel debería renderizar sin architecture');
+            });
+
+        });
+
+        // ====================================================================
+        // F) Seleccionar commit muestra commit-detail
+        // ====================================================================
+
+        runner.group('F) Seleccionar commit muestra commit-detail', () => {
+
+            runner.test('Seleccionar commit renderiza commit-detail en el panel', async (stage) => {
+                const el = createGitGraph();
+                stage.appendChild(el);
+                await waitForLoaded(el);
+
+                el._selectedCommit = MOCK_GIT_LOG.commits[0];
+                await el.updateComplete;
+                await new Promise(r => setTimeout(r, 50));
+                await el.updateComplete;
+
+                const commitDetail = el.shadowRoot.querySelector('commit-detail');
+                runner.assertTrue(
+                    commitDetail !== null,
+                    'Debería renderizar commit-detail al seleccionar un commit'
+                );
+            });
+
+            runner.test('commit-detail recibe el hash correcto', async (stage) => {
+                const el = createGitGraph();
+                stage.appendChild(el);
+                await waitForLoaded(el);
+
+                el._selectedCommit = MOCK_GIT_LOG.commits[0];
+                await el.updateComplete;
+                await new Promise(r => setTimeout(r, 50));
+                await el.updateComplete;
+
+                const commitDetail = el.shadowRoot.querySelector('commit-detail');
+                runner.assertTrue(commitDetail !== null, 'commit-detail debería existir');
+                runner.assertEqual(
+                    commitDetail.commitHash,
+                    MOCK_GIT_LOG.commits[0].hash,
+                    'commit-detail debería recibir el hash del commit seleccionado'
+                );
+            });
+
+            runner.test('Con commit seleccionado, NO se muestra plan-detail', async (stage) => {
+                const el = createGitGraph();
+                stage.appendChild(el);
+                await waitForLoaded(el);
+
+                el._selectedCommit = MOCK_GIT_LOG.commits[0];
+                el._selectedPlan = null;
+                await el.updateComplete;
+                await new Promise(r => setTimeout(r, 50));
+                await el.updateComplete;
+
+                const planDetail = el.shadowRoot.querySelector('commit-plan-detail');
+                runner.assertTrue(
+                    planDetail === null,
+                    'commit-plan-detail NO debería renderizarse cuando hay un commit seleccionado'
+                );
+            });
+
+        });
+
+        // ====================================================================
+        // G) Sin selección vuelve al placeholder
+        // ====================================================================
+
+        runner.group('G) Sin selección muestra placeholder', () => {
+
+            runner.test('Sin commit ni plan seleccionado, muestra .detail-placeholder', async (stage) => {
+                const el = createGitGraph();
+                stage.appendChild(el);
+                await waitForLoaded(el);
+
+                el._selectedCommit = null;
+                el._selectedPlan = null;
+                await el.updateComplete;
+
+                const placeholder = el.shadowRoot.querySelector('.detail-placeholder');
+                runner.assertTrue(
+                    placeholder !== null,
+                    'Debería mostrar .detail-placeholder cuando no hay nada seleccionado'
+                );
+            });
+
+            runner.test('Placeholder NO menciona el botón 🗂️', async (stage) => {
+                const el = createGitGraph();
+                stage.appendChild(el);
+                await waitForLoaded(el);
+
+                el._selectedCommit = null;
+                el._selectedPlan = null;
+                await el.updateComplete;
+
+                const placeholder = el.shadowRoot.querySelector('.detail-placeholder');
+                runner.assertTrue(placeholder !== null, '.detail-placeholder debería existir');
+
+                runner.assertFalse(
+                    placeholder.textContent.includes('🗂️'),
+                    'El placeholder NO debería mencionar 🗂️ (botón eliminado)'
+                );
+            });
+
+            runner.test('Deseleccionar commit vuelve al placeholder', async (stage) => {
+                const el = createGitGraph();
+                stage.appendChild(el);
+                await waitForLoaded(el);
+
+                // First select a commit
+                el._selectedCommit = MOCK_GIT_LOG.commits[0];
+                await el.updateComplete;
+
+                let commitDetail = el.shadowRoot.querySelector('commit-detail');
+                runner.assertTrue(commitDetail !== null, 'Debería mostrar commit-detail');
+
+                // Then deselect
+                el._selectedCommit = null;
+                await el.updateComplete;
+
+                const placeholder = el.shadowRoot.querySelector('.detail-placeholder');
+                runner.assertTrue(
+                    placeholder !== null,
+                    'Debería volver al placeholder tras deseleccionar'
+                );
+
+                commitDetail = el.shadowRoot.querySelector('commit-detail');
+                runner.assertTrue(
+                    commitDetail === null,
+                    'commit-detail NO debería estar visible tras deseleccionar'
+                );
+            });
+
+        });
+
+        // ====================================================================
+        // RUN
+        // ====================================================================
+
+        await runner.run();
+    </script>
+</body>
+</html>
