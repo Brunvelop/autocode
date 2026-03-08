@@ -25,6 +25,9 @@ import { themeTokens } from './styles/theme.js';
 import { codeDashboardStyles } from './styles/code-dashboard.styles.js';
 import './treemap-view.js';
 import './dependency-graph.js';
+import './metrics-panel.js';
+import '../file-explorer/index.js';
+import '../code-explorer/index.js';
 
 export class CodeDashboard extends LitElement {
     static properties = {
@@ -255,26 +258,20 @@ export class CodeDashboard extends LitElement {
     _renderContentArea() {
         const mode = this._viewMode;
 
-        // Files tab — placeholder (Commit 8 integrates file-explorer)
+        // Files tab — file-explorer
         if (mode === 'files') {
             return html`
                 <div class="content-area">
-                    <div class="content-placeholder">
-                        <span class="content-placeholder-icon">📁</span>
-                        <span>File Explorer — coming in Commit 8</span>
-                    </div>
+                    <file-explorer></file-explorer>
                 </div>
             `;
         }
 
-        // Code tab — placeholder (Commit 8 integrates code-explorer)
+        // Code tab — code-explorer
         if (mode === 'code') {
             return html`
                 <div class="content-area">
-                    <div class="content-placeholder">
-                        <span class="content-placeholder-icon">🧬</span>
-                        <span>Code Explorer — coming in Commit 8</span>
-                    </div>
+                    <code-explorer></code-explorer>
                 </div>
             `;
         }
@@ -303,14 +300,11 @@ export class CodeDashboard extends LitElement {
             `;
         }
 
-        // Metrics tab — placeholder (Commit 8 integrates metrics-panel)
+        // Metrics tab — metrics-panel (hide-summary: code-dashboard already shows summary cards)
         if (mode === 'metrics') {
             return html`
                 <div class="content-area">
-                    <div class="content-placeholder">
-                        <span class="content-placeholder-icon">📊</span>
-                        <span>Metrics Panel — coming in Commit 6-8</span>
-                    </div>
+                    <metrics-panel hide-summary></metrics-panel>
                 </div>
             `;
         }

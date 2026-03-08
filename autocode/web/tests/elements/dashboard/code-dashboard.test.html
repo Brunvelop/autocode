@@ -72,6 +72,35 @@
             circular_dependencies: [],
         };
 
+        // Mock data for metrics-panel (generate_code_metrics)
+        const MOCK_METRICS = {
+            before: null,
+            after: {
+                commit_hash: 'abc123def456789',
+                commit_short: 'abc123d',
+                branch: 'main',
+                timestamp: '2025-06-01T12:00:00',
+                total_files: 3,
+                total_sloc: 500,
+                total_functions: 20,
+                total_classes: 5,
+                avg_complexity: 3.2,
+                avg_mi: 72.5,
+                complexity_distribution: { A: 15, B: 3, C: 2, D: 0, E: 0, F: 0 },
+                files: [],
+                coupling: [],
+                circular_deps: [],
+            },
+            delta_sloc: 10,
+            delta_functions: 2,
+            delta_classes: 0,
+            delta_avg_complexity: -0.1,
+            delta_avg_mi: 1.5,
+        };
+
+        // Mock data for metrics-chart (get_metrics_history)
+        const MOCK_HISTORY = { points: [], available_metrics: [] };
+
         // Intercept the AutoFunctionController globally
         let mockBehavior = 'success'; // 'success' | 'error' | 'loading'
         let executeCallCount = 0;
@@ -98,9 +127,9 @@
                 // Never resolve — simulates infinite loading
                 return new Promise(() => {});
             }
-            if (funcName === 'get_architecture_snapshot') {
-                return MOCK_SNAPSHOT;
-            }
+            if (funcName === 'get_architecture_snapshot') return MOCK_SNAPSHOT;
+            if (funcName === 'generate_code_metrics') return MOCK_METRICS;
+            if (funcName === 'get_metrics_history') return MOCK_HISTORY;
             return originalExecute.call(this, funcName, params);
         };
 
@@ -508,6 +537,75 @@
                 runner.assertTrue(snapshotInfo !== null, 'Debería existir .snapshot-info');
                 runner.assertContains(snapshotInfo.textContent, 'abc123d', 'Debería mostrar commit_short');
                 runner.assertContains(snapshotInfo.textContent, 'main', 'Debería mostrar branch');
+            });
+
+        });
+
+        // ====================================================================
+        // J) TAB METRICS
+        // ====================================================================
+
+        runner.group('J) Tab Metrics', () => {
+
+            runner.test('Click en tab Metrics muestra metrics-panel', async (stage) => {
+                mockBehavior = 'success';
+                const el = createDashboard();
+                stage.appendChild(el);
+                await waitForLoaded(el);
+
+                const tabs = el.shadowRoot.querySelectorAll('.view-tab');
+                const metricsTab = Array.from(tabs).find(t => t.textContent.toLowerCase().includes('metrics'));
+                runner.assertTrue(metricsTab !== null, 'Debería encontrar tab Metrics');
+
+                metricsTab.click();
+                await el.updateComplete;
+
+                const panel = el.shadowRoot.querySelector('metrics-panel');
+                runner.assertTrue(panel !== null, 'Debería renderizar <metrics-panel>');
+            });
+
+            runner.test('metrics-panel embebido tiene atributo hide-summary', async (stage) => {
+                mockBehavior = 'success';
+                const el = createDashboard();
+                stage.appendChild(el);
+                await waitForLoaded(el);
+
+                const tabs = el.shadowRoot.querySelectorAll('.view-tab');
+                const metricsTab = Array.from(tabs).find(t => t.textContent.toLowerCase().includes('metrics'));
+                metricsTab.click();
+                await el.updateComplete;
+
+                const panel = el.shadowRoot.querySelector('metrics-panel');
+                runner.assertTrue(panel !== null, 'Debería existir metrics-panel');
+                runner.assertTrue(
+                    panel.hasAttribute('hide-summary'),
+                    'metrics-panel debería tener atributo hide-summary'
+                );
+            });
+
+            runner.test('metrics-chart existe dentro de metrics-panel', async (stage) => {
+                mockBehavior = 'success';
+                const el = createDashboard();
+                stage.appendChild(el);
+                await waitForLoaded(el);
+
+                const tabs = el.shadowRoot.querySelectorAll('.view-tab');
+                const metricsTab = Array.from(tabs).find(t => t.textContent.toLowerCase().includes('metrics'));
+                metricsTab.click();
+                await el.updateComplete;
+
+                const panel = el.shadowRoot.querySelector('metrics-panel');
+                runner.assertTrue(panel !== null, 'Debería existir metrics-panel');
+
+                // Wait for panel to finish loading generate_code_metrics
+                const start = Date.now();
+                while (panel._loading && (Date.now() - start < 3000)) {
+                    await new Promise(r => setTimeout(r, 50));
+                }
+                await panel.updateComplete;
+
+                const chart = panel.shadowRoot.querySelector('metrics-chart');
+                runner.assertTrue(chart !== null, 'Debería existir <metrics-chart> dentro de metrics-panel');
             });
 
         });
