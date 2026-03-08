@@ -27,7 +27,7 @@ from autocode.core.code.models import (
     FileDependency,
 )
 from autocode.core.vcs.git import git, get_tracked_files
-from autocode.core.code.metrics import _analyze_content
+from autocode.core.code.analyzer import analyze_file_metrics
 
 logger = logging.getLogger(__name__)
 
@@ -168,7 +168,7 @@ def _build_architecture_nodes(py_files: List[str]) -> List[ArchitectureNode]:
         file_name = parts[-1]
         try:
             content = Path(fpath).read_text(encoding="utf-8")
-            fm = _analyze_content(content, fpath)
+            fm = analyze_file_metrics(fpath, content)
             file_node = ArchitectureNode(
                 id=fpath,
                 parent_id=current_parent,

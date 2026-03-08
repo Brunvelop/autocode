@@ -1,17 +1,18 @@
 """
 metrics.py
-Motor de análisis de métricas de código y endpoints registrados.
+Motor de métricas de código y endpoints registrados.
 
 Proporciona:
-- Análisis de complejidad ciclomática, mantenibilidad, anidamiento
-- Análisis de acoplamiento entre paquetes
 - Snapshots persistentes en .autocode/metrics/
 - Comparación entre snapshots
 - Métricas per-commit (before/after via git show)
+- Historial temporal de métricas
+
+El análisis por archivo (CC, MI, nesting, line counts) lo delega a analyzer.py.
+El acoplamiento lo delega a coupling.py.
+La persistencia de snapshots la delega a snapshots.py.
 """
-import ast
 import logging
-import math
 from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
@@ -19,6 +20,7 @@ from typing import Optional
 
 from autocode.interfaces.registry import register_function
 from autocode.core.vcs.git import git, git_show, get_tracked_files
+from autocode.core.code.analyzer import analyze_file_metrics
 from autocode.core.code.coupling import analyze_coupling
 from autocode.core.code.snapshots import (
     save_snapshot,
@@ -28,8 +30,6 @@ from autocode.core.code.snapshots import (
     list_snapshots,
 )
 from autocode.core.code.models import (
-    FileMetrics,
-    FunctionMetrics,
     MetricsSnapshot,
     MetricsComparison,
     MetricsSnapshotOutput,
@@ -189,7 +189,7 @@ def _build_current_snapshot() -> MetricsSnapshot:
     for fpath in py_files:
         try:
             content = Path(fpath).read_text(encoding="utf-8")
-            fm = _analyze_content(content, fpath)
+            fm = analyze_file_metrics(fpath, content)
             file_metrics.append(fm)
         except Exception as e:
             logger.debug(f"Skip {fpath}: {e}")
@@ -230,197 +230,6 @@ def _build_current_snapshot() -> MetricsSnapshot:
         coupling=coupling,
         circular_deps=circulars,
     )
-
-
-# ==============================================================================
-# FILE ANALYSIS (pure functions — work on content string)
-# ==============================================================================
-
-
-def _analyze_content(content: str, path: str) -> FileMetrics:
-    """Analyze a Python file's content and return FileMetrics."""
-    lines = content.split("\n")
-    line_info = _count_line_types(lines)
-    sloc, comments, blanks = line_info["sloc"], line_info["comments"], line_info["blanks"]
-    total_loc = len(lines)
-
-    try:
-        tree = ast.parse(content, filename=path)
-    except SyntaxError:
-        return FileMetrics(
-            path=path, language="python",
-            sloc=sloc, comments=comments, blanks=blanks, total_loc=total_loc,
-        )
-
-    func_metrics = _extract_function_metrics(tree, content, path)
-    classes_count = sum(1 for n in ast.walk(tree) if isinstance(n, ast.ClassDef))
-    complexities = [f.complexity for f in func_metrics]
-    nestings = [f.nesting_depth for f in func_metrics]
-
-    avg_cc = sum(complexities) / len(complexities) if complexities else 0
-    max_cc = max(complexities) if complexities else 0
-    max_nest = max(nestings) if nestings else 0
-    mi = _maintainability_index(sloc, avg_cc, total_loc)
-
-    return FileMetrics(
-        path=path,
-        language="python",
-        sloc=sloc,
-        comments=comments,
-        blanks=blanks,
-        total_loc=total_loc,
-        functions=func_metrics,
-        classes_count=classes_count,
-        functions_count=len(func_metrics),
-        avg_complexity=round(avg_cc, 2),
-        max_complexity=max_cc,
-        max_nesting=max_nest,
-        maintainability_index=round(mi, 1),
-    )
-
-
-def _count_line_types(lines: list[str]) -> dict:
-    """Count SLOC, comment lines, blank lines."""
-    sloc = comments = blanks = 0
-    in_docstring = False
-    docstring_char = None
-    for line in lines:
-        stripped = line.strip()
-        if not stripped:
-            blanks += 1
-            continue
-        # Track docstrings (triple quotes)
-        if in_docstring:
-            comments += 1
-            if docstring_char in stripped:
-                in_docstring = False
-            continue
-        if stripped.startswith('"""') or stripped.startswith("'''"):
-            docstring_char = stripped[:3]
-            comments += 1
-            # Single-line docstring
-            if stripped.count(docstring_char) >= 2:
-                continue
-            in_docstring = True
-            continue
-        if stripped.startswith("#"):
-            comments += 1
-        else:
-            sloc += 1
-    return {"sloc": sloc, "comments": comments, "blanks": blanks}
-
-
-def _extract_function_metrics(tree: ast.Module, content: str, path: str) -> list[FunctionMetrics]:
-    """Extract complexity metrics for every function/method in the AST."""
-    results = []
-    lines = content.split("\n")
-
-    for node in ast.walk(tree):
-        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            continue
-
-        cc = _cyclomatic_complexity(node)
-        nd = _nesting_depth(node)
-        start = node.lineno
-        end = getattr(node, "end_lineno", start)
-        func_lines = lines[start - 1 : end]
-        func_sloc = sum(1 for l in func_lines if l.strip() and not l.strip().startswith("#"))
-
-        # Detect if method
-        is_method = False
-        class_name = None
-        for cls in ast.walk(tree):
-            if isinstance(cls, ast.ClassDef):
-                for item in cls.body:
-                    if item is node:
-                        is_method = True
-                        class_name = cls.name
-                        break
-
-        results.append(FunctionMetrics(
-            name=node.name,
-            file=path,
-            line=start,
-            complexity=cc,
-            rank=_cc_rank(cc),
-            nesting_depth=nd,
-            sloc=func_sloc,
-            is_method=is_method,
-            class_name=class_name,
-        ))
-
-    return results
-
-
-def _cyclomatic_complexity(node: ast.AST) -> int:
-    """Calculate cyclomatic complexity of a function node.
-    
-    CC = 1 + number of decision points (if/elif/for/while/and/or/
-    except/with/assert/ternary/comprehension-if).
-    """
-    cc = 1
-    for child in ast.walk(node):
-        if isinstance(child, (ast.If, ast.IfExp)):
-            cc += 1
-        elif isinstance(child, ast.For):
-            cc += 1
-        elif isinstance(child, ast.While):
-            cc += 1
-        elif isinstance(child, ast.ExceptHandler):
-            cc += 1
-        elif isinstance(child, ast.With):
-            cc += 1
-        elif isinstance(child, ast.Assert):
-            cc += 1
-        elif isinstance(child, ast.BoolOp):
-            # and/or add len(values) - 1 decision points
-            cc += len(child.values) - 1
-        elif isinstance(child, ast.comprehension):
-            cc += len(child.ifs) + 1  # the for + each if filter
-    # Subtract 1 for the function node itself if it got counted
-    return max(cc, 1)
-
-
-def _nesting_depth(node: ast.AST, depth: int = 0) -> int:
-    """Calculate max nesting depth of control flow in a function."""
-    nesting_types = (ast.If, ast.For, ast.While, ast.With, ast.Try, ast.ExceptHandler)
-    max_d = depth
-    for child in ast.iter_child_nodes(node):
-        if isinstance(child, nesting_types):
-            max_d = max(max_d, _nesting_depth(child, depth + 1))
-        else:
-            max_d = max(max_d, _nesting_depth(child, depth))
-    return max_d
-
-
-def _cc_rank(cc: int) -> str:
-    """Convert cyclomatic complexity to letter rank."""
-    if cc <= 5:
-        return "A"
-    if cc <= 10:
-        return "B"
-    if cc <= 15:
-        return "C"
-    if cc <= 20:
-        return "D"
-    if cc <= 25:
-        return "E"
-    return "F"
-
-
-def _maintainability_index(sloc: int, avg_cc: float, total_loc: int) -> float:
-    """Calculate Maintainability Index (simplified SEI formula).
-    
-    MI = max(0, (171 - 5.2·ln(HV) - 0.23·CC - 16.2·ln(LOC)) * 100/171)
-    We approximate Halstead Volume ≈ SLOC * log2(SLOC) for simplicity.
-    """
-    if sloc <= 0:
-        return 100.0
-    hv = sloc * max(math.log2(sloc), 1)
-    ln_hv = math.log(max(hv, 1))
-    ln_loc = math.log(max(sloc, 1))
-    mi = (171 - 5.2 * ln_hv - 0.23 * avg_cc - 16.2 * ln_loc) * 100 / 171
-    return max(0.0, min(100.0, mi))
 
 
 # ==============================================================================
@@ -505,13 +314,13 @@ def _analyze_commit(commit_hash: str) -> CommitMetrics:
         if status != "added" and parents:
             before_content = git_show(f"{parents[0]}:{fpath}")
             if before_content:
-                before_fm = _analyze_content(before_content, fpath)
+                before_fm = analyze_file_metrics(fpath, before_content)
 
         # Get "after" content (from this commit)
         if status != "deleted":
             after_content = git_show(f"{full_hash}:{fpath}")
             if after_content:
-                after_fm = _analyze_content(after_content, fpath)
+                after_fm = analyze_file_metrics(fpath, after_content)
 
         d_sloc = (after_fm.sloc if after_fm else 0) - (before_fm.sloc if before_fm else 0)
         d_cc = (after_fm.avg_complexity if after_fm else 0) - (before_fm.avg_complexity if before_fm else 0)

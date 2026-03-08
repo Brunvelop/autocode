@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import List, Optional, Tuple
 
 from autocode.core.vcs.git import git_show
-from autocode.core.code.metrics import _analyze_content
+from autocode.core.code.analyzer import analyze_file_metrics
 from autocode.core.code.models import FileMetrics
 from autocode.core.planning.models import ReviewFileMetrics, ReviewResult
 
@@ -102,7 +102,7 @@ def _get_before_metrics(
     content = git_show(f"{parent_commit}:{fpath}", cwd=repo_path)
     if content is None:
         return {}
-    fm = _analyze_content(content, fpath)
+    fm = analyze_file_metrics(fpath, content)
     return _file_metrics_to_dict(fm)
 
 
@@ -118,7 +118,7 @@ def _get_after_metrics(fpath: str, repo_path: str) -> dict:
         content = full_path.read_text(encoding="utf-8")
     except Exception:
         return {}
-    fm = _analyze_content(content, fpath)
+    fm = analyze_file_metrics(fpath, content)
     return _file_metrics_to_dict(fm)
 
 

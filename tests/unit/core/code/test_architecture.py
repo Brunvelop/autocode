@@ -131,7 +131,7 @@ class TestArchitectureModels:
 class TestBuildArchitectureNodes:
     """Tests for _build_architecture_nodes() — hierarchy construction."""
 
-    def _mock_analyze_content(self, content, path):
+    def _mock_analyze_file_metrics(self, path, content):
         """Helper: returns a FileMetrics-like object with predictable values."""
         from autocode.core.code.models import FileMetrics
 
@@ -155,12 +155,12 @@ class TestBuildArchitectureNodes:
             maintainability_index=72.0,
         )
 
-    @patch("autocode.core.code.architecture._analyze_content")
+    @patch("autocode.core.code.architecture.analyze_file_metrics")
     def test_build_nodes_single_file(self, mock_analyze):
         """A single file should produce root + file node."""
         from autocode.core.code.architecture import _build_architecture_nodes
 
-        mock_analyze.return_value = self._mock_analyze_content(
+        mock_analyze.return_value = self._mock_analyze_file_metrics(
             "x = 1\ny = 2\n", "main.py"
         )
 
@@ -174,12 +174,12 @@ class TestBuildArchitectureNodes:
         assert node_map["."].type == "directory"
         assert node_map["."].parent_id is None
 
-    @patch("autocode.core.code.architecture._analyze_content")
+    @patch("autocode.core.code.architecture.analyze_file_metrics")
     def test_build_nodes_nested_dirs(self, mock_analyze):
         """Files in subdirs should create intermediate directory nodes."""
         from autocode.core.code.architecture import _build_architecture_nodes
 
-        mock_analyze.return_value = self._mock_analyze_content("x=1\n", "dummy")
+        mock_analyze.return_value = self._mock_analyze_file_metrics("x=1\n", "dummy")
 
         py_files = [
             "autocode/core/code/metrics.py",
@@ -211,7 +211,7 @@ class TestBuildArchitectureNodes:
         assert "autocode/core/code/metrics.py" in node_map
         assert node_map["autocode/core/code/metrics.py"].parent_id == "autocode/core/code"
 
-    @patch("autocode.core.code.architecture._analyze_content")
+    @patch("autocode.core.code.architecture.analyze_file_metrics")
     def test_build_nodes_empty(self, mock_analyze):
         """No files should produce only the root node."""
         from autocode.core.code.architecture import _build_architecture_nodes
@@ -222,7 +222,7 @@ class TestBuildArchitectureNodes:
         assert nodes[0].type == "directory"
         mock_analyze.assert_not_called()
 
-    @patch("autocode.core.code.architecture._analyze_content")
+    @patch("autocode.core.code.architecture.analyze_file_metrics")
     @patch("pathlib.Path.read_text")
     def test_build_nodes_metrics_on_files(self, mock_read, mock_analyze):
         """File nodes should carry MI, CC, LOC from _analyze_content."""
@@ -396,7 +396,7 @@ class TestGetArchitectureSnapshot:
 
     @patch("autocode.core.code.architecture.git")
     @patch("autocode.core.code.architecture.get_tracked_files")
-    @patch("autocode.core.code.architecture._analyze_content")
+    @patch("autocode.core.code.architecture.analyze_file_metrics")
     @patch("pathlib.Path.read_text")
     def test_snapshot_success(self, mock_read, mock_analyze, mock_get_files, mock_git):
         """Successful snapshot should return valid structure with totals."""
@@ -412,7 +412,7 @@ class TestGetArchitectureSnapshot:
         mock_get_files.return_value = ["src/app.py", "src/utils.py"]
         mock_read.return_value = "x = 1\n"
 
-        def analyze_side_effect(content, path):
+        def analyze_side_effect(path, content):
             return FileMetrics(
                 path=path, language="python",
                 sloc=100, comments=10, blanks=5, total_loc=115,
@@ -763,7 +763,7 @@ class TestSnapshotWithDependencies:
 
     @patch("autocode.core.code.architecture.git")
     @patch("autocode.core.code.architecture.get_tracked_files")
-    @patch("autocode.core.code.architecture._analyze_content")
+    @patch("autocode.core.code.architecture.analyze_file_metrics")
     def test_snapshot_includes_dependencies(
         self, mock_analyze, mock_get_files, mock_git
     ):
@@ -791,7 +791,7 @@ class TestSnapshotWithDependencies:
         def patched_read(self_path, *args, **kwargs):
             return contents.get(str(self_path), "x = 1\n")
 
-        def analyze_side_effect(content, path):
+        def analyze_side_effect(path, content):
             return FileMetrics(
                 path=path, language="python",
                 sloc=10, comments=0, blanks=0, total_loc=10,
@@ -825,7 +825,7 @@ class TestSnapshotWithDependencies:
 
     @patch("autocode.core.code.architecture.git")
     @patch("autocode.core.code.architecture.get_tracked_files")
-    @patch("autocode.core.code.architecture._analyze_content")
+    @patch("autocode.core.code.architecture.analyze_file_metrics")
     @patch("pathlib.Path.read_text")
     def test_snapshot_no_py_files_has_empty_deps(
         self, mock_read, mock_analyze, mock_get_files, mock_git
