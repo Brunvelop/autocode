@@ -159,17 +159,18 @@ class FileExplorer extends AutoFunctionController {
     }
 
     /**
-     * Renderiza un archivo como chip
+     * Renderiza un archivo como chip.
+     * Usa el color como tinte de fondo + borde, con texto oscuro para contraste.
      */
     _renderFile(node) {
         const icon = this._getFileIcon(node.name);
         const color = this._getFileColor(node.name);
         const title = `${node.name}${node.size ? ` (${this._formatSize(node.size)})` : ''}`;
-        
+
         return html`
-            <div 
-                class="file-chip" 
-                style="border-color: ${color}40; color: ${color};"
+            <div
+                class="file-chip"
+                style="background: ${color}1a; border-color: ${color}70;"
                 title="${title}"
             >
                 <span>${icon}</span>
@@ -179,27 +180,36 @@ class FileExplorer extends AutoFunctionController {
     }
 
     /**
-     * Renderiza una carpeta con su contenido
+     * Renderiza una carpeta con su contenido.
+     * Las subcarpetas se apilan verticalmente (full-width).
+     * Los archivos se agrupan en una fila de chips al final.
      */
     _renderFolder(node, depth) {
         const displayName = node.name === 'root' ? '📁 Proyecto' : `📂 ${node.name}`;
-        
-        // Ordenar hijos: carpetas primero, luego archivos
-        let children = [];
-        if (node.children && node.children.length > 0) {
-            children = [...node.children].sort((a, b) => {
+
+        // Separar hijos en carpetas y archivos
+        const children = node.children && node.children.length > 0
+            ? [...node.children].sort((a, b) => {
                 if (a.type === b.type) return a.name.localeCompare(b.name);
                 return a.type === 'directory' ? -1 : 1;
-            });
-        }
-        
+            })
+            : [];
+
+        const subfolders = children.filter(c => c.type === 'directory');
+        const files      = children.filter(c => c.type === 'file');
+
         return html`
             <div class="folder-box">
                 <div class="folder-header" title="${node.name}">
                     ${displayName}
                 </div>
                 <div class="folder-content">
-                    ${children.map(child => this._renderNode(child, depth + 1))}
+                    ${subfolders.map(child => this._renderNode(child, depth + 1))}
+                    ${files.length > 0 ? html`
+                        <div class="file-chips-row">
+                            ${files.map(f => this._renderFile(f))}
+                        </div>
+                    ` : ''}
                 </div>
             </div>
         `;
