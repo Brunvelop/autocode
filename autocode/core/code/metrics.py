@@ -10,7 +10,6 @@ Proporciona:
 - Métricas per-commit (before/after via git show)
 """
 import ast
-import json
 import logging
 import math
 from collections import defaultdict
@@ -21,6 +20,13 @@ from typing import Optional
 from autocode.interfaces.registry import register_function
 from autocode.core.vcs.git import git, git_show, get_tracked_files
 from autocode.core.code.coupling import analyze_coupling
+from autocode.core.code.snapshots import (
+    save_snapshot,
+    load_snapshot_by_hash,
+    load_previous_snapshot,
+    load_history_points,
+    list_snapshots,
+)
 from autocode.core.code.models import (
     FileMetrics,
     FunctionMetrics,
@@ -31,15 +37,11 @@ from autocode.core.code.models import (
     CommitMetrics,
     CommitFileMetrics,
     CommitMetricsOutput,
-    MetricsHistoryPoint,
     MetricsHistory,
     MetricsHistoryOutput,
 )
 
 logger = logging.getLogger(__name__)
-
-# Directorio de snapshots (relativo al CWD del proyecto host)
-METRICS_DIR = ".autocode/metrics"
 
 
 # ==============================================================================
@@ -62,16 +64,16 @@ def generate_code_metrics() -> MetricsSnapshotOutput:
     try:
         # Check cache: si ya existe snapshot para el commit actual, reutilizar
         current_hash = git("rev-parse", "HEAD")
-        cached = _load_snapshot_by_hash(current_hash)
+        cached = load_snapshot_by_hash(current_hash)
 
         if cached is not None:
             logger.debug(f"Snapshot en cache para {current_hash[:7]}, reutilizando")
             snapshot = cached
         else:
             snapshot = _build_current_snapshot()
-            _save_snapshot(snapshot)
+            save_snapshot(snapshot)
 
-        previous = _load_previous_snapshot(snapshot.commit_hash)
+        previous = load_previous_snapshot(snapshot.commit_hash)
         comparison = _compare_snapshots(previous, snapshot)
 
         source = "cache" if cached is not None else "generado"
@@ -95,7 +97,7 @@ def get_metrics_snapshots() -> MetricsSnapshotListOutput:
     guardado en .autocode/metrics/.
     """
     try:
-        snapshots = _list_snapshots()
+        snapshots = list_snapshots()
         return MetricsSnapshotListOutput(
             success=True,
             result=snapshots,
@@ -142,7 +144,7 @@ def get_metrics_history(max_count: int = 100) -> MetricsHistoryOutput:
         max_count: Número máximo de puntos a retornar (default 100)
     """
     try:
-        points = _load_history_points(max_count)
+        points = load_history_points(max_count)
 
         # Metadata de métricas disponibles para el frontend
         available_metrics = [
@@ -419,119 +421,6 @@ def _maintainability_index(sloc: int, avg_cc: float, total_loc: int) -> float:
     ln_loc = math.log(max(sloc, 1))
     mi = (171 - 5.2 * ln_hv - 0.23 * avg_cc - 16.2 * ln_loc) * 100 / 171
     return max(0.0, min(100.0, mi))
-
-
-# ==============================================================================
-# SNAPSHOT PERSISTENCE
-# ==============================================================================
-
-
-def _save_snapshot(snapshot: MetricsSnapshot) -> None:
-    """Save snapshot as JSON in .autocode/metrics/."""
-    metrics_dir = Path(METRICS_DIR)
-    metrics_dir.mkdir(parents=True, exist_ok=True)
-    fname = f"{snapshot.commit_short}.json"
-    path = metrics_dir / fname
-    path.write_text(snapshot.model_dump_json(indent=2), encoding="utf-8")
-    logger.debug(f"Snapshot saved: {path}")
-
-
-def _load_snapshot_by_hash(commit_hash: str) -> Optional[MetricsSnapshot]:
-    """Load a snapshot matching the given commit hash (full), if it exists."""
-    metrics_dir = Path(METRICS_DIR)
-    if not metrics_dir.exists():
-        return None
-    for f in metrics_dir.glob("*.json"):
-        try:
-            data = json.loads(f.read_text(encoding="utf-8"))
-            if data.get("commit_hash") == commit_hash:
-                return MetricsSnapshot(**data)
-        except Exception:
-            continue
-    return None
-
-
-def _load_previous_snapshot(current_hash: str) -> Optional[MetricsSnapshot]:
-    """Load the most recent snapshot that isn't the current commit."""
-    metrics_dir = Path(METRICS_DIR)
-    if not metrics_dir.exists():
-        return None
-    files = sorted(metrics_dir.glob("*.json"), reverse=True)
-    for f in files:
-        try:
-            data = json.loads(f.read_text(encoding="utf-8"))
-            snap = MetricsSnapshot(**data)
-            if snap.commit_hash != current_hash:
-                return snap
-        except Exception:
-            continue
-    return None
-
-
-def _load_history_points(max_count: int) -> list[MetricsHistoryPoint]:
-    """Load all snapshots and extract lightweight history points for charting."""
-    metrics_dir = Path(METRICS_DIR)
-    if not metrics_dir.exists():
-        return []
-
-    points: list[MetricsHistoryPoint] = []
-    for f in sorted(metrics_dir.glob("*.json")):
-        try:
-            data = json.loads(f.read_text(encoding="utf-8"))
-            dist = data.get("complexity_distribution", {})
-            circular = data.get("circular_deps", [])
-            points.append(MetricsHistoryPoint(
-                commit_hash=data.get("commit_hash", ""),
-                commit_short=data.get("commit_short", ""),
-                branch=data.get("branch", ""),
-                timestamp=data.get("timestamp", ""),
-                total_sloc=data.get("total_sloc", 0),
-                total_files=data.get("total_files", 0),
-                total_functions=data.get("total_functions", 0),
-                total_classes=data.get("total_classes", 0),
-                total_comments=data.get("total_comments", 0),
-                total_blanks=data.get("total_blanks", 0),
-                avg_complexity=data.get("avg_complexity", 0.0),
-                avg_mi=data.get("avg_mi", 0.0),
-                rank_a=dist.get("A", 0),
-                rank_b=dist.get("B", 0),
-                rank_c=dist.get("C", 0),
-                rank_d=dist.get("D", 0),
-                rank_e=dist.get("E", 0),
-                rank_f=dist.get("F", 0),
-                circular_deps_count=len(circular),
-            ))
-        except Exception as e:
-            logger.debug(f"Skip snapshot {f.name}: {e}")
-            continue
-
-    # Sort by timestamp (oldest first) and limit
-    points.sort(key=lambda p: p.timestamp)
-    return points[-max_count:] if len(points) > max_count else points
-
-
-def _list_snapshots() -> list[dict]:
-    """List all saved snapshots with summary info."""
-    metrics_dir = Path(METRICS_DIR)
-    if not metrics_dir.exists():
-        return []
-    result = []
-    for f in sorted(metrics_dir.glob("*.json"), reverse=True):
-        try:
-            data = json.loads(f.read_text(encoding="utf-8"))
-            result.append({
-                "filename": f.name,
-                "commit_short": data.get("commit_short", ""),
-                "branch": data.get("branch", ""),
-                "timestamp": data.get("timestamp", ""),
-                "total_files": data.get("total_files", 0),
-                "total_sloc": data.get("total_sloc", 0),
-                "avg_complexity": data.get("avg_complexity", 0),
-                "avg_mi": data.get("avg_mi", 0),
-            })
-        except Exception:
-            continue
-    return result
 
 
 # ==============================================================================
