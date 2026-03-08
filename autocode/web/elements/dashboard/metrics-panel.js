@@ -18,6 +18,7 @@ import { LitElement, html } from 'https://cdn.jsdelivr.net/gh/lit/dist@3/core/li
 import { AutoFunctionController } from '../auto-element-generator.js';
 import { themeTokens } from './styles/theme.js';
 import { metricsPanelStyles } from './styles/metrics-panel.styles.js';
+import './metrics-chart.js';
 
 const RANKS = ['A', 'B', 'C', 'D', 'E', 'F'];
 
@@ -86,8 +87,7 @@ export class MetricsPanel extends LitElement {
         return html`
             <div class="dashboard">
                 ${this.hideSummary ? '' : this._renderSummary(snap, before)}
-                <!-- metrics-chart se integra en Commit 7 -->
-                <div class="chart-placeholder">📈 Evolución de métricas (disponible en siguiente commit)</div>
+                <metrics-chart></metrics-chart>
                 ${this._renderDistribution(snap)}
                 <div class="two-col">
                     ${this._renderTopComplex(snap)}
