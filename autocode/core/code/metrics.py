@@ -13,7 +13,6 @@ import ast
 import json
 import logging
 import math
-import os
 from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
@@ -21,10 +20,10 @@ from typing import Optional
 
 from autocode.interfaces.registry import register_function
 from autocode.core.vcs.git import git, git_show, get_tracked_files
+from autocode.core.code.coupling import analyze_coupling
 from autocode.core.code.models import (
     FileMetrics,
     FunctionMetrics,
-    PackageCoupling,
     MetricsSnapshot,
     MetricsComparison,
     MetricsSnapshotOutput,
@@ -209,7 +208,7 @@ def _build_current_snapshot() -> MetricsSnapshot:
         dist[f.rank] += 1
 
     # Coupling
-    coupling, circulars = _analyze_coupling(py_files)
+    coupling, circulars = analyze_coupling(py_files)
 
     return MetricsSnapshot(
         commit_hash=git("rev-parse", "HEAD"),
@@ -420,99 +419,6 @@ def _maintainability_index(sloc: int, avg_cc: float, total_loc: int) -> float:
     ln_loc = math.log(max(sloc, 1))
     mi = (171 - 5.2 * ln_hv - 0.23 * avg_cc - 16.2 * ln_loc) * 100 / 171
     return max(0.0, min(100.0, mi))
-
-
-# ==============================================================================
-# COUPLING ANALYSIS
-# ==============================================================================
-
-
-def _analyze_coupling(py_files: list[str]) -> tuple[list[PackageCoupling], list[list[str]]]:
-    """Analyze inter-package imports and detect circular dependencies."""
-    imports: dict[str, set[str]] = defaultdict(set)
-
-    for fpath in py_files:
-        try:
-            content = Path(fpath).read_text(encoding="utf-8")
-            tree = ast.parse(content, filename=fpath)
-        except Exception:
-            continue
-
-        module = fpath.replace("/", ".").replace("\\", ".").replace(".py", "")
-        src_parts = module.split(".")
-        src_pkg = ".".join(src_parts[:2]) if len(src_parts) >= 2 else src_parts[0]
-
-        for node in ast.walk(tree):
-            target = None
-            if isinstance(node, ast.ImportFrom) and node.module:
-                # Only track internal project imports
-                if any(node.module.startswith(p) for p in _top_level_packages(py_files)):
-                    target = node.module
-            elif isinstance(node, ast.Import):
-                for alias in node.names:
-                    if any(alias.name.startswith(p) for p in _top_level_packages(py_files)):
-                        target = alias.name
-            if target:
-                tgt_parts = target.split(".")
-                tgt_pkg = ".".join(tgt_parts[:2]) if len(tgt_parts) >= 2 else tgt_parts[0]
-                if src_pkg != tgt_pkg:
-                    imports[src_pkg].add(tgt_pkg)
-
-    # All known packages
-    all_pkgs: set[str] = set()
-    for s, ts in imports.items():
-        all_pkgs.add(s)
-        all_pkgs.update(ts)
-
-    # Ce/Ca/Instability
-    ce = {m: len(imports.get(m, set())) for m in all_pkgs}
-    ca: dict[str, int] = defaultdict(int)
-    imported_by: dict[str, list[str]] = defaultdict(list)
-    for s, ts in imports.items():
-        for t in ts:
-            ca[t] += 1
-            imported_by[t].append(s)
-
-    coupling = []
-    for m in sorted(all_pkgs):
-        c_e = ce.get(m, 0)
-        c_a = ca.get(m, 0)
-        inst = c_e / (c_e + c_a) if (c_e + c_a) > 0 else 0
-        coupling.append(PackageCoupling(
-            name=m, ce=c_e, ca=c_a, instability=round(inst, 2),
-            imports_to=sorted(imports.get(m, set())),
-            imported_by=sorted(imported_by.get(m, [])),
-        ))
-
-    # Circular deps
-    circulars: list[list[str]] = []
-    seen: set[tuple[str, str]] = set()
-    for a in imports:
-        for b in imports[a]:
-            if a in imports.get(b, set()):
-                pair = tuple(sorted([a, b]))
-                if pair not in seen:
-                    seen.add(pair)
-                    circulars.append(list(pair))
-
-    return coupling, circulars
-
-
-_top_packages_cache: Optional[set] = None
-
-
-def _top_level_packages(py_files: list[str]) -> set[str]:
-    """Get top-level package names from file paths."""
-    global _top_packages_cache
-    if _top_packages_cache is not None:
-        return _top_packages_cache
-    pkgs = set()
-    for f in py_files:
-        parts = f.replace("\\", "/").split("/")
-        if parts:
-            pkgs.add(parts[0])
-    _top_packages_cache = pkgs
-    return pkgs
 
 
 # ==============================================================================
