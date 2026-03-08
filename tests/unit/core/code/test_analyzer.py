@@ -393,3 +393,44 @@ class TestCountLines:
 
         assert result["blanks"] == 4  # two mid-content + two trailing (split creates extra "")
         assert result["sloc"] == 2
+
+
+# ==============================================================================
+# F) MULTI-LANGUAGE INTEGRATION (Commit 5)
+# ==============================================================================
+
+
+class TestMultiLanguageIntegration:
+    """Tests for language detection across file extensions."""
+
+    def test_js_file_returns_javascript_language(self):
+        """A .js file should be detected as javascript."""
+        from autocode.core.code.analyzer import analyze_file_metrics
+
+        code = "function hello() { return 1; }\n"
+        fm = analyze_file_metrics("app.js", code)
+        assert fm.language == "javascript"
+
+    def test_py_file_returns_python_language(self):
+        """A .py file should be detected as python."""
+        from autocode.core.code.analyzer import analyze_file_metrics
+
+        code = "def hello():\n    return 1\n"
+        fm = analyze_file_metrics("app.py", code)
+        assert fm.language == "python"
+
+    def test_mjs_file_returns_javascript_language(self):
+        """A .mjs file should be detected as javascript."""
+        from autocode.core.code.analyzer import analyze_file_metrics
+
+        code = "export function hello() { return 1; }\n"
+        fm = analyze_file_metrics("app.mjs", code)
+        assert fm.language == "javascript"
+
+    def test_jsx_file_returns_javascript_language(self):
+        """A .jsx file should be detected as javascript."""
+        from autocode.core.code.analyzer import analyze_file_metrics
+
+        code = "function App() { return 1; }\n"
+        fm = analyze_file_metrics("app.jsx", code)
+        assert fm.language == "javascript"

@@ -43,6 +43,9 @@ from autocode.core.code.models import (
 
 logger = logging.getLogger(__name__)
 
+JS_EXTENSIONS = frozenset({".js", ".mjs", ".jsx"})
+_ALL_EXTENSIONS = (".py", ".js", ".mjs", ".jsx")
+
 
 # ==============================================================================
 # REGISTERED ENDPOINTS
@@ -54,8 +57,8 @@ def generate_code_metrics() -> MetricsSnapshotOutput:
     """
     Genera un snapshot completo de métricas del proyecto y lo compara con el anterior.
 
-    Analiza todos los archivos .py trackeados por git calculando complejidad
-    ciclomática, índice de mantenibilidad, acoplamiento y más.
+    Analiza todos los archivos Python y JavaScript trackeados por git calculando
+    complejidad ciclomática, índice de mantenibilidad, acoplamiento y más.
     Guarda el snapshot en .autocode/metrics/ para seguimiento histórico.
 
     Si ya existe un snapshot para el commit actual, lo reutiliza sin
@@ -111,10 +114,10 @@ def get_metrics_snapshots() -> MetricsSnapshotListOutput:
 @register_function(http_methods=["GET"], interfaces=["api", "mcp"])
 def get_commit_metrics(commit_hash: str) -> CommitMetricsOutput:
     """
-    Calcula métricas before/after de los archivos .py cambiados en un commit.
+    Calcula métricas before/after de los archivos cambiados en un commit.
 
-    Para cada archivo Python modificado, analiza el código antes y después
-    del commit usando git show, calculando deltas de SLOC, complejidad y MI.
+    Para cada archivo Python o JavaScript modificado, analiza el código antes y
+    después del commit usando git show, calculando deltas de SLOC, complejidad y MI.
 
     Args:
         commit_hash: Hash del commit (completo o abreviado)
@@ -184,9 +187,9 @@ def get_metrics_history(max_count: int = 100) -> MetricsHistoryOutput:
 
 def _build_current_snapshot() -> MetricsSnapshot:
     """Build a full metrics snapshot of the current project state."""
-    py_files = get_tracked_files(".py")
+    all_files = get_tracked_files(*_ALL_EXTENSIONS)
     file_metrics = []
-    for fpath in py_files:
+    for fpath in all_files:
         try:
             content = Path(fpath).read_text(encoding="utf-8")
             fm = analyze_file_metrics(fpath, content)
@@ -209,7 +212,8 @@ def _build_current_snapshot() -> MetricsSnapshot:
     for f in all_funcs:
         dist[f.rank] += 1
 
-    # Coupling
+    # Coupling (Python-only until commit 6 adds JS import analysis)
+    py_files = [f for f in all_files if f.endswith(".py")]
     coupling, circulars = analyze_coupling(py_files)
 
     return MetricsSnapshot(
@@ -302,7 +306,8 @@ def _analyze_commit(commit_hash: str) -> CommitMetrics:
         status_letter = parts[0].strip()[0]
         fpath = parts[-1].strip()
 
-        if not fpath.endswith(".py"):
+        ext = Path(fpath).suffix
+        if ext != ".py" and ext not in JS_EXTENSIONS:
             continue
 
         status = {"A": "added", "M": "modified", "D": "deleted"}.get(status_letter, "modified")

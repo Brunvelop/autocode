@@ -845,3 +845,167 @@ class TestSnapshotWithDependencies:
         assert result.success is True
         assert result.result.dependencies == []
         assert result.result.circular_dependencies == []
+
+
+# ==============================================================================
+# H) MULTI-LANGUAGE ARCHITECTURE NODES (Commit 5)
+# ==============================================================================
+
+
+class TestBuildArchitectureNodesMultiLang:
+    """Tests for _build_architecture_nodes() with mixed Python and JS files."""
+
+    @patch("autocode.core.code.architecture.analyze_file_metrics")
+    @patch("pathlib.Path.read_text")
+    def test_build_nodes_includes_js_files(self, mock_read, mock_analyze):
+        """JS files should produce file nodes in the architecture tree."""
+        from autocode.core.code.architecture import _build_architecture_nodes
+        from autocode.core.code.models import FileMetrics
+
+        mock_read.return_value = "function hello() { return 1; }\n"
+        mock_analyze.return_value = FileMetrics(
+            path="web/app.js", language="javascript",
+            sloc=30, comments=5, blanks=3, total_loc=38,
+            functions=[], classes_count=0, functions_count=2,
+            avg_complexity=2.0, max_complexity=3, max_nesting=1,
+            maintainability_index=80.0,
+        )
+
+        nodes = _build_architecture_nodes(["web/app.js"])
+        node_map = {n.id: n for n in nodes}
+
+        assert "web/app.js" in node_map
+        assert node_map["web/app.js"].type == "file"
+        assert node_map["web/app.js"].parent_id == "web"
+        assert node_map["web/app.js"].sloc == 30
+        assert node_map["web/app.js"].mi == 80.0
+        assert "web" in node_map
+        assert node_map["web"].type == "directory"
+
+    @patch("autocode.core.code.architecture.analyze_file_metrics")
+    @patch("pathlib.Path.read_text")
+    def test_build_nodes_mixed_py_and_js(self, mock_read, mock_analyze):
+        """A mix of Python and JS files should all appear in the architecture tree."""
+        from autocode.core.code.architecture import _build_architecture_nodes
+        from autocode.core.code.models import FileMetrics
+
+        mock_read.return_value = "x = 1\n"
+
+        def analyze_side_effect(path, content):
+            lang = "python" if path.endswith(".py") else "javascript"
+            return FileMetrics(
+                path=path, language=lang,
+                sloc=50, comments=5, blanks=5, total_loc=60,
+                functions=[], classes_count=1, functions_count=2,
+                avg_complexity=2.0, max_complexity=4, max_nesting=1,
+                maintainability_index=75.0,
+            )
+
+        mock_analyze.side_effect = analyze_side_effect
+
+        files = [
+            "autocode/core/code/metrics.py",
+            "autocode/web/elements/app.js",
+            "autocode/web/elements/utils.mjs",
+        ]
+        nodes = _build_architecture_nodes(files)
+        node_map = {n.id: n for n in nodes}
+
+        # All files should be present
+        assert "autocode/core/code/metrics.py" in node_map
+        assert "autocode/web/elements/app.js" in node_map
+        assert "autocode/web/elements/utils.mjs" in node_map
+
+        # All should be file nodes
+        assert node_map["autocode/core/code/metrics.py"].type == "file"
+        assert node_map["autocode/web/elements/app.js"].type == "file"
+        assert node_map["autocode/web/elements/utils.mjs"].type == "file"
+
+        # Intermediate directories should exist
+        assert "autocode/web/elements" in node_map
+        assert "autocode/web" in node_map
+        assert "autocode/core/code" in node_map
+
+
+class TestArchitectureSnapshotWithJS:
+    """Tests for get_architecture_snapshot() including JS files (Commit 5)."""
+
+    @patch("autocode.core.code.architecture._resolve_file_dependencies")
+    @patch("autocode.core.code.architecture.git")
+    @patch("autocode.core.code.architecture.get_tracked_files")
+    @patch("autocode.core.code.architecture.analyze_file_metrics")
+    @patch("pathlib.Path.read_text")
+    def test_get_architecture_requests_js_extensions(
+        self, mock_read, mock_analyze, mock_get_files, mock_git, mock_resolve_deps
+    ):
+        """get_architecture_snapshot should request JS extensions from get_tracked_files."""
+        from autocode.core.code.architecture import get_architecture_snapshot
+        from autocode.core.code.models import FileMetrics
+
+        mock_git.side_effect = lambda *args: {
+            ("rev-parse", "HEAD"): "abc123",
+            ("rev-parse", "--short", "HEAD"): "abc",
+            ("rev-parse", "--abbrev-ref", "HEAD"): "main",
+        }.get(args, "")
+        mock_get_files.return_value = []
+        mock_resolve_deps.return_value = ([], [])
+
+        get_architecture_snapshot()
+
+        call_args = mock_get_files.call_args
+        extensions = call_args[0]  # positional args
+        assert ".py" in extensions
+        assert ".js" in extensions
+        assert ".mjs" in extensions
+        assert ".jsx" in extensions
+
+    @patch("autocode.core.code.architecture._resolve_file_dependencies")
+    @patch("autocode.core.code.architecture.git")
+    @patch("autocode.core.code.architecture.get_tracked_files")
+    @patch("autocode.core.code.architecture.analyze_file_metrics")
+    @patch("pathlib.Path.read_text")
+    def test_snapshot_includes_js_file_metrics(
+        self, mock_read, mock_analyze, mock_get_files, mock_git, mock_resolve_deps
+    ):
+        """Architecture snapshot should include JS files with their metrics."""
+        from autocode.core.code.architecture import get_architecture_snapshot
+        from autocode.core.code.models import FileMetrics
+
+        mock_git.side_effect = lambda *args: {
+            ("rev-parse", "HEAD"): "abc123def456789",
+            ("rev-parse", "--short", "HEAD"): "abc123d",
+            ("rev-parse", "--abbrev-ref", "HEAD"): "main",
+        }.get(args, "")
+
+        mock_get_files.return_value = [
+            "src/app.py",
+            "web/index.js",
+            "web/utils.mjs",
+        ]
+        mock_read.return_value = "x = 1\n"
+        mock_resolve_deps.return_value = ([], [])
+
+        def analyze_side_effect(path, content):
+            lang = "python" if path.endswith(".py") else "javascript"
+            return FileMetrics(
+                path=path, language=lang,
+                sloc=100, comments=10, blanks=5, total_loc=115,
+                functions=[], classes_count=1, functions_count=3,
+                avg_complexity=2.5, max_complexity=6, max_nesting=2,
+                maintainability_index=75.0,
+            )
+
+        mock_analyze.side_effect = analyze_side_effect
+
+        result = get_architecture_snapshot()
+
+        assert result.success is True
+        snapshot = result.result
+        assert snapshot is not None
+        assert snapshot.total_files == 3  # 1 py + 2 js
+        assert snapshot.total_sloc == 300  # 3 * 100
+
+        node_ids = {n.id for n in snapshot.nodes}
+        assert "src/app.py" in node_ids
+        assert "web/index.js" in node_ids
+        assert "web/utils.mjs" in node_ids

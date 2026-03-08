@@ -299,3 +299,130 @@ class TestListSnapshots:
 
         result = list_snapshots(metrics_dir=str(tmp_path / "nonexistent"))
         assert result == []
+
+
+# ==========================================================================
+# TestSnapshotWithJSFiles (Commit 5)
+# ==========================================================================
+
+
+class TestSnapshotWithJSFiles:
+    """Tests for _build_current_snapshot() including JS files in snapshots."""
+
+    @pytest.fixture
+    def _mock_git(self):
+        """Patch git helpers used by _build_current_snapshot."""
+        from unittest.mock import patch
+
+        with patch("autocode.core.code.metrics.git") as mock_git, \
+             patch("autocode.core.code.metrics.get_tracked_files") as mock_get_files, \
+             patch("autocode.core.code.metrics.analyze_file_metrics") as mock_analyze, \
+             patch("autocode.core.code.metrics.analyze_coupling") as mock_coupling, \
+             patch("pathlib.Path.read_text") as mock_read:
+            mock_git.side_effect = lambda *args: {
+                ("rev-parse", "HEAD"): "abc123def456",
+                ("rev-parse", "--short", "HEAD"): "abc123d",
+                ("rev-parse", "--abbrev-ref", "HEAD"): "main",
+            }.get(args, "")
+            mock_read.return_value = "x = 1\n"
+            mock_coupling.return_value = ([], [])
+            yield {
+                "git": mock_git,
+                "get_files": mock_get_files,
+                "analyze": mock_analyze,
+                "coupling": mock_coupling,
+                "read": mock_read,
+            }
+
+    def test_build_snapshot_requests_js_extensions(self, _mock_git):
+        """_build_current_snapshot should call get_tracked_files with JS extensions."""
+        from autocode.core.code.metrics import _build_current_snapshot
+        from autocode.core.code.models import FileMetrics
+
+        _mock_git["get_files"].return_value = []
+        _mock_git["analyze"].return_value = FileMetrics(
+            path="x.py", language="python", sloc=1, comments=0, blanks=0, total_loc=1,
+        )
+
+        _build_current_snapshot()
+
+        # Verify get_tracked_files was called with both .py AND JS extensions
+        call_args = _mock_git["get_files"].call_args
+        extensions = call_args[0]  # positional args
+        assert ".py" in extensions
+        assert ".js" in extensions
+        assert ".mjs" in extensions
+        assert ".jsx" in extensions
+
+    def test_snapshot_includes_js_metrics(self, _mock_git):
+        """Snapshot built with JS files should include their FileMetrics."""
+        from autocode.core.code.metrics import _build_current_snapshot
+        from autocode.core.code.models import FileMetrics
+
+        _mock_git["get_files"].return_value = [
+            "web/app.js",
+            "web/utils.mjs",
+        ]
+
+        def analyze_side_effect(path, content):
+            return FileMetrics(
+                path=path, language="javascript",
+                sloc=50, comments=5, blanks=3, total_loc=58,
+                functions=[], classes_count=1, functions_count=3,
+                avg_complexity=2.0, max_complexity=4, max_nesting=1,
+                maintainability_index=78.0,
+            )
+
+        _mock_git["analyze"].side_effect = analyze_side_effect
+
+        snapshot = _build_current_snapshot()
+
+        assert snapshot.total_files == 2
+        assert snapshot.total_sloc == 100  # 2 * 50
+        assert snapshot.total_functions == 6  # 2 * 3
+        assert all(f.language == "javascript" for f in snapshot.files)
+
+    def test_snapshot_mixed_languages(self, _mock_git):
+        """Snapshot with mixed Python + JS files should include both."""
+        from autocode.core.code.metrics import _build_current_snapshot
+        from autocode.core.code.models import FileMetrics, FunctionMetrics
+
+        _mock_git["get_files"].return_value = [
+            "src/main.py",
+            "web/app.js",
+            "web/index.mjs",
+        ]
+
+        def analyze_side_effect(path, content):
+            lang = "python" if path.endswith(".py") else "javascript"
+            return FileMetrics(
+                path=path, language=lang,
+                sloc=100, comments=10, blanks=5, total_loc=115,
+                functions=[
+                    FunctionMetrics(
+                        name="func1", file=path, line=1,
+                        complexity=3, rank="A", nesting_depth=1, sloc=20,
+                    ),
+                ],
+                classes_count=1, functions_count=1,
+                avg_complexity=3.0, max_complexity=3, max_nesting=1,
+                maintainability_index=70.0,
+            )
+
+        _mock_git["analyze"].side_effect = analyze_side_effect
+
+        snapshot = _build_current_snapshot()
+
+        assert snapshot.total_files == 3
+        assert snapshot.total_sloc == 300  # 3 * 100
+        assert snapshot.total_functions == 3  # 3 * 1
+        assert snapshot.total_classes == 3  # 3 * 1
+
+        # Check both languages are represented
+        languages = {f.language for f in snapshot.files}
+        assert "python" in languages
+        assert "javascript" in languages
+
+        # Complexity distribution should include all functions
+        assert snapshot.avg_complexity == 3.0
+        assert snapshot.complexity_distribution.get("A", 0) == 3

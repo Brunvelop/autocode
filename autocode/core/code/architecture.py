@@ -31,6 +31,9 @@ from autocode.core.code.analyzer import analyze_file_metrics
 
 logger = logging.getLogger(__name__)
 
+JS_EXTENSIONS = frozenset({".js", ".mjs", ".jsx"})
+_ALL_EXTENSIONS = (".py", ".js", ".mjs", ".jsx")
+
 
 # ==============================================================================
 # REGISTERED ENDPOINTS
@@ -42,10 +45,10 @@ def get_architecture_snapshot(path: str = ".") -> ArchitectureSnapshotOutput:
     """
     Obtiene un snapshot de la arquitectura del proyecto con métricas por nodo.
 
-    Analiza todos los archivos .py trackeados por git, construye una jerarquía
-    de directorios/archivos, calcula métricas de calidad (MI, CC, LOC) por archivo
-    y las propaga hacia arriba a los directorios padres como promedios ponderados
-    por líneas de código fuente (SLOC).
+    Analiza todos los archivos Python y JavaScript trackeados por git, construye
+    una jerarquía de directorios/archivos, calcula métricas de calidad (MI, CC,
+    LOC) por archivo y las propaga hacia arriba a los directorios padres como
+    promedios ponderados por líneas de código fuente (SLOC).
 
     Args:
         path: Path relativo al directorio a analizar (default: directorio actual)
@@ -56,11 +59,11 @@ def get_architecture_snapshot(path: str = ".") -> ArchitectureSnapshotOutput:
         commit_short = git("rev-parse", "--short", "HEAD")
         branch = git("rev-parse", "--abbrev-ref", "HEAD")
 
-        # Get tracked .py files
-        py_files = get_tracked_files(".py")
+        # Get tracked files (Python + JavaScript)
+        all_files = get_tracked_files(*_ALL_EXTENSIONS)
 
         # Build hierarchy with per-file metrics
-        nodes = _build_architecture_nodes(py_files)
+        nodes = _build_architecture_nodes(all_files)
 
         # Propagate metrics bottom-up
         root_id = "."
@@ -83,7 +86,8 @@ def get_architecture_snapshot(path: str = ".") -> ArchitectureSnapshotOutput:
             avg_mi = 0.0
             avg_complexity = 0.0
 
-        # Resolve file-level dependencies
+        # Resolve file-level dependencies (Python-only; TODO: JS file-level deps in commit 6)
+        py_files = [f for f in all_files if f.endswith(".py")]
         dependencies, circular_dependencies = _resolve_file_dependencies(py_files)
 
         snapshot = ArchitectureSnapshot(
