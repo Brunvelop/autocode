@@ -124,6 +124,7 @@
         let mockBehavior = 'success'; // 'success' | 'error' | 'loading' | 'circular'
         let executeCallCount = 0;
         let lastExecutedFunction = null;
+        let calledFunctions = [];
 
         // Import component
         const componentModule = import('../../../elements/dashboard/metrics-panel.js');
@@ -136,6 +137,7 @@
         autoGenModule.AutoFunctionController.executeFunction = async function(funcName, params) {
             executeCallCount++;
             lastExecutedFunction = funcName;
+            calledFunctions.push(funcName);
 
             if (mockBehavior === 'error') {
                 throw new Error('Mock API error: server unavailable');
@@ -205,7 +207,11 @@
                 await waitForLoaded(el);
 
                 runner.assertTrue(executeCallCount > prevCount, 'Debería haber llamado a executeFunction');
-                runner.assertEqual(lastExecutedFunction, 'generate_code_metrics');
+                const newCalls = calledFunctions.slice(prevCount);
+                runner.assertTrue(
+                    newCalls.includes('generate_code_metrics'),
+                    'Debería haber llamado a generate_code_metrics'
+                );
             });
 
             runner.test('Tras cargar, _data contiene los datos del API', async (stage) => {
