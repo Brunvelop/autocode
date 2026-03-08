@@ -14,13 +14,13 @@ import json
 import logging
 import math
 import os
-import subprocess
 from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
 from autocode.interfaces.registry import register_function
+from autocode.core.vcs.git import git, git_show, get_tracked_files
 from autocode.core.code.models import (
     FileMetrics,
     FunctionMetrics,
@@ -62,7 +62,7 @@ def generate_code_metrics() -> MetricsSnapshotOutput:
     """
     try:
         # Check cache: si ya existe snapshot para el commit actual, reutilizar
-        current_hash = _git("rev-parse", "HEAD")
+        current_hash = git("rev-parse", "HEAD")
         cached = _load_snapshot_by_hash(current_hash)
 
         if cached is not None:
@@ -183,7 +183,7 @@ def get_metrics_history(max_count: int = 100) -> MetricsHistoryOutput:
 
 def _build_current_snapshot() -> MetricsSnapshot:
     """Build a full metrics snapshot of the current project state."""
-    py_files = _get_tracked_py_files()
+    py_files = get_tracked_files(".py")
     file_metrics = []
     for fpath in py_files:
         try:
@@ -212,9 +212,9 @@ def _build_current_snapshot() -> MetricsSnapshot:
     coupling, circulars = _analyze_coupling(py_files)
 
     return MetricsSnapshot(
-        commit_hash=_git("rev-parse", "HEAD"),
-        commit_short=_git("rev-parse", "--short", "HEAD"),
-        branch=_git("rev-parse", "--abbrev-ref", "HEAD"),
+        commit_hash=git("rev-parse", "HEAD"),
+        commit_short=git("rev-parse", "--short", "HEAD"),
+        branch=git("rev-parse", "--abbrev-ref", "HEAD"),
         timestamp=datetime.now().isoformat(),
         files=file_metrics,
         total_files=len(file_metrics),
@@ -671,18 +671,18 @@ def _compare_snapshots(before: Optional[MetricsSnapshot], after: MetricsSnapshot
 def _analyze_commit(commit_hash: str) -> CommitMetrics:
     """Analyze the impact of a specific commit on code metrics."""
     # Resolve short hash
-    full_hash = _git("rev-parse", commit_hash)
-    short_hash = _git("rev-parse", "--short", commit_hash)
+    full_hash = git("rev-parse", commit_hash)
+    short_hash = git("rev-parse", "--short", commit_hash)
 
     # Get parent
-    parents_str = _git("log", "-1", "--format=%P", full_hash)
+    parents_str = git("log", "-1", "--format=%P", full_hash)
     parents = parents_str.split() if parents_str else []
 
     # Get changed .py files
     if parents:
-        diff_output = _git("diff-tree", "--no-commit-id", "-r", "--name-status", parents[0], full_hash)
+        diff_output = git("diff-tree", "--no-commit-id", "-r", "--name-status", parents[0], full_hash)
     else:
-        diff_output = _git("diff-tree", "--no-commit-id", "-r", "--name-status", full_hash)
+        diff_output = git("diff-tree", "--no-commit-id", "-r", "--name-status", full_hash)
 
     file_metrics: list[CommitFileMetrics] = []
     total_delta_sloc = 0
@@ -708,13 +708,13 @@ def _analyze_commit(commit_hash: str) -> CommitMetrics:
 
         # Get "before" content (from parent)
         if status != "added" and parents:
-            before_content = _git_show(f"{parents[0]}:{fpath}")
+            before_content = git_show(f"{parents[0]}:{fpath}")
             if before_content:
                 before_fm = _analyze_content(before_content, fpath)
 
         # Get "after" content (from this commit)
         if status != "deleted":
-            after_content = _git_show(f"{full_hash}:{fpath}")
+            after_content = git_show(f"{full_hash}:{fpath}")
             if after_content:
                 after_fm = _analyze_content(after_content, fpath)
 
@@ -747,34 +747,3 @@ def _analyze_commit(commit_hash: str) -> CommitMetrics:
     )
 
 
-# ==============================================================================
-# GIT HELPERS
-# ==============================================================================
-
-
-def _git(*args: str) -> str:
-    """Run a git command and return stripped stdout."""
-    result = subprocess.run(
-        ["git"] + list(args),
-        capture_output=True, text=True, check=False,
-    )
-    return result.stdout.strip()
-
-
-def _git_show(ref: str) -> Optional[str]:
-    """Get file content at a specific git ref. Returns None on error."""
-    result = subprocess.run(
-        ["git", "show", ref],
-        capture_output=True, text=True, check=False,
-    )
-    if result.returncode != 0:
-        return None
-    return result.stdout
-
-
-def _get_tracked_py_files() -> list[str]:
-    """Get all .py files tracked by git."""
-    output = _git("ls-files", "--cached", "*.py")
-    if not output:
-        return []
-    return [f for f in output.split("\n") if f.endswith(".py")]

@@ -19,11 +19,11 @@ Flujo de auto_review:
 """
 
 import logging
-import subprocess
 from datetime import datetime
 from pathlib import Path
 from typing import List, Optional, Tuple
 
+from autocode.core.vcs.git import git_show
 from autocode.core.code.metrics import _analyze_content
 from autocode.core.code.models import FileMetrics
 from autocode.core.planning.models import ReviewFileMetrics, ReviewResult
@@ -99,7 +99,7 @@ def _get_before_metrics(
 
     Returns dict vacío si el archivo no existía en parent_commit.
     """
-    content = _git_show(f"{parent_commit}:{fpath}", repo_path)
+    content = git_show(f"{parent_commit}:{fpath}", cwd=repo_path)
     if content is None:
         return {}
     fm = _analyze_content(content, fpath)
@@ -144,18 +144,6 @@ def _compute_deltas(before: dict, after: dict) -> dict:
             delta = round(delta, 2)
         deltas[f"delta_{key}"] = delta
     return deltas
-
-
-def _git_show(ref: str, repo_path: str = ".") -> Optional[str]:
-    """Get file content at a specific git ref. Returns None on error."""
-    result = subprocess.run(
-        ["git", "show", ref],
-        capture_output=True, text=True, check=False,
-        cwd=repo_path,
-    )
-    if result.returncode != 0:
-        return None
-    return result.stdout
 
 
 # ==============================================================================

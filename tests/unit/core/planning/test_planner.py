@@ -19,8 +19,8 @@ from autocode.core.planning.planner import (
     list_commit_plans,
     approve_plan,
     revert_plan,
-    _git_checked,
 )
+from autocode.core.vcs.git import git_checked
 from autocode.core.planning.models import (
     CommitPlan,
     PlanExecutionState,
@@ -36,7 +36,7 @@ class TestStatusTransitionValidation:
     def test_reject_executing_status_via_update(self, tmp_path):
         """update_commit_plan rechaza status='executing' (solo executor puede setearlo)."""
         with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)), \
-             patch("autocode.core.planning.planner._git", return_value="abc123"):
+             patch("autocode.core.planning.planner.git", return_value="abc123"):
             create_result = create_commit_plan(title="Test Plan")
             plan_id = create_result.result.id
 
@@ -47,7 +47,7 @@ class TestStatusTransitionValidation:
     def test_reject_completed_status_via_update(self, tmp_path):
         """update_commit_plan rechaza status='completed'."""
         with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)), \
-             patch("autocode.core.planning.planner._git", return_value="abc123"):
+             patch("autocode.core.planning.planner.git", return_value="abc123"):
             create_result = create_commit_plan(title="Test Plan")
             plan_id = create_result.result.id
 
@@ -57,7 +57,7 @@ class TestStatusTransitionValidation:
     def test_reject_failed_status_via_update(self, tmp_path):
         """update_commit_plan rechaza status='failed'."""
         with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)), \
-             patch("autocode.core.planning.planner._git", return_value="abc123"):
+             patch("autocode.core.planning.planner.git", return_value="abc123"):
             create_result = create_commit_plan(title="Test Plan")
             plan_id = create_result.result.id
 
@@ -67,7 +67,7 @@ class TestStatusTransitionValidation:
     def test_allow_manual_statuses(self, tmp_path):
         """update_commit_plan permite draft, ready, abandoned."""
         with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)), \
-             patch("autocode.core.planning.planner._git", return_value="abc123"):
+             patch("autocode.core.planning.planner.git", return_value="abc123"):
             create_result = create_commit_plan(title="Test Plan")
             plan_id = create_result.result.id
 
@@ -78,7 +78,7 @@ class TestStatusTransitionValidation:
     def test_list_plans_includes_new_statuses(self, tmp_path):
         """list_commit_plans filtra correctamente los nuevos estados."""
         with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)), \
-             patch("autocode.core.planning.planner._git", return_value="abc123"):
+             patch("autocode.core.planning.planner.git", return_value="abc123"):
             create_commit_plan(title="Plan 1")
 
             # Manualmente crear un plan con status "completed" para test
@@ -184,7 +184,7 @@ class TestRecoveryFromStuckExecuting:
     def test_executing_cannot_be_set_manually_from_draft(self, tmp_path):
         """No se puede setear 'executing' manualmente desde draft."""
         with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)), \
-             patch("autocode.core.planning.planner._git", return_value="abc123"):
+             patch("autocode.core.planning.planner.git", return_value="abc123"):
             create_result = create_commit_plan(title="Test Plan")
             plan_id = create_result.result.id
 
@@ -265,7 +265,7 @@ class TestApprovePlan:
         plan_id = self._create_pending_review_plan(tmp_path)
 
         with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)), \
-             patch("autocode.core.planning.planner._git_checked") as mock_git:
+             patch("autocode.core.planning.planner.git_checked") as mock_git:
             # git rev-parse HEAD returns commit hash after commit
             mock_git.return_value = "new_commit_hash_abc"
 
@@ -301,7 +301,7 @@ class TestApprovePlan:
         plan_id = self._create_pending_review_plan(tmp_path)
 
         with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)), \
-             patch("autocode.core.planning.planner._git_checked") as mock_git:
+             patch("autocode.core.planning.planner.git_checked") as mock_git:
             mock_git.return_value = "def456789"
 
             result = approve_plan(plan_id=plan_id)
@@ -314,7 +314,7 @@ class TestApprovePlan:
         plan_id = self._create_pending_review_plan(tmp_path, title="original title")
 
         with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)), \
-             patch("autocode.core.planning.planner._git_checked") as mock_git:
+             patch("autocode.core.planning.planner.git_checked") as mock_git:
             mock_git.return_value = "abc123"
 
             result = approve_plan(plan_id=plan_id, commit_message="custom: my message")
@@ -331,7 +331,7 @@ class TestApprovePlan:
         plan_id = self._create_pending_review_plan(tmp_path)
 
         with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)), \
-             patch("autocode.core.planning.planner._git_checked",
+             patch("autocode.core.planning.planner.git_checked",
                    side_effect=RuntimeError("git error: nothing to commit")):
             result = approve_plan(plan_id=plan_id)
 
@@ -343,7 +343,7 @@ class TestApprovePlan:
         plan_id = self._create_pending_review_plan(tmp_path)
 
         with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)), \
-             patch("autocode.core.planning.planner._git_checked",
+             patch("autocode.core.planning.planner.git_checked",
                    side_effect=RuntimeError("git error: fatal")):
             approve_plan(plan_id=plan_id)
 
@@ -426,7 +426,7 @@ class TestRevertPlan:
         )
 
         with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)), \
-             patch("autocode.core.planning.planner._git_checked") as mock_git:
+             patch("autocode.core.planning.planner.git_checked") as mock_git:
             result = revert_plan(plan_id=plan_id)
 
         assert result.success is True
@@ -459,7 +459,7 @@ class TestRevertPlan:
         plan_id = self._create_pending_review_plan(tmp_path)
 
         with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)), \
-             patch("autocode.core.planning.planner._git_checked"):
+             patch("autocode.core.planning.planner.git_checked"):
             result = revert_plan(plan_id=plan_id)
 
         assert result.success is True
@@ -473,7 +473,7 @@ class TestRevertPlan:
         )
 
         with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)), \
-             patch("autocode.core.planning.planner._git_checked") as mock_git:
+             patch("autocode.core.planning.planner.git_checked") as mock_git:
             result = revert_plan(plan_id=plan_id)
 
         assert result.success is True
@@ -489,7 +489,7 @@ class TestRevertPlan:
         )
 
         with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)), \
-             patch("autocode.core.planning.planner._git_checked") as mock_git:
+             patch("autocode.core.planning.planner.git_checked") as mock_git:
             result = revert_plan(plan_id=plan_id)
 
         assert result.success is True
@@ -501,7 +501,7 @@ class TestRevertPlan:
         plan_id = self._create_pending_review_plan(tmp_path)
 
         with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)), \
-             patch("autocode.core.planning.planner._git_checked",
+             patch("autocode.core.planning.planner.git_checked",
                    side_effect=RuntimeError("git error: pathspec 'src/main.py' did not match")):
             result = revert_plan(plan_id=plan_id)
 
@@ -513,7 +513,7 @@ class TestRevertPlan:
         plan_id = self._create_pending_review_plan(tmp_path)
 
         with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)), \
-             patch("autocode.core.planning.planner._git_checked",
+             patch("autocode.core.planning.planner.git_checked",
                    side_effect=RuntimeError("git error: fatal")):
             revert_plan(plan_id=plan_id)
 
@@ -553,45 +553,6 @@ class TestRevertPlan:
 # ==============================================================================
 
 
-class TestGitChecked:
-    """Tests for _git_checked helper that raises on git failures."""
-
-    def test_git_checked_returns_stdout_on_success(self):
-        """_git_checked returns stdout when git succeeds."""
-        with patch("autocode.core.planning.planner.subprocess.run") as mock_run:
-            mock_run.return_value.returncode = 0
-            mock_run.return_value.stdout = "abc123\n"
-            mock_run.return_value.stderr = ""
-
-            result = _git_checked("rev-parse", "HEAD")
-            assert result == "abc123"
-
-    def test_git_checked_raises_on_failure(self):
-        """_git_checked raises RuntimeError when git fails."""
-        with patch("autocode.core.planning.planner.subprocess.run") as mock_run:
-            mock_run.return_value.returncode = 128
-            mock_run.return_value.stdout = ""
-            mock_run.return_value.stderr = "fatal: not a git repository"
-
-            with pytest.raises(RuntimeError, match="git error.*not a git repository"):
-                _git_checked("rev-parse", "HEAD")
-
-    def test_git_checked_uses_fallback_message_when_no_stderr(self):
-        """_git_checked provides fallback error message when stderr is empty."""
-        with patch("autocode.core.planning.planner.subprocess.run") as mock_run:
-            mock_run.return_value.returncode = 1
-            mock_run.return_value.stdout = ""
-            mock_run.return_value.stderr = ""
-
-            with pytest.raises(RuntimeError, match="git.*failed with code 1"):
-                _git_checked("checkout", "HEAD", "--", "file.py")
-
-
-# ==============================================================================
-# TESTS: Status transitions — new executor-managed statuses
-# ==============================================================================
-
-
 class TestStatusTransitionsUpdated:
     """Tests that pending_review, pending_commit, and reverted
     cannot be set manually via update_commit_plan.
@@ -603,7 +564,7 @@ class TestStatusTransitionsUpdated:
     def test_pending_review_not_manually_settable(self, tmp_path):
         """update_commit_plan rechaza status='pending_review'."""
         with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)), \
-             patch("autocode.core.planning.planner._git", return_value="abc123"):
+             patch("autocode.core.planning.planner.git", return_value="abc123"):
             create_result = create_commit_plan(title="Test Plan")
             plan_id = create_result.result.id
 
@@ -614,7 +575,7 @@ class TestStatusTransitionsUpdated:
     def test_pending_commit_not_manually_settable(self, tmp_path):
         """update_commit_plan rechaza status='pending_commit'."""
         with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)), \
-             patch("autocode.core.planning.planner._git", return_value="abc123"):
+             patch("autocode.core.planning.planner.git", return_value="abc123"):
             create_result = create_commit_plan(title="Test Plan")
             plan_id = create_result.result.id
 
@@ -624,7 +585,7 @@ class TestStatusTransitionsUpdated:
     def test_reverted_not_manually_settable(self, tmp_path):
         """update_commit_plan rechaza status='reverted'."""
         with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)), \
-             patch("autocode.core.planning.planner._git", return_value="abc123"):
+             patch("autocode.core.planning.planner.git", return_value="abc123"):
             create_result = create_commit_plan(title="Test Plan")
             plan_id = create_result.result.id
 

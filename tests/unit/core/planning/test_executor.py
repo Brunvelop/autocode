@@ -517,7 +517,7 @@ class TestStreamExecutePlan:
                 patch("autocode.core.planning.executor._execute_single_task")
             )
             mock_git = stack.enter_context(
-                patch("autocode.core.planning.executor._git_add_and_commit")
+                patch("autocode.core.planning.executor.git_add_and_commit")
             )
             mock_review = stack.enter_context(
                 patch("autocode.core.planning.executor.auto_review",
@@ -553,7 +553,7 @@ class TestStreamExecutePlan:
                 patch("autocode.core.planning.executor._execute_single_task")
             )
             mock_git = stack.enter_context(
-                patch("autocode.core.planning.executor._git_add_and_commit")
+                patch("autocode.core.planning.executor.git_add_and_commit")
             )
             mock_exec.return_value = _mock_task_generator(
                 TaskExecutionResult(
@@ -832,7 +832,7 @@ class TestExecutorReviewMode:
                       return_value=approved_review)
             )
             mock_git = stack.enter_context(
-                patch("autocode.core.planning.executor._git_add_and_commit",
+                patch("autocode.core.planning.executor.git_add_and_commit",
                       return_value="def5678")
             )
             mock_exec.return_value = _mock_task_generator(
@@ -889,7 +889,7 @@ class TestExecutorReviewMode:
                       return_value=rejected_review)
             )
             mock_git = stack.enter_context(
-                patch("autocode.core.planning.executor._git_add_and_commit")
+                patch("autocode.core.planning.executor.git_add_and_commit")
             )
             mock_exec.return_value = _mock_task_generator(
                 TaskExecutionResult(
@@ -933,7 +933,7 @@ class TestExecutorReviewMode:
                 patch("autocode.core.planning.executor._execute_single_task")
             )
             mock_git = stack.enter_context(
-                patch("autocode.core.planning.executor._git_add_and_commit")
+                patch("autocode.core.planning.executor.git_add_and_commit")
             )
             mock_exec.return_value = _mock_task_generator(
                 TaskExecutionResult(
@@ -971,7 +971,7 @@ class TestExecutorReviewMode:
                       return_value=approved_review)
             )
             stack.enter_context(
-                patch("autocode.core.planning.executor._git_add_and_commit",
+                patch("autocode.core.planning.executor.git_add_and_commit",
                       return_value="abc123")
             )
             mock_exec.return_value = _mock_task_generator(
@@ -1029,7 +1029,7 @@ class TestExecutorReviewMode:
                       return_value=approved_review)
             )
             stack.enter_context(
-                patch("autocode.core.planning.executor._git_add_and_commit",
+                patch("autocode.core.planning.executor.git_add_and_commit",
                       return_value="abc123")
             )
             mock_exec.return_value = _mock_task_generator(

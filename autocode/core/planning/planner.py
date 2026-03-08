@@ -11,12 +11,12 @@ con toda la información recopilada durante la conversación).
 """
 import json
 import logging
-import subprocess
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
 from autocode.interfaces.registry import register_function
+from autocode.core.vcs.git import git, git_checked
 from autocode.interfaces.models import GenericOutput
 from autocode.core.planning.models import (
     PlanTask,
@@ -82,8 +82,8 @@ def create_commit_plan(
             id=plan_id,
             title=title,
             description=description,
-            parent_commit=_git("rev-parse", "HEAD"),
-            branch=_git("rev-parse", "--abbrev-ref", "HEAD"),
+            parent_commit=git("rev-parse", "HEAD"),
+            branch=git("rev-parse", "--abbrev-ref", "HEAD"),
             status="draft",
             tasks=tasks,
             context=context,
@@ -312,9 +312,9 @@ def approve_plan(plan_id: str, commit_message: str = "") -> CommitPlanOutput:
         # git add + commit (use _git_checked to detect failures)
         message = commit_message or plan.title
         for f in files:
-            _git_checked("add", f)
-        _git_checked("commit", "-m", message)
-        commit_hash = _git_checked("rev-parse", "HEAD")
+            git_checked("add", f)
+        git_checked("commit", "-m", message)
+        commit_hash = git_checked("rev-parse", "HEAD")
 
         # Update plan state
         if plan.execution:
@@ -377,7 +377,7 @@ def revert_plan(plan_id: str) -> CommitPlanOutput:
         # git checkout {parent_commit} -- file1 file2 ... (use _git_checked to detect failures)
         ref = plan.parent_commit or "HEAD"
         for f in files:
-            _git_checked("checkout", ref, "--", f)
+            git_checked("checkout", ref, "--", f)
 
         # Update plan state
         plan.status = "reverted"
@@ -519,27 +519,3 @@ def _list_plan_summaries(status_filter: str = "") -> list[CommitPlanSummary]:
     return summaries
 
 
-# ==============================================================================
-# GIT HELPERS
-# ==============================================================================
-
-
-def _git(*args: str) -> str:
-    """Run a git command and return stripped stdout (errors silenced)."""
-    result = subprocess.run(
-        ["git"] + list(args),
-        capture_output=True, text=True, check=False,
-    )
-    return result.stdout.strip()
-
-
-def _git_checked(*args: str) -> str:
-    """Run a git command, raising on failure. For critical operations."""
-    result = subprocess.run(
-        ["git"] + list(args),
-        capture_output=True, text=True, check=False,
-    )
-    if result.returncode != 0:
-        stderr = result.stderr.strip() or f"git {args[0]} failed with code {result.returncode}"
-        raise RuntimeError(f"git error: {stderr}")
-    return result.stdout.strip()

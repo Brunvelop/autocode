@@ -36,6 +36,7 @@ from autocode.core.vcs.status import (
     GitStatusOutput,
 )
 from autocode.core.vcs.log import get_git_log, get_git_log_summary, get_commit_detail
+from autocode.core.vcs.git import git, git_checked, git_show, git_add_and_commit, get_tracked_files
 
 __all__ = [
     # Operations
@@ -64,4 +65,10 @@ __all__ = [
     # Functions - MCP/LLM (compact text summaries)
     "get_git_status_summary",
     "get_git_log_summary",
+    # Git helpers (shared across modules)
+    "git",
+    "git_checked",
+    "git_show",
+    "git_add_and_commit",
+    "get_tracked_files",
 ]

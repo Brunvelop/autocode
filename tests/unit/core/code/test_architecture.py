@@ -394,8 +394,8 @@ class TestPropagateMetrics:
 class TestGetArchitectureSnapshot:
     """Tests for the registered get_architecture_snapshot endpoint."""
 
-    @patch("autocode.core.code.architecture._git")
-    @patch("autocode.core.code.architecture._get_tracked_py_files")
+    @patch("autocode.core.code.architecture.git")
+    @patch("autocode.core.code.architecture.get_tracked_files")
     @patch("autocode.core.code.architecture._analyze_content")
     @patch("pathlib.Path.read_text")
     def test_snapshot_success(self, mock_read, mock_analyze, mock_get_files, mock_git):
@@ -446,8 +446,8 @@ class TestGetArchitectureSnapshot:
         assert "src/app.py" in node_ids
         assert "src/utils.py" in node_ids
 
-    @patch("autocode.core.code.architecture._git")
-    @patch("autocode.core.code.architecture._get_tracked_py_files")
+    @patch("autocode.core.code.architecture.git")
+    @patch("autocode.core.code.architecture.get_tracked_files")
     def test_snapshot_error_no_git(self, mock_get_files, mock_git):
         """Should return error gracefully when git fails."""
         from autocode.core.code.architecture import get_architecture_snapshot
@@ -461,8 +461,8 @@ class TestGetArchitectureSnapshot:
         assert result.result is None
         assert result.message is not None
 
-    @patch("autocode.core.code.architecture._git")
-    @patch("autocode.core.code.architecture._get_tracked_py_files")
+    @patch("autocode.core.code.architecture.git")
+    @patch("autocode.core.code.architecture.get_tracked_files")
     def test_snapshot_no_py_files(self, mock_get_files, mock_git):
         """Empty project (no .py files) should return valid but empty snapshot."""
         from autocode.core.code.architecture import get_architecture_snapshot
@@ -761,8 +761,8 @@ class TestResolveFileDependencies:
 class TestSnapshotWithDependencies:
     """Tests that get_architecture_snapshot() includes dependency resolution."""
 
-    @patch("autocode.core.code.architecture._git")
-    @patch("autocode.core.code.architecture._get_tracked_py_files")
+    @patch("autocode.core.code.architecture.git")
+    @patch("autocode.core.code.architecture.get_tracked_files")
     @patch("autocode.core.code.architecture._analyze_content")
     def test_snapshot_includes_dependencies(
         self, mock_analyze, mock_get_files, mock_git
@@ -823,8 +823,8 @@ class TestSnapshotWithDependencies:
         assert hasattr(snapshot, "circular_dependencies")
         assert snapshot.circular_dependencies == []
 
-    @patch("autocode.core.code.architecture._git")
-    @patch("autocode.core.code.architecture._get_tracked_py_files")
+    @patch("autocode.core.code.architecture.git")
+    @patch("autocode.core.code.architecture.get_tracked_files")
     @patch("autocode.core.code.architecture._analyze_content")
     @patch("pathlib.Path.read_text")
     def test_snapshot_no_py_files_has_empty_deps(

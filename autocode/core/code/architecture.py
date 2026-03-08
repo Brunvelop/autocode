@@ -26,11 +26,8 @@ from autocode.core.code.models import (
     ArchitectureSnapshotOutput,
     FileDependency,
 )
-from autocode.core.code.metrics import (
-    _analyze_content,
-    _get_tracked_py_files,
-    _git,
-)
+from autocode.core.vcs.git import git, get_tracked_files
+from autocode.core.code.metrics import _analyze_content
 
 logger = logging.getLogger(__name__)
 
@@ -55,12 +52,12 @@ def get_architecture_snapshot(path: str = ".") -> ArchitectureSnapshotOutput:
     """
     try:
         # Git metadata
-        commit_hash = _git("rev-parse", "HEAD")
-        commit_short = _git("rev-parse", "--short", "HEAD")
-        branch = _git("rev-parse", "--abbrev-ref", "HEAD")
+        commit_hash = git("rev-parse", "HEAD")
+        commit_short = git("rev-parse", "--short", "HEAD")
+        branch = git("rev-parse", "--abbrev-ref", "HEAD")
 
         # Get tracked .py files
-        py_files = _get_tracked_py_files()
+        py_files = get_tracked_files(".py")
 
         # Build hierarchy with per-file metrics
         nodes = _build_architecture_nodes(py_files)

@@ -17,7 +17,6 @@ Flujo:
 import asyncio
 import json
 import logging
-import subprocess
 import time
 from datetime import datetime
 from typing import AsyncGenerator, List, Union
@@ -43,6 +42,7 @@ from autocode.core.planning.models import (
     PlanExecutionState,
     ReviewResult,
 )
+from autocode.core.vcs.git import git_add_and_commit
 from autocode.core.planning.planner import _save_plan, _load_plan
 from autocode.core.planning.reviewer import auto_review, compute_review_metrics
 
@@ -333,7 +333,7 @@ async def stream_execute_plan(
                 # Auto-approved → commit and complete
                 if unique_files:
                     try:
-                        commit_hash = _git_add_and_commit(unique_files, plan.title)
+                        commit_hash = git_add_and_commit(unique_files, plan.title)
                         plan.execution.commit_hash = commit_hash
                     except Exception as e:
                         logger.error(f"Auto-commit failed: {e}")
@@ -781,23 +781,3 @@ def _get_executor_tools() -> list:
     return prepare_chat_tools(list(EXECUTOR_TOOLS))
 
 
-def _git_add_and_commit(files: List[str], message: str) -> str:
-    """Ejecuta git add + git commit.
-
-    Args:
-        files: Lista de archivos a incluir en el commit
-        message: Mensaje del commit
-
-    Returns:
-        Hash del commit creado
-    """
-    for f in files:
-        subprocess.run(["git", "add", f], check=True)
-    subprocess.run(["git", "commit", "-m", message], check=True)
-    result = subprocess.run(
-        ["git", "rev-parse", "HEAD"],
-        capture_output=True,
-        text=True,
-        check=True,
-    )
-    return result.stdout.strip()
