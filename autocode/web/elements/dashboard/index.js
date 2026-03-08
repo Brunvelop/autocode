@@ -24,6 +24,7 @@ import { AutoFunctionController } from '../auto-element-generator.js';
 import { themeTokens } from './styles/theme.js';
 import { codeDashboardStyles } from './styles/code-dashboard.styles.js';
 import './treemap-view.js';
+import './dependency-graph.js';
 
 export class CodeDashboard extends LitElement {
     static properties = {
@@ -288,14 +289,16 @@ export class CodeDashboard extends LitElement {
             `;
         }
 
-        // Dependencies graph tab — placeholder (Commit 5 integrates dependency-graph)
+        // Dependencies graph tab — renders <dependency-graph> with file nodes + deps
         if (mode === 'graph') {
+            const fileNodes = (this._snapshot.nodes || []).filter(n => n.type === 'file');
             return html`
                 <div class="content-area">
-                    <div class="content-placeholder">
-                        <span class="content-placeholder-icon">🔗</span>
-                        <span>Dependency Graph — coming in Commit 5</span>
-                    </div>
+                    <dependency-graph
+                        .nodes=${fileNodes}
+                        .dependencies=${this._snapshot.dependencies || []}
+                        .circularDependencies=${this._snapshot.circular_dependencies || []}
+                    ></dependency-graph>
                 </div>
             `;
         }
