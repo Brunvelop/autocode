@@ -1,0 +1,641 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Metrics Panel - Test (Commit 6)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .component-stage {
+            min-height: 200px;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            overflow: hidden;
+            background: white;
+        }
+        metrics-panel {
+            display: block;
+            height: 500px;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 p-6">
+    <div class="max-w-4xl mx-auto">
+        <h1 class="text-2xl font-bold mb-2">📊 Metrics Panel — Tests (Commit 6)</h1>
+        <p class="text-gray-500 text-sm mb-4">TDD tests: registro, carga, summary cards, hide-summary, distribución, tablas, coupling</p>
+
+        <!-- Summary -->
+        <div id="summary" class="mb-6 p-4 bg-white border border-gray-200 rounded-lg shadow-sm"></div>
+
+        <!-- Test results -->
+        <div id="results" class="space-y-4"></div>
+    </div>
+
+    <script type="module">
+        import '../../utils/test-runner.js';
+        import { TestRunner } from '../../utils/test-runner.js';
+
+        const runner = new TestRunner();
+
+        // ====================================================================
+        // MOCK: Intercept AutoFunctionController before component loads
+        // ====================================================================
+
+        // MetricsComparison shape — what generate_code_metrics returns
+        const MOCK_METRICS = {
+            before: {
+                total_sloc: 480,
+                total_files: 2,
+                total_functions: 18,
+                total_classes: 5,
+                avg_complexity: 3.5,
+                avg_mi: 71.0,
+                complexity_distribution: { A: 13, B: 3, C: 1, D: 0, E: 0, F: 1 },
+                files: [],
+                coupling: [],
+                circular_deps: [],
+                commit_short: 'prev123',
+                branch: 'main',
+                timestamp: '2025-05-30T10:00:00',
+            },
+            after: {
+                total_sloc: 500,
+                total_files: 3,
+                total_functions: 20,
+                total_classes: 5,
+                avg_complexity: 3.2,
+                avg_mi: 72.5,
+                complexity_distribution: { A: 15, B: 3, C: 1, D: 0, E: 0, F: 1 },
+                files: [
+                    {
+                        path: 'src/app.py',
+                        sloc: 250,
+                        maintainability_index: 60.0,
+                        max_complexity: 15,
+                        functions: [
+                            { name: 'process_data', complexity: 15, rank: 'D', nesting_depth: 3, file: 'src/app.py' },
+                            { name: 'validate', complexity: 5, rank: 'B', nesting_depth: 1, file: 'src/app.py' },
+                        ]
+                    },
+                    {
+                        path: 'src/utils.py',
+                        sloc: 150,
+                        maintainability_index: 80.0,
+                        max_complexity: 6,
+                        functions: [
+                            { name: 'format_output', complexity: 6, rank: 'B', nesting_depth: 2, file: 'src/utils.py' },
+                        ]
+                    },
+                    {
+                        path: 'setup.py',
+                        sloc: 100,
+                        maintainability_index: 45.0,
+                        max_complexity: 3,
+                        functions: [
+                            { name: 'setup', complexity: 3, rank: 'A', nesting_depth: 1, file: 'setup.py' },
+                        ]
+                    },
+                ],
+                coupling: [
+                    { name: 'src', ce: 2, ca: 1, instability: 0.67 },
+                    { name: 'core', ce: 1, ca: 3, instability: 0.25 },
+                ],
+                circular_deps: [],
+                commit_short: 'abc123d',
+                branch: 'main',
+                timestamp: '2025-06-01T12:00:00',
+            },
+            delta_sloc: 20,
+            delta_functions: 2,
+            delta_classes: 0,
+            delta_avg_complexity: -0.3,
+            delta_avg_mi: 1.5,
+        };
+
+        // Mock with circular deps for test G
+        const MOCK_METRICS_CIRCULAR = {
+            ...MOCK_METRICS,
+            after: {
+                ...MOCK_METRICS.after,
+                circular_deps: [['src', 'core']],
+            }
+        };
+
+        let mockBehavior = 'success'; // 'success' | 'error' | 'loading' | 'circular'
+        let executeCallCount = 0;
+        let lastExecutedFunction = null;
+
+        // Import component
+        const componentModule = import('../../../elements/dashboard/metrics-panel.js');
+        await componentModule;
+
+        // Patch AutoFunctionController after import
+        const autoGenModule = await import('../../../elements/auto-element-generator.js');
+        const originalExecute = autoGenModule.AutoFunctionController.executeFunction;
+
+        autoGenModule.AutoFunctionController.executeFunction = async function(funcName, params) {
+            executeCallCount++;
+            lastExecutedFunction = funcName;
+
+            if (mockBehavior === 'error') {
+                throw new Error('Mock API error: server unavailable');
+            }
+            if (mockBehavior === 'loading') {
+                return new Promise(() => {}); // Never resolves
+            }
+            if (funcName === 'generate_code_metrics') {
+                if (mockBehavior === 'circular') return MOCK_METRICS_CIRCULAR;
+                return MOCK_METRICS;
+            }
+            return originalExecute.call(this, funcName, params);
+        };
+
+        // Helper: create a fresh component instance
+        function createPanel(attrs = {}) {
+            const el = document.createElement('metrics-panel');
+            for (const [k, v] of Object.entries(attrs)) {
+                if (v === true) el.setAttribute(k, '');
+                else el.setAttribute(k, v);
+            }
+            return el;
+        }
+
+        // Helper: wait for component to finish loading
+        async function waitForLoaded(el, timeout = 3000) {
+            const start = Date.now();
+            while (el._loading && (Date.now() - start < timeout)) {
+                await new Promise(r => setTimeout(r, 50));
+            }
+            await el.updateComplete;
+        }
+
+        // ====================================================================
+        // A) COMPONENT REGISTRATION
+        // ====================================================================
+
+        runner.group('A) Registro del componente', () => {
+
+            runner.test('metrics-panel se define como custom element', async (stage) => {
+                runner.assertTrue(
+                    customElements.get('metrics-panel'),
+                    'metrics-panel debería estar registrado'
+                );
+            });
+
+            runner.test('Instanciar metrics-panel crea un HTMLElement válido', async (stage) => {
+                const el = createPanel();
+                runner.assertTrue(el instanceof HTMLElement, 'Debería ser HTMLElement');
+                runner.assertEqual(el.tagName.toLowerCase(), 'metrics-panel');
+            });
+
+        });
+
+        // ====================================================================
+        // B) DATA LOADING
+        // ====================================================================
+
+        runner.group('B) Carga de datos', () => {
+
+            runner.test('connectedCallback llama a generate_code_metrics', async (stage) => {
+                mockBehavior = 'success';
+                const prevCount = executeCallCount;
+
+                const el = createPanel();
+                stage.appendChild(el);
+                await waitForLoaded(el);
+
+                runner.assertTrue(executeCallCount > prevCount, 'Debería haber llamado a executeFunction');
+                runner.assertEqual(lastExecutedFunction, 'generate_code_metrics');
+            });
+
+            runner.test('Tras cargar, _data contiene los datos del API', async (stage) => {
+                mockBehavior = 'success';
+                const el = createPanel();
+                stage.appendChild(el);
+                await waitForLoaded(el);
+
+                runner.assertTrue(el._data !== null, '_data no debería ser null');
+                runner.assertEqual(el._data.after.total_files, 3);
+                runner.assertEqual(el._data.after.total_sloc, 500);
+                runner.assertEqual(el._data.delta_functions, 2);
+            });
+
+            runner.test('_loading es false después de cargar', async (stage) => {
+                mockBehavior = 'success';
+                const el = createPanel();
+                stage.appendChild(el);
+                await waitForLoaded(el);
+
+                runner.assertFalse(el._loading, '_loading debería ser false');
+            });
+
+            runner.test('Muestra spinner mientras carga', async (stage) => {
+                mockBehavior = 'loading';
+                const el = createPanel();
+                stage.appendChild(el);
+
+                await new Promise(r => setTimeout(r, 100));
+                await el.updateComplete;
+
+                const spinner = el.shadowRoot.querySelector('.spinner');
+                runner.assertTrue(spinner !== null, 'Debería mostrar un spinner');
+
+                stage.removeChild(el);
+                mockBehavior = 'success';
+            });
+
+            runner.test('Muestra error cuando el API falla', async (stage) => {
+                mockBehavior = 'error';
+                const el = createPanel();
+                stage.appendChild(el);
+                await waitForLoaded(el);
+
+                const errorMsg = el.shadowRoot.querySelector('.error-msg');
+                runner.assertTrue(errorMsg !== null, 'Debería mostrar mensaje de error');
+                runner.assertContains(errorMsg.textContent, 'Mock API error');
+
+                mockBehavior = 'success';
+            });
+
+            runner.test('Botón retry en estado de error recarga los datos', async (stage) => {
+                mockBehavior = 'error';
+                const el = createPanel();
+                stage.appendChild(el);
+                await waitForLoaded(el);
+
+                mockBehavior = 'success';
+                const retryBtn = el.shadowRoot.querySelector('.retry-btn');
+                runner.assertTrue(retryBtn !== null, 'Debería haber botón retry');
+                retryBtn.click();
+                await waitForLoaded(el);
+
+                runner.assertTrue(el._data !== null, 'Tras retry, _data debería tener datos');
+            });
+
+        });
+
+        // ====================================================================
+        // C) SUMMARY CARDS (sin hide-summary)
+        // ====================================================================
+
+        runner.group('C) Summary Cards (sin hide-summary)', () => {
+
+            runner.test('Renderiza 6 tarjetas de resumen', async (stage) => {
+                mockBehavior = 'success';
+                const el = createPanel();
+                stage.appendChild(el);
+                await waitForLoaded(el);
+
+                const cards = el.shadowRoot.querySelectorAll('.summary-card');
+                runner.assertEqual(cards.length, 6, 'Deberían existir 6 tarjetas');
+            });
+
+            runner.test('Cards muestran valores correctos (SLOC, archivos, funciones, clases)', async (stage) => {
+                mockBehavior = 'success';
+                const el = createPanel();
+                stage.appendChild(el);
+                await waitForLoaded(el);
+
+                const allText = el.shadowRoot.querySelector('.summary-grid').textContent;
+
+                runner.assertContains(allText, '500', 'Debería mostrar total_sloc=500');
+                runner.assertContains(allText, '3', 'Debería mostrar total_files=3');
+                runner.assertContains(allText, '20', 'Debería mostrar total_functions=20');
+                runner.assertContains(allText, '5', 'Debería mostrar total_classes=5');
+            });
+
+            runner.test('Delta positivo en funciones se muestra en verde (delta-positive)', async (stage) => {
+                mockBehavior = 'success';
+                const el = createPanel();
+                stage.appendChild(el);
+                await waitForLoaded(el);
+
+                // delta_functions = +2 (higher is better by default → positive = green)
+                const deltas = el.shadowRoot.querySelectorAll('.card-delta');
+                runner.assertTrue(deltas.length > 0, 'Debería haber deltas visibles');
+
+                // Find the +2 delta (functions)
+                const deltaTexts = Array.from(deltas).map(d => d.textContent.trim());
+                runner.assertTrue(
+                    deltaTexts.some(t => t === '+2'),
+                    'Debería mostrar delta +2 en funciones'
+                );
+            });
+
+            runner.test('Delta negativo en CC se muestra en verde (lowerBetter)', async (stage) => {
+                mockBehavior = 'success';
+                const el = createPanel();
+                stage.appendChild(el);
+                await waitForLoaded(el);
+
+                // delta_avg_complexity = -0.3 → lowerBetter → delta-positive (green)
+                const positiveDeltas = el.shadowRoot.querySelectorAll('.card-delta.delta-positive');
+                runner.assertTrue(positiveDeltas.length > 0, 'Debería haber al menos un delta positivo (verde)');
+            });
+
+            runner.test('Status indicators ✅/⚠️/🔴 se muestran en cards de CC y MI', async (stage) => {
+                mockBehavior = 'success';
+                const el = createPanel();
+                stage.appendChild(el);
+                await waitForLoaded(el);
+
+                const statuses = el.shadowRoot.querySelectorAll('.card-status');
+                runner.assertTrue(statuses.length > 0, 'Debería haber indicadores de estado');
+
+                // MI=72.5 → ✅, CC=3.2 → ✅
+                const statusTexts = Array.from(statuses).map(s => s.textContent.trim());
+                runner.assertTrue(
+                    statusTexts.some(s => s === '✅'),
+                    'Con MI=72.5 y CC=3.2 debería haber ✅'
+                );
+            });
+
+        });
+
+        // ====================================================================
+        // D) HIDE-SUMMARY ATTRIBUTE
+        // ====================================================================
+
+        runner.group('D) hide-summary attribute', () => {
+
+            runner.test('Con hide-summary, no se renderiza .summary-grid', async (stage) => {
+                mockBehavior = 'success';
+                const el = createPanel({ 'hide-summary': true });
+                stage.appendChild(el);
+                await waitForLoaded(el);
+
+                const grid = el.shadowRoot.querySelector('.summary-grid');
+                runner.assertTrue(grid === null, 'Con hide-summary, .summary-grid no debería existir');
+            });
+
+            runner.test('Sin hide-summary, se renderiza .summary-grid', async (stage) => {
+                mockBehavior = 'success';
+                const el = createPanel();
+                stage.appendChild(el);
+                await waitForLoaded(el);
+
+                const grid = el.shadowRoot.querySelector('.summary-grid');
+                runner.assertTrue(grid !== null, 'Sin hide-summary, .summary-grid debería existir');
+            });
+
+            runner.test('hide-summary no oculta el resto del contenido', async (stage) => {
+                mockBehavior = 'success';
+                const el = createPanel({ 'hide-summary': true });
+                stage.appendChild(el);
+                await waitForLoaded(el);
+
+                // Distribution, tables, snapshot info should still be present
+                const distBars = el.shadowRoot.querySelector('.dist-bars');
+                runner.assertTrue(distBars !== null, 'La distribución debería seguir visible con hide-summary');
+
+                const snapshotInfo = el.shadowRoot.querySelector('.snapshot-info');
+                runner.assertTrue(snapshotInfo !== null, '.snapshot-info debería seguir visible con hide-summary');
+            });
+
+        });
+
+        // ====================================================================
+        // E) COMPLEXITY DISTRIBUTION
+        // ====================================================================
+
+        runner.group('E) Distribución de complejidad', () => {
+
+            runner.test('Renderiza 6 grupos de barras (A-F)', async (stage) => {
+                mockBehavior = 'success';
+                const el = createPanel();
+                stage.appendChild(el);
+                await waitForLoaded(el);
+
+                const barGroups = el.shadowRoot.querySelectorAll('.dist-bar-group');
+                runner.assertEqual(barGroups.length, 6, 'Deberían existir 6 grupos de barras (A-F)');
+            });
+
+            runner.test('Las etiquetas A, B, C, D, E, F están presentes', async (stage) => {
+                mockBehavior = 'success';
+                const el = createPanel();
+                stage.appendChild(el);
+                await waitForLoaded(el);
+
+                const labels = el.shadowRoot.querySelectorAll('.dist-label');
+                const labelTexts = Array.from(labels).map(l => l.textContent.trim());
+
+                for (const rank of ['A', 'B', 'C', 'D', 'E', 'F']) {
+                    runner.assertTrue(
+                        labelTexts.includes(rank),
+                        `Debería existir etiqueta rank ${rank}`
+                    );
+                }
+            });
+
+            runner.test('Las barras tienen las clases de color correctas', async (stage) => {
+                mockBehavior = 'success';
+                const el = createPanel();
+                stage.appendChild(el);
+                await waitForLoaded(el);
+
+                for (const rank of ['A', 'B', 'C', 'D', 'E', 'F']) {
+                    const bar = el.shadowRoot.querySelector(`.dist-bar.rank-${rank}`);
+                    runner.assertTrue(bar !== null, `Debería existir barra .rank-${rank}`);
+                }
+            });
+
+            runner.test('Los conteos de distribución son correctos', async (stage) => {
+                mockBehavior = 'success';
+                const el = createPanel();
+                stage.appendChild(el);
+                await waitForLoaded(el);
+
+                const counts = el.shadowRoot.querySelectorAll('.dist-count');
+                const countTexts = Array.from(counts).map(c => c.textContent.trim());
+
+                // MOCK has: A:15, B:3, C:1, D:0, E:0, F:1
+                runner.assertContains(countTexts.join(' '), '15', 'Debería mostrar 15 funciones rank A');
+                runner.assertContains(countTexts.join(' '), '3', 'Debería mostrar 3 funciones rank B');
+            });
+
+        });
+
+        // ====================================================================
+        // F) TABLAS
+        // ====================================================================
+
+        runner.group('F) Tablas', () => {
+
+            runner.test('Renderiza tabla de top funciones complejas', async (stage) => {
+                mockBehavior = 'success';
+                const el = createPanel();
+                stage.appendChild(el);
+                await waitForLoaded(el);
+
+                // Find the section with "Top Funciones Complejas"
+                const sections = el.shadowRoot.querySelectorAll('.section');
+                const topFuncSection = Array.from(sections).find(s =>
+                    s.querySelector('.section-title')?.textContent.includes('Top Funciones')
+                );
+                runner.assertTrue(topFuncSection !== null, 'Debería existir sección Top Funciones Complejas');
+
+                const table = topFuncSection.querySelector('.metrics-table');
+                runner.assertTrue(table !== null, 'Debería existir tabla de funciones');
+            });
+
+            runner.test('Tabla de funciones muestra la función más compleja', async (stage) => {
+                mockBehavior = 'success';
+                const el = createPanel();
+                stage.appendChild(el);
+                await waitForLoaded(el);
+
+                const sections = el.shadowRoot.querySelectorAll('.section');
+                const topFuncSection = Array.from(sections).find(s =>
+                    s.querySelector('.section-title')?.textContent.includes('Top Funciones')
+                );
+                const tableText = topFuncSection.querySelector('.metrics-table').textContent;
+
+                // process_data has CC=15, rank D — should be first
+                runner.assertContains(tableText, 'process_data', 'Debería mostrar la función process_data');
+                runner.assertContains(tableText, '15', 'Debería mostrar CC=15');
+            });
+
+            runner.test('Tabla de funciones muestra rank badge', async (stage) => {
+                mockBehavior = 'success';
+                const el = createPanel();
+                stage.appendChild(el);
+                await waitForLoaded(el);
+
+                const rankBadge = el.shadowRoot.querySelector('.rank-badge');
+                runner.assertTrue(rankBadge !== null, 'Debería existir al menos un rank badge');
+            });
+
+            runner.test('Renderiza tabla de peor mantenibilidad', async (stage) => {
+                mockBehavior = 'success';
+                const el = createPanel();
+                stage.appendChild(el);
+                await waitForLoaded(el);
+
+                const sections = el.shadowRoot.querySelectorAll('.section');
+                const miSection = Array.from(sections).find(s =>
+                    s.querySelector('.section-title')?.textContent.includes('Mantenibilidad')
+                );
+                runner.assertTrue(miSection !== null, 'Debería existir sección Peor Mantenibilidad');
+
+                const table = miSection.querySelector('.metrics-table');
+                runner.assertTrue(table !== null, 'Debería existir tabla de MI');
+            });
+
+            runner.test('Tabla MI muestra el archivo con peor MI primero', async (stage) => {
+                mockBehavior = 'success';
+                const el = createPanel();
+                stage.appendChild(el);
+                await waitForLoaded(el);
+
+                const sections = el.shadowRoot.querySelectorAll('.section');
+                const miSection = Array.from(sections).find(s =>
+                    s.querySelector('.section-title')?.textContent.includes('Mantenibilidad')
+                );
+                const rows = miSection.querySelectorAll('tbody tr');
+
+                // setup.py has MI=45.0, worst MI → should be first
+                runner.assertTrue(rows.length > 0, 'Debería haber filas en la tabla MI');
+                runner.assertContains(rows[0].textContent, 'setup.py', 'El archivo con peor MI debería ser primero');
+            });
+
+        });
+
+        // ====================================================================
+        // G) COUPLING
+        // ====================================================================
+
+        runner.group('G) Coupling', () => {
+
+            runner.test('Renderiza sección de acoplamiento cuando hay datos', async (stage) => {
+                mockBehavior = 'success';
+                const el = createPanel();
+                stage.appendChild(el);
+                await waitForLoaded(el);
+
+                const sections = el.shadowRoot.querySelectorAll('.section');
+                const couplingSection = Array.from(sections).find(s =>
+                    s.querySelector('.section-title')?.textContent.includes('Acoplamiento')
+                );
+                runner.assertTrue(couplingSection !== null, 'Debería existir sección Acoplamiento');
+            });
+
+            runner.test('Tabla de acoplamiento muestra columnas Ce, Ca, Inest.', async (stage) => {
+                mockBehavior = 'success';
+                const el = createPanel();
+                stage.appendChild(el);
+                await waitForLoaded(el);
+
+                const sections = el.shadowRoot.querySelectorAll('.section');
+                const couplingSection = Array.from(sections).find(s =>
+                    s.querySelector('.section-title')?.textContent.includes('Acoplamiento')
+                );
+                const tableText = couplingSection.querySelector('.metrics-table').textContent;
+
+                runner.assertContains(tableText, 'Ce', 'Debería mostrar columna Ce');
+                runner.assertContains(tableText, 'Ca', 'Debería mostrar columna Ca');
+                runner.assertContains(tableText, 'Inest', 'Debería mostrar columna Inest.');
+            });
+
+            runner.test('Tabla de acoplamiento muestra los paquetes del mock', async (stage) => {
+                mockBehavior = 'success';
+                const el = createPanel();
+                stage.appendChild(el);
+                await waitForLoaded(el);
+
+                const sections = el.shadowRoot.querySelectorAll('.section');
+                const couplingSection = Array.from(sections).find(s =>
+                    s.querySelector('.section-title')?.textContent.includes('Acoplamiento')
+                );
+                const tableText = couplingSection.querySelector('.metrics-table').textContent;
+
+                runner.assertContains(tableText, 'src', 'Debería mostrar paquete src');
+                runner.assertContains(tableText, 'core', 'Debería mostrar paquete core');
+            });
+
+            runner.test('Muestra ✅ cuando no hay dependencias circulares', async (stage) => {
+                mockBehavior = 'success';
+                const el = createPanel();
+                stage.appendChild(el);
+                await waitForLoaded(el);
+
+                const noIssues = el.shadowRoot.querySelector('.no-issues');
+                runner.assertTrue(noIssues !== null, 'Debería mostrar .no-issues cuando no hay circulares');
+                runner.assertContains(noIssues.textContent, '✅', 'Debería mostrar ✅');
+            });
+
+            runner.test('Muestra advertencia cuando hay dependencias circulares', async (stage) => {
+                mockBehavior = 'circular';
+                const el = createPanel();
+                stage.appendChild(el);
+                await waitForLoaded(el);
+
+                const warning = el.shadowRoot.querySelector('.circular-warning');
+                runner.assertTrue(warning !== null, 'Debería mostrar .circular-warning');
+                runner.assertContains(warning.textContent, 'Circular', 'Debería indicar dependencia circular');
+                runner.assertContains(warning.textContent, 'src', 'Debería mencionar el paquete src');
+
+                mockBehavior = 'success';
+            });
+
+            runner.test('Renderiza .snapshot-info con commit y branch', async (stage) => {
+                mockBehavior = 'success';
+                const el = createPanel();
+                stage.appendChild(el);
+                await waitForLoaded(el);
+
+                const snapshotInfo = el.shadowRoot.querySelector('.snapshot-info');
+                runner.assertTrue(snapshotInfo !== null, 'Debería existir .snapshot-info');
+                runner.assertContains(snapshotInfo.textContent, 'abc123d', 'Debería mostrar commit_short');
+                runner.assertContains(snapshotInfo.textContent, 'main', 'Debería mostrar branch');
+            });
+
+        });
+
+        // ====================================================================
+        // RUN
+        // ====================================================================
+
+        await runner.run();
+    </script>
+</body>
+</html>
