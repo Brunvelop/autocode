@@ -8,10 +8,6 @@
  * El backend devuelve una estructura plana (graph.nodes con parent_id)
  * para evitar recursión en OpenAPI schema. Este componente reconstruye
  * el árbol en el cliente.
- * 
- * Soporta dos vistas:
- * - "code": Estructura de código (clases, funciones, etc.)
- * - "git": Estado del repositorio git (archivos modificados, staged, etc.)
  */
 
 import { LitElement, html } from 'https://cdn.jsdelivr.net/gh/lit/dist@3/core/lit-core.min.js';
@@ -22,7 +18,6 @@ import { codeExplorerStyles } from './styles/code-explorer.styles.js';
 // Importar sub-componentes
 import './code-node.js';
 import './code-metrics.js';
-import './git-status.js';
 
 export class CodeExplorer extends LitElement {
     static properties = {
@@ -31,21 +26,13 @@ export class CodeExplorer extends LitElement {
         depth: { type: Number },
         includeImports: { type: Boolean, attribute: 'include-imports' },
         
-        // Estado interno - Code View
+        // Estado interno
         _structure: { state: true },      // Datos del backend (graph + métricas)
         _rootNode: { state: true },       // Árbol reconstruido
         _expandedNodes: { state: true },
         _selectedNode: { state: true },
         _loading: { state: true },
         _error: { state: true },
-        
-        // Estado interno - View Mode
-        _viewMode: { state: true },       // "code" | "git"
-        
-        // Estado interno - Git View
-        _gitStatus: { state: true },
-        _gitLoading: { state: true },
-        _gitError: { state: true }
     };
 
     static styles = [themeTokens, codeExplorerStyles];
@@ -58,21 +45,13 @@ export class CodeExplorer extends LitElement {
         this.depth = -1;  // Ilimitado
         this.includeImports = true;
         
-        // Estado interno - Code
+        // Estado interno
         this._structure = null;
         this._rootNode = null;
         this._expandedNodes = new Set();
         this._selectedNode = null;
         this._loading = false;
         this._error = null;
-        
-        // Estado interno - View Mode
-        this._viewMode = 'code';  // "code" | "git"
-        
-        // Estado interno - Git
-        this._gitStatus = null;
-        this._gitLoading = false;
-        this._gitError = null;
     }
 
     connectedCallback() {
@@ -93,50 +72,30 @@ export class CodeExplorer extends LitElement {
                 <!-- Header -->
                 <div class="explorer-header">
                     <h3 class="explorer-title">
-                        <span class="explorer-title-icon">${this._viewMode === 'code' ? '🗂️' : '🌿'}</span>
-                        ${this._viewMode === 'code' ? 'Code Explorer' : 'Git Status'}
+                        <span class="explorer-title-icon">🗂️</span>
+                        Code Explorer
                     </h3>
                     <div class="explorer-actions">
-                        ${this._viewMode === 'code' ? html`
-                            <button class="action-btn" @click=${this.expandAll} title="Expandir todo">
-                                ➕
-                            </button>
-                            <button class="action-btn" @click=${this.collapseAll} title="Colapsar todo">
-                                ➖
-                            </button>
-                        ` : ''}
-                        <button class="action-btn" @click=${this._handleRefresh} title="Recargar">
+                        <button class="action-btn" @click=${this.expandAll} title="Expandir todo">
+                            ➕
+                        </button>
+                        <button class="action-btn" @click=${this.collapseAll} title="Colapsar todo">
+                            ➖
+                        </button>
+                        <button class="action-btn" @click=${this.refresh} title="Recargar">
                             🔄
                         </button>
                     </div>
                 </div>
 
-                <!-- View Mode Toggle -->
-                <div class="view-toggle">
-                    <button 
-                        class="toggle-btn ${this._viewMode === 'code' ? 'active' : ''}"
-                        @click=${() => this._setViewMode('code')}
-                    >
-                        📄 Código
-                    </button>
-                    <button 
-                        class="toggle-btn ${this._viewMode === 'git' ? 'active' : ''}"
-                        @click=${() => this._setViewMode('git')}
-                    >
-                        🌿 Git Status
-                    </button>
-                </div>
-
-                <!-- Metrics (solo en vista de código) -->
-                ${this._viewMode === 'code' && this._structure ? html`
+                <!-- Metrics -->
+                ${this._structure ? html`
                     <code-metrics .metrics=${this._structure}></code-metrics>
                 ` : ''}
 
                 <!-- Content -->
                 <div class="explorer-content">
-                    ${this._viewMode === 'code' 
-                        ? this._renderCodeContent() 
-                        : this._renderGitContent()}
+                    ${this._renderCodeContent()}
                 </div>
             </div>
         `;
@@ -181,16 +140,6 @@ export class CodeExplorer extends LitElement {
                 .expandedNodes=${this._expandedNodes}
                 .selected=${this._selectedNode === this._rootNode?.id}
             ></code-node>
-        `;
-    }
-
-    _renderGitContent() {
-        return html`
-            <git-status
-                .status=${this._gitStatus}
-                .loading=${this._gitLoading}
-                .error=${this._gitError}
-            ></git-status>
         `;
     }
 
@@ -326,67 +275,6 @@ export class CodeExplorer extends LitElement {
             bubbles: true,
             composed: true
         }));
-    }
-
-    /**
-     * Maneja el click en el botón de refresh según la vista actual.
-     */
-    _handleRefresh() {
-        if (this._viewMode === 'code') {
-            this.refresh();
-        } else {
-            this.refreshGitStatus();
-        }
-    }
-
-    /**
-     * Cambia el modo de vista.
-     * @param {'code' | 'git'} mode - Modo de vista
-     */
-    _setViewMode(mode) {
-        if (this._viewMode === mode) return;
-        
-        this._viewMode = mode;
-        
-        // Cargar datos si es necesario
-        if (mode === 'git' && !this._gitStatus && !this._gitLoading) {
-            this.refreshGitStatus();
-        }
-        
-        this.dispatchEvent(new CustomEvent('view-mode-changed', {
-            detail: { mode },
-            bubbles: true,
-            composed: true
-        }));
-    }
-
-    /**
-     * Recarga el estado de git desde el backend.
-     */
-    async refreshGitStatus() {
-        this._gitLoading = true;
-        this._gitError = null;
-
-        try {
-            const result = await AutoFunctionController.executeFunction(
-                'get_git_status',
-                {}
-            );
-
-            this._gitStatus = result;
-
-            this.dispatchEvent(new CustomEvent('git-status-loaded', {
-                detail: { status: result },
-                bubbles: true,
-                composed: true
-            }));
-
-        } catch (error) {
-            this._gitError = error.message || 'Error cargando git status';
-            console.error('❌ Error loading git status:', error);
-        } finally {
-            this._gitLoading = false;
-        }
     }
 
     // ========================================================================

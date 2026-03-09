@@ -19,6 +19,7 @@ import './commit-node.js';
 import './commit-detail.js';
 import './commit-plan-node.js';
 import './commit-plan-detail.js';
+import './git-status.js';
 
 export class GitGraph extends LitElement {
     static properties = {
@@ -38,6 +39,14 @@ export class GitGraph extends LitElement {
 
         // Collapsible commit panel
         _panelCollapsed: { state: true },
+
+        // View mode toggle: 'commits' | 'status'
+        _viewMode: { state: true },
+
+        // Git status view
+        _gitStatus: { state: true },
+        _gitLoading: { state: true },
+        _gitError: { state: true },
 
         // Commit plans (ghost nodes)
         _plans: { state: true },
@@ -59,6 +68,10 @@ export class GitGraph extends LitElement {
         this._error = null;
         this._layoutData = null;
         this._panelCollapsed = false;
+        this._viewMode = 'commits';
+        this._gitStatus = null;
+        this._gitLoading = false;
+        this._gitError = null;
         this._plans = [];
         this._selectedPlan = null;
     }
@@ -113,11 +126,15 @@ export class GitGraph extends LitElement {
                 <!-- Header -->
                 ${this._renderHeader()}
 
-                <!-- Body: graph + detail panel -->
-                <div class="graph-body">
-                    ${this._renderGraphPanel()}
-                    ${this._renderDetailPanel()}
-                </div>
+                <!-- Body: commits graph or git status -->
+                ${this._viewMode === 'status'
+                    ? this._renderStatusPanel()
+                    : html`
+                        <div class="graph-body">
+                            ${this._renderGraphPanel()}
+                            ${this._renderDetailPanel()}
+                        </div>
+                    `}
             </div>
         `;
     }
@@ -131,26 +148,59 @@ export class GitGraph extends LitElement {
             <div class="graph-header">
                 <div class="header-left">
                     <span class="header-title-icon">🌳</span>
-                    <h3 class="header-title">Git Graph</h3>
+                    <h3 class="header-title">Git</h3>
+                    <!-- View toggle -->
+                    <button
+                        class="action-btn ${this._viewMode === 'commits' ? 'active' : ''}"
+                        @click=${() => this._setViewMode('commits')}
+                        title="Ver commits"
+                    >
+                        🌳 Commits
+                    </button>
+                    <button
+                        class="action-btn ${this._viewMode === 'status' ? 'active' : ''}"
+                        @click=${() => this._setViewMode('status')}
+                        title="Ver estado del repositorio"
+                    >
+                        🌿 Status
+                    </button>
                 </div>
                 <div class="header-actions">
-                    <!-- Branch filter -->
-                    <select 
-                        class="branch-select"
-                        .value=${this._selectedBranch}
-                        @change=${this._handleBranchFilter}
-                    >
-                        <option value="">Todas las ramas</option>
-                        ${this._branches.map(b => html`
-                            <option value="${b.name}" ?selected=${b.name === this._selectedBranch}>
-                                ${b.is_current ? '● ' : ''}${b.name}
-                            </option>
-                        `)}
-                    </select>
-                    <button class="action-btn" @click=${this.refresh} title="Recargar">
+                    ${this._viewMode === 'commits' ? html`
+                        <!-- Branch filter (solo en vista commits) -->
+                        <select 
+                            class="branch-select"
+                            .value=${this._selectedBranch}
+                            @change=${this._handleBranchFilter}
+                        >
+                            <option value="">Todas las ramas</option>
+                            ${this._branches.map(b => html`
+                                <option value="${b.name}" ?selected=${b.name === this._selectedBranch}>
+                                    ${b.is_current ? '● ' : ''}${b.name}
+                                </option>
+                            `)}
+                        </select>
+                    ` : ''}
+                    <button class="action-btn" @click=${this._handleRefresh} title="Recargar">
                         🔄
                     </button>
                 </div>
+            </div>
+        `;
+    }
+
+    // ========================================================================
+    // STATUS PANEL (full-width, view mode 'status')
+    // ========================================================================
+
+    _renderStatusPanel() {
+        return html`
+            <div class="graph-body" style="overflow-y: auto; padding: var(--design-spacing-md, 0.75rem);">
+                <git-status
+                    .status=${this._gitStatus}
+                    .loading=${this._gitLoading}
+                    .error=${this._gitError}
+                ></git-status>
             </div>
         `;
     }
@@ -275,6 +325,58 @@ export class GitGraph extends LitElement {
     // ========================================================================
     // PUBLIC API
     // ========================================================================
+
+    /**
+     * Cambia el modo de vista entre 'commits' y 'status'.
+     * Si se cambia a 'status' y no hay datos, los carga automáticamente.
+     * @param {'commits' | 'status'} mode
+     */
+    _setViewMode(mode) {
+        if (this._viewMode === mode) return;
+        this._viewMode = mode;
+
+        if (mode === 'status' && !this._gitStatus && !this._gitLoading) {
+            this.refreshGitStatus();
+        }
+    }
+
+    /**
+     * Delega el refresh al método correcto según la vista activa.
+     */
+    _handleRefresh() {
+        if (this._viewMode === 'status') {
+            this.refreshGitStatus();
+        } else {
+            this.refresh();
+        }
+    }
+
+    /**
+     * Recarga el estado de git desde el backend.
+     */
+    async refreshGitStatus() {
+        this._gitLoading = true;
+        this._gitError = null;
+
+        try {
+            const result = await AutoFunctionController.executeFunction(
+                'get_git_status',
+                {}
+            );
+            this._gitStatus = result;
+
+            this.dispatchEvent(new CustomEvent('git-status-loaded', {
+                detail: { status: result },
+                bubbles: true,
+                composed: true,
+            }));
+        } catch (error) {
+            this._gitError = error.message || 'Error cargando git status';
+            console.error('❌ Error loading git status:', error);
+        } finally {
+            this._gitLoading = false;
+        }
+    }
 
     async refresh() {
         this._loading = true;
