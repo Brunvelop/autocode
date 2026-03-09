@@ -47,7 +47,7 @@ export const themeTokens = css`
         --design-indigo-600: #4f46e5;
         --design-indigo-700: #4338ca;
         
-        /* Dark mode colors (para file-explorer y componentes oscuros) */
+        /* Dark mode colors (para componentes oscuros) */
         --dark-bg-primary: #020617;    /* Slate 950 */
         --dark-bg-secondary: #0f172a;  /* Slate 900 */
         --dark-bg-tertiary: #1e293b;   /* Slate 800 */

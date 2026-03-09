@@ -26,7 +26,6 @@ import { codeDashboardStyles } from './styles/code-dashboard.styles.js';
 import './treemap-view.js';
 import './dependency-graph.js';
 import './metrics-panel.js';
-import '../file-explorer/index.js';
 import '../code-explorer/index.js';
 
 export class CodeDashboard extends LitElement {
@@ -48,7 +47,6 @@ export class CodeDashboard extends LitElement {
         _tree: { state: true },
 
         // Lazy activation flags for embedded components
-        _filesActivated: { state: true },
         _codeActivated: { state: true },
         _metricsActivated: { state: true },
     };
@@ -64,7 +62,6 @@ export class CodeDashboard extends LitElement {
         this._loading = false;
         this._error = null;
         this._tree = null;
-        this._filesActivated = false;
         this._codeActivated = false;
         this._metricsActivated = false;
     }
@@ -230,7 +227,6 @@ export class CodeDashboard extends LitElement {
 
     _renderViewTabs() {
         const tabs = [
-            { id: 'files',   label: '📁 Files' },
             { id: 'code',    label: '🧬 Code' },
             { id: 'treemap', label: '🗺️ Treemap' },
             { id: 'graph',   label: '🔗 Dependencies' },
@@ -255,15 +251,6 @@ export class CodeDashboard extends LitElement {
 
     _renderContentArea() {
         const mode = this._viewMode;
-
-        // Files tab — file-explorer
-        if (mode === 'files') {
-            return html`
-                <div class="content-area">
-                    <file-explorer></file-explorer>
-                </div>
-            `;
-        }
 
         // Code tab — code-explorer
         if (mode === 'code') {
@@ -338,7 +325,6 @@ export class CodeDashboard extends LitElement {
         if (this._viewMode === mode) return;
         this._viewMode = mode;
 
-        if (mode === 'files') this._filesActivated = true;
         if (mode === 'code') this._codeActivated = true;
         if (mode === 'metrics') this._metricsActivated = true;
     }
