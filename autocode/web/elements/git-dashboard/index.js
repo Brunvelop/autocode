@@ -1,6 +1,6 @@
 /**
  * index.js
- * GitGraph - Componente principal para visualización interactiva del historial git.
+ * GitDashboard - Componente principal para visualización interactiva del historial git.
  *
  * Muestra un grafo de commits con branches, tags, merge lines, etc.
  * Panel lateral con detalle del commit seleccionado (archivos cambiados, stats).
@@ -12,7 +12,7 @@
 import { LitElement, html } from 'https://cdn.jsdelivr.net/gh/lit/dist@3/core/lit-core.min.js';
 import { AutoFunctionController } from '../auto-element-generator.js';
 import { themeTokens } from './styles/theme.js';
-import { gitGraphStyles } from './styles/git-graph.styles.js';
+import { gitDashboardStyles } from './styles/git-dashboard.styles.js';
 
 // Sub-components
 import './commit-node.js';
@@ -21,7 +21,7 @@ import './commit-plan-node.js';
 import './commit-plan-detail.js';
 import './git-status.js';
 
-export class GitGraph extends LitElement {
+export class GitDashboard extends LitElement {
     static properties = {
         maxCount: { type: Number, attribute: 'max-count' },
 
@@ -53,7 +53,7 @@ export class GitGraph extends LitElement {
         _selectedPlan: { state: true },
     };
 
-    static styles = [themeTokens, gitGraphStyles];
+    static styles = [themeTokens, gitDashboardStyles];
 
     constructor() {
         super();
@@ -652,6 +652,6 @@ export class GitGraph extends LitElement {
 }
 
 // Register the custom element
-if (!customElements.get('git-graph')) {
-    customElements.define('git-graph', GitGraph);
+if (!customElements.get('git-dashboard')) {
+    customElements.define('git-dashboard', GitDashboard);
 }

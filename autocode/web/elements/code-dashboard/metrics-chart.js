@@ -1,7 +1,7 @@
 /**
  * metrics-chart.js
  * Gráfica temporal de métricas de código a lo largo de commits.
- * Vive en dashboard/ — adaptado de git-graph/metrics-chart.js.
+ * Vive en code-dashboard/ — adaptado de git-dashboard/metrics-chart.js.
  *
  * Usa D3.js (vía CDN ESM) para escalas, ejes y generación de paths SVG.
  * Renderiza dentro de Shadow DOM (LitElement) — D3 opera sobre el SVG

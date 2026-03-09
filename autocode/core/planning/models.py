@@ -3,7 +3,7 @@ models.py
 Modelos de datos para planificación de commits.
 
 Permite diseñar commits futuros desde la UI, almacenarlos como planes
-estructurados en .autocode/plans/ y visualizarlos como ghost nodes en git-graph.
+estructurados en .autocode/plans/ y visualizarlos como ghost nodes en git-dashboard.
 """
 
 from typing import List, Optional, Literal
@@ -149,7 +149,7 @@ class CommitPlanSummary(BaseModel):
     Versión ligera de CommitPlan para listados.
     
     Solo contiene la información mínima para renderizar
-    ghost nodes en el git-graph.
+    ghost nodes en el git-dashboard.
     """
     id: str = Field(..., description="ID único del plan")
     title: str = Field(..., description="Futuro mensaje de commit")

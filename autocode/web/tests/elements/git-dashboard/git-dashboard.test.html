@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Git Graph — Clean (Commit 9)</title>
+    <title>Git Dashboard — Clean (Commit 9)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         .component-stage {
@@ -13,7 +13,7 @@
             overflow: hidden;
             background: white;
         }
-        git-graph {
+        git-dashboard {
             display: block;
             height: 400px;
         }
@@ -21,8 +21,8 @@
 </head>
 <body class="bg-gray-50 p-6">
     <div class="max-w-4xl mx-auto">
-        <h1 class="text-2xl font-bold mb-2">🌳 Git Graph — Clean Tests (Commit 9)</h1>
-        <p class="text-gray-500 text-sm mb-4">TDD tests: git-graph como componente puro de commits, sin app shell</p>
+        <h1 class="text-2xl font-bold mb-2">🌳 Git Dashboard — Clean Tests (Commit 9)</h1>
+        <p class="text-gray-500 text-sm mb-4">TDD tests: git-dashboard como componente puro de commits, sin app shell</p>
 
         <!-- Server status -->
         <div id="serverStatus" class="mb-6 p-4 bg-gray-100 border border-gray-300 rounded-lg">
@@ -76,7 +76,7 @@
 
         const MOCK_PLANS = [];
 
-        // Patch AutoFunctionController BEFORE importing git-graph
+        // Patch AutoFunctionController BEFORE importing git-dashboard
         const autoGenModule = await import('../../../elements/auto-element-generator.js');
         const originalExecute = autoGenModule.AutoFunctionController.executeFunction;
 
@@ -86,12 +86,12 @@
             return originalExecute.call(this, funcName, params);
         };
 
-        // Import git-graph component
-        await import('../../../elements/git-graph/index.js');
+        // Import git-dashboard component
+        await import('../../../elements/git-dashboard/index.js');
 
-        // Helper: create a fresh git-graph instance
-        function createGitGraph() {
-            return document.createElement('git-graph');
+        // Helper: create a fresh git-dashboard instance
+        function createGitDashboard() {
+            return document.createElement('git-dashboard');
         }
 
         // Helper: wait for component to finish loading
@@ -112,7 +112,7 @@
         runner.group('A) NO tiene propiedad _showExplorer', () => {
 
             runner.test('_showExplorer no existe como propiedad reactiva', async (stage) => {
-                const el = createGitGraph();
+                const el = createGitDashboard();
                 stage.appendChild(el);
                 await waitForLoaded(el);
 
@@ -123,7 +123,7 @@
             });
 
             runner.test('El constructor no inicializa _showExplorer', async (stage) => {
-                const el = createGitGraph();
+                const el = createGitDashboard();
                 stage.appendChild(el);
                 await waitForLoaded(el);
 
@@ -142,7 +142,7 @@
         runner.group('B) NO tiene botón 🗂️ en header', () => {
 
             runner.test('No existe botón 🗂️ en .header-actions', async (stage) => {
-                const el = createGitGraph();
+                const el = createGitDashboard();
                 stage.appendChild(el);
                 await waitForLoaded(el);
 
@@ -156,7 +156,7 @@
             });
 
             runner.test('No hay botón con title "Code Explorer"', async (stage) => {
-                const el = createGitGraph();
+                const el = createGitDashboard();
                 stage.appendChild(el);
                 await waitForLoaded(el);
 
@@ -180,7 +180,7 @@
         runner.group('C) Solo tiene branch-select y botón 🔄', () => {
 
             runner.test('Exactamente 1 action-btn en .header-actions', async (stage) => {
-                const el = createGitGraph();
+                const el = createGitDashboard();
                 stage.appendChild(el);
                 await waitForLoaded(el);
 
@@ -192,7 +192,7 @@
             });
 
             runner.test('El único action-btn es el de recarga 🔄', async (stage) => {
-                const el = createGitGraph();
+                const el = createGitDashboard();
                 stage.appendChild(el);
                 await waitForLoaded(el);
 
@@ -206,7 +206,7 @@
             });
 
             runner.test('Existe branch-select en .header-actions', async (stage) => {
-                const el = createGitGraph();
+                const el = createGitDashboard();
                 stage.appendChild(el);
                 await waitForLoaded(el);
 
@@ -226,7 +226,7 @@
         runner.group('D) Detail panel sin architecture-dashboard ni code-dashboard', () => {
 
             runner.test('architecture-dashboard NO está en el DOM', async (stage) => {
-                const el = createGitGraph();
+                const el = createGitDashboard();
                 stage.appendChild(el);
                 await waitForLoaded(el);
 
@@ -238,7 +238,7 @@
             });
 
             runner.test('code-dashboard NO está en el DOM', async (stage) => {
-                const el = createGitGraph();
+                const el = createGitDashboard();
                 stage.appendChild(el);
                 await waitForLoaded(el);
 
@@ -250,7 +250,7 @@
             });
 
             runner.test('El detail-panel solo contiene los elementos esperados', async (stage) => {
-                const el = createGitGraph();
+                const el = createGitDashboard();
                 stage.appendChild(el);
                 await waitForLoaded(el);
 
@@ -273,13 +273,13 @@
         // E) NO importa architecture (no register side-effects)
         // ====================================================================
 
-        runner.group('E) architecture-dashboard NO registrado desde git-graph', () => {
+        runner.group('E) architecture-dashboard NO registrado desde git-dashboard', () => {
 
-            runner.test('architecture-dashboard no se registra como efecto del import de git-graph', async (stage) => {
+            runner.test('architecture-dashboard no se registra como efecto del import de git-dashboard', async (stage) => {
                 // Note: architecture-dashboard might be registered if architecture/index.js was imported
-                // After the cleanup, git-graph should NOT import architecture/index.js
-                // We verify that git-graph itself doesn't require it
-                const el = createGitGraph();
+                // After the cleanup, git-dashboard should NOT import architecture/index.js
+                // We verify that git-dashboard itself doesn't require it
+                const el = createGitDashboard();
                 stage.appendChild(el);
                 await waitForLoaded(el);
 
@@ -297,7 +297,7 @@
         runner.group('F) Seleccionar commit muestra commit-detail', () => {
 
             runner.test('Seleccionar commit renderiza commit-detail en el panel', async (stage) => {
-                const el = createGitGraph();
+                const el = createGitDashboard();
                 stage.appendChild(el);
                 await waitForLoaded(el);
 
@@ -314,7 +314,7 @@
             });
 
             runner.test('commit-detail recibe el hash correcto', async (stage) => {
-                const el = createGitGraph();
+                const el = createGitDashboard();
                 stage.appendChild(el);
                 await waitForLoaded(el);
 
@@ -333,7 +333,7 @@
             });
 
             runner.test('Con commit seleccionado, NO se muestra plan-detail', async (stage) => {
-                const el = createGitGraph();
+                const el = createGitDashboard();
                 stage.appendChild(el);
                 await waitForLoaded(el);
 
@@ -359,7 +359,7 @@
         runner.group('G) Sin selección muestra placeholder', () => {
 
             runner.test('Sin commit ni plan seleccionado, muestra .detail-placeholder', async (stage) => {
-                const el = createGitGraph();
+                const el = createGitDashboard();
                 stage.appendChild(el);
                 await waitForLoaded(el);
 
@@ -375,7 +375,7 @@
             });
 
             runner.test('Placeholder NO menciona el botón 🗂️', async (stage) => {
-                const el = createGitGraph();
+                const el = createGitDashboard();
                 stage.appendChild(el);
                 await waitForLoaded(el);
 
@@ -393,7 +393,7 @@
             });
 
             runner.test('Deseleccionar commit vuelve al placeholder', async (stage) => {
-                const el = createGitGraph();
+                const el = createGitDashboard();
                 stage.appendChild(el);
                 await waitForLoaded(el);
 

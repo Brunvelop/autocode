@@ -1,10 +1,10 @@
 /**
- * git-graph.styles.js
- * Estilos para el componente principal GitGraph
+ * git-dashboard.styles.js
+ * Estilos para el componente principal GitDashboard
  */
 import { css } from 'https://cdn.jsdelivr.net/gh/lit/dist@3/core/lit-core.min.js';
 
-export const gitGraphStyles = css`
+export const gitDashboardStyles = css`
     :host {
         display: block;
         font-family: var(--design-font-family, system-ui, sans-serif);

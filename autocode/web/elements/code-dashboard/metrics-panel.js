@@ -1,8 +1,8 @@
 /**
  * metrics-panel.js
- * Panel de métricas de código del proyecto — vive en dashboard/.
+ * Panel de métricas de código del proyecto — vive en code-dashboard/.
  *
- * Adaptado de git-graph/metrics-dashboard.js:
+ * Adaptado de git-dashboard/metrics-dashboard.js:
  * - Clase renombrada: MetricsDashboard → MetricsPanel
  * - Elemento renombrado: metrics-dashboard → metrics-panel
  * - Imports actualizados a ./styles/

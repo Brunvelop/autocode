@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Git Graph — Plans Auto-Refresh Tests</title>
+    <title>Git Dashboard — Plans Auto-Refresh Tests</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         .component-stage {
@@ -13,7 +13,7 @@
             overflow: hidden;
             background: white;
         }
-        git-graph {
+        git-dashboard {
             display: block;
             height: 300px;
         }
@@ -21,8 +21,8 @@
 </head>
 <body class="bg-gray-50 p-6">
     <div class="max-w-4xl mx-auto">
-        <h1 class="text-2xl font-bold mb-2">🔄 Git Graph — Plans Auto-Refresh Tests</h1>
-        <p class="text-gray-500 text-sm mb-4">TDD tests for Commit 7: auto-refresh plans in git-graph after chat creates a plan</p>
+        <h1 class="text-2xl font-bold mb-2">🔄 Git Dashboard — Plans Auto-Refresh Tests</h1>
+        <p class="text-gray-500 text-sm mb-4">TDD tests for Commit 7: auto-refresh plans in git-dashboard after chat creates a plan</p>
 
         <!-- Server status -->
         <div id="serverStatus" class="mb-6 p-4 bg-gray-100 border border-gray-300 rounded-lg">
@@ -102,12 +102,12 @@
             return originalExecute.call(this, funcName, params);
         };
 
-        // Import git-graph component
-        await import('../../../elements/git-graph/index.js');
+        // Import git-dashboard component
+        await import('../../../elements/git-dashboard/index.js');
 
-        // Helper: create a fresh git-graph and wait for load
-        async function createGitGraph(stage) {
-            const el = document.createElement('git-graph');
+        // Helper: create a fresh git-dashboard and wait for load
+        async function createGitDashboard(stage) {
+            const el = document.createElement('git-dashboard');
             if (stage) stage.appendChild(el);
 
             const start = Date.now();
@@ -132,9 +132,9 @@
 
         runner.group('A) Event-based refresh via plans-changed', () => {
 
-            runner.test('GitGraph._loadPlans se llama al recibir plans-changed en window', async (stage) => {
+            runner.test('GitDashboard._loadPlans se llama al recibir plans-changed en window', async (stage) => {
                 resetMocks();
-                const el = await createGitGraph(stage);
+                const el = await createGitDashboard(stage);
 
                 // Record the count after initial load
                 const initialCount = loadPlansCallCount;
@@ -155,7 +155,7 @@
             runner.test('Plans list se actualiza tras evento plans-changed', async (stage) => {
                 resetMocks();
                 currentMockPlans = [];
-                const el = await createGitGraph(stage);
+                const el = await createGitDashboard(stage);
 
                 // Verify empty initially
                 runner.assertEqual(el._plans.length, 0, 'Debería empezar sin planes');
@@ -174,7 +174,7 @@
 
             runner.test('plans-changed no dispara refresh completo del graph (solo plans)', async (stage) => {
                 resetMocks();
-                const el = await createGitGraph(stage);
+                const el = await createGitDashboard(stage);
 
                 // Spy on refresh: replace it temporarily
                 let refreshCalled = false;
@@ -199,7 +199,7 @@
             runner.test('Plans se renderizan como commit-plan-node tras el evento', async (stage) => {
                 resetMocks();
                 currentMockPlans = [];
-                const el = await createGitGraph(stage);
+                const el = await createGitDashboard(stage);
 
                 // No plan nodes initially
                 let planNodes = el.shadowRoot.querySelectorAll('commit-plan-node');
@@ -226,9 +226,9 @@
 
         runner.group('B) Polling mechanism', () => {
 
-            runner.test('GitGraph tiene _planPollInterval tras connectedCallback', async (stage) => {
+            runner.test('GitDashboard tiene _planPollInterval tras connectedCallback', async (stage) => {
                 resetMocks();
-                const el = await createGitGraph(stage);
+                const el = await createGitDashboard(stage);
 
                 runner.assertTrue(
                     el._planPollInterval != null,
@@ -236,9 +236,9 @@
                 );
             });
 
-            runner.test('GitGraph limpia _planPollInterval en disconnectedCallback', async (stage) => {
+            runner.test('GitDashboard limpia _planPollInterval en disconnectedCallback', async (stage) => {
                 resetMocks();
-                const el = await createGitGraph(stage);
+                const el = await createGitDashboard(stage);
 
                 const intervalId = el._planPollInterval;
                 runner.assertTrue(intervalId != null, 'Polling debería estar activo');
@@ -254,7 +254,7 @@
 
             runner.test('Polling llama _loadPlans periódicamente', async (stage) => {
                 resetMocks();
-                const el = await createGitGraph(stage);
+                const el = await createGitDashboard(stage);
 
                 const countAfterInit = loadPlansCallCount;
 
@@ -280,7 +280,7 @@
 
             runner.test('Múltiples eventos rápidos resultan en pocas llamadas (debounce)', async (stage) => {
                 resetMocks();
-                const el = await createGitGraph(stage);
+                const el = await createGitDashboard(stage);
 
                 // Spy on THIS instance's _loadPlans only
                 let instanceCallCount = 0;
@@ -322,7 +322,7 @@
 
             runner.test('Tras disconnectedCallback, plans-changed ya no recarga plans', async (stage) => {
                 resetMocks();
-                const el = await createGitGraph(stage);
+                const el = await createGitDashboard(stage);
 
                 // Spy on THIS instance's _loadPlans only
                 let instanceCallCount = 0;
@@ -360,13 +360,13 @@
 
             runner.test('AutocodeChat tiene método que dispatch plans-changed (concepto)', async (stage) => {
                 // Verify that the plans-changed event mechanism works end-to-end:
-                // 1. Create git-graph
+                // 1. Create git-dashboard
                 // 2. Simulate what chat would do: dispatch plans-changed
                 // 3. Verify plans update
 
                 resetMocks();
                 currentMockPlans = [];
-                const el = await createGitGraph(stage);
+                const el = await createGitDashboard(stage);
 
                 runner.assertEqual(el._plans.length, 0, 'Sin planes inicialmente');
 
@@ -380,13 +380,13 @@
                 runner.assertEqual(el._plans.length, 1, 'Plan debería aparecer tras evento del chat');
             });
 
-            runner.test('Evento plans-changed funciona con múltiples git-graph instances', async (stage) => {
+            runner.test('Evento plans-changed funciona con múltiples git-dashboard instances', async (stage) => {
                 resetMocks();
                 currentMockPlans = [];
 
-                // Create two git-graph instances
-                const el1 = await createGitGraph(stage);
-                const el2 = await createGitGraph(stage);
+                // Create two git-dashboard instances
+                const el1 = await createGitDashboard(stage);
+                const el2 = await createGitDashboard(stage);
 
                 runner.assertEqual(el1._plans.length, 0, 'Graph 1 sin planes');
                 runner.assertEqual(el2._plans.length, 0, 'Graph 2 sin planes');
@@ -413,7 +413,7 @@
 
             runner.test('Plans-changed con API error no rompe el componente', async (stage) => {
                 resetMocks();
-                const el = await createGitGraph(stage);
+                const el = await createGitDashboard(stage);
 
                 // Make the mock throw
                 const savedMockPlans = currentMockPlans;
@@ -449,7 +449,7 @@
                 resetMocks();
 
                 // Create element but don't wait for load
-                const el = document.createElement('git-graph');
+                const el = document.createElement('git-dashboard');
                 stage.appendChild(el);
 
                 // Immediately dispatch event

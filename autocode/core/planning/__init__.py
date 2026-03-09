@@ -3,7 +3,7 @@ autocode/core/planning
 Módulo de planificación de commits.
 
 Permite diseñar commits futuros desde la UI, almacenarlos como planes
-estructurados en .autocode/plans/ y visualizarlos como ghost nodes en git-graph.
+estructurados en .autocode/plans/ y visualizarlos como ghost nodes en git-dashboard.
 """
 
 from .models import (
