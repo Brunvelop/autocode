@@ -138,8 +138,6 @@ export class CodeDashboard extends LitElement {
         return html`
             <div class="dashboard">
                 ${this._renderSummary(snap)}
-                ${this._viewMode === 'treemap' || this._viewMode === 'graph'
-                    ? this._renderBreadcrumb() : ''}
                 ${this._renderViewTabs()}
                 ${this._renderContentArea()}
                 ${this._renderSnapshotInfo(snap)}
@@ -276,12 +274,15 @@ export class CodeDashboard extends LitElement {
             `;
         }
 
-        // Treemap tab — renders <treemap-view> with current subtree
+        // Treemap tab — renders <treemap-view> with full tree.
+        // zoomNodeId keeps the internal zoom in sync with the dashboard breadcrumb.
         if (mode === 'treemap') {
-            const subtree = this._getCurrentSubtree();
             return html`
                 <div class="content-area">
-                    <treemap-view .node=${subtree}></treemap-view>
+                    <treemap-view
+                        .node=${this._tree}
+                        .zoomNodeId=${this._currentNodeId}
+                    ></treemap-view>
                 </div>
             `;
         }

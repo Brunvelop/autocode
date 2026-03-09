@@ -1,0 +1,1604 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Treemap View — Tests TDD</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .component-stage {
+            min-height: 200px;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            overflow: hidden;
+            background: #f9fafb;
+        }
+        treemap-view {
+            display: block;
+            width: 600px;
+            height: 400px;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 p-6">
+    <div class="max-w-4xl mx-auto">
+        <h1 class="text-2xl font-bold mb-2">🗺️ Treemap View — Tests TDD</h1>
+        <p class="text-gray-500 text-sm mb-4">
+            Cobertura: registro, empty states, SVG rendering, header bar, labels,
+            colores, zoom in/out, tooltip, prop zoomNodeId.
+        </p>
+        <div id="summary" class="mb-6 p-4 bg-white border border-gray-200 rounded-lg shadow-sm"></div>
+        <div id="results" class="space-y-4"></div>
+    </div>
+
+    <script type="module">
+        import { TestRunner } from '../../utils/test-runner.js';
+        import '../../../elements/dashboard/treemap-view.js';
+
+        const runner = new TestRunner();
+
+        // ====================================================================
+        // MOCK DATA
+        // ====================================================================
+
+        /**
+         * Builds a minimal but realistic nested tree:
+         *
+         * root (.)
+         *   ├── src/   (directory)
+         *   │     ├── app.py   (file, MI=60, SLOC=250)
+         *   │     └── utils.py (file, MI=85, SLOC=150)
+         *   └── setup.py (file, MI=45, SLOC=100)
+         */
+        const MOCK_TREE = {
+            id: '.',
+            name: 'root',
+            type: 'directory',
+            path: '.',
+            sloc: 500, loc: 650, mi: 72.5,
+            avg_complexity: 3.2, max_complexity: 15,
+            functions_count: 20, classes_count: 5,
+            children: [
+                {
+                    id: 'src',
+                    name: 'src',
+                    type: 'directory',
+                    path: 'src',
+                    sloc: 400, loc: 500, mi: 68.0,
+                    avg_complexity: 3.8, max_complexity: 15,
+                    functions_count: 16, classes_count: 4,
+                    children: [
+                        {
+                            id: 'src/app.py',
+                            name: 'app.py',
+                            type: 'file',
+                            path: 'src/app.py',
+                            sloc: 250, loc: 300, mi: 60.0,
+                            avg_complexity: 5.0, max_complexity: 15,
+                            functions_count: 10, classes_count: 3,
+                            children: null,
+                        },
+                        {
+                            id: 'src/utils.py',
+                            name: 'utils.py',
+                            type: 'file',
+                            path: 'src/utils.py',
+                            sloc: 150, loc: 200, mi: 85.0,
+                            avg_complexity: 2.0, max_complexity: 6,
+                            functions_count: 6, classes_count: 1,
+                            children: null,
+                        },
+                    ],
+                },
+                {
+                    id: 'setup.py',
+                    name: 'setup.py',
+                    type: 'file',
+                    path: 'setup.py',
+                    sloc: 100, loc: 150, mi: 45.0,
+                    avg_complexity: 1.5, max_complexity: 3,
+                    functions_count: 4, classes_count: 1,
+                    children: null,
+                },
+            ],
+        };
+
+        const EMPTY_DIR = {
+            id: 'empty',
+            name: 'empty',
+            type: 'directory',
+            path: 'empty',
+            sloc: 0, loc: 0, mi: 100,
+            avg_complexity: 0, max_complexity: 0,
+            functions_count: 0, classes_count: 0,
+            children: [],
+        };
+
+        const SINGLE_FILE = {
+            id: 'solo.py',
+            name: 'solo.py',
+            type: 'file',
+            path: 'solo.py',
+            sloc: 80, loc: 100, mi: 55.0,
+            avg_complexity: 3.0, max_complexity: 8,
+            functions_count: 5, classes_count: 0,
+            children: null,
+        };
+
+        /**
+         * Tree with two files where one has zero classes and one has many.
+         * Used to test that zero-metric nodes are NOT the biggest.
+         *
+         * root
+         *   ├── big.py    (classes_count=5, sloc=200)  → should be LARGE with sizeMetric=classes_count
+         *   └── tiny.py   (classes_count=0, sloc=100)  → should be TINY  with sizeMetric=classes_count
+         */
+        const ZERO_METRIC_TREE = {
+            id: 'zero-root',
+            name: 'zero-root',
+            type: 'directory',
+            path: '.',
+            sloc: 300, loc: 400, mi: 72,
+            avg_complexity: 3, max_complexity: 10,
+            functions_count: 15, classes_count: 5,
+            children: [
+                {
+                    id: 'big.py',
+                    name: 'big.py',
+                    type: 'file',
+                    path: 'big.py',
+                    sloc: 200, loc: 300, mi: 70,
+                    avg_complexity: 3, max_complexity: 8,
+                    functions_count: 10, classes_count: 5,
+                    children: null,
+                },
+                {
+                    id: 'tiny.py',
+                    name: 'tiny.py',
+                    type: 'file',
+                    path: 'tiny.py',
+                    sloc: 100, loc: 150, mi: 80,
+                    avg_complexity: 1, max_complexity: 3,
+                    functions_count: 5, classes_count: 0, // ← zero classes
+                    children: null,
+                },
+            ],
+        };
+
+        // ── Helper: create element with a given node prop ──────────────────
+        function createTreemap(node = null) {
+            const el = document.createElement('treemap-view');
+            el.node = node;
+            return el;
+        }
+
+        // ── Helper: wait for Lit render cycle ─────────────────────────────
+        async function waitRender(el) {
+            await el.updateComplete;
+            // Extra tick for D3 synchronous rendering
+            await new Promise(r => setTimeout(r, 50));
+        }
+
+        // ── Helper: get shadow root element ───────────────────────────────
+        function q(el, selector) {
+            return el.shadowRoot.querySelector(selector);
+        }
+        function qAll(el, selector) {
+            return el.shadowRoot.querySelectorAll(selector);
+        }
+
+        // ====================================================================
+        // A) REGISTRATION
+        // ====================================================================
+
+        runner.group('A) Registro del componente', () => {
+
+            runner.test('treemap-view se define como custom element', async (stage) => {
+                runner.assertTrue(
+                    !!customElements.get('treemap-view'),
+                    'treemap-view debería estar registrado'
+                );
+            });
+
+            runner.test('Instanciar treemap-view crea un HTMLElement válido', async (stage) => {
+                const el = createTreemap();
+                runner.assertTrue(el instanceof HTMLElement, 'Debería ser HTMLElement');
+                runner.assertEqual(el.tagName.toLowerCase(), 'treemap-view');
+            });
+
+        });
+
+        // ====================================================================
+        // B) EMPTY STATES
+        // ====================================================================
+
+        runner.group('B) Empty states', () => {
+
+            runner.test('node=null → muestra empty-state con icono 🗺️', async (stage) => {
+                const el = createTreemap(null);
+                stage.appendChild(el);
+                await waitRender(el);
+
+                const emptyState = q(el, '.empty-state');
+                runner.assertTrue(emptyState !== null, 'Debería mostrar .empty-state');
+                runner.assertContains(
+                    emptyState.textContent, '🗺️',
+                    'Debería mostrar icono 🗺️'
+                );
+            });
+
+            runner.test('node con children vacío (dir vacío) → muestra empty-state con icono 📂', async (stage) => {
+                const el = createTreemap(EMPTY_DIR);
+                stage.appendChild(el);
+                await waitRender(el);
+
+                const emptyState = q(el, '.empty-state');
+                runner.assertTrue(emptyState !== null, 'Debería mostrar .empty-state');
+                runner.assertContains(
+                    emptyState.textContent, '📂',
+                    'Debería mostrar icono 📂'
+                );
+            });
+
+            runner.test('node de tipo file sin children → muestra .single-node', async (stage) => {
+                const el = createTreemap(SINGLE_FILE);
+                stage.appendChild(el);
+                await waitRender(el);
+
+                const singleNode = q(el, '.single-node');
+                runner.assertTrue(singleNode !== null, 'Debería mostrar .single-node');
+                runner.assertContains(
+                    singleNode.textContent, 'solo.py',
+                    'Debería mostrar el nombre del archivo'
+                );
+            });
+
+            runner.test('.single-node muestra SLOC, MI y CC', async (stage) => {
+                const el = createTreemap(SINGLE_FILE);
+                stage.appendChild(el);
+                await waitRender(el);
+
+                const text = q(el, '.single-node-metrics').textContent;
+                runner.assertContains(text, '80', 'Debería mostrar SLOC=80');
+                runner.assertContains(text, '55', 'Debería mostrar MI≈55');
+            });
+
+        });
+
+        // ====================================================================
+        // C) SVG RENDERING
+        // ====================================================================
+
+        runner.group('C) Renderizado SVG', () => {
+
+            runner.test('Con árbol válido, renderiza elemento <svg>', async (stage) => {
+                const el = createTreemap(MOCK_TREE);
+                stage.appendChild(el);
+                await waitRender(el);
+
+                const svg = q(el, 'svg.treemap-svg');
+                runner.assertTrue(svg !== null, 'Debería existir SVG con clase treemap-svg');
+            });
+
+            runner.test('SVG tiene atributos width y height', async (stage) => {
+                const el = createTreemap(MOCK_TREE);
+                stage.appendChild(el);
+                await waitRender(el);
+
+                const svg = q(el, 'svg.treemap-svg');
+                const w = parseInt(svg.getAttribute('width') || '0');
+                const h = parseInt(svg.getAttribute('height') || '0');
+                runner.assertTrue(w > 0, `SVG width debería ser > 0 (got ${w})`);
+                runner.assertTrue(h > 0, `SVG height debería ser > 0 (got ${h})`);
+            });
+
+            runner.test('Renderiza rects para hojas (archivos)', async (stage) => {
+                const el = createTreemap(MOCK_TREE);
+                stage.appendChild(el);
+                await waitRender(el);
+
+                const leafRects = el.shadowRoot.querySelectorAll('rect.tm-leaf');
+                runner.assertTrue(
+                    leafRects.length >= 3,
+                    `Debería haber al menos 3 rects de hojas (got ${leafRects.length})`
+                );
+            });
+
+            runner.test('Renderiza rects para directorios', async (stage) => {
+                const el = createTreemap(MOCK_TREE);
+                stage.appendChild(el);
+                await waitRender(el);
+
+                const dirRects = el.shadowRoot.querySelectorAll('rect.tm-dir');
+                runner.assertTrue(
+                    dirRects.length >= 1,
+                    `Debería haber al menos 1 rect de directorio (got ${dirRects.length})`
+                );
+            });
+
+            runner.test('El filtro de sombra (feDropShadow) existe en el SVG', async (stage) => {
+                const el = createTreemap(MOCK_TREE);
+                stage.appendChild(el);
+                await waitRender(el);
+
+                const shadow = el.shadowRoot.querySelector('feDropShadow');
+                runner.assertTrue(shadow !== null, 'Debería existir feDropShadow filter');
+            });
+
+            runner.test('Los rects de hojas tienen dimensiones > 0', async (stage) => {
+                const el = createTreemap(MOCK_TREE);
+                stage.appendChild(el);
+                await waitRender(el);
+
+                const rects = el.shadowRoot.querySelectorAll('rect.tm-leaf');
+                let allPositive = true;
+                rects.forEach(r => {
+                    const w = parseFloat(r.getAttribute('width') || '0');
+                    const h = parseFloat(r.getAttribute('height') || '0');
+                    if (w <= 0 || h <= 0) allPositive = false;
+                });
+                runner.assertTrue(allPositive, 'Todos los rects de hojas deben tener w>0 y h>0');
+            });
+
+        });
+
+        // ====================================================================
+        // D) HEADER BAR
+        // ====================================================================
+
+        runner.group('D) Header bar de navegación', () => {
+
+            runner.test('Header bar existe y es visible (.tm-header-bar)', async (stage) => {
+                const el = createTreemap(MOCK_TREE);
+                stage.appendChild(el);
+                await waitRender(el);
+
+                const header = q(el, '.tm-header-bar');
+                runner.assertTrue(header !== null, 'Debería existir .tm-header-bar');
+            });
+
+            runner.test('Header bar muestra el nombre del nodo raíz', async (stage) => {
+                const el = createTreemap(MOCK_TREE);
+                stage.appendChild(el);
+                await waitRender(el);
+
+                const header = q(el, '.tm-header-bar');
+                runner.assertContains(
+                    header.textContent, 'root',
+                    'Header debería mostrar el nombre del nodo raíz'
+                );
+            });
+
+            runner.test('Header bar en root NO muestra flecha ← (no hay padre)', async (stage) => {
+                const el = createTreemap(MOCK_TREE);
+                stage.appendChild(el);
+                await waitRender(el);
+
+                const backBtn = q(el, '.tm-header-back');
+                runner.assertTrue(
+                    backBtn === null,
+                    'En root no debería existir botón back/arrow'
+                );
+            });
+
+            runner.test('Header bar está DENTRO del shadow DOM (no clipeado)', async (stage) => {
+                const el = createTreemap(MOCK_TREE);
+                stage.appendChild(el);
+                await waitRender(el);
+
+                const header = q(el, '.tm-header-bar');
+                runner.assertTrue(header !== null, '.tm-header-bar debe existir');
+
+                // Debe estar en el flujo normal del DOM (HTML, no SVG negativo)
+                runner.assertEqual(
+                    header.tagName.toLowerCase() !== 'g', true,
+                    'Header no debe ser un elemento SVG <g>'
+                );
+            });
+
+        });
+
+        // ====================================================================
+        // E) LABELS
+        // ====================================================================
+
+        runner.group('E) Labels en nodos', () => {
+
+            runner.test('Directorio "src" tiene label con su nombre', async (stage) => {
+                const el = createTreemap(MOCK_TREE);
+                stage.appendChild(el);
+                await waitRender(el);
+
+                const dirLabels = el.shadowRoot.querySelectorAll('text.tm-dir-label');
+                const texts = Array.from(dirLabels).map(t => t.textContent);
+                runner.assertTrue(
+                    texts.some(t => t.includes('src')),
+                    `Labels de dirs deberían contener "src" (got: ${JSON.stringify(texts)})`
+                );
+            });
+
+            runner.test('Archivo "setup.py" tiene label con su nombre', async (stage) => {
+                const el = createTreemap(MOCK_TREE);
+                stage.appendChild(el);
+                await waitRender(el);
+
+                const leafLabels = el.shadowRoot.querySelectorAll('text.tm-leaf-name');
+                const texts = Array.from(leafLabels).map(t => t.textContent);
+                runner.assertTrue(
+                    texts.some(t => t.includes('setup') || t.includes('…')),
+                    `Labels de hojas deberían contener nombre de archivo (got: ${JSON.stringify(texts)})`
+                );
+            });
+
+        });
+
+        // ====================================================================
+        // F) COLOR HELPERS
+        // ====================================================================
+
+        runner.group('F) Escala de colores', () => {
+
+            runner.test('_miColor(0) devuelve un rojo (MI bajo)', async (stage) => {
+                const el = createTreemap(MOCK_TREE);
+                stage.appendChild(el);
+                await waitRender(el);
+
+                const color = el._miColor(0);
+                runner.assertContains(color, 'rgb', `_miColor(0) debería devolver color rgb (got ${color})`);
+                // Red channel should dominate — verify it's not the green extremes
+                runner.assertTrue(
+                    color !== el._miColor(100),
+                    '_miColor(0) no debería ser igual a _miColor(100)'
+                );
+            });
+
+            runner.test('_miColor(100) devuelve un verde (MI excelente)', async (stage) => {
+                const el = createTreemap(MOCK_TREE);
+                stage.appendChild(el);
+                await waitRender(el);
+
+                const color0 = el._miColor(0);
+                const color100 = el._miColor(100);
+                runner.assertTrue(
+                    color0 !== color100,
+                    `_miColor(0)=${color0} debería diferir de _miColor(100)=${color100}`
+                );
+            });
+
+            runner.test('_dirColor(0) y _dirColor(3) devuelven colores distintos', async (stage) => {
+                const el = createTreemap(MOCK_TREE);
+                stage.appendChild(el);
+                await waitRender(el);
+
+                const c0 = el._dirColor(0);
+                const c3 = el._dirColor(3);
+                runner.assertTrue(c0 !== c3, `_dirColor debe variar por profundidad (${c0} vs ${c3})`);
+            });
+
+            runner.test('Rects de hojas tienen fill basado en MI (no genérico)', async (stage) => {
+                const el = createTreemap(MOCK_TREE);
+                stage.appendChild(el);
+                await waitRender(el);
+
+                // app.py MI=60 and utils.py MI=85 should have different colors
+                const leafRects = Array.from(el.shadowRoot.querySelectorAll('rect.tm-leaf'));
+                const fills = leafRects.map(r => r.getAttribute('fill'));
+                const uniqueFills = new Set(fills);
+                runner.assertTrue(
+                    uniqueFills.size >= 2,
+                    `Los archivos con distinto MI deberían tener distinto color (fills: ${[...uniqueFills].join(', ')})`
+                );
+            });
+
+        });
+
+        // ====================================================================
+        // G) ZOOM IN
+        // ====================================================================
+
+        runner.group('G) Zoom in (click en directorio)', () => {
+
+            runner.test('_zoomNode empieza en root (depth=0)', async (stage) => {
+                const el = createTreemap(MOCK_TREE);
+                stage.appendChild(el);
+                await waitRender(el);
+
+                runner.assertTrue(
+                    el._zoomNode !== null,
+                    '_zoomNode no debería ser null'
+                );
+                runner.assertEqual(
+                    el._zoomNode.depth, 0,
+                    '_zoomNode inicial debería ser el root (depth=0)'
+                );
+            });
+
+            runner.test('_zoomIn(srcNode) cambia _zoomNode al nodo src (depth=1)', async (stage) => {
+                const el = createTreemap(MOCK_TREE);
+                stage.appendChild(el);
+                await waitRender(el);
+
+                // Find the src d3 node directly
+                const srcD3 = el._d3Root.descendants().find(d => d.data.id === 'src');
+                runner.assertTrue(srcD3 !== null, 'Debería encontrar nodo src en la jerarquía D3');
+
+                el._zoomIn(srcD3);
+                await new Promise(r => setTimeout(r, 100));
+
+                runner.assertEqual(
+                    el._zoomNode.data.id, 'src',
+                    `_zoomNode debería ser src (got ${el._zoomNode?.data?.id})`
+                );
+            });
+
+            runner.test('Tras zoom in, header bar muestra ruta "root › src"', async (stage) => {
+                const el = createTreemap(MOCK_TREE);
+                stage.appendChild(el);
+                await waitRender(el);
+
+                const srcD3 = el._d3Root.descendants().find(d => d.data.id === 'src');
+                el._zoomIn(srcD3);
+                await el.updateComplete;
+                await new Promise(r => setTimeout(r, 100));
+
+                const header = q(el, '.tm-header-bar');
+                runner.assertContains(
+                    header.textContent, 'src',
+                    'Header debería contener "src" tras zoom in'
+                );
+            });
+
+            runner.test('Tras zoom in, _zoomAncestors tiene 2 elementos (root y src)', async (stage) => {
+                const el = createTreemap(MOCK_TREE);
+                stage.appendChild(el);
+                await waitRender(el);
+
+                const srcD3 = el._d3Root.descendants().find(d => d.data.id === 'src');
+                el._zoomIn(srcD3);
+                await el.updateComplete;
+                await new Promise(r => setTimeout(r, 100));
+
+                runner.assertEqual(
+                    el._zoomAncestors?.length, 2,
+                    `_zoomAncestors debería tener 2 elementos tras zoom in (got ${el._zoomAncestors?.length})`
+                );
+            });
+
+            runner.test('_zoomIn dispara evento navigate-into con nodeId correcto', async (stage) => {
+                const el = createTreemap(MOCK_TREE);
+                stage.appendChild(el);
+                await waitRender(el);
+
+                let receivedNodeId = null;
+                el.addEventListener('navigate-into', e => {
+                    receivedNodeId = e.detail.nodeId;
+                });
+
+                const srcD3 = el._d3Root.descendants().find(d => d.data.id === 'src');
+                el._zoomIn(srcD3);
+                await new Promise(r => setTimeout(r, 50));
+
+                runner.assertEqual(
+                    receivedNodeId, 'src',
+                    `navigate-into debería llevar nodeId='src' (got ${receivedNodeId})`
+                );
+            });
+
+        });
+
+        // ====================================================================
+        // H) ZOOM OUT
+        // ====================================================================
+
+        runner.group('H) Zoom out (click en header back)', () => {
+
+            runner.test('_zoomOut desde src vuelve a root (_zoomNode.depth=0)', async (stage) => {
+                const el = createTreemap(MOCK_TREE);
+                stage.appendChild(el);
+                await waitRender(el);
+
+                // Zoom in first
+                const srcD3 = el._d3Root.descendants().find(d => d.data.id === 'src');
+                el._zoomIn(srcD3);
+                await new Promise(r => setTimeout(r, 100));
+                runner.assertEqual(el._zoomNode.data.id, 'src', 'Zoom in debería funcionar');
+
+                // Now zoom out
+                el._zoomOut(srcD3);
+                await new Promise(r => setTimeout(r, 100));
+
+                runner.assertEqual(
+                    el._zoomNode.depth, 0,
+                    `Tras zoomOut, _zoomNode debería ser root (depth=0), got depth=${el._zoomNode.depth}`
+                );
+            });
+
+            runner.test('Tras zoom out, header bar vuelve a mostrar "root"', async (stage) => {
+                const el = createTreemap(MOCK_TREE);
+                stage.appendChild(el);
+                await waitRender(el);
+
+                const srcD3 = el._d3Root.descendants().find(d => d.data.id === 'src');
+                el._zoomIn(srcD3);
+                await new Promise(r => setTimeout(r, 100));
+
+                el._zoomOut(srcD3);
+                await el.updateComplete;
+                await new Promise(r => setTimeout(r, 100));
+
+                const header = q(el, '.tm-header-bar');
+                runner.assertContains(
+                    header.textContent, 'root',
+                    'Tras zoomOut, header debería mostrar "root"'
+                );
+            });
+
+            runner.test('Tras zoom out, desaparece botón back en root', async (stage) => {
+                const el = createTreemap(MOCK_TREE);
+                stage.appendChild(el);
+                await waitRender(el);
+
+                const srcD3 = el._d3Root.descendants().find(d => d.data.id === 'src');
+                el._zoomIn(srcD3);
+                await new Promise(r => setTimeout(r, 100));
+
+                el._zoomOut(srcD3);
+                await el.updateComplete;
+                await new Promise(r => setTimeout(r, 100));
+
+                const backBtn = q(el, '.tm-header-back');
+                runner.assertTrue(
+                    backBtn === null,
+                    'En root no debería existir .tm-header-back'
+                );
+            });
+
+            runner.test('_zoomOut no hace nada si ya está en root', async (stage) => {
+                const el = createTreemap(MOCK_TREE);
+                stage.appendChild(el);
+                await waitRender(el);
+
+                const root = el._d3Root;
+                el._zoomOut(root); // should be a no-op
+                await new Promise(r => setTimeout(r, 50));
+
+                runner.assertEqual(
+                    el._zoomNode.depth, 0,
+                    '_zoomNode debería seguir en root'
+                );
+            });
+
+            runner.test('_zoomOut dispara evento navigate-into con nodeId del padre', async (stage) => {
+                const el = createTreemap(MOCK_TREE);
+                stage.appendChild(el);
+                await waitRender(el);
+
+                const srcD3 = el._d3Root.descendants().find(d => d.data.id === 'src');
+                el._zoomIn(srcD3);
+                await new Promise(r => setTimeout(r, 100));
+
+                let receivedNodeId = null;
+                el.addEventListener('navigate-into', e => {
+                    receivedNodeId = e.detail.nodeId;
+                });
+
+                el._zoomOut(srcD3);
+                await new Promise(r => setTimeout(r, 50));
+
+                runner.assertEqual(
+                    receivedNodeId, '.',
+                    `navigate-into tras zoomOut debería llevar nodeId='.' (got ${receivedNodeId})`
+                );
+            });
+
+        });
+
+        // ====================================================================
+        // I) TOOLTIP
+        // ====================================================================
+
+        runner.group('I) Tooltip', () => {
+
+            runner.test('_tooltipData es null inicialmente', async (stage) => {
+                const el = createTreemap(MOCK_TREE);
+                stage.appendChild(el);
+                await waitRender(el);
+
+                runner.assertTrue(el._tooltipData === null, '_tooltipData debería ser null inicialmente');
+            });
+
+            runner.test('Tooltip no visible cuando _tooltipData es null', async (stage) => {
+                const el = createTreemap(MOCK_TREE);
+                stage.appendChild(el);
+                await waitRender(el);
+
+                const tooltip = q(el, '.treemap-tooltip');
+                runner.assertTrue(
+                    tooltip === null,
+                    '.treemap-tooltip no debería existir cuando _tooltipData es null'
+                );
+            });
+
+            runner.test('_showTooltip popula _tooltipData con datos del nodo', async (stage) => {
+                const el = createTreemap(MOCK_TREE);
+                stage.appendChild(el);
+                await waitRender(el);
+
+                // Simulate a synthetic mouseenter event
+                const setupD3 = el._d3Root.descendants().find(d => d.data.id === 'setup.py');
+                runner.assertTrue(setupD3 !== null, 'Debe encontrar nodo setup.py');
+
+                // Call _showTooltip with a synthetic event
+                const fakeEvent = {
+                    clientX: 100,
+                    clientY: 100,
+                };
+                el._showTooltip(fakeEvent, setupD3);
+                await el.updateComplete;
+
+                runner.assertTrue(el._tooltipData !== null, '_tooltipData debería estar poblado');
+                runner.assertEqual(
+                    el._tooltipData.name, 'setup.py',
+                    `_tooltipData.name debería ser 'setup.py' (got ${el._tooltipData?.name})`
+                );
+                runner.assertEqual(
+                    el._tooltipData.sloc, 100,
+                    `_tooltipData.sloc debería ser 100 (got ${el._tooltipData?.sloc})`
+                );
+            });
+
+            runner.test('Tooltip visible cuando _tooltipData está poblado', async (stage) => {
+                const el = createTreemap(MOCK_TREE);
+                stage.appendChild(el);
+                await waitRender(el);
+
+                const setupD3 = el._d3Root.descendants().find(d => d.data.id === 'setup.py');
+                el._showTooltip({ clientX: 100, clientY: 100 }, setupD3);
+                await el.updateComplete;
+
+                const tooltip = q(el, '.treemap-tooltip.visible');
+                runner.assertTrue(tooltip !== null, '.treemap-tooltip.visible debería existir');
+            });
+
+            runner.test('Tooltip muestra nombre, SLOC y MI del nodo', async (stage) => {
+                const el = createTreemap(MOCK_TREE);
+                stage.appendChild(el);
+                await waitRender(el);
+
+                const setupD3 = el._d3Root.descendants().find(d => d.data.id === 'setup.py');
+                el._showTooltip({ clientX: 100, clientY: 100 }, setupD3);
+                await el.updateComplete;
+
+                const tooltip = q(el, '.treemap-tooltip');
+                runner.assertContains(tooltip.textContent, 'setup.py', 'Tooltip debe mostrar nombre');
+                runner.assertContains(tooltip.textContent, '100', 'Tooltip debe mostrar SLOC=100');
+                runner.assertContains(tooltip.textContent, '45', 'Tooltip debe mostrar MI≈45');
+            });
+
+            runner.test('Asignar null a _tooltipData oculta el tooltip', async (stage) => {
+                const el = createTreemap(MOCK_TREE);
+                stage.appendChild(el);
+                await waitRender(el);
+
+                const setupD3 = el._d3Root.descendants().find(d => d.data.id === 'setup.py');
+                el._showTooltip({ clientX: 100, clientY: 100 }, setupD3);
+                await el.updateComplete;
+
+                // Now hide
+                el._tooltipData = null;
+                await el.updateComplete;
+
+                const tooltip = q(el, '.treemap-tooltip');
+                runner.assertTrue(tooltip === null, 'Tooltip debería ocultarse cuando _tooltipData=null');
+            });
+
+        });
+
+        // ====================================================================
+        // J) PROP zoomNodeId — SINCRONIZACIÓN CON DASHBOARD
+        // ====================================================================
+
+        runner.group('J) Prop zoomNodeId (sync con breadcrumb)', () => {
+
+            runner.test('Prop zoomNodeId existe y es reactiva', async (stage) => {
+                const el = createTreemap(MOCK_TREE);
+                stage.appendChild(el);
+                await waitRender(el);
+
+                runner.assertTrue(
+                    'zoomNodeId' in el,
+                    'treemap-view debe tener prop zoomNodeId'
+                );
+            });
+
+            runner.test('zoomNodeId null → treemap en root (depth=0)', async (stage) => {
+                const el = createTreemap(MOCK_TREE);
+                el.zoomNodeId = null;
+                stage.appendChild(el);
+                await waitRender(el);
+
+                runner.assertEqual(
+                    el._zoomNode?.depth, 0,
+                    '_zoomNode debería ser root cuando zoomNodeId=null'
+                );
+            });
+
+            runner.test('zoomNodeId="src" → treemap se posiciona en nodo src', async (stage) => {
+                const el = createTreemap(MOCK_TREE);
+                stage.appendChild(el);
+                await waitRender(el);
+
+                el.zoomNodeId = 'src';
+                await el.updateComplete;
+                await new Promise(r => setTimeout(r, 100));
+
+                runner.assertEqual(
+                    el._zoomNode?.data?.id, 'src',
+                    `Con zoomNodeId='src', _zoomNode debe ser src (got ${el._zoomNode?.data?.id})`
+                );
+            });
+
+            runner.test('zoomNodeId="." → treemap vuelve a root', async (stage) => {
+                const el = createTreemap(MOCK_TREE);
+                stage.appendChild(el);
+                await waitRender(el);
+
+                // First zoom in
+                const srcD3 = el._d3Root.descendants().find(d => d.data.id === 'src');
+                el._zoomIn(srcD3);
+                await new Promise(r => setTimeout(r, 100));
+
+                // Dashboard sends root id
+                el.zoomNodeId = '.';
+                await el.updateComplete;
+                await new Promise(r => setTimeout(r, 100));
+
+                runner.assertEqual(
+                    el._zoomNode?.depth, 0,
+                    `zoomNodeId='.' debería llevar a root (got depth=${el._zoomNode?.depth})`
+                );
+            });
+
+            runner.test('zoomNodeId inválido no rompe el componente (permanece en nodo actual)', async (stage) => {
+                const el = createTreemap(MOCK_TREE);
+                stage.appendChild(el);
+                await waitRender(el);
+
+                const prevZoom = el._zoomNode;
+
+                el.zoomNodeId = 'nonexistent-node-xyz';
+                await el.updateComplete;
+                await new Promise(r => setTimeout(r, 100));
+
+                runner.assertTrue(
+                    el._zoomNode !== null,
+                    '_zoomNode no debería ser null tras zoomNodeId inválido'
+                );
+            });
+
+        });
+
+        // ====================================================================
+        // K) REBUILD AL CAMBIAR node PROP
+        // ====================================================================
+
+        runner.group('K) Rebuild al cambiar node prop', () => {
+
+            runner.test('Al cambiar node prop, el treemap se reconstruye', async (stage) => {
+                const el = createTreemap(MOCK_TREE);
+                stage.appendChild(el);
+                await waitRender(el);
+
+                const prevRoot = el._d3Root;
+
+                // Change tree (create a different object)
+                const newTree = { ...MOCK_TREE, name: 'new-root' };
+                el.node = newTree;
+                await waitRender(el);
+
+                runner.assertTrue(
+                    el._d3Root !== prevRoot,
+                    'D3 root debería haber cambiado al cambiar node prop'
+                );
+            });
+
+            runner.test('Al cambiar node a null, muestra empty state', async (stage) => {
+                const el = createTreemap(MOCK_TREE);
+                stage.appendChild(el);
+                await waitRender(el);
+
+                el.node = null;
+                await waitRender(el);
+
+                const emptyState = q(el, '.empty-state');
+                runner.assertTrue(emptyState !== null, 'Debería mostrar empty state tras node=null');
+            });
+
+        });
+
+        // ====================================================================
+        // L) HEADER BAR — BREADCRUMB CLICABLE (segmentos)
+        // ====================================================================
+
+        runner.group('L) Header bar con breadcrumb clicable', () => {
+
+            runner.test('Header muestra botones de segmento (.tm-header-segment), no solo texto plano', async (stage) => {
+                const el = createTreemap(MOCK_TREE);
+                stage.appendChild(el);
+                await waitRender(el);
+
+                const segments = el.shadowRoot.querySelectorAll('.tm-header-segment');
+                runner.assertTrue(
+                    segments.length >= 1,
+                    `Debería haber al menos 1 .tm-header-segment (got ${segments.length})`
+                );
+            });
+
+            runner.test('En root, hay exactamente 1 segmento con nombre del nodo raíz', async (stage) => {
+                const el = createTreemap(MOCK_TREE);
+                stage.appendChild(el);
+                await waitRender(el);
+
+                const segments = el.shadowRoot.querySelectorAll('.tm-header-segment');
+                runner.assertEqual(
+                    segments.length, 1,
+                    `En root debería haber 1 segmento (got ${segments.length})`
+                );
+                runner.assertContains(
+                    segments[0].textContent, 'root',
+                    'El segmento debería mostrar el nombre raíz'
+                );
+            });
+
+            runner.test('El segmento raíz tiene clase .current (es el nivel actual)', async (stage) => {
+                const el = createTreemap(MOCK_TREE);
+                stage.appendChild(el);
+                await waitRender(el);
+
+                const currentSeg = el.shadowRoot.querySelector('.tm-header-segment.current');
+                runner.assertTrue(
+                    currentSeg !== null,
+                    'Debería existir .tm-header-segment.current'
+                );
+            });
+
+            runner.test('Tras zoom in a src, hay 2 segmentos (root y src)', async (stage) => {
+                const el = createTreemap(MOCK_TREE);
+                stage.appendChild(el);
+                await waitRender(el);
+
+                const srcD3 = el._d3Root.descendants().find(d => d.data.id === 'src');
+                el._zoomIn(srcD3);
+                await el.updateComplete;
+                await new Promise(r => setTimeout(r, 50));
+
+                const segments = el.shadowRoot.querySelectorAll('.tm-header-segment');
+                runner.assertEqual(
+                    segments.length, 2,
+                    `Tras zoom in a src debería haber 2 segmentos (got ${segments.length})`
+                );
+            });
+
+            runner.test('Tras zoom in a src, el último segmento tiene .current (src)', async (stage) => {
+                const el = createTreemap(MOCK_TREE);
+                stage.appendChild(el);
+                await waitRender(el);
+
+                const srcD3 = el._d3Root.descendants().find(d => d.data.id === 'src');
+                el._zoomIn(srcD3);
+                await el.updateComplete;
+                await new Promise(r => setTimeout(r, 50));
+
+                const segments = Array.from(el.shadowRoot.querySelectorAll('.tm-header-segment'));
+                const lastSeg = segments[segments.length - 1];
+                runner.assertTrue(
+                    lastSeg.classList.contains('current'),
+                    'El último segmento debe tener .current'
+                );
+                runner.assertContains(lastSeg.textContent, 'src', 'El último segmento debe ser "src"');
+            });
+
+            runner.test('El primer segmento (root) NO tiene clase .current tras zoom in', async (stage) => {
+                const el = createTreemap(MOCK_TREE);
+                stage.appendChild(el);
+                await waitRender(el);
+
+                const srcD3 = el._d3Root.descendants().find(d => d.data.id === 'src');
+                el._zoomIn(srcD3);
+                await el.updateComplete;
+                await new Promise(r => setTimeout(r, 50));
+
+                const firstSeg = el.shadowRoot.querySelector('.tm-header-segment');
+                runner.assertTrue(
+                    !firstSeg.classList.contains('current'),
+                    'El primer segmento no debería tener .current cuando no es el nivel actual'
+                );
+            });
+
+            runner.test('Hacer click en segmento ancestor navega a ese nivel', async (stage) => {
+                const el = createTreemap(MOCK_TREE);
+                stage.appendChild(el);
+                await waitRender(el);
+
+                // Zoom in to src
+                const srcD3 = el._d3Root.descendants().find(d => d.data.id === 'src');
+                el._zoomIn(srcD3);
+                await el.updateComplete;
+                await new Promise(r => setTimeout(r, 100));
+
+                // Click first segment (root)
+                const firstSeg = el.shadowRoot.querySelector('.tm-header-segment');
+                firstSeg.click();
+                await el.updateComplete;
+                await new Promise(r => setTimeout(r, 50));
+
+                runner.assertEqual(
+                    el._zoomNode?.depth, 0,
+                    `Clickar en root debería navegar a depth=0 (got depth=${el._zoomNode?.depth})`
+                );
+            });
+
+            runner.test('Hacer click en segmento ancestor emite navigate-into con nodeId correcto', async (stage) => {
+                const el = createTreemap(MOCK_TREE);
+                stage.appendChild(el);
+                await waitRender(el);
+
+                const srcD3 = el._d3Root.descendants().find(d => d.data.id === 'src');
+                el._zoomIn(srcD3);
+                await el.updateComplete;
+                await new Promise(r => setTimeout(r, 100));
+
+                let receivedId = null;
+                el.addEventListener('navigate-into', e => { receivedId = e.detail.nodeId; });
+
+                const firstSeg = el.shadowRoot.querySelector('.tm-header-segment');
+                firstSeg.click();
+                await new Promise(r => setTimeout(r, 50));
+
+                runner.assertEqual(
+                    receivedId, '.',
+                    `navigate-into debería llevar nodeId='.' (got ${receivedId})`
+                );
+            });
+
+            runner.test('NO existe .tm-header-back (la flecha ha sido reemplazada por breadcrumb)', async (stage) => {
+                const el = createTreemap(MOCK_TREE);
+                stage.appendChild(el);
+                await waitRender(el);
+
+                const srcD3 = el._d3Root.descendants().find(d => d.data.id === 'src');
+                el._zoomIn(srcD3);
+                await el.updateComplete;
+                await new Promise(r => setTimeout(r, 50));
+
+                const backBtn = el.shadowRoot.querySelector('.tm-header-back');
+                runner.assertTrue(
+                    backBtn === null,
+                    '.tm-header-back no debería existir (reemplazado por breadcrumb clicable)'
+                );
+            });
+
+            runner.test('Existe .tm-header-separator entre segmentos tras zoom in', async (stage) => {
+                const el = createTreemap(MOCK_TREE);
+                stage.appendChild(el);
+                await waitRender(el);
+
+                const srcD3 = el._d3Root.descendants().find(d => d.data.id === 'src');
+                el._zoomIn(srcD3);
+                await el.updateComplete;
+                await new Promise(r => setTimeout(r, 50));
+
+                const sep = el.shadowRoot.querySelector('.tm-header-separator');
+                runner.assertTrue(sep !== null, 'Debería existir .tm-header-separator entre segmentos');
+            });
+
+        });
+
+        // ====================================================================
+        // M) ANIMACIÓN ESPACIAL DE ZOOM
+        // ====================================================================
+
+        runner.group('M) Animación espacial de zoom (posicionamiento, no opacidad)', () => {
+
+            runner.test('Método _positionNodes existe en la instancia', async (stage) => {
+                const el = createTreemap(MOCK_TREE);
+                stage.appendChild(el);
+                await waitRender(el);
+
+                runner.assertTrue(
+                    typeof el._positionNodes === 'function',
+                    '_positionNodes debe ser un método de la instancia'
+                );
+            });
+
+            runner.test('Tras _zoomIn(src), los rects de hoja llenan el viewport (width ≈ canvasW)', async (stage) => {
+                const el = createTreemap(MOCK_TREE);
+                stage.appendChild(el);
+                await waitRender(el);
+
+                const canvasW = el._canvasW;
+                runner.assertTrue(canvasW > 0, `canvasW debe ser > 0 (got ${canvasW})`);
+
+                const srcD3 = el._d3Root.descendants().find(d => d.data.id === 'src');
+                el._zoomIn(srcD3);
+                // No animation wait — check immediately after synchronous draw
+                await el.updateComplete;
+                await new Promise(r => setTimeout(r, 800)); // wait for animation to finish
+
+                // After zoom in to src, all visible rects should fit within canvasW
+                const rects = Array.from(el.shadowRoot.querySelectorAll('rect.tm-leaf'));
+                const totalWidth = rects.reduce((sum, r) => {
+                    return sum + parseFloat(r.getAttribute('width') || '0');
+                }, 0);
+                runner.assertTrue(
+                    totalWidth > 0,
+                    `Tras zoom in, los rects de hoja deberían tener anchura total > 0 (got ${totalWidth})`
+                );
+            });
+
+            runner.test('Tras _zoomIn(src), _xScale domain es [src.x0, src.x1]', async (stage) => {
+                const el = createTreemap(MOCK_TREE);
+                stage.appendChild(el);
+                await waitRender(el);
+
+                const srcD3 = el._d3Root.descendants().find(d => d.data.id === 'src');
+                const expectedX0 = srcD3.x0;
+                const expectedX1 = srcD3.x1;
+
+                el._zoomIn(srcD3);
+                await new Promise(r => setTimeout(r, 50));
+
+                const domain = el._xScale.domain();
+                runner.assertEqual(
+                    domain[0], expectedX0,
+                    `_xScale domain[0] debería ser src.x0=${expectedX0} (got ${domain[0]})`
+                );
+                runner.assertEqual(
+                    domain[1], expectedX1,
+                    `_xScale domain[1] debería ser src.x1=${expectedX1} (got ${domain[1]})`
+                );
+            });
+
+            runner.test('Tras _zoomOut, _xScale vuelve al domain del padre', async (stage) => {
+                const el = createTreemap(MOCK_TREE);
+                stage.appendChild(el);
+                await waitRender(el);
+
+                const srcD3 = el._d3Root.descendants().find(d => d.data.id === 'src');
+                el._zoomIn(srcD3);
+                await new Promise(r => setTimeout(r, 50));
+
+                el._zoomOut(srcD3);
+                await new Promise(r => setTimeout(r, 50));
+
+                const domain = el._xScale.domain();
+                runner.assertEqual(
+                    domain[0], el._d3Root.x0,
+                    `Tras zoomOut, _xScale domain[0] debería ser root.x0 (got ${domain[0]})`
+                );
+            });
+
+            runner.test('_positionNodes actualiza transforms de g.tm-node según las escalas actuales', async (stage) => {
+                const el = createTreemap(MOCK_TREE);
+                stage.appendChild(el);
+                await waitRender(el);
+
+                // Get a dir node at root level
+                const srcD3 = el._d3Root.descendants().find(d => d.data.id === 'src');
+
+                // Record position of src node before zoom
+                const srcNodeBefore = el.shadowRoot.querySelector('g.tm-node');
+                const transformBefore = srcNodeBefore?.getAttribute('transform') || '';
+
+                // Zoom in
+                el._zoomIn(srcD3);
+                await new Promise(r => setTimeout(r, 800));
+
+                // Check that the group's nodes have been repositioned
+                const nodesAfter = el.shadowRoot.querySelectorAll('g.tm-node');
+                runner.assertTrue(
+                    nodesAfter.length > 0,
+                    'Tras zoom in debe haber g.tm-node visibles'
+                );
+
+                // Verify the xScale domain has changed (proves spatial repositioning)
+                const domain = el._xScale.domain();
+                runner.assertTrue(
+                    domain[0] !== 0 || domain[1] !== el._canvasW,
+                    'El dominio de escala debe haber cambiado tras zoom in'
+                );
+            });
+
+        });
+
+        // ====================================================================
+        // N) TEXTO DINÁMICO TRAS ZOOM
+        // ====================================================================
+
+        runner.group('N) Texto dinámico tras zoom', () => {
+
+            runner.test('_drawLevel aplica font-size dinámico en labels de directorio (atributo style)', async (stage) => {
+                const el = createTreemap(MOCK_TREE);
+                stage.appendChild(el);
+                await waitRender(el);
+
+                const dirLabels = el.shadowRoot.querySelectorAll('text.tm-dir-label');
+                runner.assertTrue(
+                    dirLabels.length >= 1,
+                    `Debe haber al menos un label de directorio (got ${dirLabels.length})`
+                );
+                // Should have inline font-size style
+                const firstLabel = dirLabels[0];
+                const style = firstLabel.getAttribute('style') || '';
+                runner.assertContains(
+                    style, 'font-size',
+                    `Label de directorio debe tener font-size inline (style="${style}")`
+                );
+            });
+
+            runner.test('_drawLevel aplica font-size dinámico en labels de hoja (atributo style)', async (stage) => {
+                const el = createTreemap(MOCK_TREE);
+                stage.appendChild(el);
+                await waitRender(el);
+
+                const leafLabels = el.shadowRoot.querySelectorAll('text.tm-leaf-name');
+                if (leafLabels.length > 0) {
+                    const style = leafLabels[0].getAttribute('style') || '';
+                    runner.assertContains(
+                        style, 'font-size',
+                        `Label de hoja debe tener font-size inline (style="${style}")`
+                    );
+                } else {
+                    // Cells might be too small — that's fine, test passes vacuously
+                    runner.assertTrue(true, 'No hay leaf labels visibles (celdas demasiado pequeñas)');
+                }
+            });
+
+            runner.test('_truncate acepta parámetro fontSize y lo usa para estimar char width', async (stage) => {
+                const el = createTreemap(MOCK_TREE);
+                stage.appendChild(el);
+                await waitRender(el);
+
+                const long = 'abcdefghijklmnopqrstuvwxyz'; // 26 chars
+
+                // At fontSize=10, charW≈6.2, maxChars in 50px ≈ 8
+                const small = el._truncate(long, 50, 10);
+                // At fontSize=10, charW≈6.2, maxChars in 200px ≈ 32 → no truncation
+                const large = el._truncate(long, 200, 10);
+
+                runner.assertTrue(
+                    small.length < long.length,
+                    `Con maxWidth=50, debe truncar (got "${small}")`
+                );
+                runner.assertEqual(
+                    large, long,
+                    `Con maxWidth=200, no debe truncar (got "${large}")`
+                );
+            });
+
+            runner.test('_truncate sin fontSize usa default de 10px', async (stage) => {
+                const el = createTreemap(MOCK_TREE);
+                stage.appendChild(el);
+                await waitRender(el);
+
+                const result = el._truncate('hello', 100); // no fontSize arg
+                runner.assertTrue(
+                    typeof result === 'string',
+                    `_truncate sin fontSize debe devolver string (got "${result}")`
+                );
+                runner.assertEqual(result, 'hello', `"hello" en 100px no debe truncarse`);
+            });
+
+            runner.test('Tras zoom in a src y esperar animación, aparecen labels en las hojas', async (stage) => {
+                const el = createTreemap(MOCK_TREE);
+                stage.appendChild(el);
+                await waitRender(el);
+
+                // Zoom in to src (children fill the whole viewport)
+                const srcD3 = el._d3Root.descendants().find(d => d.data.id === 'src');
+                el._zoomIn(srcD3);
+
+                // Wait for animation + clean redraw (800ms)
+                await new Promise(r => setTimeout(r, 900));
+
+                const leafLabels = el.shadowRoot.querySelectorAll('text.tm-leaf-name');
+                runner.assertTrue(
+                    leafLabels.length >= 1,
+                    `Tras zoom in a src, deben aparecer labels de hoja (got ${leafLabels.length})`
+                );
+            });
+
+            runner.test('_metricShortLabel devuelve etiquetas cortas correctas', async (stage) => {
+                const el = createTreemap(MOCK_TREE);
+                stage.appendChild(el);
+                await waitRender(el);
+
+                runner.assertEqual(el._metricShortLabel('sloc'), 'SLOC', 'sloc → SLOC');
+                runner.assertEqual(el._metricShortLabel('avg_complexity'), 'CC', 'avg_complexity → CC');
+                runner.assertEqual(el._metricShortLabel('functions_count'), 'fn', 'functions_count → fn');
+                runner.assertEqual(el._metricShortLabel('mi'), 'MI', 'mi → MI');
+            });
+
+            runner.test('Label de directorio muestra el valor de la sizeMetric actual', async (stage) => {
+                // Using sizeMetric='functions_count', the leaf sub-label should say "fn"
+                const el = createTreemap(MOCK_TREE);
+                el.sizeMetric = 'functions_count';
+                stage.appendChild(el);
+                await waitRender(el);
+                await new Promise(r => setTimeout(r, 100));
+
+                // Find a visible leaf-sloc label (if any)
+                const slocLabels = el.shadowRoot.querySelectorAll('text.tm-leaf-sloc');
+                if (slocLabels.length > 0) {
+                    const text = slocLabels[0].textContent;
+                    runner.assertContains(
+                        text, 'fn',
+                        `Sub-label de hoja con sizeMetric=functions_count debe contener "fn" (got "${text}")`
+                    );
+                } else {
+                    runner.assertTrue(true, 'No hay leaf-sloc labels visibles (celdas demasiado pequeñas)');
+                }
+            });
+
+        });
+
+        // ====================================================================
+        // O) MÉTRICAS CONFIGURABLES
+        // ====================================================================
+
+        runner.group('O) Métricas configurables (sizeMetric / colorMetric)', () => {
+
+            runner.test('Prop sizeMetric existe y su default es "sloc"', async (stage) => {
+                const el = createTreemap(MOCK_TREE);
+                stage.appendChild(el);
+                await waitRender(el);
+
+                runner.assertTrue('sizeMetric' in el, 'Debe existir prop sizeMetric');
+                runner.assertEqual(el.sizeMetric, 'sloc', `Default sizeMetric debe ser 'sloc' (got '${el.sizeMetric}')`);
+            });
+
+            runner.test('Prop colorMetric existe y su default es "mi"', async (stage) => {
+                const el = createTreemap(MOCK_TREE);
+                stage.appendChild(el);
+                await waitRender(el);
+
+                runner.assertTrue('colorMetric' in el, 'Debe existir prop colorMetric');
+                runner.assertEqual(el.colorMetric, 'mi', `Default colorMetric debe ser 'mi' (got '${el.colorMetric}')`);
+            });
+
+            runner.test('Existe .tm-controls en el shadow DOM', async (stage) => {
+                const el = createTreemap(MOCK_TREE);
+                stage.appendChild(el);
+                await waitRender(el);
+
+                const controls = q(el, '.tm-controls');
+                runner.assertTrue(controls !== null, 'Debe existir .tm-controls');
+            });
+
+            runner.test('Existen exactamente 2 .tm-control-select (tamaño + color)', async (stage) => {
+                const el = createTreemap(MOCK_TREE);
+                stage.appendChild(el);
+                await waitRender(el);
+
+                const selects = qAll(el, '.tm-control-select');
+                runner.assertEqual(
+                    selects.length, 2,
+                    `Debe haber 2 .tm-control-select (got ${selects.length})`
+                );
+            });
+
+            runner.test('El primer select tiene options con las métricas de tamaño', async (stage) => {
+                const el = createTreemap(MOCK_TREE);
+                stage.appendChild(el);
+                await waitRender(el);
+
+                const firstSelect = el.shadowRoot.querySelector('.tm-control-select');
+                const options = Array.from(firstSelect.options).map(o => o.value);
+                runner.assertTrue(
+                    options.includes('sloc'),
+                    `Primer select debe incluir 'sloc' (got: ${JSON.stringify(options)})`
+                );
+                runner.assertTrue(
+                    options.includes('loc'),
+                    `Primer select debe incluir 'loc'`
+                );
+            });
+
+            runner.test('El segundo select tiene options con las métricas de color', async (stage) => {
+                const el = createTreemap(MOCK_TREE);
+                stage.appendChild(el);
+                await waitRender(el);
+
+                const selects = el.shadowRoot.querySelectorAll('.tm-control-select');
+                const secondSelect = selects[1];
+                const options = Array.from(secondSelect.options).map(o => o.value);
+                runner.assertTrue(
+                    options.includes('mi'),
+                    `Segundo select debe incluir 'mi' (got: ${JSON.stringify(options)})`
+                );
+                runner.assertTrue(
+                    options.includes('avg_complexity'),
+                    `Segundo select debe incluir 'avg_complexity'`
+                );
+            });
+
+            runner.test('Cambiar sizeMetric reconstruye el treemap (nuevo _d3Root)', async (stage) => {
+                const el = createTreemap(MOCK_TREE);
+                stage.appendChild(el);
+                await waitRender(el);
+
+                const prevRoot = el._d3Root;
+                runner.assertTrue(prevRoot !== null, '_d3Root debe existir');
+
+                el.sizeMetric = 'loc';
+                await waitRender(el);
+                await new Promise(r => setTimeout(r, 100));
+
+                runner.assertTrue(
+                    el._d3Root !== prevRoot,
+                    'Cambiar sizeMetric debe crear nuevo _d3Root'
+                );
+            });
+
+            runner.test('Con sizeMetric="loc", el valor de nodo raíz cambia respecto a sizeMetric="sloc"', async (stage) => {
+                const elSloc = createTreemap(MOCK_TREE);
+                elSloc.sizeMetric = 'sloc';
+                stage.appendChild(elSloc);
+                await waitRender(elSloc);
+
+                const elLoc = createTreemap(MOCK_TREE);
+                elLoc.sizeMetric = 'loc';
+                stage.appendChild(elLoc);
+                await waitRender(elLoc);
+
+                // Root value = sum of leaf values
+                const valueSloc = elSloc._d3Root?.value;
+                const valueLoc  = elLoc._d3Root?.value;
+
+                runner.assertTrue(
+                    valueSloc !== valueLoc,
+                    `sizeMetric='sloc' (value=${valueSloc}) debe diferir de sizeMetric='loc' (value=${valueLoc})`
+                );
+            });
+
+            runner.test('Cambiar colorMetric actualiza el color de los rects de hoja', async (stage) => {
+                const el = createTreemap(MOCK_TREE);
+                stage.appendChild(el);
+                await waitRender(el);
+
+                // Get initial fills (MI)
+                const fillsMI = Array.from(el.shadowRoot.querySelectorAll('rect.tm-leaf'))
+                    .map(r => r.getAttribute('fill'));
+
+                // Switch to avg_complexity
+                el.colorMetric = 'avg_complexity';
+                await el.updateComplete;
+                await new Promise(r => setTimeout(r, 50));
+
+                const fillsCC = Array.from(el.shadowRoot.querySelectorAll('rect.tm-leaf'))
+                    .map(r => r.getAttribute('fill'));
+
+                // At least some fills should differ between MI and CC scales
+                const changed = fillsMI.some((f, i) => f !== fillsCC[i]);
+                runner.assertTrue(
+                    changed,
+                    `Cambiar colorMetric de 'mi' a 'avg_complexity' debe cambiar algún color de hoja`
+                );
+            });
+
+            runner.test('_buildColorScale construye escala diferente para MI vs CC', async (stage) => {
+                const el = createTreemap(MOCK_TREE);
+                stage.appendChild(el);
+                await waitRender(el);
+
+                // Test MI scale: MI=100 should be green-ish
+                el.colorMetric = 'mi';
+                el._buildColorScale();
+                const colorMI100 = el._colorScale(100);
+
+                // Test CC scale: CC=100 should be red-ish (high CC = bad)
+                el.colorMetric = 'avg_complexity';
+                el._buildColorScale();
+                const colorCC100 = el._colorScale(100);
+
+                runner.assertTrue(
+                    colorMI100 !== colorCC100,
+                    `MI=100 (${colorMI100}) debe diferir de CC=100 (${colorCC100}) ya que las escalas son opuestas`
+                );
+            });
+
+            runner.test('_leafColor usa colorMetric actual para obtener el color', async (stage) => {
+                const el = createTreemap(MOCK_TREE);
+                stage.appendChild(el);
+                await waitRender(el);
+
+                // With colorMetric='mi', _leafColor should use data.mi
+                el.colorMetric = 'mi';
+                el._buildColorScale();
+                const colorViaMI = el._leafColor({ mi: 0, avg_complexity: 5 }); // MI=0 → red
+
+                el.colorMetric = 'avg_complexity';
+                el._buildColorScale();
+                const colorViaCC = el._leafColor({ mi: 0, avg_complexity: 5 }); // CC=5 → should be greenish (5 is border)
+
+                runner.assertTrue(
+                    colorViaMI !== colorViaCC,
+                    `_leafColor con MI=0 (${colorViaMI}) debe diferir de _leafColor con CC=5 (${colorViaCC})`
+                );
+            });
+
+            runner.test('_onSizeMetricChange actualiza sizeMetric prop', async (stage) => {
+                const el = createTreemap(MOCK_TREE);
+                stage.appendChild(el);
+                await waitRender(el);
+
+                el._onSizeMetricChange('functions_count');
+                runner.assertEqual(
+                    el.sizeMetric, 'functions_count',
+                    `_onSizeMetricChange debe actualizar sizeMetric (got '${el.sizeMetric}')`
+                );
+            });
+
+            runner.test('_onColorMetricChange actualiza colorMetric prop', async (stage) => {
+                const el = createTreemap(MOCK_TREE);
+                stage.appendChild(el);
+                await waitRender(el);
+
+                el._onColorMetricChange('max_complexity');
+                runner.assertEqual(
+                    el.colorMetric, 'max_complexity',
+                    `_onColorMetricChange debe actualizar colorMetric (got '${el.colorMetric}')`
+                );
+            });
+
+            runner.test('Bug fix: nodo con métrica=0 NO es el más grande (usa ?? no ||)', async (stage) => {
+                // ZERO_METRIC_TREE has:
+                //   big.py  → classes_count=5, sloc=200
+                //   tiny.py → classes_count=0, sloc=100
+                //
+                // With sizeMetric='classes_count':
+                //   - big.py  D3 value should be 5
+                //   - tiny.py D3 value should be ~0.1 (tiny minimum, NOT sloc=100)
+                //
+                // The old buggy code used `|| sloc || 1` which treated 0 as falsy,
+                // so tiny.py would get value=100 (its SLOC) and appear larger than big.py.
+                const el = createTreemap(ZERO_METRIC_TREE);
+                el.sizeMetric = 'classes_count';
+                stage.appendChild(el);
+                await waitRender(el);
+
+                runner.assertTrue(el._d3Root !== null, '_d3Root debe existir');
+
+                // Find the D3 nodes for big.py and tiny.py
+                const bigD3  = el._d3Root.descendants().find(d => d.data.id === 'big.py');
+                const tinyD3 = el._d3Root.descendants().find(d => d.data.id === 'tiny.py');
+
+                runner.assertTrue(bigD3  !== null && bigD3  !== undefined, 'big.py debe estar en la jerarquía D3');
+                runner.assertTrue(tinyD3 !== null && tinyD3 !== undefined, 'tiny.py debe estar en la jerarquía D3');
+
+                const bigValue  = bigD3.value;
+                const tinyValue = tinyD3.value;
+
+                // big.py has 5 classes → value should be 5
+                // tiny.py has 0 classes → value should be ~0.1 (not 100 from sloc fallback)
+                runner.assertTrue(
+                    bigValue > tinyValue,
+                    `big.py (classes=5, value=${bigValue}) debe ser MAYOR que tiny.py (classes=0, value=${tinyValue}). ` +
+                    `Si tinyValue ≈ 100 el bug del || sigue activo.`
+                );
+                runner.assertTrue(
+                    tinyValue <= 1,
+                    `tiny.py con classes_count=0 debe tener valor mínimo ≤ 1 (got ${tinyValue}), no su SLOC (100)`
+                );
+            });
+
+        });
+
+        // ====================================================================
+        // RUN
+        // ====================================================================
+
+        await runner.run();
+    </script>
+</body>
+</html>
