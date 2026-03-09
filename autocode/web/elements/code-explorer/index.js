@@ -249,7 +249,7 @@ export class CodeExplorer extends LitElement {
     // ========================================================================
 
     _handleNodeSelected(e) {
-        if (e.target === this) return;  // guard: evitar re-entrar con el evento re-emitido
+        if (e.composedPath()[0] === this) return;  // guard: evitar re-entrar con el evento re-emitido
         const node = e.detail.node;
         this._selectedNode = node.id;
         
@@ -262,7 +262,7 @@ export class CodeExplorer extends LitElement {
     }
 
     _handleNodeExpanded(e) {
-        if (e.target === this) return;  // guard: evitar re-entrar con el evento re-emitido
+        if (e.composedPath()[0] === this) return;  // guard: evitar re-entrar con el evento re-emitido
         const node = e.detail.node;
         this.expandNode(node.id);
         
@@ -274,7 +274,7 @@ export class CodeExplorer extends LitElement {
     }
 
     _handleNodeCollapsed(e) {
-        if (e.target === this) return;  // guard: evitar re-entrar con el evento re-emitido
+        if (e.composedPath()[0] === this) return;  // guard: evitar re-entrar con el evento re-emitido
         const node = e.detail.node;
         this.collapseNode(node.id);
         
