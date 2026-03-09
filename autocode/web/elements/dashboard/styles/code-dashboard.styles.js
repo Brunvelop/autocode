@@ -206,8 +206,7 @@ export const codeDashboardStyles = css`
         border: 1px solid var(--design-border-gray);
         border-radius: var(--design-radius-md);
         display: flex;
-        align-items: center;
-        justify-content: center;
+        align-items: stretch;
         overflow: hidden;
         position: relative;
     }

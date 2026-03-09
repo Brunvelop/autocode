@@ -8,6 +8,8 @@ import { css } from 'https://cdn.jsdelivr.net/gh/lit/dist@3/core/lit-core.min.js
 export const codeExplorerStyles = css`
     :host {
         display: block;
+        height: 100%;
+        width: 100%;
         font-family: var(--design-font-family, system-ui, sans-serif);
     }
 
@@ -19,7 +21,7 @@ export const codeExplorerStyles = css`
         border: 1px solid var(--design-border-color, #e5e7eb);
         border-radius: var(--design-radius-lg, 0.75rem);
         background: var(--design-bg-primary, #ffffff);
-        max-height: 600px;
+        height: 100%;
         overflow: hidden;
     }
 
