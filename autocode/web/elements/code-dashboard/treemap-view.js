@@ -497,10 +497,15 @@ export class TreemapView extends LitElement {
             return d.children;
         })
             .sum(d => {
-                if (d.children && d.children.length > 0) return 0;
+                // A node is a "leaf" if it has no children in raw data,
+                // OR if it's a file and showFunctions=false (the children accessor treats it as a leaf,
+                // but d.children still points to the raw functions array → would return 0 without this check).
+                const isLeaf = !d.children || d.children.length === 0 || (!showFunctions && d.type === 'file');
+                if (!isLeaf) return 0;
                 const val = d[sizeMetric] ?? 0;
                 return val > 0 ? val : 0.1; // 0 → tiny but visible; never falls back to sloc
             })
+
             .sort((a, b) => (b.value || 0) - (a.value || 0));
 
         // ── Treemap layout (full nested with padding) ─────────────────────
@@ -593,9 +598,15 @@ export class TreemapView extends LitElement {
                 })
                 .attr('width',  d => Math.max(0, this._xScale(d.x1) - this._xScale(d.x0)))
                 .attr('height', d => Math.max(0, this._yScale(d.y1) - this._yScale(d.y0)))
-                .attr('fill', d => d.children
-                    ? this._dirColor(d.depth)
-                    : this._leafColor(d.data))
+                .attr('fill', d => {
+                    // Only true directory nodes get the depth-based blue color.
+                    // Files and classes always show their metric color (MI, CC…)
+                    // regardless of whether they have children in the D3 hierarchy.
+                    if (!d.children || d.data.type === 'file' || d.data.type === 'class') {
+                        return this._leafColor(d.data);
+                    }
+                    return this._dirColor(d.depth);
+                })
                 .attr('rx', 2);
 
             // Labels — dynamic font sizes + type-specific icons
