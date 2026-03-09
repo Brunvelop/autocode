@@ -1153,3 +1153,340 @@ class TestResolveFileDependenciesJS:
         assert len(deps) == 1
         assert deps[0].source == "web/index.js"
         assert deps[0].target == "web/component.js"
+
+
+# ==============================================================================
+# J) FUNCTION/CLASS/METHOD ARCHITECTURE NODES
+# ==============================================================================
+
+
+class TestFunctionClassArchitectureNodes:
+    """J) Tests for function/class/method nodes in the architecture tree."""
+
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
+
+    def _make_func(self, name, sloc, complexity, rank, class_name=None):
+        from autocode.core.code.models import FunctionMetrics
+
+        return FunctionMetrics(
+            name=name,
+            file="app.py",
+            line=1,
+            complexity=complexity,
+            rank=rank,
+            nesting_depth=0,
+            sloc=sloc,
+            is_method=class_name is not None,
+            class_name=class_name,
+        )
+
+    def _make_fm(self, path, functions):
+        from autocode.core.code.models import FileMetrics
+
+        total_sloc = sum(f.sloc for f in functions)
+        complexities = [f.complexity for f in functions]
+        return FileMetrics(
+            path=path,
+            language="python",
+            sloc=total_sloc,
+            comments=0,
+            blanks=0,
+            total_loc=total_sloc,
+            functions=functions,
+            classes_count=len({f.class_name for f in functions if f.class_name}),
+            functions_count=len(functions),
+            avg_complexity=sum(complexities) / len(complexities) if complexities else 0.0,
+            max_complexity=max(complexities, default=0),
+            max_nesting=0,
+            maintainability_index=75.0,
+        )
+
+    # ------------------------------------------------------------------
+    # J.1-J.5  Model tests
+    # ------------------------------------------------------------------
+
+    def test_architecture_node_supports_function_type(self):
+        """ArchitectureNode should accept type='function'."""
+        from autocode.core.code.models import ArchitectureNode
+
+        node = ArchitectureNode(
+            id="app.py::my_func", parent_id="app.py", name="my_func",
+            type="function", path="app.py",
+        )
+        assert node.type == "function"
+
+    def test_architecture_node_supports_class_type(self):
+        """ArchitectureNode should accept type='class'."""
+        from autocode.core.code.models import ArchitectureNode
+
+        node = ArchitectureNode(
+            id="app.py::MyClass", parent_id="app.py", name="MyClass",
+            type="class", path="app.py",
+        )
+        assert node.type == "class"
+
+    def test_architecture_node_supports_method_type(self):
+        """ArchitectureNode should accept type='method'."""
+        from autocode.core.code.models import ArchitectureNode
+
+        node = ArchitectureNode(
+            id="app.py::MyClass.auth", parent_id="app.py::MyClass", name="auth",
+            type="method", path="app.py",
+        )
+        assert node.type == "method"
+
+    def test_architecture_node_complexity_field_optional_default_none(self):
+        """ArchitectureNode should have complexity=None by default."""
+        from autocode.core.code.models import ArchitectureNode
+
+        node = ArchitectureNode(
+            id="app.py::func", parent_id="app.py", name="func",
+            type="function", path="app.py",
+        )
+        assert node.complexity is None
+
+    def test_architecture_node_rank_field_optional_default_none(self):
+        """ArchitectureNode should have rank=None by default."""
+        from autocode.core.code.models import ArchitectureNode
+
+        node = ArchitectureNode(
+            id="app.py::func", parent_id="app.py", name="func",
+            type="function", path="app.py",
+        )
+        assert node.rank is None
+
+    # ------------------------------------------------------------------
+    # J.6-J.14  Builder tests
+    # ------------------------------------------------------------------
+
+    @patch("autocode.core.code.architecture.analyze_file_metrics")
+    @patch("pathlib.Path.read_text")
+    def test_build_nodes_includes_function_nodes_for_standalone_functions(
+        self, mock_read, mock_analyze
+    ):
+        """Standalone functions should produce type='function' nodes."""
+        from autocode.core.code.architecture import _build_architecture_nodes
+
+        mock_read.return_value = "def validate_input(x): return x\n"
+        func = self._make_func("validate_input", sloc=5, complexity=2, rank="A")
+        mock_analyze.return_value = self._make_fm("app.py", [func])
+
+        nodes = _build_architecture_nodes(["app.py"])
+        node_map = {n.id: n for n in nodes}
+
+        assert "app.py::validate_input" in node_map
+        assert node_map["app.py::validate_input"].type == "function"
+
+    @patch("autocode.core.code.architecture.analyze_file_metrics")
+    @patch("pathlib.Path.read_text")
+    def test_build_nodes_includes_class_node_when_file_has_methods(
+        self, mock_read, mock_analyze
+    ):
+        """Files with class methods should produce a type='class' container node."""
+        from autocode.core.code.architecture import _build_architecture_nodes
+
+        mock_read.return_value = "class UserService:\n    def auth(self): pass\n"
+        method = self._make_func(
+            "UserService.auth", sloc=3, complexity=1, rank="A", class_name="UserService"
+        )
+        mock_analyze.return_value = self._make_fm("app.py", [method])
+
+        nodes = _build_architecture_nodes(["app.py"])
+        node_map = {n.id: n for n in nodes}
+
+        assert "app.py::UserService" in node_map
+        assert node_map["app.py::UserService"].type == "class"
+
+    @patch("autocode.core.code.architecture.analyze_file_metrics")
+    @patch("pathlib.Path.read_text")
+    def test_build_nodes_includes_method_nodes_under_class(
+        self, mock_read, mock_analyze
+    ):
+        """Methods should produce type='method' nodes under their class node."""
+        from autocode.core.code.architecture import _build_architecture_nodes
+
+        mock_read.return_value = "class UserService:\n    def auth(self): pass\n"
+        method = self._make_func(
+            "UserService.auth", sloc=3, complexity=1, rank="A", class_name="UserService"
+        )
+        mock_analyze.return_value = self._make_fm("app.py", [method])
+
+        nodes = _build_architecture_nodes(["app.py"])
+        method_nodes = [n for n in nodes if n.type == "method"]
+
+        assert len(method_nodes) == 1
+
+    @patch("autocode.core.code.architecture.analyze_file_metrics")
+    @patch("pathlib.Path.read_text")
+    def test_function_node_has_correct_id_format(self, mock_read, mock_analyze):
+        """Standalone function node ID should follow 'fpath::func_name' format."""
+        from autocode.core.code.architecture import _build_architecture_nodes
+
+        mock_read.return_value = "def validate_input(x): return x\n"
+        func = self._make_func("validate_input", sloc=5, complexity=2, rank="A")
+        mock_analyze.return_value = self._make_fm("app.py", [func])
+
+        nodes = _build_architecture_nodes(["app.py"])
+        ids = {n.id for n in nodes}
+
+        assert "app.py::validate_input" in ids
+
+    @patch("autocode.core.code.architecture.analyze_file_metrics")
+    @patch("pathlib.Path.read_text")
+    def test_function_node_parent_id_is_file_path(self, mock_read, mock_analyze):
+        """Standalone function node parent_id should be the file path."""
+        from autocode.core.code.architecture import _build_architecture_nodes
+
+        mock_read.return_value = "def validate_input(x): return x\n"
+        func = self._make_func("validate_input", sloc=5, complexity=2, rank="A")
+        mock_analyze.return_value = self._make_fm("app.py", [func])
+
+        nodes = _build_architecture_nodes(["app.py"])
+        node_map = {n.id: n for n in nodes}
+
+        assert node_map["app.py::validate_input"].parent_id == "app.py"
+
+    @patch("autocode.core.code.architecture.analyze_file_metrics")
+    @patch("pathlib.Path.read_text")
+    def test_method_node_parent_id_is_class_node_id(self, mock_read, mock_analyze):
+        """Method node parent_id should be the class node ID ('fpath::ClassName')."""
+        from autocode.core.code.architecture import _build_architecture_nodes
+
+        mock_read.return_value = "class UserService:\n    def auth(self): pass\n"
+        method = self._make_func(
+            "UserService.auth", sloc=3, complexity=1, rank="A", class_name="UserService"
+        )
+        mock_analyze.return_value = self._make_fm("app.py", [method])
+
+        nodes = _build_architecture_nodes(["app.py"])
+        method_nodes = [n for n in nodes if n.type == "method"]
+
+        assert len(method_nodes) == 1
+        assert method_nodes[0].parent_id == "app.py::UserService"
+
+    @patch("autocode.core.code.architecture.analyze_file_metrics")
+    @patch("pathlib.Path.read_text")
+    def test_class_node_id_format(self, mock_read, mock_analyze):
+        """Class node ID should follow 'fpath::ClassName' format."""
+        from autocode.core.code.architecture import _build_architecture_nodes
+
+        mock_read.return_value = "class UserService:\n    def auth(self): pass\n"
+        method = self._make_func(
+            "UserService.auth", sloc=3, complexity=1, rank="A", class_name="UserService"
+        )
+        mock_analyze.return_value = self._make_fm("app.py", [method])
+
+        nodes = _build_architecture_nodes(["app.py"])
+        ids = {n.id for n in nodes}
+
+        assert "app.py::UserService" in ids
+
+    @patch("autocode.core.code.architecture.analyze_file_metrics")
+    @patch("pathlib.Path.read_text")
+    def test_function_node_carries_complexity_and_rank(
+        self, mock_read, mock_analyze
+    ):
+        """Function node should carry complexity and rank from FunctionMetrics."""
+        from autocode.core.code.architecture import _build_architecture_nodes
+
+        mock_read.return_value = "def complex_func(): pass\n"
+        func = self._make_func("complex_func", sloc=20, complexity=8, rank="B")
+        mock_analyze.return_value = self._make_fm("app.py", [func])
+
+        nodes = _build_architecture_nodes(["app.py"])
+        node_map = {n.id: n for n in nodes}
+
+        assert node_map["app.py::complex_func"].complexity == 8
+        assert node_map["app.py::complex_func"].rank == "B"
+
+    @patch("autocode.core.code.architecture.analyze_file_metrics")
+    @patch("pathlib.Path.read_text")
+    def test_function_node_carries_sloc_from_function_metrics(
+        self, mock_read, mock_analyze
+    ):
+        """Function node should carry sloc from FunctionMetrics."""
+        from autocode.core.code.architecture import _build_architecture_nodes
+
+        mock_read.return_value = "def my_func(): pass\n"
+        func = self._make_func("my_func", sloc=15, complexity=3, rank="A")
+        mock_analyze.return_value = self._make_fm("app.py", [func])
+
+        nodes = _build_architecture_nodes(["app.py"])
+        node_map = {n.id: n for n in nodes}
+
+        assert node_map["app.py::my_func"].sloc == 15
+
+    # ------------------------------------------------------------------
+    # J.15-J.16  Propagation tests
+    # ------------------------------------------------------------------
+
+    def test_propagate_treats_class_as_container(self):
+        """Class nodes should be treated as containers and have children_count set."""
+        from autocode.core.code.models import ArchitectureNode
+        from autocode.core.code.architecture import _propagate_metrics
+
+        root = ArchitectureNode(
+            id=".", parent_id=None, name="root", type="directory", path="."
+        )
+        file_node = ArchitectureNode(
+            id="app.py", parent_id=".", name="app.py", type="file", path="app.py",
+            sloc=30,
+        )
+        class_node = ArchitectureNode(
+            id="app.py::MyClass", parent_id="app.py", name="MyClass",
+            type="class", path="app.py",
+        )
+        method_a = ArchitectureNode(
+            id="app.py::MyClass::__init__", parent_id="app.py::MyClass",
+            name="__init__", type="method", path="app.py",
+            sloc=10, loc=10, mi=100.0, avg_complexity=1.0, max_complexity=1,
+        )
+        method_b = ArchitectureNode(
+            id="app.py::MyClass::authenticate", parent_id="app.py::MyClass",
+            name="authenticate", type="method", path="app.py",
+            sloc=20, loc=20, mi=80.0, avg_complexity=5.0, max_complexity=8,
+        )
+        nodes = [root, file_node, class_node, method_a, method_b]
+        _propagate_metrics(nodes, ".")
+
+        node_map = {n.id: n for n in nodes}
+        assert node_map["app.py::MyClass"].children_count == 2
+
+    def test_class_node_aggregates_method_sloc_and_complexity(self):
+        """Class node should aggregate SLOC and CC from its method children."""
+        from autocode.core.code.models import ArchitectureNode
+        from autocode.core.code.architecture import _propagate_metrics
+
+        root = ArchitectureNode(
+            id=".", parent_id=None, name="root", type="directory", path="."
+        )
+        file_node = ArchitectureNode(
+            id="app.py", parent_id=".", name="app.py", type="file", path="app.py",
+            sloc=30,
+        )
+        class_node = ArchitectureNode(
+            id="app.py::MyClass", parent_id="app.py", name="MyClass",
+            type="class", path="app.py",
+        )
+        method_a = ArchitectureNode(
+            id="app.py::MyClass::__init__", parent_id="app.py::MyClass",
+            name="__init__", type="method", path="app.py",
+            sloc=10, loc=10, mi=100.0, avg_complexity=1.0, max_complexity=1,
+        )
+        method_b = ArchitectureNode(
+            id="app.py::MyClass::authenticate", parent_id="app.py::MyClass",
+            name="authenticate", type="method", path="app.py",
+            sloc=20, loc=20, mi=80.0, avg_complexity=5.0, max_complexity=8,
+        )
+        nodes = [root, file_node, class_node, method_a, method_b]
+        _propagate_metrics(nodes, ".")
+
+        node_map = {n.id: n for n in nodes}
+        class_n = node_map["app.py::MyClass"]
+
+        assert class_n.sloc == 30           # 10 + 20
+        assert class_n.max_complexity == 8  # max(1, 8)
+        # LOC-weighted avg_complexity: (1*10 + 5*20) / 30 = 110/30 ≈ 3.67
+        assert abs(class_n.avg_complexity - 3.67) < 0.1

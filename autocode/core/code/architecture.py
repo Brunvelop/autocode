@@ -188,6 +188,9 @@ def _build_architecture_nodes(py_files: List[str]) -> List[ArchitectureNode]:
                 functions_count=fm.functions_count,
                 classes_count=fm.classes_count,
             )
+            nodes.append(file_node)
+            # Create function/class/method child nodes from FileMetrics
+            nodes.extend(_create_function_class_nodes(fpath, fm))
         except Exception as e:
             logger.debug(f"Skip {fpath}: {e}")
             file_node = ArchitectureNode(
@@ -197,8 +200,87 @@ def _build_architecture_nodes(py_files: List[str]) -> List[ArchitectureNode]:
                 type="file",
                 path=fpath,
             )
+            nodes.append(file_node)
 
-        nodes.append(file_node)
+    return nodes
+
+
+def _create_function_class_nodes(fpath: str, fm) -> List[ArchitectureNode]:
+    """Create function, class, and method ArchitectureNodes for a file.
+
+    Groups FunctionMetrics by class_name:
+    - Methods (class_name set) → one class container node + one method node each
+    - Standalone functions (no class_name) → one function node each
+
+    Args:
+        fpath: Relative file path (used as the file node ID / parent)
+        fm: FileMetrics object with a populated ``functions`` list
+
+    Returns:
+        List of new ArchitectureNode objects (class + method + function nodes)
+    """
+    if not fm.functions:
+        return []
+
+    nodes: List[ArchitectureNode] = []
+
+    # Separate methods (have a class) from standalone functions
+    classes: Dict[str, list] = defaultdict(list)
+    standalone = []
+    for func in fm.functions:
+        if func.class_name:
+            classes[func.class_name].append(func)
+        else:
+            standalone.append(func)
+
+    # --- Class nodes + their method children ---
+    for class_name, methods in classes.items():
+        class_id = f"{fpath}::{class_name}"
+        method_sloc = sum(m.sloc for m in methods)
+        complexities = [m.complexity for m in methods]
+        class_node = ArchitectureNode(
+            id=class_id,
+            parent_id=fpath,
+            name=class_name,
+            type="class",
+            path=fpath,
+            sloc=method_sloc,
+            avg_complexity=round(sum(complexities) / len(complexities), 2) if complexities else 0.0,
+            max_complexity=max(complexities, default=0),
+            functions_count=len(methods),
+        )
+        nodes.append(class_node)
+
+        for method in methods:
+            method_id = f"{fpath}::{method.name}"
+            nodes.append(ArchitectureNode(
+                id=method_id,
+                parent_id=class_id,
+                name=method.name.split(".")[-1],
+                type="method",
+                path=fpath,
+                sloc=method.sloc,
+                complexity=method.complexity,
+                rank=method.rank,
+                avg_complexity=float(method.complexity),
+                max_complexity=method.complexity,
+            ))
+
+    # --- Standalone function nodes ---
+    for func in standalone:
+        func_id = f"{fpath}::{func.name}"
+        nodes.append(ArchitectureNode(
+            id=func_id,
+            parent_id=fpath,
+            name=func.name,
+            type="function",
+            path=fpath,
+            sloc=func.sloc,
+            complexity=func.complexity,
+            rank=func.rank,
+            avg_complexity=float(func.complexity),
+            max_complexity=func.complexity,
+        ))
 
     return nodes
 
@@ -237,8 +319,10 @@ def _propagate_metrics(nodes: List[ArchitectureNode], root_id: str) -> None:
     depths: Dict[str, int] = {}
     _compute_depths(root_id, children_map, depths, 0)
 
-    # Process directories bottom-up (deepest first)
-    dir_nodes = [n for n in nodes if n.type == "directory"]
+    # Process container nodes (directories + classes) bottom-up (deepest first)
+    # Class nodes aggregate from their method children, just like directories do.
+    CONTAINER_TYPES = {"directory", "class"}
+    dir_nodes = [n for n in nodes if n.type in CONTAINER_TYPES]
     dir_nodes.sort(key=lambda n: depths.get(n.id, 0), reverse=True)
 
     for dir_node in dir_nodes:

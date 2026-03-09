@@ -290,7 +290,9 @@ class ArchitectureNode(BaseModel):
     id: str = Field(..., description="Path del nodo (usado como ID único)")
     parent_id: Optional[str] = Field(None, description="Path del nodo padre (None para root)")
     name: str = Field(..., description="Nombre display del nodo")
-    type: Literal["directory", "file"] = Field(..., description="Tipo de nodo")
+    type: Literal["directory", "file", "class", "function", "method"] = Field(
+        ..., description="Tipo de nodo"
+    )
     path: str = Field(..., description="Path relativo al root del proyecto")
     loc: int = Field(0, description="Total líneas de código (incluyendo blanks y comments)")
     sloc: int = Field(0, description="Líneas de código fuente (sin blanks ni comments)")
@@ -300,6 +302,8 @@ class ArchitectureNode(BaseModel):
     functions_count: int = Field(0, description="Número de funciones/métodos")
     classes_count: int = Field(0, description="Número de clases")
     children_count: int = Field(0, description="Número de hijos directos")
+    complexity: Optional[int] = Field(None, description="CC individual (solo function/method)")
+    rank: Optional[str] = Field(None, description="Rank de CC A-F (solo function/method)")
 
 
 class ArchitectureSnapshot(BaseModel):
