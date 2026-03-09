@@ -82,8 +82,13 @@ export class CodeExplorer extends LitElement {
                         <button class="action-btn" @click=${this.collapseAll} title="Colapsar todo">
                             ➖
                         </button>
-                        <button class="action-btn" @click=${this.refresh} title="Recargar">
-                            🔄
+                        <button 
+                            class="action-btn"
+                            @click=${this.refresh}
+                            ?disabled=${this._loading}
+                            title=${this._loading ? 'Cargando...' : 'Recargar'}
+                        >
+                            ${this._loading ? html`<span class="btn-spinner"></span>` : '🔄'}
                         </button>
                     </div>
                 </div>
@@ -244,6 +249,7 @@ export class CodeExplorer extends LitElement {
     // ========================================================================
 
     _handleNodeSelected(e) {
+        if (e.target === this) return;  // guard: evitar re-entrar con el evento re-emitido
         const node = e.detail.node;
         this._selectedNode = node.id;
         
@@ -256,6 +262,7 @@ export class CodeExplorer extends LitElement {
     }
 
     _handleNodeExpanded(e) {
+        if (e.target === this) return;  // guard: evitar re-entrar con el evento re-emitido
         const node = e.detail.node;
         this.expandNode(node.id);
         
@@ -267,6 +274,7 @@ export class CodeExplorer extends LitElement {
     }
 
     _handleNodeCollapsed(e) {
+        if (e.target === this) return;  // guard: evitar re-entrar con el evento re-emitido
         const node = e.detail.node;
         this.collapseNode(node.id);
         

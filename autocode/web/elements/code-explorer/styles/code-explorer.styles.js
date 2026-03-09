@@ -66,10 +66,25 @@ export const codeExplorerStyles = css`
         transition: all var(--design-transition-fast, 0.15s);
     }
 
-    .action-btn:hover {
+    .action-btn:hover:not(:disabled) {
         background: var(--design-bg-secondary, #f9fafb);
         color: var(--design-text-primary, #1f2937);
         border-color: var(--design-primary, #4f46e5);
+    }
+
+    .action-btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+
+    .btn-spinner {
+        display: inline-block;
+        width: 12px;
+        height: 12px;
+        border: 2px solid var(--design-border-color, #e5e7eb);
+        border-top-color: var(--design-primary, #4f46e5);
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
     }
 
     .explorer-content {
