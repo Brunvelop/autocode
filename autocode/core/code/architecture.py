@@ -27,7 +27,7 @@ from autocode.core.code.models import (
     FileDependency,
 )
 from autocode.core.vcs.git import git, get_tracked_files
-from autocode.core.code.analyzer import analyze_file_metrics
+from autocode.core.code.analyzer import analyze_file_metrics, maintainability_index
 
 from autocode.core.code.coupling import JS_IMPORT_RE
 
@@ -255,13 +255,20 @@ def _create_function_class_nodes(fpath: str, fm) -> List[ArchitectureNode]:
 
         for method in methods:
             method_id = f"{fpath}::{method.name}"
+            method_mi = round(maintainability_index(
+                sloc=method.sloc,
+                avg_cc=float(method.complexity),
+                total_loc=method.sloc,
+            ), 1)
             nodes.append(ArchitectureNode(
                 id=method_id,
                 parent_id=class_id,
                 name=method.name.split(".")[-1],
                 type="method",
                 path=fpath,
+                loc=method.sloc,
                 sloc=method.sloc,
+                mi=method_mi,
                 complexity=method.complexity,
                 rank=method.rank,
                 avg_complexity=float(method.complexity),
@@ -273,26 +280,40 @@ def _create_function_class_nodes(fpath: str, fm) -> List[ArchitectureNode]:
     for cls_info in getattr(fm, "classes", []):
         if cls_info.name not in classes_with_methods:
             class_id = f"{fpath}::{cls_info.name}"
+            orphan_mi = round(maintainability_index(
+                sloc=cls_info.sloc,
+                avg_cc=0.0,
+                total_loc=cls_info.sloc,
+            ), 1)
             nodes.append(ArchitectureNode(
                 id=class_id,
                 parent_id=fpath,
                 name=cls_info.name,
                 type="class",
                 path=fpath,
+                loc=cls_info.sloc,
                 sloc=cls_info.sloc,
+                mi=orphan_mi,
                 functions_count=0,
             ))
 
     # --- Standalone function nodes ---
     for func in standalone:
         func_id = f"{fpath}::{func.name}"
+        func_mi = round(maintainability_index(
+            sloc=func.sloc,
+            avg_cc=float(func.complexity),
+            total_loc=func.sloc,
+        ), 1)
         nodes.append(ArchitectureNode(
             id=func_id,
             parent_id=fpath,
             name=func.name,
             type="function",
             path=fpath,
+            loc=func.sloc,
             sloc=func.sloc,
+            mi=func_mi,
             complexity=func.complexity,
             rank=func.rank,
             avg_complexity=float(func.complexity),

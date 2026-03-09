@@ -395,10 +395,15 @@ export class TreemapView extends LitElement {
         const d    = this._tooltipData;
         const icon = NODE_TYPE_ICONS[d.type] || '📄';
 
-        // ── function / method: show CC + rank ─────────────────────────────
+        // ── function / method: show MI + CC + rank ────────────────────────
         if (d.type === 'function' || d.type === 'method') {
             const rankColors = { A:'#059669', B:'#22c55e', C:'#eab308', D:'#f97316', E:'#ef4444', F:'#dc2626' };
             const rankColor  = rankColors[d.rank] || '#6b7280';
+            const miColor    = (d3.scaleLinear()
+                .domain(METRIC_COLOR_CONFIGS.mi.domain)
+                .range(METRIC_COLOR_CONFIGS.mi.range)
+                .clamp(true))(d.mi);
+            const miStatus   = d.mi >= 60 ? '✅' : d.mi >= 40 ? '⚠️' : '🔴';
             return html`
                 <div class="treemap-tooltip visible" style="left:${d.x}px;top:${d.y}px;">
                     <div class="tooltip-header">${icon} ${d.name}</div>
@@ -406,6 +411,11 @@ export class TreemapView extends LitElement {
                     <div class="tooltip-grid">
                         <span class="tooltip-label">SLOC</span>
                         <span class="tooltip-value">${d.sloc}</span>
+                        <span class="tooltip-label">MI</span>
+                        <span class="tooltip-value">
+                            <span class="tooltip-mi-indicator" style="background:${miColor}"></span>
+                            ${d.mi?.toFixed(1)} ${miStatus}
+                        </span>
                         <span class="tooltip-label">CC</span>
                         <span class="tooltip-value">${d.complexity ?? d.avg_complexity?.toFixed(1)}</span>
                         <span class="tooltip-label">Rank</span>
@@ -414,8 +424,13 @@ export class TreemapView extends LitElement {
                 </div>`;
         }
 
-        // ── class: show method count + avg CC ─────────────────────────────
+        // ── class: show MI + method count + avg CC ────────────────────────
         if (d.type === 'class') {
+            const miColor  = (d3.scaleLinear()
+                .domain(METRIC_COLOR_CONFIGS.mi.domain)
+                .range(METRIC_COLOR_CONFIGS.mi.range)
+                .clamp(true))(d.mi);
+            const miStatus = d.mi >= 60 ? '✅' : d.mi >= 40 ? '⚠️' : '🔴';
             const ccStatus = d.avg_complexity < 5 ? '✅' : d.avg_complexity < 10 ? '⚠️' : '🔴';
             return html`
                 <div class="treemap-tooltip visible" style="left:${d.x}px;top:${d.y}px;">
@@ -424,6 +439,11 @@ export class TreemapView extends LitElement {
                     <div class="tooltip-grid">
                         <span class="tooltip-label">SLOC</span>
                         <span class="tooltip-value">${d.sloc}</span>
+                        <span class="tooltip-label">MI</span>
+                        <span class="tooltip-value">
+                            <span class="tooltip-mi-indicator" style="background:${miColor}"></span>
+                            ${d.mi?.toFixed(1)} ${miStatus}
+                        </span>
                         <span class="tooltip-label">Métodos</span>
                         <span class="tooltip-value">${d.functions_count}</span>
                         <span class="tooltip-label">CC media</span>
