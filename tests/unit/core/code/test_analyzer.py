@@ -434,3 +434,124 @@ class TestMultiLanguageIntegration:
         code = "function App() { return 1; }\n"
         fm = analyze_file_metrics("app.jsx", code)
         assert fm.language == "javascript"
+
+
+# ==============================================================================
+# G) CLASS INFO POPULATION (ClassInfo in FileMetrics.classes)
+# ==============================================================================
+
+
+class TestClassInfoPopulation:
+    """G) Tests for fm.classes populated from AST class ranges."""
+
+    def test_python_class_with_methods_appears_in_classes(self):
+        """A Python class with methods should appear in fm.classes."""
+        from autocode.core.code.analyzer import analyze_file_metrics
+
+        code = (
+            "class MyService:\n"
+            "    def process(self):\n"
+            "        return True\n"
+        )
+        fm = analyze_file_metrics("svc.py", code)
+
+        assert len(fm.classes) == 1
+        assert fm.classes[0].name == "MyService"
+
+    def test_python_class_without_methods_appears_in_classes(self):
+        """A Python class with no methods (orphan) should still appear in fm.classes."""
+        from autocode.core.code.analyzer import analyze_file_metrics
+
+        code = (
+            "class Config:\n"
+            "    DEBUG = True\n"
+            "    HOST = 'localhost'\n"
+            "    PORT = 8080\n"
+        )
+        fm = analyze_file_metrics("config.py", code)
+
+        assert len(fm.classes) == 1
+        assert fm.classes[0].name == "Config"
+
+    def test_multiple_classes_all_appear_in_classes(self):
+        """All classes in a file should appear in fm.classes, with and without methods."""
+        from autocode.core.code.analyzer import analyze_file_metrics
+
+        code = (
+            "class Empty:\n"
+            "    pass\n"
+            "\n"
+            "class WithMethod:\n"
+            "    def do_it(self):\n"
+            "        return 1\n"
+            "\n"
+            "class AlsoEmpty:\n"
+            "    x = 42\n"
+        )
+        fm = analyze_file_metrics("multi.py", code)
+
+        names = {c.name for c in fm.classes}
+        assert names == {"Empty", "WithMethod", "AlsoEmpty"}
+
+    def test_class_info_has_correct_line_start_end(self):
+        """ClassInfo should carry correct line_start and line_end from AST."""
+        from autocode.core.code.analyzer import analyze_file_metrics
+
+        code = (
+            "x = 1\n"            # line 1
+            "\n"                  # line 2
+            "class Foo:\n"        # line 3
+            "    bar = 'hello'\n" # line 4
+        )
+        fm = analyze_file_metrics("foo.py", code)
+
+        assert len(fm.classes) == 1
+        cls = fm.classes[0]
+        assert cls.line_start == 3
+        assert cls.line_end == 4
+
+    def test_class_info_sloc_counts_non_blank_non_comment_lines(self):
+        """ClassInfo.sloc should count lines that are not blank and not comments."""
+        from autocode.core.code.analyzer import analyze_file_metrics
+
+        code = (
+            "class Cfg:\n"          # line 1 (class def – counts)
+            "    # a comment\n"     # line 2 (comment – excluded)
+            "    DEBUG = True\n"    # line 3 (sloc)
+            "    HOST = 'local'\n"  # line 4 (sloc)
+            "\n"                    # line 5 (blank – excluded)
+        )
+        fm = analyze_file_metrics("cfg.py", code)
+
+        assert len(fm.classes) == 1
+        # class def line + 2 assignment lines = 3
+        assert fm.classes[0].sloc == 3
+
+    def test_js_file_has_empty_classes_list(self):
+        """JavaScript files should have fm.classes = [] (no AST)."""
+        from autocode.core.code.analyzer import analyze_file_metrics
+
+        code = (
+            "class Animal {\n"
+            "    constructor(name) { this.name = name; }\n"
+            "}\n"
+        )
+        fm = analyze_file_metrics("animal.js", code)
+
+        assert fm.classes == []
+
+    def test_classes_count_backward_compatible(self):
+        """fm.classes_count should still reflect the correct count (backward compat)."""
+        from autocode.core.code.analyzer import analyze_file_metrics
+
+        code = (
+            "class A:\n"
+            "    pass\n"
+            "\n"
+            "class B:\n"
+            "    def method(self): pass\n"
+        )
+        fm = analyze_file_metrics("ab.py", code)
+
+        assert fm.classes_count == 2
+        assert len(fm.classes) == 2

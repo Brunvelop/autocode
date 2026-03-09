@@ -219,10 +219,12 @@ def _create_function_class_nodes(fpath: str, fm) -> List[ArchitectureNode]:
     Returns:
         List of new ArchitectureNode objects (class + method + function nodes)
     """
-    if not fm.functions:
+    nodes: List[ArchitectureNode] = []
+
+    # Fast-path: nothing to process at all
+    if not fm.functions and not getattr(fm, "classes", []):
         return []
 
-    nodes: List[ArchitectureNode] = []
 
     # Separate methods (have a class) from standalone functions
     classes: Dict[str, list] = defaultdict(list)
@@ -264,6 +266,21 @@ def _create_function_class_nodes(fpath: str, fm) -> List[ArchitectureNode]:
                 rank=method.rank,
                 avg_complexity=float(method.complexity),
                 max_complexity=method.complexity,
+            ))
+
+    # --- Orphan classes (detected by AST but with no methods) ---
+    classes_with_methods = set(classes.keys())
+    for cls_info in getattr(fm, "classes", []):
+        if cls_info.name not in classes_with_methods:
+            class_id = f"{fpath}::{cls_info.name}"
+            nodes.append(ArchitectureNode(
+                id=class_id,
+                parent_id=fpath,
+                name=cls_info.name,
+                type="class",
+                path=fpath,
+                sloc=cls_info.sloc,
+                functions_count=0,
             ))
 
     # --- Standalone function nodes ---

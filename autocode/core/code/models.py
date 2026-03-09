@@ -88,6 +88,15 @@ class CodeSummaryOutput(GenericOutput):
 # ==============================================================================
 
 
+class ClassInfo(BaseModel):
+    """Información básica de una clase detectada por AST."""
+
+    name: str = Field(..., description="Nombre de la clase")
+    line_start: int = Field(0, description="Línea de inicio")
+    line_end: int = Field(0, description="Línea de fin")
+    sloc: int = Field(0, description="Líneas de código fuente de la clase")
+
+
 class FunctionMetrics(BaseModel):
     """Métricas de complejidad de una función/método individual."""
 
@@ -112,6 +121,10 @@ class FileMetrics(BaseModel):
     blanks: int = Field(0, description="Líneas en blanco")
     total_loc: int = Field(0, description="Total de líneas")
     functions: List[FunctionMetrics] = Field(default_factory=list, description="Métricas por función")
+    classes: List[ClassInfo] = Field(
+        default_factory=list,
+        description="Info de cada clase detectada (AST para Python)"
+    )
     classes_count: int = Field(0, description="Número de clases")
     functions_count: int = Field(0, description="Número de funciones/métodos")
     avg_complexity: float = Field(0.0, description="Complejidad ciclomática media")

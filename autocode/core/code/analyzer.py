@@ -14,10 +14,11 @@ import logging
 import math
 import re
 from pathlib import Path
+from typing import Optional
 
 import lizard
 
-from autocode.core.code.models import FileMetrics, FunctionMetrics
+from autocode.core.code.models import ClassInfo, FileMetrics, FunctionMetrics
 
 logger = logging.getLogger(__name__)
 
@@ -68,11 +69,27 @@ def analyze_file_metrics(path: str, content: str) -> FileMetrics:
         )
 
     # Lizard analysis for per-function metrics (nd = nesting depth extension)
-    analyzer = lizard.FileAnalyzer(lizard.get_extensions(["nd"]))
-    lizard_analysis = analyzer.analyze_source_code(path, content)
-    func_metrics = [
-        _to_function_metrics(f, path) for f in lizard_analysis.function_list
-    ]
+    lz_analyzer = lizard.FileAnalyzer(lizard.get_extensions(["nd"]))
+    lizard_analysis = lz_analyzer.analyze_source_code(path, content)
+
+    if language == "python":
+        # Python: use AST to detect class membership accurately.
+        # Lizard names nested functions as "outer.inner" (dot notation) but does NOT
+        # prefix class methods with the class name.  We use AST line ranges to know
+        # which method belongs to which class, and skip pure inner functions.
+        class_ranges = _get_python_class_ranges(content, path)
+        func_metrics = [
+            _to_function_metrics(f, path, _find_class_for_line(f.start_line, class_ranges))
+            for f in lizard_analysis.function_list
+            if "." not in f.name   # skip nested functions (outer.inner noise)
+        ]
+        classes_info = _build_classes_info(class_ranges, content)
+    else:
+        func_metrics = [
+            _to_function_metrics(f, path, _find_js_class_for_func(f))
+            for f in lizard_analysis.function_list
+        ]
+        classes_info = []  # JS: no AST, no class info
 
     # Class count
     classes_count = _count_classes(content, language, path)
@@ -92,6 +109,7 @@ def analyze_file_metrics(path: str, content: str) -> FileMetrics:
         blanks=blanks,
         total_loc=total_loc,
         functions=func_metrics,
+        classes=classes_info,
         classes_count=classes_count,
         functions_count=len(func_metrics),
         avg_complexity=round(avg_cc, 2),
@@ -163,12 +181,86 @@ def cc_rank(cc: int) -> str:
 # ==============================================================================
 
 
-def _to_function_metrics(func, path: str) -> FunctionMetrics:
+def _get_python_class_ranges(content: str, path: str) -> list:
+    """Return list of (start_line, end_line, class_name) for each class in a Python file.
+
+    Uses AST for accurate class boundary detection.  End line is the last line
+    of the class body (inclusive), so a method at line L belongs to class C when
+    C.start_line < L <= C.end_line.
+
+    Args:
+        content: Python source code
+        path: File path (for AST error reporting)
+
+    Returns:
+        List of (start_line, end_line, class_name) tuples
+    """
+    try:
+        tree = ast.parse(content, filename=path)
+        return [
+            (node.lineno, node.end_lineno, node.name)
+            for node in ast.walk(tree)
+            if isinstance(node, ast.ClassDef)
+        ]
+    except SyntaxError:
+        return []
+
+
+def _find_class_for_line(line: int, class_ranges: list) -> Optional[str]:
+    """Return the class name that contains the given line number, or None.
+
+    A function at ``line`` is considered a method of a class when:
+        class_start_line < line <= class_end_line
+
+    Args:
+        line: Line number of the function (from lizard's start_line)
+        class_ranges: List of (start_line, end_line, class_name) from
+                      _get_python_class_ranges()
+
+    Returns:
+        Class name string, or None if the line is outside any class.
+    """
+    for start, end, cname in class_ranges:
+        if start < line <= end:
+            return cname
+    return None
+
+
+def _find_js_class_for_func(func) -> Optional[str]:
+    """Detect JS/C++ class membership from lizard's naming convention.
+
+    Lizard names JS/C++ class methods as ``ClassName.method`` or
+    ``ClassName::method``.  We only treat the prefix as a class name when it
+    starts with an uppercase letter (CamelCase convention) to avoid false
+    positives from nested functions like ``outerFn.innerFn``.
+
+    Args:
+        func: lizard.FunctionInfo object
+
+    Returns:
+        Class name string, or None if the function is not a class method.
+    """
+    parts = func.name.split(".")
+    if len(parts) > 1 and parts[0][0].isupper():
+        return parts[0]
+    if "::" in func.name:
+        parts = func.name.split("::")
+        return parts[0] if len(parts) > 1 else None
+    return None
+
+
+def _to_function_metrics(func, path: str, class_name: Optional[str] = None) -> FunctionMetrics:
     """Convert a lizard FunctionInfo to our FunctionMetrics model.
+
+    Pure converter: accepts pre-detected ``class_name`` from the appropriate
+    language-specific helper (_find_class_for_line for Python,
+    _find_js_class_for_func for JS/others) and builds the FunctionMetrics
+    dataclass.  Contains no language-detection logic itself.
 
     Args:
         func: lizard.FunctionInfo object
         path: File path for the FunctionMetrics.file field
+        class_name: Optional class name (pre-detected by a language helper)
 
     Returns:
         FunctionMetrics with CC, nesting, SLOC from lizard
@@ -176,6 +268,7 @@ def _to_function_metrics(func, path: str) -> FunctionMetrics:
     cc = func.cyclomatic_complexity
     # nd extension provides max_nesting_depth; fall back to top_nesting_level
     nesting = getattr(func, "max_nesting_depth", func.top_nesting_level)
+
     return FunctionMetrics(
         name=func.name,
         file=path,
@@ -184,8 +277,8 @@ def _to_function_metrics(func, path: str) -> FunctionMetrics:
         rank=cc_rank(cc),
         nesting_depth=nesting,
         sloc=func.nloc,
-        is_method="." in func.name or "::" in func.name,
-        class_name=func.name.split(".")[0] if "." in func.name else None,
+        is_method=class_name is not None,
+        class_name=class_name,
     )
 
 
@@ -210,6 +303,32 @@ def _count_classes(content: str, language: str, path: str) -> int:
             return 0
     else:
         return len(_JS_CLASS_RE.findall(content))
+
+
+def _build_classes_info(class_ranges: list, content: str) -> list:
+    """Build ClassInfo list from AST class ranges, computing SLOC per class.
+
+    For each class range (start_line, end_line, name) extracted by
+    _get_python_class_ranges(), counts the source lines of code within
+    the class body (excluding blank lines and comment-only lines).
+
+    Args:
+        class_ranges: List of (start_line, end_line, class_name) tuples (1-indexed)
+        content: Full file content as string
+
+    Returns:
+        List of ClassInfo objects with name, line_start, line_end, sloc
+    """
+    lines = content.split("\n")
+    result = []
+    for start, end, name in class_ranges:
+        class_lines = lines[start - 1 : end]  # 1-indexed → 0-indexed
+        sloc = sum(
+            1 for l in class_lines
+            if l.strip() and not l.strip().startswith("#")
+        )
+        result.append(ClassInfo(name=name, line_start=start, line_end=end, sloc=sloc))
+    return result
 
 
 def _count_lines_python(lines: list[str]) -> dict:

@@ -1490,3 +1490,230 @@ class TestFunctionClassArchitectureNodes:
         assert class_n.max_complexity == 8  # max(1, 8)
         # LOC-weighted avg_complexity: (1*10 + 5*20) / 30 = 110/30 ≈ 3.67
         assert abs(class_n.avg_complexity - 3.67) < 0.1
+
+
+# ==============================================================================
+# K) ORPHAN CLASS NODES (classes with no methods)
+# ==============================================================================
+
+
+class TestOrphanClassNodes:
+    """K) Tests for class nodes created for Python classes without methods."""
+
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
+
+    def _make_class_info(self, name, line_start=1, line_end=5, sloc=4):
+        from autocode.core.code.models import ClassInfo
+        return ClassInfo(name=name, line_start=line_start, line_end=line_end, sloc=sloc)
+
+    def _make_fm_with_orphan_classes(self, path, class_infos, functions=None):
+        """Build a FileMetrics with classes but (optionally) no methods."""
+        from autocode.core.code.models import FileMetrics
+        functions = functions or []
+        return FileMetrics(
+            path=path,
+            language="python",
+            sloc=20,
+            comments=2,
+            blanks=3,
+            total_loc=25,
+            functions=functions,
+            classes=class_infos,
+            classes_count=len(class_infos),
+            functions_count=len(functions),
+            avg_complexity=0.0,
+            max_complexity=0,
+            max_nesting=0,
+            maintainability_index=80.0,
+        )
+
+    # ------------------------------------------------------------------
+    # K.1  _create_function_class_nodes with orphan classes
+    # ------------------------------------------------------------------
+
+    def test_orphan_class_produces_class_node(self):
+        """A class with no methods should produce a type='class' node."""
+        from autocode.core.code.architecture import _create_function_class_nodes
+
+        cls_info = self._make_class_info("Config", line_start=1, line_end=4, sloc=3)
+        fm = self._make_fm_with_orphan_classes("app.py", [cls_info])
+
+        nodes = _create_function_class_nodes("app.py", fm)
+        ids = {n.id for n in nodes}
+
+        assert "app.py::Config" in ids
+
+    def test_orphan_class_node_type_is_class(self):
+        """Orphan class node should have type='class'."""
+        from autocode.core.code.architecture import _create_function_class_nodes
+
+        cls_info = self._make_class_info("Config")
+        fm = self._make_fm_with_orphan_classes("app.py", [cls_info])
+
+        nodes = _create_function_class_nodes("app.py", fm)
+        node_map = {n.id: n for n in nodes}
+
+        assert node_map["app.py::Config"].type == "class"
+
+    def test_orphan_class_node_parent_is_file(self):
+        """Orphan class node parent_id should be the file path."""
+        from autocode.core.code.architecture import _create_function_class_nodes
+
+        cls_info = self._make_class_info("Config")
+        fm = self._make_fm_with_orphan_classes("app.py", [cls_info])
+
+        nodes = _create_function_class_nodes("app.py", fm)
+        node_map = {n.id: n for n in nodes}
+
+        assert node_map["app.py::Config"].parent_id == "app.py"
+
+    def test_orphan_class_node_carries_sloc(self):
+        """Orphan class node should carry the sloc from ClassInfo."""
+        from autocode.core.code.architecture import _create_function_class_nodes
+
+        cls_info = self._make_class_info("Config", sloc=7)
+        fm = self._make_fm_with_orphan_classes("app.py", [cls_info])
+
+        nodes = _create_function_class_nodes("app.py", fm)
+        node_map = {n.id: n for n in nodes}
+
+        assert node_map["app.py::Config"].sloc == 7
+
+    def test_orphan_class_node_has_zero_functions_count(self):
+        """Orphan class node should have functions_count=0."""
+        from autocode.core.code.architecture import _create_function_class_nodes
+
+        cls_info = self._make_class_info("Config")
+        fm = self._make_fm_with_orphan_classes("app.py", [cls_info])
+
+        nodes = _create_function_class_nodes("app.py", fm)
+        node_map = {n.id: n for n in nodes}
+
+        assert node_map["app.py::Config"].functions_count == 0
+
+    def test_class_with_methods_not_duplicated_as_orphan(self):
+        """A class that already has method nodes should NOT also be an orphan node."""
+        from autocode.core.code.architecture import _create_function_class_nodes
+        from autocode.core.code.models import FunctionMetrics, ClassInfo, FileMetrics
+
+        method = FunctionMetrics(
+            name="do_thing", file="app.py", line=3,
+            complexity=1, rank="A", nesting_depth=0, sloc=5,
+            is_method=True, class_name="MyService",
+        )
+        cls_info = ClassInfo(name="MyService", line_start=1, line_end=6, sloc=6)
+        fm = FileMetrics(
+            path="app.py", language="python",
+            sloc=6, comments=0, blanks=0, total_loc=6,
+            functions=[method],
+            classes=[cls_info],
+            classes_count=1,
+            functions_count=1,
+            avg_complexity=1.0, max_complexity=1, max_nesting=0,
+            maintainability_index=80.0,
+        )
+
+        nodes = _create_function_class_nodes("app.py", fm)
+        class_nodes = [n for n in nodes if n.id == "app.py::MyService"]
+
+        # Should be exactly one class node (not two)
+        assert len(class_nodes) == 1
+        # The one class node should have the method inside (functions_count=1)
+        assert class_nodes[0].functions_count == 1
+
+    def test_multiple_orphan_classes_all_get_nodes(self):
+        """Multiple orphan classes should each produce their own class node."""
+        from autocode.core.code.architecture import _create_function_class_nodes
+
+        class_infos = [
+            self._make_class_info("Config", sloc=3),
+            self._make_class_info("Constants", sloc=5),
+            self._make_class_info("Enums", sloc=2),
+        ]
+        fm = self._make_fm_with_orphan_classes("settings.py", class_infos)
+
+        nodes = _create_function_class_nodes("settings.py", fm)
+        ids = {n.id for n in nodes}
+
+        assert "settings.py::Config" in ids
+        assert "settings.py::Constants" in ids
+        assert "settings.py::Enums" in ids
+
+    # ------------------------------------------------------------------
+    # K.2  Integration via analyze_file_metrics + _create_function_class_nodes
+    # ------------------------------------------------------------------
+
+    def test_full_pipeline_orphan_class_produces_node(self):
+        """End-to-end: analyze_file_metrics + _create_function_class_nodes."""
+        from autocode.core.code.analyzer import analyze_file_metrics
+        from autocode.core.code.architecture import _create_function_class_nodes
+
+        code = (
+            "class Config:\n"
+            "    DEBUG = True\n"
+            "    HOST = 'localhost'\n"
+        )
+        fm = analyze_file_metrics("cfg.py", code)
+        nodes = _create_function_class_nodes("cfg.py", fm)
+
+        node_map = {n.id: n for n in nodes}
+        assert "cfg.py::Config" in node_map
+        assert node_map["cfg.py::Config"].type == "class"
+        assert node_map["cfg.py::Config"].functions_count == 0
+
+    def test_full_pipeline_mixed_orphan_and_class_with_methods(self):
+        """End-to-end: file with both orphan class and class-with-methods."""
+        from autocode.core.code.analyzer import analyze_file_metrics
+        from autocode.core.code.architecture import _create_function_class_nodes
+
+        code = (
+            "class Config:\n"
+            "    DEBUG = True\n"
+            "\n"
+            "class Service:\n"
+            "    def run(self):\n"
+            "        return True\n"
+        )
+        fm = analyze_file_metrics("mixed.py", code)
+        nodes = _create_function_class_nodes("mixed.py", fm)
+        node_map = {n.id: n for n in nodes}
+
+        # Config is an orphan class (no methods)
+        assert "mixed.py::Config" in node_map
+        assert node_map["mixed.py::Config"].functions_count == 0
+
+        # Service has a method
+        assert "mixed.py::Service" in node_map
+        assert node_map["mixed.py::Service"].functions_count >= 1
+
+    # ------------------------------------------------------------------
+    # K.3  _build_architecture_nodes integration
+    # ------------------------------------------------------------------
+
+    @patch("autocode.core.code.architecture.analyze_file_metrics")
+    @patch("pathlib.Path.read_text")
+    def test_build_nodes_creates_orphan_class_nodes(self, mock_read, mock_analyze):
+        """_build_architecture_nodes should include orphan class nodes."""
+        from autocode.core.code.architecture import _build_architecture_nodes
+        from autocode.core.code.models import FileMetrics, ClassInfo
+
+        mock_read.return_value = "class Config:\n    DEBUG = True\n"
+        mock_analyze.return_value = FileMetrics(
+            path="app.py", language="python",
+            sloc=2, comments=0, blanks=0, total_loc=2,
+            functions=[],
+            classes=[ClassInfo(name="Config", line_start=1, line_end=2, sloc=2)],
+            classes_count=1, functions_count=0,
+            avg_complexity=0.0, max_complexity=0, max_nesting=0,
+            maintainability_index=90.0,
+        )
+
+        nodes = _build_architecture_nodes(["app.py"])
+        node_map = {n.id: n for n in nodes}
+
+        assert "app.py::Config" in node_map
+        assert node_map["app.py::Config"].type == "class"
+        assert node_map["app.py::Config"].parent_id == "app.py"
+        assert node_map["app.py::Config"].functions_count == 0
