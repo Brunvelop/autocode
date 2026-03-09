@@ -1595,6 +1595,453 @@
         });
 
         // ====================================================================
+        // MOCK DATA — tree with functions/classes/methods
+        // ====================================================================
+
+        /**
+         * Tree with function/class/method nodes:
+         *
+         * root (.)
+         *   └── src/  (directory)
+         *         └── app.py  (file, has children → becomes container)
+         *               ├── UserService (class)
+         *               │     ├── __init__     (method, CC=3, rank='A')
+         *               │     └── authenticate (method, CC=12, rank='C')
+         *               └── validate_input (function, CC=7, rank='B')
+         */
+        const MOCK_TREE_WITH_FUNCTIONS = {
+            id: '.',
+            name: 'root',
+            type: 'directory',
+            path: '.',
+            sloc: 300, loc: 400, mi: 68.0,
+            avg_complexity: 4.0, max_complexity: 12,
+            functions_count: 3, classes_count: 1,
+            children: [
+                {
+                    id: 'src',
+                    name: 'src',
+                    type: 'directory',
+                    path: 'src',
+                    sloc: 300, loc: 400, mi: 68.0,
+                    avg_complexity: 4.0, max_complexity: 12,
+                    functions_count: 3, classes_count: 1,
+                    children: [
+                        {
+                            id: 'src/app.py',
+                            name: 'app.py',
+                            type: 'file',
+                            path: 'src/app.py',
+                            sloc: 300, loc: 400, mi: 68.0,
+                            avg_complexity: 4.0, max_complexity: 12,
+                            functions_count: 3, classes_count: 1,
+                            children: [
+                                {
+                                    id: 'src/app.py::UserService',
+                                    name: 'UserService',
+                                    type: 'class',
+                                    path: 'src/app.py',
+                                    sloc: 200, loc: 250,
+                                    avg_complexity: 7.5, max_complexity: 12,
+                                    functions_count: 2, classes_count: 0,
+                                    children: [
+                                        {
+                                            id: 'src/app.py::UserService.__init__',
+                                            name: '__init__',
+                                            type: 'method',
+                                            path: 'src/app.py',
+                                            sloc: 80, loc: 100,
+                                            complexity: 3, rank: 'A',
+                                            avg_complexity: 3.0, max_complexity: 3,
+                                            children: null,
+                                        },
+                                        {
+                                            id: 'src/app.py::UserService.authenticate',
+                                            name: 'authenticate',
+                                            type: 'method',
+                                            path: 'src/app.py',
+                                            sloc: 120, loc: 150,
+                                            complexity: 12, rank: 'C',
+                                            avg_complexity: 12.0, max_complexity: 12,
+                                            children: null,
+                                        },
+                                    ],
+                                },
+                                {
+                                    id: 'src/app.py::validate_input',
+                                    name: 'validate_input',
+                                    type: 'function',
+                                    path: 'src/app.py',
+                                    sloc: 100, loc: 120,
+                                    complexity: 7, rank: 'B',
+                                    avg_complexity: 7.0, max_complexity: 7,
+                                    children: null,
+                                },
+                            ],
+                        },
+                    ],
+                },
+            ],
+        };
+
+        // ====================================================================
+        // P) RENDERIZADO DE NODOS function/class/method
+        // ====================================================================
+
+        runner.group('P) Renderizado de nodos function/class/method', () => {
+
+            runner.test('P1: Renderiza rect.tm-func para nodos type=function', async (stage) => {
+                const el = createTreemap(MOCK_TREE_WITH_FUNCTIONS);
+                stage.appendChild(el);
+                await waitRender(el);
+
+                // Zoom into app.py so function/class nodes are visible
+                const appD3 = el._d3Root.descendants().find(d => d.data.id === 'src/app.py');
+                runner.assertTrue(appD3 !== null, 'Debe encontrar nodo src/app.py');
+                el._zoomIn(appD3);
+                await new Promise(r => setTimeout(r, 900));
+
+                const funcRects = el.shadowRoot.querySelectorAll('rect.tm-func');
+                runner.assertTrue(
+                    funcRects.length >= 1,
+                    `Debería haber al menos 1 rect.tm-func (got ${funcRects.length})`
+                );
+            });
+
+            runner.test('P2: Renderiza rect.tm-class para nodos type=class', async (stage) => {
+                const el = createTreemap(MOCK_TREE_WITH_FUNCTIONS);
+                stage.appendChild(el);
+                await waitRender(el);
+
+                const appD3 = el._d3Root.descendants().find(d => d.data.id === 'src/app.py');
+                el._zoomIn(appD3);
+                await new Promise(r => setTimeout(r, 900));
+
+                const classRects = el.shadowRoot.querySelectorAll('rect.tm-class');
+                runner.assertTrue(
+                    classRects.length >= 1,
+                    `Debería haber al menos 1 rect.tm-class (got ${classRects.length})`
+                );
+            });
+
+            runner.test('P3: Renderiza rect.tm-method para nodos type=method', async (stage) => {
+                const el = createTreemap(MOCK_TREE_WITH_FUNCTIONS);
+                stage.appendChild(el);
+                await waitRender(el);
+
+                // Zoom into UserService so methods are visible
+                const classD3 = el._d3Root.descendants().find(d => d.data.id === 'src/app.py::UserService');
+                runner.assertTrue(classD3 !== null, 'Debe encontrar nodo UserService');
+                el._zoomIn(classD3);
+                await new Promise(r => setTimeout(r, 900));
+
+                const methodRects = el.shadowRoot.querySelectorAll('rect.tm-method');
+                runner.assertTrue(
+                    methodRects.length >= 2,
+                    `Debería haber al menos 2 rect.tm-method (got ${methodRects.length})`
+                );
+            });
+
+            runner.test('P4: Nodos class son contenedores con children en D3 (como directories)', async (stage) => {
+                const el = createTreemap(MOCK_TREE_WITH_FUNCTIONS);
+                stage.appendChild(el);
+                await waitRender(el);
+
+                const classD3 = el._d3Root.descendants().find(d => d.data.id === 'src/app.py::UserService');
+                runner.assertTrue(classD3 !== null, 'Debe encontrar nodo UserService en D3');
+                runner.assertTrue(
+                    classD3.children !== null && classD3.children !== undefined,
+                    'Nodo class debe tener children en la jerarquía D3'
+                );
+                runner.assertTrue(
+                    classD3.children.length >= 2,
+                    `Nodo class debe tener al menos 2 children (got ${classD3.children?.length})`
+                );
+            });
+
+            runner.test('P5: Nodos function/method son hojas en D3 (sin children)', async (stage) => {
+                const el = createTreemap(MOCK_TREE_WITH_FUNCTIONS);
+                stage.appendChild(el);
+                await waitRender(el);
+
+                const funcD3 = el._d3Root.descendants().find(d => d.data.id === 'src/app.py::validate_input');
+                runner.assertTrue(funcD3 !== null, 'Debe encontrar nodo validate_input');
+                runner.assertTrue(
+                    funcD3.children === null || funcD3.children === undefined,
+                    'Nodo function debe ser hoja en D3 (sin children)'
+                );
+
+                const methodD3 = el._d3Root.descendants().find(d => d.data.id === 'src/app.py::UserService.__init__');
+                runner.assertTrue(methodD3 !== null, 'Debe encontrar nodo __init__');
+                runner.assertTrue(
+                    methodD3.children === null || methodD3.children === undefined,
+                    'Nodo method debe ser hoja en D3 (sin children)'
+                );
+            });
+
+        });
+
+        // ====================================================================
+        // Q) LABELS E ICONOS
+        // ====================================================================
+
+        runner.group('Q) Labels e iconos de nodos function/class', () => {
+
+            runner.test('Q1: Función tiene label con icono ⚡ y nombre', async (stage) => {
+                const el = createTreemap(MOCK_TREE_WITH_FUNCTIONS);
+                stage.appendChild(el);
+                await waitRender(el);
+
+                // Zoom into app.py so function/class nodes fill viewport and have labels
+                const appD3 = el._d3Root.descendants().find(d => d.data.id === 'src/app.py');
+                el._zoomIn(appD3);
+                await new Promise(r => setTimeout(r, 900));
+
+                const leafLabels = Array.from(el.shadowRoot.querySelectorAll('text.tm-leaf-name'));
+                const texts = leafLabels.map(t => t.textContent);
+                runner.assertTrue(
+                    texts.some(t => t.includes('⚡')),
+                    `Algún label de función debe contener icono ⚡ (got: ${JSON.stringify(texts)})`
+                );
+                runner.assertTrue(
+                    texts.some(t => t.includes('validate_input') || t.includes('validate')),
+                    `Label de función debe contener el nombre (got: ${JSON.stringify(texts)})`
+                );
+            });
+
+            runner.test('Q2: Clase tiene label con icono 🔷 y nombre', async (stage) => {
+                const el = createTreemap(MOCK_TREE_WITH_FUNCTIONS);
+                stage.appendChild(el);
+                await waitRender(el);
+
+                const appD3 = el._d3Root.descendants().find(d => d.data.id === 'src/app.py');
+                el._zoomIn(appD3);
+                await new Promise(r => setTimeout(r, 900));
+
+                const dirLabels = Array.from(el.shadowRoot.querySelectorAll('text.tm-dir-label'));
+                const texts = dirLabels.map(t => t.textContent);
+                runner.assertTrue(
+                    texts.some(t => t.includes('🔷')),
+                    `Algún label de clase debe contener icono 🔷 (got: ${JSON.stringify(texts)})`
+                );
+                runner.assertTrue(
+                    texts.some(t => t.includes('UserService') || t.includes('User')),
+                    `Label de clase debe contener el nombre (got: ${JSON.stringify(texts)})`
+                );
+            });
+
+            runner.test('Q3: Tooltip de función muestra complexity y rank', async (stage) => {
+                const el = createTreemap(MOCK_TREE_WITH_FUNCTIONS);
+                stage.appendChild(el);
+                await waitRender(el);
+
+                const funcD3 = el._d3Root.descendants().find(d => d.data.id === 'src/app.py::validate_input');
+                runner.assertTrue(funcD3 !== null, 'Debe encontrar nodo validate_input');
+
+                el._showTooltip({ clientX: 100, clientY: 100 }, funcD3);
+                await el.updateComplete;
+
+                runner.assertTrue(el._tooltipData !== null, '_tooltipData debe estar poblado');
+                runner.assertEqual(el._tooltipData.complexity, 7, `complexity debe ser 7 (got ${el._tooltipData?.complexity})`);
+                runner.assertEqual(el._tooltipData.rank, 'B', `rank debe ser 'B' (got ${el._tooltipData?.rank})`);
+
+                const tooltip = el.shadowRoot.querySelector('.treemap-tooltip.visible');
+                runner.assertTrue(tooltip !== null, 'Tooltip debe estar visible');
+                runner.assertContains(tooltip.textContent, '7', 'Tooltip debe mostrar el valor de CC=7');
+                runner.assertContains(tooltip.textContent, 'B', 'Tooltip debe mostrar el rank B');
+            });
+
+            runner.test('Q4: Tooltip de clase muestra methods count y avg CC', async (stage) => {
+                const el = createTreemap(MOCK_TREE_WITH_FUNCTIONS);
+                stage.appendChild(el);
+                await waitRender(el);
+
+                const classD3 = el._d3Root.descendants().find(d => d.data.id === 'src/app.py::UserService');
+                runner.assertTrue(classD3 !== null, 'Debe encontrar nodo UserService');
+
+                el._showTooltip({ clientX: 100, clientY: 100 }, classD3);
+                await el.updateComplete;
+
+                runner.assertTrue(el._tooltipData !== null, '_tooltipData debe estar poblado');
+                runner.assertEqual(el._tooltipData.functions_count, 2, `functions_count debe ser 2 (got ${el._tooltipData?.functions_count})`);
+                runner.assertTrue(
+                    el._tooltipData.avg_complexity > 0,
+                    `avg_complexity debe ser > 0 (got ${el._tooltipData?.avg_complexity})`
+                );
+
+                const tooltip = el.shadowRoot.querySelector('.treemap-tooltip.visible');
+                runner.assertTrue(tooltip !== null, 'Tooltip debe estar visible');
+                runner.assertContains(tooltip.textContent, '7.5', 'Tooltip clase debe mostrar avg CC=7.5');
+            });
+
+        });
+
+        // ====================================================================
+        // R) ZOOM EN ARCHIVOS Y CLASES
+        // ====================================================================
+
+        runner.group('R) Zoom en archivos→funciones y clases→métodos', () => {
+
+            runner.test('R1: Click en archivo con children (funciones) hace zoom in', async (stage) => {
+                const el = createTreemap(MOCK_TREE_WITH_FUNCTIONS);
+                stage.appendChild(el);
+                await waitRender(el);
+
+                const appD3 = el._d3Root.descendants().find(d => d.data.id === 'src/app.py');
+                runner.assertTrue(appD3 !== null, 'Debe encontrar nodo src/app.py');
+                runner.assertTrue(
+                    appD3.children !== null && appD3.children !== undefined,
+                    'app.py debe tener children (funciones) en D3'
+                );
+
+                el._zoomIn(appD3);
+                await new Promise(r => setTimeout(r, 100));
+
+                runner.assertEqual(
+                    el._zoomNode.data.id, 'src/app.py',
+                    `_zoomNode debe ser src/app.py tras zoom in (got ${el._zoomNode?.data?.id})`
+                );
+            });
+
+            runner.test('R2: Tras zoom in a archivo, breadcrumb muestra ruta completa', async (stage) => {
+                const el = createTreemap(MOCK_TREE_WITH_FUNCTIONS);
+                stage.appendChild(el);
+                await waitRender(el);
+
+                const appD3 = el._d3Root.descendants().find(d => d.data.id === 'src/app.py');
+                el._zoomIn(appD3);
+                await el.updateComplete;
+                await new Promise(r => setTimeout(r, 100));
+
+                const header = el.shadowRoot.querySelector('.tm-header-bar');
+                runner.assertContains(header.textContent, 'app.py', 'Header debe mostrar app.py');
+                runner.assertContains(header.textContent, 'src',    'Header debe mostrar src (antecesor)');
+
+                const segments = el.shadowRoot.querySelectorAll('.tm-header-segment');
+                runner.assertTrue(
+                    segments.length >= 3,
+                    `Breadcrumb debe tener ≥ 3 segmentos (root→src→app.py), got ${segments.length}`
+                );
+            });
+
+            runner.test('R3: Click en clase hace zoom in mostrando métodos', async (stage) => {
+                const el = createTreemap(MOCK_TREE_WITH_FUNCTIONS);
+                stage.appendChild(el);
+                await waitRender(el);
+
+                const classD3 = el._d3Root.descendants().find(d => d.data.id === 'src/app.py::UserService');
+                runner.assertTrue(classD3 !== null, 'Debe encontrar nodo UserService');
+
+                el._zoomIn(classD3);
+                await new Promise(r => setTimeout(r, 900));
+
+                runner.assertEqual(
+                    el._zoomNode.data.id, 'src/app.py::UserService',
+                    `_zoomNode debe ser UserService (got ${el._zoomNode?.data?.id})`
+                );
+
+                const methodRects = el.shadowRoot.querySelectorAll('rect.tm-method');
+                runner.assertTrue(
+                    methodRects.length >= 2,
+                    `Tras zoom in a clase, deben mostrarse métodos como rect.tm-method (got ${methodRects.length})`
+                );
+            });
+
+        });
+
+        // ====================================================================
+        // S) TOGGLE showFunctions
+        // ====================================================================
+
+        runner.group('S) Toggle showFunctions', () => {
+
+            runner.test('S1: Prop showFunctions existe, default true', async (stage) => {
+                const el = createTreemap(MOCK_TREE_WITH_FUNCTIONS);
+                stage.appendChild(el);
+                await waitRender(el);
+
+                runner.assertTrue('showFunctions' in el, 'Debe existir prop showFunctions');
+                runner.assertEqual(el.showFunctions, true, `Default showFunctions debe ser true (got ${el.showFunctions})`);
+            });
+
+            runner.test('S2: Con showFunctions=false, nodos function no aparecen en D3', async (stage) => {
+                const el = createTreemap(MOCK_TREE_WITH_FUNCTIONS);
+                el.showFunctions = false;
+                stage.appendChild(el);
+                await waitRender(el);
+
+                // With showFunctions=false, file nodes should be leaves in D3 hierarchy
+                const appD3 = el._d3Root.descendants().find(d => d.data.id === 'src/app.py');
+                runner.assertTrue(appD3 !== null, 'Debe encontrar nodo src/app.py');
+                runner.assertTrue(
+                    appD3.children === null || appD3.children === undefined,
+                    'Con showFunctions=false, app.py debe ser hoja en D3 (sin children)'
+                );
+
+                // No function rects should exist
+                const funcRects = el.shadowRoot.querySelectorAll('rect.tm-func');
+                runner.assertEqual(
+                    funcRects.length, 0,
+                    `Con showFunctions=false no debe haber rect.tm-func (got ${funcRects.length})`
+                );
+            });
+
+            runner.test('S3: Con showFunctions=true, nodos function aparecen en D3', async (stage) => {
+                const el = createTreemap(MOCK_TREE_WITH_FUNCTIONS);
+                el.showFunctions = true;
+                stage.appendChild(el);
+                await waitRender(el);
+
+                const appD3 = el._d3Root.descendants().find(d => d.data.id === 'src/app.py');
+                runner.assertTrue(appD3 !== null, 'Debe encontrar nodo src/app.py');
+                runner.assertTrue(
+                    appD3.children !== null && appD3.children !== undefined,
+                    'Con showFunctions=true, app.py debe tener children en D3'
+                );
+
+                const funcD3 = el._d3Root.descendants().find(d => d.data.type === 'function');
+                runner.assertTrue(
+                    funcD3 !== null && funcD3 !== undefined,
+                    'Con showFunctions=true, debe existir nodo tipo function en D3'
+                );
+            });
+
+            runner.test('S4: Cambiar showFunctions reconstruye el treemap', async (stage) => {
+                const el = createTreemap(MOCK_TREE_WITH_FUNCTIONS);
+                el.showFunctions = true;
+                stage.appendChild(el);
+                await waitRender(el);
+
+                const rootBefore = el._d3Root;
+
+                el.showFunctions = false;
+                await waitRender(el);
+
+                runner.assertTrue(
+                    el._d3Root !== rootBefore,
+                    'Cambiar showFunctions debe crear nuevo _d3Root'
+                );
+            });
+
+            runner.test('S5: Existe checkbox de showFunctions en controles', async (stage) => {
+                const el = createTreemap(MOCK_TREE_WITH_FUNCTIONS);
+                stage.appendChild(el);
+                await waitRender(el);
+
+                const checkbox = el.shadowRoot.querySelector('.tm-control-checkbox');
+                runner.assertTrue(
+                    checkbox !== null,
+                    'Debe existir input.tm-control-checkbox en los controles'
+                );
+                runner.assertEqual(
+                    checkbox.type, 'checkbox',
+                    `El control debe ser un checkbox (got type="${checkbox?.type}")`
+                );
+            });
+
+        });
+
+        // ====================================================================
         // RUN
         // ====================================================================
 

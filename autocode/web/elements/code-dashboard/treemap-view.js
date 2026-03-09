@@ -116,6 +116,18 @@ const METRIC_SHORT_LABELS = {
     classes_count:   'cls',
 };
 
+// Icons for each node type (shown in labels)
+const NODE_TYPE_ICONS = {
+    directory: '📂',
+    file:      '📄',
+    class:     '🔷',
+    function:  '⚡',
+    method:    '🔹',
+};
+
+// Node types that act as containers (rendered with padding, like directories)
+const CONTAINER_TYPES = new Set(['directory', 'class']);
+
 // Directory node colors by depth (darker = deeper hierarchy level)
 const DIR_COLORS = [
     'rgba(30, 41, 59, 0.82)',   // depth 0 – root
@@ -148,16 +160,20 @@ export class TreemapView extends LitElement {
 
         /** Reactive: tooltip data */
         _tooltipData: { state: true },
+
+        /** Show function/class/method nodes inside files */
+        showFunctions: { type: Boolean },
     };
 
     static styles = [themeTokens, treemapViewStyles];
 
     constructor() {
         super();
-        this.node        = null;
-        this.zoomNodeId  = null;
-        this.sizeMetric  = 'sloc';
-        this.colorMetric = 'mi';
+        this.node          = null;
+        this.zoomNodeId    = null;
+        this.sizeMetric    = 'sloc';
+        this.colorMetric   = 'mi';
+        this.showFunctions = true;
 
         // Reactive state for Lit template
         this._zoomAncestors = [];
@@ -208,8 +224,8 @@ export class TreemapView extends LitElement {
     }
 
     updated(changed) {
-        // Rebuild completely when tree data or size metric changes
-        if (changed.has('node') || changed.has('sizeMetric')) {
+        // Rebuild completely when tree data, size metric, or showFunctions changes
+        if (changed.has('node') || changed.has('sizeMetric') || changed.has('showFunctions')) {
             this._rebuildTreemap();
             return; // _rebuildTreemap will also apply zoomNodeId
         }
@@ -328,6 +344,15 @@ export class TreemapView extends LitElement {
                         `)}
                     </select>
                 </label>
+                <label class="tm-control-label">
+                    <input
+                        type="checkbox"
+                        class="tm-control-checkbox"
+                        .checked=${this.showFunctions}
+                        @change=${e => this._onShowFunctionsChange(e.target.checked)}
+                    />
+                    <span>⚡ fn</span>
+                </label>
             </div>`;
     }
 
@@ -339,6 +364,11 @@ export class TreemapView extends LitElement {
     _onColorMetricChange(metric) {
         if (this.colorMetric === metric) return;
         this.colorMetric = metric;
+    }
+
+    _onShowFunctionsChange(val) {
+        if (this.showFunctions === val) return;
+        this.showFunctions = val;
     }
 
     // ========================================================================
@@ -362,7 +392,47 @@ export class TreemapView extends LitElement {
 
     _renderTooltip() {
         if (!this._tooltipData) return html``;
-        const d        = this._tooltipData;
+        const d    = this._tooltipData;
+        const icon = NODE_TYPE_ICONS[d.type] || '📄';
+
+        // ── function / method: show CC + rank ─────────────────────────────
+        if (d.type === 'function' || d.type === 'method') {
+            const rankColors = { A:'#059669', B:'#22c55e', C:'#eab308', D:'#f97316', E:'#ef4444', F:'#dc2626' };
+            const rankColor  = rankColors[d.rank] || '#6b7280';
+            return html`
+                <div class="treemap-tooltip visible" style="left:${d.x}px;top:${d.y}px;">
+                    <div class="tooltip-header">${icon} ${d.name}</div>
+                    <div class="tooltip-path">${d.path}</div>
+                    <div class="tooltip-grid">
+                        <span class="tooltip-label">SLOC</span>
+                        <span class="tooltip-value">${d.sloc}</span>
+                        <span class="tooltip-label">CC</span>
+                        <span class="tooltip-value">${d.complexity ?? d.avg_complexity?.toFixed(1)}</span>
+                        <span class="tooltip-label">Rank</span>
+                        <span class="tooltip-value" style="color:${rankColor};font-weight:700">${d.rank ?? '—'}</span>
+                    </div>
+                </div>`;
+        }
+
+        // ── class: show method count + avg CC ─────────────────────────────
+        if (d.type === 'class') {
+            const ccStatus = d.avg_complexity < 5 ? '✅' : d.avg_complexity < 10 ? '⚠️' : '🔴';
+            return html`
+                <div class="treemap-tooltip visible" style="left:${d.x}px;top:${d.y}px;">
+                    <div class="tooltip-header">${icon} ${d.name}</div>
+                    <div class="tooltip-path">${d.path}</div>
+                    <div class="tooltip-grid">
+                        <span class="tooltip-label">SLOC</span>
+                        <span class="tooltip-value">${d.sloc}</span>
+                        <span class="tooltip-label">Métodos</span>
+                        <span class="tooltip-value">${d.functions_count}</span>
+                        <span class="tooltip-label">CC media</span>
+                        <span class="tooltip-value">${d.avg_complexity?.toFixed(1)} ${ccStatus}</span>
+                    </div>
+                </div>`;
+        }
+
+        // ── directory / file (default): full metrics ──────────────────────
         const miColor  = (d3.scaleLinear()
             .domain(METRIC_COLOR_CONFIGS.mi.domain)
             .range(METRIC_COLOR_CONFIGS.mi.range)
@@ -372,9 +442,7 @@ export class TreemapView extends LitElement {
 
         return html`
             <div class="treemap-tooltip visible" style="left:${d.x}px;top:${d.y}px;">
-                <div class="tooltip-header">
-                    ${d.type === 'directory' ? '📂' : '📄'} ${d.name}
-                </div>
+                <div class="tooltip-header">${icon} ${d.name}</div>
                 <div class="tooltip-path">${d.path}</div>
                 <div class="tooltip-grid">
                     <span class="tooltip-label">LOC</span>
@@ -419,8 +487,15 @@ export class TreemapView extends LitElement {
         // NOTE: Use ?? (nullish coalescing), NOT || (logical OR).
         // With ||, a value of 0 is treated as falsy and would silently fall
         // back to sloc, making zero-metric nodes appear huge.
-        const sizeMetric = this.sizeMetric || 'sloc';
-        const root = d3.hierarchy(this.node)
+        const sizeMetric    = this.sizeMetric || 'sloc';
+        const showFunctions = this.showFunctions;
+
+        // Children accessor: when showFunctions=false, file nodes become leaves
+        // (their function/class children are hidden from the D3 hierarchy).
+        const root = d3.hierarchy(this.node, d => {
+            if (!showFunctions && d.type === 'file') return null;
+            return d.children;
+        })
             .sum(d => {
                 if (d.children && d.children.length > 0) return 0;
                 const val = d[sizeMetric] ?? 0;
@@ -504,9 +579,18 @@ export class TreemapView extends LitElement {
                 .attr('transform', d =>
                     `translate(${this._xScale(d.x0)},${this._yScale(d.y0)})`);
 
-            // Rects
+            // Rects — type-based CSS class for function/class/method nodes
             nodeGroups.append('rect')
-                .attr('class', d => d.children ? 'tm-rect tm-dir' : 'tm-rect tm-leaf')
+                .attr('class', d => {
+                    if (d.children) {
+                        if (d.data.type === 'class') return 'tm-rect tm-class';
+                        return 'tm-rect tm-dir';
+                    } else {
+                        if (d.data.type === 'function') return 'tm-rect tm-func';
+                        if (d.data.type === 'method')   return 'tm-rect tm-method';
+                        return 'tm-rect tm-leaf';
+                    }
+                })
                 .attr('width',  d => Math.max(0, this._xScale(d.x1) - this._xScale(d.x0)))
                 .attr('height', d => Math.max(0, this._yScale(d.y1) - this._yScale(d.y0)))
                 .attr('fill', d => d.children
@@ -514,24 +598,25 @@ export class TreemapView extends LitElement {
                     : this._leafColor(d.data))
                 .attr('rx', 2);
 
-            // Labels — dynamic font sizes based on cell dimensions
+            // Labels — dynamic font sizes + type-specific icons
             nodeGroups.each((d, i, nodes) => {
                 const g     = d3.select(nodes[i]);
                 const cellW = this._xScale(d.x1) - this._xScale(d.x0);
                 const cellH = this._yScale(d.y1) - this._yScale(d.y0);
+                const icon  = NODE_TYPE_ICONS[d.data.type] || '';
 
                 if (d.children) {
-                    // Directory label: slightly smaller than cell height, clamped
+                    // Container label (directory / class / file-as-container)
                     if (cellW >= 30 && cellH >= 14) {
                         const fontSize = Math.min(Math.max(cellH * 0.55, 9), 14);
                         g.append('text')
                             .attr('class', 'tm-dir-label')
                             .attr('x', 4).attr('y', fontSize + 2)
                             .style('font-size', `${fontSize}px`)
-                            .text(this._truncate(d.data.name, cellW - 8, fontSize));
+                            .text(this._truncate(`${icon} ${d.data.name}`, cellW - 8, fontSize));
                     }
                 } else {
-                    // Leaf label: proportional to min(cellW, cellH)
+                    // Leaf label (file / function / method)
                     if (cellW >= 35 && cellH >= 18) {
                         const minDim       = Math.min(cellW, cellH);
                         const nameFontSize = Math.min(Math.max(minDim * 0.22, 8), 13);
@@ -541,7 +626,7 @@ export class TreemapView extends LitElement {
                             .attr('class', 'tm-leaf-name')
                             .attr('x', 4).attr('y', nameFontSize + 2)
                             .style('font-size', `${nameFontSize}px`)
-                            .text(this._truncate(d.data.name, cellW - 8, nameFontSize));
+                            .text(this._truncate(`${icon} ${d.data.name}`, cellW - 8, nameFontSize));
 
                         if (cellH >= 30) {
                             g.append('text')
@@ -813,6 +898,9 @@ export class TreemapView extends LitElement {
             avg_complexity:  data.avg_complexity  ?? 0,
             functions_count: data.functions_count || 0,
             classes_count:   data.classes_count   || 0,
+            // function/method specific
+            complexity:      data.complexity ?? null,
+            rank:            data.rank       ?? null,
         };
     }
 
