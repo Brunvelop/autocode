@@ -69,6 +69,47 @@ python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
 
+[tool.codehealth]
+# Critical = test FALLA | Warning = muestra aviso visible en output
+# Umbrales calibrados con el estado actual del código (2026-10-03).
+# Subir gradualmente para endurecer la quality gate con el tiempo.
+
+# Maintainability Index (0-100, mayor es mejor)
+# Peor archivo actual: test_architecture.py = 4.1
+critical_mi = 3.0
+warning_mi = 20.0
+# Cyclomatic Complexity por función
+# Peor función actual: treemap._renderTooltip() = 90
+critical_function_cc = 95
+warning_function_cc = 15
+# Máximo de funciones con rank F (CC > 25) permitidas
+# Estado actual: 4 funciones (generate_with_dspy, stream_chat, 2x _renderTooltip)
+max_rank_f_functions = 4
+# Nesting depth por función
+# Peor función actual: treemap-view._renderTooltip() = 18
+critical_nesting = 19
+warning_nesting = 5
+# SLOC por archivo
+# Peor archivo actual: test_architecture.py = 1191 SLOC
+critical_file_sloc = 1200
+warning_file_sloc = 500
+# CC media por archivo
+critical_avg_complexity = 15.0
+warning_avg_complexity = 10.0
+# CC media del proyecto (agregado)
+# Estado actual: 2.43 ✅
+critical_project_avg_complexity = 10.0
+warning_project_avg_complexity = 7.0
+# MI media del proyecto (agregado)
+# Estado actual: 39.5 ⚠️ (por debajo del warning=50 pero sobre el critical=30)
+critical_project_avg_mi = 30.0
+warning_project_avg_mi = 50.0
+# Dependencias circulares entre paquetes
+# Estado actual: 1 (autocode.core ↔ autocode.interfaces — conocida)
+max_circular_deps = 1
+# Globs a excluir del análisis (ej: ["tests/*", "setup.py"])
+exclude = []
+
 [dependency-groups]
 dev = [
     "pytest>=8.4.1",
