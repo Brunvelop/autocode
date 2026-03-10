@@ -1,7 +1,6 @@
 /**
  * dependency-graph.styles.js
  * Estilos para el grafo de dependencias con D3 force.
- * Adaptado de architecture/styles/architecture-graph.styles.js
  */
 import { css } from 'https://cdn.jsdelivr.net/gh/lit/dist@3/core/lit-core.min.js';
 
@@ -13,11 +12,245 @@ export const dependencyGraphStyles = css`
         font-family: var(--design-font-family, system-ui, sans-serif);
     }
 
-    /* ===== CONTAINER ===== */
-    .graph-container {
-        position: relative;
+    /* ===== WRAPPER (flex column: controls + graph-container) ===== */
+    .dg-wrapper {
+        display: flex;
+        flex-direction: column;
         width: 100%;
         height: 100%;
+    }
+
+    /* ===== CONTROLS BAR ===== */
+    .dg-controls {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        height: 34px;
+        min-height: 34px;
+        padding: 0 10px;
+        background: rgba(15, 23, 42, 0.95);
+        border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+        flex-shrink: 0;
+        overflow: hidden;
+    }
+
+    .dg-control-label {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        font-size: 11px;
+        color: rgba(255, 255, 255, 0.65);
+        white-space: nowrap;
+        cursor: default;
+        flex-shrink: 0;
+    }
+
+    .dg-control-icon {
+        font-size: 12px;
+        line-height: 1;
+        user-select: none;
+        flex-shrink: 0;
+    }
+
+    .dg-control-select {
+        background: rgba(255, 255, 255, 0.08);
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        border-radius: 4px;
+        color: rgba(255, 255, 255, 0.9);
+        font-size: 11px;
+        font-family: inherit;
+        padding: 1px 4px;
+        cursor: pointer;
+        outline: none;
+        transition: background 0.12s, border-color 0.12s;
+        min-width: 80px;
+    }
+
+    .dg-control-select:hover {
+        background: rgba(255, 255, 255, 0.14);
+        border-color: rgba(255, 255, 255, 0.3);
+    }
+
+    .dg-control-select:focus {
+        border-color: rgba(99, 179, 237, 0.7);
+        background: rgba(255, 255, 255, 0.12);
+    }
+
+    .dg-control-select option {
+        background: #1e293b;
+        color: white;
+    }
+
+    /* ===== TEXT FILTER ===== */
+    .dg-control-search {
+        position: relative;
+        flex-shrink: 1;
+        min-width: 0;
+    }
+
+    .dg-filter-input {
+        background: rgba(255, 255, 255, 0.08);
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        border-radius: 4px;
+        color: rgba(255, 255, 255, 0.9);
+        font-size: 11px;
+        font-family: inherit;
+        padding: 2px 22px 2px 6px;
+        outline: none;
+        width: 120px;
+        transition: width 0.2s, background 0.12s, border-color 0.12s;
+    }
+
+    .dg-filter-input:focus {
+        width: 160px;
+        border-color: rgba(99, 179, 237, 0.7);
+        background: rgba(255, 255, 255, 0.12);
+    }
+
+    .dg-filter-input::placeholder {
+        color: rgba(255, 255, 255, 0.3);
+    }
+
+    .dg-filter-clear {
+        position: absolute;
+        right: 4px;
+        top: 50%;
+        transform: translateY(-50%);
+        background: none;
+        border: none;
+        color: rgba(255, 255, 255, 0.45);
+        font-size: 10px;
+        cursor: pointer;
+        padding: 2px 3px;
+        line-height: 1;
+        border-radius: 2px;
+        transition: color 0.1s;
+    }
+
+    .dg-filter-clear:hover {
+        color: rgba(255, 255, 255, 0.85);
+    }
+
+    /* ===== SEPARATOR ===== */
+    .dg-controls-separator {
+        width: 1px;
+        height: 18px;
+        background: rgba(255, 255, 255, 0.12);
+        flex-shrink: 0;
+    }
+
+    .dg-controls-spacer {
+        flex: 1;
+    }
+
+    /* ===== QUICK FILTER BUTTONS ===== */
+    .dg-filter-btn {
+        background: rgba(255, 255, 255, 0.06);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 4px;
+        color: rgba(255, 255, 255, 0.6);
+        font-size: 10px;
+        font-family: inherit;
+        padding: 2px 7px;
+        cursor: pointer;
+        transition: all 0.12s;
+        white-space: nowrap;
+        flex-shrink: 0;
+        line-height: 1.4;
+    }
+
+    .dg-filter-btn:hover {
+        background: rgba(255, 255, 255, 0.12);
+        border-color: rgba(255, 255, 255, 0.25);
+        color: rgba(255, 255, 255, 0.85);
+    }
+
+    .dg-filter-btn.active {
+        background: rgba(99, 179, 237, 0.2);
+        border-color: rgba(99, 179, 237, 0.5);
+        color: rgb(147, 210, 246);
+    }
+
+    .dg-filter-reset {
+        color: rgba(251, 191, 36, 0.75);
+        border-color: rgba(251, 191, 36, 0.3);
+        background: rgba(251, 191, 36, 0.07);
+    }
+
+    .dg-filter-reset:hover {
+        color: rgba(251, 191, 36, 1);
+        border-color: rgba(251, 191, 36, 0.55);
+        background: rgba(251, 191, 36, 0.15);
+    }
+
+    /* ===== MIN CONNECTIONS INPUT ===== */
+    .dg-control-min {
+        gap: 4px;
+    }
+
+    .dg-min-input {
+        background: rgba(255, 255, 255, 0.08);
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        border-radius: 4px;
+        color: rgba(255, 255, 255, 0.9);
+        font-size: 11px;
+        font-family: inherit;
+        padding: 1px 4px;
+        width: 38px;
+        text-align: center;
+        outline: none;
+        cursor: text;
+        transition: background 0.12s, border-color 0.12s;
+        /* Hide spinner arrows */
+        -moz-appearance: textfield;
+    }
+
+    .dg-min-input::-webkit-outer-spin-button,
+    .dg-min-input::-webkit-inner-spin-button {
+        -webkit-appearance: none;
+        margin: 0;
+    }
+
+    .dg-min-input:focus {
+        border-color: rgba(99, 179, 237, 0.7);
+        background: rgba(255, 255, 255, 0.12);
+    }
+
+    /* ===== GRANULARITY TOGGLE (inside controls bar) ===== */
+    .dg-granularity-btn {
+        background: rgba(255, 255, 255, 0.06);
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        border-radius: 4px;
+        color: rgba(255, 255, 255, 0.65);
+        font-size: 11px;
+        font-family: inherit;
+        padding: 3px 9px;
+        cursor: pointer;
+        transition: all 0.12s;
+        white-space: nowrap;
+        flex-shrink: 0;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+    }
+
+    .dg-granularity-btn:hover {
+        background: rgba(255, 255, 255, 0.12);
+        border-color: rgba(255, 255, 255, 0.3);
+        color: rgba(255, 255, 255, 0.9);
+    }
+
+    .dg-granularity-btn.active {
+        background: rgba(99, 102, 241, 0.25);
+        border-color: rgba(99, 102, 241, 0.55);
+        color: rgb(167, 171, 247);
+    }
+
+    /* ===== GRAPH CONTAINER ===== */
+    .graph-container {
+        position: relative;
+        flex: 1;
+        min-height: 0;
         overflow: hidden;
     }
 
@@ -38,6 +271,7 @@ export const dependencyGraphStyles = css`
                     stroke-width var(--design-transition-fast, 0.1s);
         stroke: var(--design-bg-white, #ffffff);
         stroke-width: 2;
+        opacity: 0.85;
     }
 
     .graph-node:hover circle {
@@ -48,6 +282,7 @@ export const dependencyGraphStyles = css`
     .graph-node.selected circle {
         stroke: var(--design-primary, #4f46e5);
         stroke-width: 3;
+        opacity: 1;
     }
 
     .graph-node.dimmed {
@@ -96,7 +331,15 @@ export const dependencyGraphStyles = css`
         stroke-opacity: 0.08;
     }
 
-    /* ===== TOOLTIP ===== */
+    /* ===== LINK HIT AREA ===== */
+    .graph-link-hit {
+        fill: none;
+        stroke: transparent;
+        stroke-width: 14;
+        cursor: crosshair;
+    }
+
+    /* ===== NODE TOOLTIP ===== */
     .graph-tooltip {
         position: absolute;
         pointer-events: none;
@@ -117,6 +360,61 @@ export const dependencyGraphStyles = css`
         opacity: 1;
     }
 
+    /* ===== LINK TOOLTIP ===== */
+    .link-tooltip {
+        position: absolute;
+        pointer-events: none;
+        background: var(--design-bg-white, #fff);
+        border: 1px solid #e0e7ff;
+        border-radius: var(--design-radius-md, 0.5rem);
+        padding: 7px 10px;
+        box-shadow: var(--design-shadow-lg, 0 10px 15px -3px rgba(0, 0, 0, 0.1));
+        font-size: 11px;
+        z-index: var(--design-z-tooltip, 110);
+        opacity: 0;
+        transition: opacity 0.15s;
+        max-width: 260px;
+        min-width: 140px;
+    }
+
+    .link-tooltip.visible {
+        opacity: 1;
+    }
+
+    .link-tooltip-arrow {
+        color: #6366f1;
+        font-weight: 700;
+        margin: 0 3px;
+    }
+
+    .link-tooltip-imports {
+        margin-top: 5px;
+        padding-top: 5px;
+        border-top: 1px solid #e5e7eb;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        max-height: 120px;
+        overflow-y: auto;
+    }
+
+    .link-tooltip-import-row {
+        font-family: var(--design-font-mono, monospace);
+        font-size: 10px;
+        color: var(--design-text-secondary, #4b5563);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .link-tooltip-empty {
+        margin-top: 5px;
+        font-size: 10px;
+        color: var(--design-text-tertiary, #9ca3af);
+        font-style: italic;
+    }
+
+    /* ===== SHARED TOOLTIP PARTS ===== */
     .tooltip-header {
         font-weight: var(--design-font-weight-bold, 700);
         color: var(--design-text-primary, #1f2937);
@@ -125,6 +423,10 @@ export const dependencyGraphStyles = css`
         display: flex;
         align-items: center;
         gap: 4px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 250px;
     }
 
     .tooltip-path {
@@ -155,62 +457,34 @@ export const dependencyGraphStyles = css`
         color: var(--design-text-primary, #1f2937);
         font-size: 10px;
         text-align: right;
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 3px;
     }
 
-    .tooltip-mi-indicator {
+    .tooltip-indicator {
         display: inline-block;
         width: 8px;
         height: 8px;
         border-radius: 50%;
-        margin-right: 2px;
-        vertical-align: middle;
+        flex-shrink: 0;
     }
 
-    .tooltip-section-label {
+    /* Section divider inside tooltip */
+    .tooltip-section {
         font-size: 9px;
         color: var(--design-text-tertiary, #9ca3af);
         text-transform: uppercase;
         letter-spacing: 0.05em;
-        margin-top: 4px;
-        padding-top: 4px;
+        margin-top: 6px;
+        padding-top: 5px;
         border-top: 1px solid var(--design-border-gray-light, #f3f4f6);
+        margin-bottom: 3px;
         grid-column: 1 / -1;
     }
 
-    /* ===== GRANULARITY TOGGLE ===== */
-    .granularity-toggle {
-        position: absolute;
-        top: 8px;
-        right: 8px;
-        z-index: 10;
-        padding: 4px 10px;
-        background: var(--design-bg-white, #fff);
-        border: 1px solid var(--design-border-gray, #e5e7eb);
-        border-radius: var(--design-radius-md, 0.5rem);
-        font-size: 11px;
-        font-family: inherit;
-        color: var(--design-text-secondary, #6b7280);
-        cursor: pointer;
-        transition: all var(--design-transition-fast, 0.1s);
-        box-shadow: var(--design-shadow-xs, 0 1px 2px rgba(0, 0, 0, 0.05));
-        display: flex;
-        align-items: center;
-        gap: 4px;
-    }
-
-    .granularity-toggle:hover {
-        background: var(--design-bg-gray-50, #f9fafb);
-        border-color: var(--design-border-gray-dark, #d1d5db);
-        color: var(--design-text-primary, #1f2937);
-    }
-
-    .granularity-toggle.active {
-        background: var(--design-indigo-50, #eef2ff);
-        border-color: var(--design-primary, #4f46e5);
-        color: var(--design-primary, #4f46e5);
-    }
-
-    /* ===== LEGEND ===== */
+    /* ===== LEGEND (injected via DOM, inside graph-container) ===== */
     .graph-legend {
         position: absolute;
         bottom: 8px;
@@ -248,12 +522,14 @@ export const dependencyGraphStyles = css`
         border-radius: 50%;
         flex-shrink: 0;
         border: 1px solid rgba(0, 0, 0, 0.1);
+        display: inline-block;
     }
 
     .legend-line {
         width: 20px;
         height: 2px;
         flex-shrink: 0;
+        display: inline-block;
     }
 
     .legend-line.dashed {
@@ -264,7 +540,6 @@ export const dependencyGraphStyles = css`
             transparent 4px,
             transparent 7px
         );
-        height: 2px;
     }
 
     .legend-line.solid {
