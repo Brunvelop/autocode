@@ -143,7 +143,7 @@ export const dependencyGraphStyles = css`
         flex: 1;
     }
 
-    /* ===== QUICK FILTER BUTTONS ===== */
+    /* ===== FILTER / EXCLUDE BUTTONS ===== */
     .dg-filter-btn {
         background: rgba(255, 255, 255, 0.06);
         border: 1px solid rgba(255, 255, 255, 0.12);
@@ -183,37 +183,52 @@ export const dependencyGraphStyles = css`
         background: rgba(251, 191, 36, 0.15);
     }
 
-    /* ===== MIN CONNECTIONS INPUT ===== */
-    .dg-control-min {
-        gap: 4px;
+    /* Add pattern button */
+    .dg-filter-add {
+        color: rgba(134, 239, 172, 0.85);
+        border-color: rgba(134, 239, 172, 0.3);
+        background: rgba(134, 239, 172, 0.07);
     }
 
-    .dg-min-input {
-        background: rgba(255, 255, 255, 0.08);
-        border: 1px solid rgba(255, 255, 255, 0.15);
-        border-radius: 4px;
-        color: rgba(255, 255, 255, 0.9);
-        font-size: 11px;
-        font-family: inherit;
-        padding: 1px 4px;
-        width: 38px;
-        text-align: center;
-        outline: none;
-        cursor: text;
-        transition: background 0.12s, border-color 0.12s;
-        /* Hide spinner arrows */
-        -moz-appearance: textfield;
+    .dg-filter-add:hover {
+        color: rgba(134, 239, 172, 1);
+        border-color: rgba(134, 239, 172, 0.55);
+        background: rgba(134, 239, 172, 0.15);
     }
 
-    .dg-min-input::-webkit-outer-spin-button,
-    .dg-min-input::-webkit-inner-spin-button {
-        -webkit-appearance: none;
-        margin: 0;
+    /* ===== EXCLUSION CHIPS ===== */
+    .dg-exclude-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 3px;
+        background: rgba(239, 68, 68, 0.12);
+        border: 1px solid rgba(239, 68, 68, 0.3);
+        border-radius: 10px;
+        color: rgba(252, 165, 165, 0.9);
+        font-size: 10px;
+        font-family: var(--design-font-mono, monospace);
+        padding: 1px 5px 1px 7px;
+        white-space: nowrap;
+        flex-shrink: 0;
+        max-width: 120px;
+        overflow: hidden;
+        text-overflow: ellipsis;
     }
 
-    .dg-min-input:focus {
-        border-color: rgba(99, 179, 237, 0.7);
-        background: rgba(255, 255, 255, 0.12);
+    .dg-chip-remove {
+        background: none;
+        border: none;
+        color: rgba(252, 165, 165, 0.6);
+        font-size: 9px;
+        cursor: pointer;
+        padding: 0 1px;
+        line-height: 1;
+        flex-shrink: 0;
+        transition: color 0.1s;
+    }
+
+    .dg-chip-remove:hover {
+        color: rgba(252, 165, 165, 1);
     }
 
     /* ===== GRANULARITY TOGGLE (inside controls bar) ===== */

@@ -12,14 +12,14 @@
  * Links:
  *   - Flechas dirigidas (source importa de target)
  *   - Grosor ∝ número de imports (1-4px)
- *   - Rojo punteado para dependencias circulares
+ *   - Rojo punteado para dependencias circulares (detección SCC client-side)
  *   - Hover: tooltip con source→target e import_names concretos
  *
  * Controles:
  *   - 📏 Métrica de tamaño: SLOC, LOC, Funciones, CC media, CC máx, Fan-in+out
  *   - 🎨 Métrica de color: MI, CC media, CC máx, SLOC, Instabilidad
  *   - 🔍 Filtro texto: buscar por nombre/path
- *   - ⚡ Filtros rápidos: solo circulares · solo MI<40 · ocultar aislados · min conexiones ≥N
+ *   - 🚫 Exclusión por path: patrones para ocultar nodos (tests, __init__, etc.)
  *   - Toggle granularidad: package ↔ file
  *
  * Métricas de acoplamiento (calculadas client-side):
@@ -27,6 +27,11 @@
  *   - fan_out:     nº de archivos que este nodo importa
  *   - instability: fan_out / (fan_in + fan_out) — 0=estable, 1=inestable
  *   - fan_in_out:  fan_in + fan_out (grado total de acoplamiento)
+ *
+ * Detección de ciclos (client-side):
+ *   - Algoritmo de Tarjan (Strongly Connected Components)
+ *   - Cualquier SCC con >1 nodo forma un ciclo real
+ *   - Captura circulares directas (A↔B) y transitivas (A→B→C→A)
  *
  * Interacciones:
  *   - Drag: mover nodos
@@ -38,7 +43,7 @@
  * Props:
  *   - nodes: Array<ArchitectureNode> — nodos tipo file del snapshot
  *   - dependencies: Array<FileDependency> — dependencias resueltas
- *   - circularDependencies: Array<[string, string]> — pares circulares
+ *   - circularDependencies: Array<[string, string]> — pares circulares (no usado, SCC client-side)
  */
 
 import { LitElement, html } from 'https://cdn.jsdelivr.net/gh/lit/dist@3/core/lit-core.min.js';
@@ -126,6 +131,13 @@ const COLOR_METRICS = [
     { value: 'instability',     label: 'Inestabilidad' },
 ];
 
+/** Presets de exclusión rápida por path pattern. */
+const EXCLUDE_PRESETS = [
+    { label: '🧪 Tests',    pattern: 'test' },
+    { label: '📦 Init',     pattern: '__init__' },
+    { label: '⚙️ Config',   pattern: 'conftest' },
+];
+
 // Radius scale bounds
 const MIN_RADIUS = 8;
 const MAX_RADIUS = 35;
@@ -142,7 +154,7 @@ export class DependencyGraph extends LitElement {
         /** Array of FileDependency objects */
         dependencies: { type: Array },
 
-        /** Array of [source, target] circular dependency pairs */
+        /** Array of [source, target] circular dependency pairs (kept for API compat) */
         circularDependencies: { type: Array },
 
         /** Granularity: 'file' | 'package' */
@@ -168,17 +180,11 @@ export class DependencyGraph extends LitElement {
         /** Text filter: match node name or path */
         _filterText: { state: true },
 
-        /** Show only nodes involved in circular dependencies */
-        _filterCircular: { state: true },
+        /** Array of path patterns to exclude */
+        _excludePatterns: { state: true },
 
-        /** Show only nodes with MI < 40 */
-        _filterMiRed: { state: true },
-
-        /** Hide isolated nodes (no connections) */
-        _filterHideIsolated: { state: true },
-
-        /** Show only nodes with fan_in+fan_out >= N */
-        _minConnections: { state: true },
+        /** Current value of the exclude input field */
+        _excludeInput: { state: true },
     };
 
     static styles = [themeTokens, dependencyGraphStyles];
@@ -198,11 +204,9 @@ export class DependencyGraph extends LitElement {
         this._colorMetric = 'mi';
 
         // Filters
-        this._filterText          = '';
-        this._filterCircular      = false;
-        this._filterMiRed         = false;
-        this._filterHideIsolated  = false;
-        this._minConnections      = 0;
+        this._filterText      = '';
+        this._excludePatterns = [];
+        this._excludeInput    = '';
 
         this._resizeObserver = null;
         this._simulation     = null;
@@ -243,8 +247,7 @@ export class DependencyGraph extends LitElement {
             changed.has('nodes') || changed.has('dependencies') ||
             changed.has('circularDependencies') || changed.has('_granularity') ||
             changed.has('_sizeMetric') || changed.has('_filterText') ||
-            changed.has('_filterCircular') || changed.has('_filterMiRed') ||
-            changed.has('_filterHideIsolated') || changed.has('_minConnections')
+            changed.has('_excludePatterns')
         ) {
             this._renderGraph();
             return;
@@ -357,36 +360,45 @@ export class DependencyGraph extends LitElement {
 
                 <div class="dg-controls-separator"></div>
 
-                <!-- Quick filters -->
-                <button
-                    class="dg-filter-btn ${this._filterCircular ? 'active' : ''}"
-                    @click=${() => this._filterCircular = !this._filterCircular}
-                    title="Mostrar solo nodos con dependencias circulares"
-                >⭕ Circulares</button>
+                <!-- Exclude presets -->
+                ${EXCLUDE_PRESETS.map(p => html`
+                    <button
+                        class="dg-filter-btn ${this._excludePatterns.includes(p.pattern) ? 'active' : ''}"
+                        @click=${() => this._togglePreset(p.pattern)}
+                        title="Excluir paths con '${p.pattern}'"
+                    >${p.label}</button>
+                `)}
 
-                <button
-                    class="dg-filter-btn ${this._filterMiRed ? 'active' : ''}"
-                    @click=${() => this._filterMiRed = !this._filterMiRed}
-                    title="Mostrar solo archivos con MI < 40"
-                >🔴 MI&lt;40</button>
-
-                <button
-                    class="dg-filter-btn ${this._filterHideIsolated ? 'active' : ''}"
-                    @click=${() => this._filterHideIsolated = !this._filterHideIsolated}
-                    title="Ocultar archivos sin dependencias"
-                >👻 Aislados</button>
-
-                <label class="dg-control-label dg-control-min">
-                    <span class="dg-control-icon" title="Mínimo de conexiones">Min:</span>
+                <!-- Custom exclude input -->
+                <label class="dg-control-label dg-control-search">
+                    <span class="dg-control-icon">🚫</span>
                     <input
-                        type="number"
-                        class="dg-min-input"
-                        min="0"
-                        max="50"
-                        .value=${String(this._minConnections)}
-                        @change=${e => this._minConnections = Math.max(0, parseInt(e.target.value) || 0)}
+                        type="text"
+                        class="dg-filter-input"
+                        placeholder="excluir path..."
+                        .value=${this._excludeInput}
+                        @input=${e => this._excludeInput = e.target.value}
+                        @keydown=${e => e.key === 'Enter' && this._addExcludePattern()}
                     />
                 </label>
+                ${this._excludeInput ? html`
+                    <button
+                        class="dg-filter-btn dg-filter-add"
+                        @click=${this._addExcludePattern}
+                        title="Añadir patrón de exclusión"
+                    >+ Add</button>
+                ` : ''}
+
+                <!-- Active exclusion chips -->
+                ${this._excludePatterns
+                    .filter(p => !EXCLUDE_PRESETS.some(pr => pr.pattern === p))
+                    .map(p => html`
+                        <span class="dg-exclude-chip">
+                            ${p}
+                            <button class="dg-chip-remove" @click=${() => this._removeExcludePattern(p)} title="Quitar">✕</button>
+                        </span>
+                    `)
+                }
 
                 ${this._hasActiveFilters() ? html`
                     <button
@@ -418,17 +430,34 @@ export class DependencyGraph extends LitElement {
         if (this._colorMetric !== metric) this._colorMetric = metric;
     }
 
+    _togglePreset(pattern) {
+        if (this._excludePatterns.includes(pattern)) {
+            this._excludePatterns = this._excludePatterns.filter(p => p !== pattern);
+        } else {
+            this._excludePatterns = [...this._excludePatterns, pattern];
+        }
+    }
+
+    _addExcludePattern() {
+        const val = this._excludeInput.trim().toLowerCase();
+        if (val && !this._excludePatterns.includes(val)) {
+            this._excludePatterns = [...this._excludePatterns, val];
+        }
+        this._excludeInput = '';
+    }
+
+    _removeExcludePattern(pattern) {
+        this._excludePatterns = this._excludePatterns.filter(p => p !== pattern);
+    }
+
     _hasActiveFilters() {
-        return this._filterText || this._filterCircular || this._filterMiRed ||
-               this._filterHideIsolated || this._minConnections > 0;
+        return this._filterText || this._excludePatterns.length > 0;
     }
 
     _resetFilters() {
-        this._filterText          = '';
-        this._filterCircular      = false;
-        this._filterMiRed         = false;
-        this._filterHideIsolated  = false;
-        this._minConnections      = 0;
+        this._filterText      = '';
+        this._excludePatterns = [];
+        this._excludeInput    = '';
     }
 
     // ========================================================================
@@ -452,7 +481,7 @@ export class DependencyGraph extends LitElement {
                 </div>
                 <div class="legend-row">
                     <span class="legend-line dashed"></span>
-                    <span>Circular</span>
+                    <span>Ciclo</span>
                 </div>
             </div>
         `;
@@ -583,6 +612,7 @@ export class DependencyGraph extends LitElement {
     /**
      * File-level graph: each file node is a graph node, each dependency is a link.
      * Also computes fan_in, fan_out, instability, fan_in_out per node.
+     * Circular detection via Tarjan SCC (client-side).
      */
     _buildFileGraph() {
         const nodeIds = new Set(this.nodes.map(n => n.id));
@@ -612,11 +642,14 @@ export class DependencyGraph extends LitElement {
                 target:      d.target,
                 importCount: d.import_names?.length || 1,
                 importNames: d.import_names || [],
-                isCircular:  this._isCircular(d.source, d.target),
+                isCircular:  false, // filled by _markCircularLinks
             }));
 
         // Compute coupling metrics
         this._computeCouplingMetrics(graphNodes, graphLinks);
+
+        // Mark circular links via Tarjan SCC
+        this._markCircularLinks(graphNodes, graphLinks);
 
         return { graphNodes, graphLinks };
     }
@@ -706,21 +739,13 @@ export class DependencyGraph extends LitElement {
             if (dep.import_names) edge.importNames.push(...dep.import_names);
         }
 
-        // Check circular at package level
-        const edgeKeys = new Set(edgeMap.keys());
-        for (const [key, edge] of edgeMap) {
-            const reverseKey = `${edge.target}→${edge.source}`;
-            if (edgeKeys.has(reverseKey)) {
-                edge.isCircular = true;
-                const rev = edgeMap.get(reverseKey);
-                if (rev) rev.isCircular = true;
-            }
-        }
-
         const graphLinks = Array.from(edgeMap.values());
 
         // Compute coupling metrics
         this._computeCouplingMetrics(graphNodes, graphLinks);
+
+        // Mark circular links via Tarjan SCC
+        this._markCircularLinks(graphNodes, graphLinks);
 
         return { graphNodes, graphLinks };
     }
@@ -751,6 +776,96 @@ export class DependencyGraph extends LitElement {
     }
 
     /**
+     * Tarjan's Strongly Connected Components algorithm.
+     * Marks links as isCircular=true if both endpoints belong to an SCC with >1 node.
+     * This detects direct (A↔B) and transitive (A→B→C→A) cycles.
+     *
+     * @param {Array} graphNodes
+     * @param {Array} graphLinks  (source/target are IDs, pre-D3)
+     */
+    _markCircularLinks(graphNodes, graphLinks) {
+        // Build adjacency list (node id → list of neighbor ids)
+        const adj = new Map();
+        for (const n of graphNodes) adj.set(n.id, []);
+
+        for (const l of graphLinks) {
+            const src = typeof l.source === 'object' ? l.source.id : l.source;
+            const tgt = typeof l.target === 'object' ? l.target.id : l.target;
+            if (adj.has(src)) adj.get(src).push(tgt);
+        }
+
+        // Tarjan's SCC (iterative to avoid call stack overflow on large graphs)
+        let idx = 0;
+        const stack      = [];
+        const onStack    = new Set();
+        const indices    = new Map();
+        const lowlinks   = new Map();
+        const cycleNodes = new Set(); // nodes that belong to a cycle (SCC size > 1)
+
+        const strongConnect = (startV) => {
+            const callStack = [{ v: startV, neighborIdx: 0 }];
+            indices.set(startV, idx);
+            lowlinks.set(startV, idx);
+            idx++;
+            stack.push(startV);
+            onStack.add(startV);
+
+            while (callStack.length > 0) {
+                const frame = callStack[callStack.length - 1];
+                const { v } = frame;
+                const neighbors = adj.get(v) || [];
+
+                if (frame.neighborIdx < neighbors.length) {
+                    const w = neighbors[frame.neighborIdx++];
+                    if (!indices.has(w)) {
+                        indices.set(w, idx);
+                        lowlinks.set(w, idx);
+                        idx++;
+                        stack.push(w);
+                        onStack.add(w);
+                        callStack.push({ v: w, neighborIdx: 0 });
+                    } else if (onStack.has(w)) {
+                        lowlinks.set(v, Math.min(lowlinks.get(v), indices.get(w)));
+                    }
+                } else {
+                    // Finished processing v's neighbors
+                    callStack.pop();
+                    if (callStack.length > 0) {
+                        const parent = callStack[callStack.length - 1].v;
+                        lowlinks.set(parent, Math.min(lowlinks.get(parent), lowlinks.get(v)));
+                    }
+
+                    // Check if v is root of an SCC
+                    if (lowlinks.get(v) === indices.get(v)) {
+                        const scc = [];
+                        let w;
+                        do {
+                            w = stack.pop();
+                            onStack.delete(w);
+                            scc.push(w);
+                        } while (w !== v);
+
+                        if (scc.length > 1) {
+                            for (const nodeId of scc) cycleNodes.add(nodeId);
+                        }
+                    }
+                }
+            }
+        };
+
+        for (const n of graphNodes) {
+            if (!indices.has(n.id)) strongConnect(n.id);
+        }
+
+        // Mark links where both endpoints are in a cycle
+        for (const l of graphLinks) {
+            const src = typeof l.source === 'object' ? l.source.id : l.source;
+            const tgt = typeof l.target === 'object' ? l.target.id : l.target;
+            l.isCircular = cycleNodes.has(src) && cycleNodes.has(tgt);
+        }
+    }
+
+    /**
      * Apply all active filters to the graph data.
      * @param {{ graphNodes: Array, graphLinks: Array }}
      * @returns {{ graphNodes: Array, graphLinks: Array }}
@@ -765,55 +880,25 @@ export class DependencyGraph extends LitElement {
                 n.name.toLowerCase().includes(q) || n.path.toLowerCase().includes(q));
         }
 
-        // Only nodes involved in circular dependencies
-        if (this._filterCircular) {
-            const circularIds = new Set();
-            for (const link of graphLinks) {
-                if (link.isCircular) {
-                    const srcId = typeof link.source === 'object' ? link.source.id : link.source;
-                    const tgtId = typeof link.target === 'object' ? link.target.id : link.target;
-                    circularIds.add(srcId);
-                    circularIds.add(tgtId);
-                }
-            }
-            visibleNodes = visibleNodes.filter(n => circularIds.has(n.id));
-        }
-
-        // Only nodes with MI < 40
-        if (this._filterMiRed) {
-            visibleNodes = visibleNodes.filter(n => (n.mi ?? 100) < 40);
-        }
-
-        // Hide isolated nodes (no connections)
-        if (this._filterHideIsolated) {
-            visibleNodes = visibleNodes.filter(n => n.fan_in_out > 0);
-        }
-
-        // Min connections threshold
-        if (this._minConnections > 0) {
-            visibleNodes = visibleNodes.filter(n => n.fan_in_out >= this._minConnections);
+        // Path exclusion patterns
+        if (this._excludePatterns.length > 0) {
+            visibleNodes = visibleNodes.filter(n => {
+                const pathLower = n.path.toLowerCase();
+                const nameLower = n.name.toLowerCase();
+                return !this._excludePatterns.some(p =>
+                    pathLower.includes(p) || nameLower.includes(p));
+            });
         }
 
         // Filter links: only those with both endpoints visible
-        const visibleIds    = new Set(visibleNodes.map(n => n.id));
-        const visibleLinks  = graphLinks.filter(l => {
+        const visibleIds   = new Set(visibleNodes.map(n => n.id));
+        const visibleLinks = graphLinks.filter(l => {
             const srcId = typeof l.source === 'object' ? l.source.id : l.source;
             const tgtId = typeof l.target === 'object' ? l.target.id : l.target;
             return visibleIds.has(srcId) && visibleIds.has(tgtId);
         });
 
         return { graphNodes: visibleNodes, graphLinks: visibleLinks };
-    }
-
-    /**
-     * Check if a source→target link is part of a circular dependency.
-     */
-    _isCircular(source, target) {
-        if (!this.circularDependencies) return false;
-        return this.circularDependencies.some(pair => {
-            const [a, b] = pair;
-            return (a === source && b === target) || (a === target && b === source);
-        });
     }
 
     // ========================================================================
@@ -836,7 +921,7 @@ export class DependencyGraph extends LitElement {
             this._simulation = null;
         }
 
-        // Build raw graph data (with coupling metrics)
+        // Build raw graph data (with coupling metrics + SCC circular marking)
         const raw = this._buildGraphData();
 
         // Apply filters
@@ -1023,13 +1108,6 @@ export class DependencyGraph extends LitElement {
      * Called after graph render. Also called on color metric change.
      */
     _renderLegendDOM() {
-        // Legend is handled by Lit via _renderLegend() in render() template.
-        // We trigger a re-render by requesting update (legend is inside graph-container).
-        // Since graph-container is inside the Lit template, nothing extra is needed —
-        // the legend is rendered as part of render() → _renderLegend() already.
-        // We just need to ensure it's included in the Lit template render cycle.
-        // NOTE: Legend is now rendered via _renderLegend() which is called in render()
-        // for the graph-container template. We need to insert it after graph renders.
         const container = this.renderRoot.querySelector('.graph-container');
         if (!container) return;
 
@@ -1037,13 +1115,9 @@ export class DependencyGraph extends LitElement {
         const existing = container.querySelector('.graph-legend');
         if (existing) existing.remove();
 
-        // Create legend using Lit's render into a div
-        const legendEl = document.createElement('div');
-        legendEl.innerHTML = ''; // will be filled
-        container.appendChild(legendEl);
-
         // Use simple DOM approach for the legend (no Lit render needed)
         const config = METRIC_COLOR_CONFIGS[this._colorMetric] || METRIC_COLOR_CONFIGS.mi;
+        const legendEl = document.createElement('div');
         legendEl.className = 'graph-legend';
         legendEl.innerHTML = `
             <div class="legend-title">${config.label}</div>
@@ -1059,9 +1133,10 @@ export class DependencyGraph extends LitElement {
             </div>
             <div class="legend-row">
                 <span class="legend-line dashed" style="display:inline-block; width:20px; height:2px; background: repeating-linear-gradient(to right,#dc2626 0,#dc2626 4px,transparent 4px,transparent 7px); flex-shrink:0"></span>
-                <span>Circular</span>
+                <span>Ciclo</span>
             </div>
         `;
+        container.appendChild(legendEl);
     }
 
     // ========================================================================
