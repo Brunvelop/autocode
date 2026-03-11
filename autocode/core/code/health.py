@@ -9,9 +9,9 @@ Provides:
 - run_health_check(): evaluates all quality gates, returns structured result
 
 Used by:
-- autocode.pytest_plugin (pytest integration)
+- autocode.testing.plugin (pytest integration via pytest11 entry-point)
 - autocode.interfaces.cli (health-check command)
-- tests/health/conftest.py (health quality gates for autocode itself)
+- tests/health/test_code_health.py (health quality gates for autocode itself)
 """
 from __future__ import annotations
 

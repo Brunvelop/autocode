@@ -1,10 +1,10 @@
 """
-health_gates.py — Built-in code health quality gate tests.
+gates.py — Built-in code health quality gate tests.
 
 Collected automatically by the autocode pytest plugin when running:
     pytest --autocode-health
 
-These tests use fixtures provided by autocode.pytest_plugin:
+These tests use fixtures provided by autocode.testing.plugin:
 - health_config:      HealthConfig from [tool.codehealth] in pyproject.toml
 - all_file_metrics:   list[FileMetrics] from all git-tracked files
 - coupling_result:    (list[PackageCoupling], list[list[str]])

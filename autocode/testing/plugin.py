@@ -18,7 +18,7 @@ How it works:
     - Registers --autocode-health CLI flag
     - Registers 'health' marker
     - Provides session-scoped fixtures: health_config, all_file_metrics, coupling_result
-    - When --autocode-health is active: collects built-in gate tests from health_gates.py
+    - When --autocode-health is active: collects built-in gate tests from gates.py
     - Prints a summary table at the end of the run (only when --autocode-health active)
 """
 from __future__ import annotations
@@ -66,13 +66,13 @@ def pytest_configure(config):
         "health: Code health quality gate tests (run with --autocode-health or -m health)",
     )
 
-    # Cuando --autocode-health está activo, inyectamos la ruta de health_gates.py
+    # Cuando --autocode-health está activo, inyectamos la ruta de gates.py
     # en los args de colección para que pytest la encuentre y llame a pytest_collect_file.
     # Usamos try/except porque pytest_configure puede llamarse antes de parsear opciones
     # (por ejemplo durante el discovery de plugins en etapa temprana).
     try:
         if config.getoption("autocode_health"):
-            gates_path = Path(__file__).parent / "health_gates.py"
+            gates_path = Path(__file__).parent / "gates.py"
             if gates_path.exists():
                 gates_str = str(gates_path)
                 if gates_str not in (config.args or []):
@@ -91,12 +91,12 @@ def pytest_collect_file(parent, file_path):
     """Cuando --autocode-health está activo, colecta el módulo de built-in gates.
 
     Este hook actúa como "gatekeeper": solo devuelve el módulo si el archivo
-    es exactamente health_gates.py del paquete. El resto de archivos se ignoran.
+    es exactamente gates.py del paquete. El resto de archivos se ignoran.
     """
     if not parent.config.getoption("autocode_health", default=False):
         return None
 
-    gates_path = Path(__file__).parent / "health_gates.py"
+    gates_path = Path(__file__).parent / "gates.py"
     if not gates_path.exists():
         return None
 
