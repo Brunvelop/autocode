@@ -157,8 +157,8 @@ export class DependencyGraph extends LitElement {
         /** Array of [source, target] circular dependency pairs (kept for API compat) */
         circularDependencies: { type: Array },
 
-        /** Granularity: 'file' | 'package' */
-        _granularity: { state: true },
+        /** Profundidad de agrupación: 1=top-level, 2=paquete, N=archivo */
+        _depth: { state: true },
 
         /** Tooltip data for node hover: {x, y, ...nodeData} or null */
         _tooltipData: { state: true },
@@ -194,7 +194,7 @@ export class DependencyGraph extends LitElement {
         this.nodes = [];
         this.dependencies = [];
         this.circularDependencies = [];
-        this._granularity = 'file';
+        this._depth = 2;          // default: paquete (alineado con coupling.py depth=2)
         this._tooltipData = null;
         this._linkTooltipData = null;
         this._selectedNode = null;
@@ -245,7 +245,7 @@ export class DependencyGraph extends LitElement {
         // Full re-render on data or layout changes
         if (
             changed.has('nodes') || changed.has('dependencies') ||
-            changed.has('circularDependencies') || changed.has('_granularity') ||
+            changed.has('circularDependencies') || changed.has('_depth') ||
             changed.has('_sizeMetric') || changed.has('_filterText') ||
             changed.has('_excludePatterns')
         ) {
@@ -410,14 +410,24 @@ export class DependencyGraph extends LitElement {
 
                 <div class="dg-controls-spacer"></div>
 
-                <!-- Granularity toggle -->
-                <button
-                    class="dg-granularity-btn ${this._granularity === 'package' ? 'active' : ''}"
-                    @click=${this._toggleGranularity}
-                    title="Alternar entre vista por archivo y por paquete"
-                >
-                    ${this._granularity === 'file' ? '📄 File' : '📦 Package'}
-                </button>
+                <!-- Depth stepper: − [ 📦 Label ] + -->
+                <div class="dg-depth-stepper">
+                    <button
+                        class="dg-depth-btn"
+                        ?disabled=${this._depth <= 1}
+                        @click=${() => this._setDepth(this._depth - 1)}
+                        title="Menos detalle (agrupar más)"
+                    >−</button>
+                    <span class="dg-depth-label">
+                        ${this._depth >= this._getMaxDepth() ? '📄' : '📦'} ${this._depthLabel(this._depth, this._getMaxDepth())}
+                    </span>
+                    <button
+                        class="dg-depth-btn"
+                        ?disabled=${this._depth >= this._getMaxDepth()}
+                        @click=${() => this._setDepth(this._depth + 1)}
+                        title="Más detalle (desglosar más)"
+                    >+</button>
+                </div>
             </div>
         `;
     }
@@ -585,14 +595,49 @@ export class DependencyGraph extends LitElement {
     }
 
     // ========================================================================
-    // GRANULARITY TOGGLE
+    // DEPTH CONTROL
     // ========================================================================
 
-    _toggleGranularity() {
-        this._granularity    = this._granularity === 'file' ? 'package' : 'file';
+    /**
+     * Set depth and reset interaction state.
+     * @param {number} d — desired depth level
+     */
+    _setDepth(d) {
+        const maxDepth = this._getMaxDepth();
+        this._depth          = Math.max(1, Math.min(d, maxDepth));
         this._selectedNode   = null;
         this._tooltipData    = null;
         this._linkTooltipData = null;
+    }
+
+    /**
+     * Compute the maximum meaningful depth (= file level) from the node tree.
+     * Returns the number of path segments in the deepest file node.
+     * At this depth, _buildFileGraph() is used instead of _buildPackageGraph().
+     */
+    _getMaxDepth() {
+        if (!this.nodes || this.nodes.length === 0) return 4;
+        let max = 1;
+        for (const n of this.nodes) {
+            if (n.type === 'file') {
+                const d = (n.path || '').split('/').length;
+                if (d > max) max = d;
+            }
+        }
+        return max;
+    }
+
+    /**
+     * Returns a human-readable label for the given depth level.
+     * @param {number} depth
+     * @param {number} maxDepth — file-level depth
+     */
+    _depthLabel(depth, maxDepth) {
+        if (depth >= maxDepth) return 'Archivo';
+        if (depth === 1)       return 'Top-level';
+        if (depth === 2)       return 'Paquete';
+        if (depth === 3)       return 'Sub-paquete';
+        return `Módulo (L${depth})`;
     }
 
     // ========================================================================
@@ -600,13 +645,16 @@ export class DependencyGraph extends LitElement {
     // ========================================================================
 
     /**
-     * Build the graph data (nodes + links) based on current granularity.
+     * Build the graph data (nodes + links) based on current depth.
+     * - depth >= maxDepth  → file-level graph (one node per file)
+     * - depth < maxDepth   → package graph (files grouped by first N path segments)
      * @returns {{ graphNodes: Array, graphLinks: Array }}
      */
     _buildGraphData() {
-        return this._granularity === 'file'
+        const maxDepth = this._getMaxDepth();
+        return this._depth >= maxDepth
             ? this._buildFileGraph()
-            : this._buildPackageGraph();
+            : this._buildPackageGraph(Math.max(1, this._depth));
     }
 
     /**
@@ -655,14 +703,22 @@ export class DependencyGraph extends LitElement {
     }
 
     /**
-     * Package-level graph: group files by parent directory, aggregate metrics and deps.
+     * Package-level graph: group file nodes by the first `depth` path segments,
+     * aggregate metrics and dependencies between resulting package nodes.
      * Also computes fan_in, fan_out, instability, fan_in_out per package node.
+     *
+     * Example at depth=2: "autocode/core/ai/pipelines.py" → group "autocode/core"
+     *
+     * @param {number} depth — number of path segments used as group key (≥1)
      */
-    _buildPackageGraph() {
+    _buildPackageGraph(depth) {
         const packages = new Map();
 
         for (const node of this.nodes) {
-            const pkgId = node.parent_id || '.';
+            // Only aggregate file nodes — directories/classes/methods are not grouped
+            if (node.type !== 'file') continue;
+            const parts = (node.path || '').split('/');
+            const pkgId = parts.slice(0, depth).join('/') || '.';
             if (!packages.has(pkgId)) {
                 packages.set(pkgId, {
                     id:              pkgId,

@@ -231,34 +231,54 @@ export const dependencyGraphStyles = css`
         color: rgba(252, 165, 165, 1);
     }
 
-    /* ===== GRANULARITY TOGGLE (inside controls bar) ===== */
-    .dg-granularity-btn {
-        background: rgba(255, 255, 255, 0.06);
-        border: 1px solid rgba(255, 255, 255, 0.15);
-        border-radius: 4px;
-        color: rgba(255, 255, 255, 0.65);
-        font-size: 11px;
-        font-family: inherit;
-        padding: 3px 9px;
-        cursor: pointer;
-        transition: all 0.12s;
-        white-space: nowrap;
-        flex-shrink: 0;
+    /* ===== DEPTH STEPPER (inside controls bar) ===== */
+    .dg-depth-stepper {
         display: flex;
         align-items: center;
-        gap: 4px;
+        gap: 0;
+        flex-shrink: 0;
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        border-radius: 5px;
+        overflow: hidden;
     }
 
-    .dg-granularity-btn:hover {
-        background: rgba(255, 255, 255, 0.12);
-        border-color: rgba(255, 255, 255, 0.3);
-        color: rgba(255, 255, 255, 0.9);
+    .dg-depth-btn {
+        background: rgba(255, 255, 255, 0.06);
+        border: none;
+        color: rgba(255, 255, 255, 0.65);
+        font-size: 14px;
+        font-family: inherit;
+        font-weight: 600;
+        padding: 2px 8px;
+        cursor: pointer;
+        transition: background 0.12s, color 0.12s;
+        line-height: 1.6;
+        flex-shrink: 0;
     }
 
-    .dg-granularity-btn.active {
-        background: rgba(99, 102, 241, 0.25);
-        border-color: rgba(99, 102, 241, 0.55);
-        color: rgb(167, 171, 247);
+    .dg-depth-btn:hover:not(:disabled) {
+        background: rgba(255, 255, 255, 0.15);
+        color: rgba(255, 255, 255, 0.95);
+    }
+
+    .dg-depth-btn:disabled {
+        opacity: 0.3;
+        cursor: default;
+    }
+
+    .dg-depth-label {
+        font-size: 11px;
+        font-family: inherit;
+        color: rgba(255, 255, 255, 0.85);
+        padding: 2px 8px;
+        white-space: nowrap;
+        border-left: 1px solid rgba(255, 255, 255, 0.1);
+        border-right: 1px solid rgba(255, 255, 255, 0.1);
+        background: rgba(99, 102, 241, 0.15);
+        min-width: 90px;
+        text-align: center;
+        user-select: none;
+        line-height: 1.6;
     }
 
     /* ===== GRAPH CONTAINER ===== */
