@@ -135,7 +135,7 @@ critical_project_avg_mi = 30.0
 warning_project_avg_mi = 50.0
 # Dependencias circulares entre paquetes
 # Estado actual: 1 (autocode.core ↔ autocode.interfaces — conocida)
-max_circular_deps = 1
+max_circular_deps = 0
 # Globs a excluir del análisis (ej: ["tests/*", "setup.py"])
 exclude = []
 
