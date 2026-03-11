@@ -86,13 +86,31 @@ export function buildFileGraph(nodes, dependencies) {
  * @returns {{ graphNodes: Array, graphLinks: Array }}
  */
 export function buildPackageGraph(nodes, dependencies, depth) {
-    const packages = new Map();
+    const { packages, fileToPackage } = groupFilesByPackage(nodes, depth);
+    const graphNodes = packagesToGraphNodes(packages, fileToPackage);
+    const graphLinks = aggregatePackageEdges(dependencies, fileToPackage);
+    computeCouplingMetrics(graphNodes, graphLinks);
+    markCircularLinks(graphNodes, graphLinks);
+    return { graphNodes, graphLinks };
+}
+
+/**
+ * Phase 1: Group file nodes into package buckets by path prefix.
+ * Only processes nodes of type 'file'; skips directories/classes/methods.
+ *
+ * @param {Array}  nodes — Array<ArchitectureNode>
+ * @param {number} depth — number of path segments used as group key (≥1)
+ * @returns {{ packages: Map, fileToPackage: Map }}
+ */
+function groupFilesByPackage(nodes, depth) {
+    const packages    = new Map();
+    const fileToPackage = new Map();
 
     for (const node of nodes) {
-        // Only aggregate file nodes — directories/classes/methods are not grouped
         if (node.type !== 'file') continue;
         const parts = (node.path || '').split('/');
         const pkgId = parts.slice(0, depth).join('/') || '.';
+
         if (!packages.has(pkgId)) {
             packages.set(pkgId, {
                 id:              pkgId,
@@ -109,28 +127,37 @@ export function buildPackageGraph(nodes, dependencies, depth) {
                 classes_count:   0,
             });
         }
-        const pkg = packages.get(pkgId);
+
+        const pkg    = packages.get(pkgId);
+        const weight = node.sloc || 1;
         pkg.files.push(node.id);
-        pkg.sloc += node.sloc || 0;
-        pkg.loc  += node.loc  || 0;
-        const weight   = node.sloc || 1;
-        pkg.mi_sum    += (node.mi ?? 100) * weight;
-        pkg.mi_weight += weight;
-        pkg.cc_sum    += (node.avg_complexity ?? 0) * weight;
-        pkg.cc_max     = Math.max(pkg.cc_max, node.max_complexity ?? 0);
+        pkg.sloc            += node.sloc            || 0;
+        pkg.loc             += node.loc             || 0;
+        pkg.mi_sum          += (node.mi             ?? 100) * weight;
+        pkg.mi_weight       += weight;
+        pkg.cc_sum          += (node.avg_complexity ?? 0)   * weight;
+        pkg.cc_max           = Math.max(pkg.cc_max, node.max_complexity ?? 0);
         pkg.functions_count += node.functions_count || 0;
         pkg.classes_count   += node.classes_count   || 0;
+        fileToPackage.set(node.id, pkgId);
     }
 
-    const graphNodes    = [];
-    const fileToPackage = new Map();
+    return { packages, fileToPackage };
+}
 
-    for (const [pkgId, pkg] of packages) {
-        for (const fileId of pkg.files) {
-            fileToPackage.set(fileId, pkgId);
-        }
+/**
+ * Phase 2: Convert the packages Map into a flat graphNodes array.
+ * Computes weighted-average MI and CC; zero-initialises coupling fields.
+ *
+ * @param {Map} packages     — output of groupFilesByPackage
+ * @param {Map} fileToPackage — file-id → package-id mapping (unused here, kept for symmetry)
+ * @returns {Array} graphNodes
+ */
+function packagesToGraphNodes(packages) {
+    const graphNodes = [];
+    for (const pkg of packages.values()) {
         graphNodes.push({
-            id:              pkgId,
+            id:              pkg.id,
             name:            pkg.name,
             path:            pkg.path,
             sloc:            pkg.sloc,
@@ -146,9 +173,20 @@ export function buildPackageGraph(nodes, dependencies, depth) {
             fan_in_out:  0,
         });
     }
+    return graphNodes;
+}
 
-    // Aggregate dependencies between packages
+/**
+ * Phase 3: Aggregate file-level dependencies into package-level edges.
+ * Self-loops (srcPkg === tgtPkg) are discarded.
+ *
+ * @param {Array} dependencies  — Array<FileDependency>
+ * @param {Map}   fileToPackage — file-id → package-id mapping
+ * @returns {Array} graphLinks
+ */
+function aggregatePackageEdges(dependencies, fileToPackage) {
     const edgeMap = new Map();
+
     for (const dep of (dependencies || [])) {
         const srcPkg = fileToPackage.get(dep.source);
         const tgtPkg = fileToPackage.get(dep.target);
@@ -169,15 +207,7 @@ export function buildPackageGraph(nodes, dependencies, depth) {
         if (dep.import_names) edge.importNames.push(...dep.import_names);
     }
 
-    const graphLinks = Array.from(edgeMap.values());
-
-    // Compute coupling metrics
-    computeCouplingMetrics(graphNodes, graphLinks);
-
-    // Mark circular links via Tarjan SCC
-    markCircularLinks(graphNodes, graphLinks);
-
-    return { graphNodes, graphLinks };
+    return Array.from(edgeMap.values());
 }
 
 // ============================================================================
