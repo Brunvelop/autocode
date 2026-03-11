@@ -40,6 +40,9 @@ dependencies = [
 [project.scripts]
 autocode = "autocode.interfaces.cli:app"
 
+[project.entry-points."pytest11"]
+autocode-health = "autocode.pytest_plugin"
+
 [project.urls]
 "Homepage" = "https://github.com/Brunvelop/autocode"
 "Bug Reports" = "https://github.com/Brunvelop/autocode/issues"
