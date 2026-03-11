@@ -2,20 +2,20 @@
 conftest.py — Infraestructura para Code Health Quality Gates.
 
 Proporciona:
-- HealthConfig: dataclass con umbrales leídos de [tool.codehealth] en pyproject.toml
 - Fixtures session-scoped: all_file_metrics, coupling_result, health_config
 - Hook pytest_terminal_summary: tabla resumen al final del test run
+
+HealthConfig y load_thresholds viven en autocode.core.code.health (paquete instalable).
 """
 from __future__ import annotations
 
-import tomllib
-from dataclasses import dataclass, field
 from pathlib import Path
 
 import pytest
 
 from autocode.core.code.analyzer import analyze_file_metrics
 from autocode.core.code.coupling import analyze_coupling
+from autocode.core.code.health import HealthConfig, load_thresholds
 from autocode.core.code.models import FileMetrics, PackageCoupling
 from autocode.core.vcs.git import get_tracked_files
 
@@ -23,60 +23,6 @@ _ALL_EXTENSIONS = (".py", ".js", ".mjs", ".jsx")
 
 # Almacén de datos para el hook terminal (poblado por los fixtures)
 _health_summary: dict = {}
-
-
-# ==============================================================================
-# CONFIG
-# ==============================================================================
-
-
-@dataclass
-class HealthConfig:
-    """Umbrales de calidad de código leídos de [tool.codehealth] en pyproject.toml."""
-
-    # Maintainability Index (0-100, mayor es mejor)
-    critical_mi: float = 20.0
-    warning_mi: float = 40.0
-    # CC por función
-    critical_function_cc: int = 25
-    warning_function_cc: int = 15
-    # Nesting depth por función
-    critical_nesting: int = 8
-    warning_nesting: int = 5
-    # SLOC por archivo
-    critical_file_sloc: int = 1000
-    warning_file_sloc: int = 500
-    # CC media por archivo
-    critical_avg_complexity: float = 15.0
-    warning_avg_complexity: float = 10.0
-    # CC media del proyecto (agregado)
-    critical_project_avg_complexity: float = 10.0
-    warning_project_avg_complexity: float = 7.0
-    # MI media del proyecto (agregado)
-    critical_project_avg_mi: float = 30.0
-    warning_project_avg_mi: float = 50.0
-    # Máximo de funciones con rank F (CC > 25) permitidas
-    max_rank_f_functions: int = 0
-    # Dependencias circulares entre paquetes
-    max_circular_deps: int = 0
-    # Globs a excluir del análisis
-    exclude: list[str] = field(default_factory=list)
-
-
-def load_thresholds() -> HealthConfig:
-    """Lee [tool.codehealth] de pyproject.toml y devuelve HealthConfig tipado."""
-    toml_path = Path("pyproject.toml")
-    if not toml_path.exists():
-        return HealthConfig()
-
-    with open(toml_path, "rb") as f:
-        data = tomllib.load(f)
-
-    section = data.get("tool", {}).get("codehealth", {})
-    # Solo pasar campos conocidos para evitar TypeError
-    known_fields = {f for f in HealthConfig.__dataclass_fields__}
-    filtered = {k: v for k, v in section.items() if k in known_fields}
-    return HealthConfig(**filtered)
 
 
 # ==============================================================================

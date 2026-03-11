@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import pytest
 
-from tests.health.conftest import HealthConfig
+from autocode.core.code.health import HealthConfig
 from autocode.core.code.models import FileMetrics
 
 
