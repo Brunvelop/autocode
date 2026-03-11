@@ -27,7 +27,6 @@ dependencies = [
     "tiktoken>=0.9.0",
     "httpx>=0.24.0",
     "beautifulsoup4>=4.13.4",
-    "typer>=0.16.0",
     "fastapi-mcp>=0.4.0",
     "docstring-parser>=0.17.0",
     "dspy-ai>=3.0.3",
@@ -64,10 +63,37 @@ include = ["autocode*"]
 ]
 
 [tool.pytest.ini_options]
+asyncio_mode = "auto"
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
+addopts = [
+    "-v",
+    "--tb=short",
+    "--strict-markers",
+    "--disable-warnings",
+    "--cov=autocode",
+    "--cov-report=term-missing",
+    "--cov-report=html:htmlcov",
+    "--cov-fail-under=80",
+]
+markers = [
+    "unit: Unit tests for individual functions and classes",
+    "integration: Integration tests for cross-module functionality",
+    "slow: Tests that take longer to run",
+    "api: Tests for API functionality",
+    "cli: Tests for CLI functionality",
+    "mcp: Tests for MCP integration",
+    "registry: Tests for function registry",
+    "models: Tests for Pydantic models",
+    "health: Code health quality gate tests",
+]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::PendingDeprecationWarning",
+    "ignore:.*pkg_resources.*:ImportWarning",
+]
 
 [tool.codehealth]
 # Critical = test FALLA | Warning = muestra aviso visible en output
