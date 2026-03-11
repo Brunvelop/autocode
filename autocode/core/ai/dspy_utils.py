@@ -389,7 +389,7 @@ def prepare_chat_tools(enabled_tools: Optional[List[str]] = None) -> list:
     Returns:
         Lista de funciones wrapper listas para usar como tools en DSPy.
     """
-    from autocode.interfaces.registry import get_functions_for_interface
+    from autocode.core.registry import get_functions_for_interface
     
     mcp_functions = get_functions_for_interface("mcp")
     tools = []

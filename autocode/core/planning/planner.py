@@ -15,9 +15,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from autocode.interfaces.registry import register_function
+from autocode.core.registry import register_function
 from autocode.core.vcs.git import git, git_checked
-from autocode.interfaces.models import GenericOutput
+from autocode.core.models import GenericOutput
 from autocode.core.planning.models import (
     PlanTask,
     PlanContext,

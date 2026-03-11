@@ -9,7 +9,7 @@ Similar a GitNodeEntry/GitTreeGraph en autocode/core/vcs/models.py.
 from typing import List, Optional, Literal
 from pydantic import BaseModel, Field
 
-from autocode.interfaces.models import GenericOutput
+from autocode.core.models import GenericOutput
 
 
 # Tipos de nodos soportados

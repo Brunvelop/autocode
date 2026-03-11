@@ -19,7 +19,7 @@ import click
 import uvicorn
 from typing import Dict, Any, Callable, Optional
 
-from autocode.interfaces.registry import (
+from autocode.core.registry import (
     get_all_functions,
     load_functions,
     get_functions_for_interface

@@ -9,8 +9,8 @@ from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, create_model
 
-from autocode.interfaces.models import FunctionInfo, GenericOutput, FunctionSchema
-from autocode.interfaces.registry import (
+from autocode.core.models import FunctionInfo, GenericOutput, FunctionSchema
+from autocode.core.registry import (
     load_functions,
     get_all_schemas,
     get_functions_for_interface,

@@ -58,7 +58,7 @@ class TestGenerateWithDspy:
 class TestPrepareChatTools:
     """Tests for prepare_chat_tools helper."""
     
-    @patch('autocode.interfaces.registry.get_functions_for_interface')
+    @patch('autocode.core.registry.get_functions_for_interface')
     def test_returns_tools_list(self, mock_get_funcs):
         """prepare_chat_tools returns a list of tool wrappers."""
         from autocode.core.ai.dspy_utils import prepare_chat_tools
@@ -81,7 +81,7 @@ class TestPrepareChatTools:
         assert tools[0].__name__ == "test_tool"
         assert "A test tool" in tools[0].__doc__
     
-    @patch('autocode.interfaces.registry.get_functions_for_interface')
+    @patch('autocode.core.registry.get_functions_for_interface')
     def test_filters_by_enabled_tools(self, mock_get_funcs):
         """prepare_chat_tools filters by enabled_tools list."""
         from autocode.core.ai.dspy_utils import prepare_chat_tools
@@ -101,7 +101,7 @@ class TestPrepareChatTools:
         assert len(tools) == 1
         assert tools[0].__name__ == "tool_a"
     
-    @patch('autocode.interfaces.registry.get_functions_for_interface')
+    @patch('autocode.core.registry.get_functions_for_interface')
     def test_empty_when_no_mcp_functions(self, mock_get_funcs):
         """prepare_chat_tools returns empty list when no MCP functions."""
         from autocode.core.ai.dspy_utils import prepare_chat_tools

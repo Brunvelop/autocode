@@ -8,7 +8,7 @@ from typing import Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field
 
-from autocode.interfaces.models import GenericOutput
+from autocode.core.models import GenericOutput
 
 
 class GitNodeEntry(BaseModel):

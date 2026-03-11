@@ -194,7 +194,7 @@ class TestRegisterFunctionDecorator:
     
     def test_register_function_error_handling(self):
         """Test error handling in function registration."""
-        with patch('autocode.interfaces.registry._generate_function_info') as mock_generate:
+        with patch('autocode.core.registry._generate_function_info') as mock_generate:
             mock_generate.side_effect = Exception("Generation error")
             
             with pytest.raises(RegistryError, match="Failed to register function"):
@@ -278,7 +278,7 @@ class TestLoadFunctions:
     def test_load_functions_success(self, mock_core_functions):
         """Test successful loading of core functions."""
         # Import the module's _loaded to manipulate it
-        from autocode.interfaces import registry
+        from autocode.core import registry
         original_loaded = registry._loaded
         
         try:
@@ -296,7 +296,7 @@ class TestLoadFunctions:
     
     def test_load_functions_already_loaded(self, mock_core_functions):
         """Test that load_functions doesn't reload if already loaded."""
-        from autocode.interfaces import registry
+        from autocode.core import registry
         original_loaded = registry._loaded
         
         try:
@@ -313,7 +313,7 @@ class TestLoadFunctions:
     
     def test_load_functions_import_error(self):
         """Test handling of import errors during autocode.core package import."""
-        from autocode.interfaces import registry
+        from autocode.core import registry
         original_loaded = registry._loaded
         
         try:
@@ -331,21 +331,23 @@ class TestLoadFunctions:
 
     def test_load_functions_partial_failure_continues(self):
         """Test that autodiscovery continues loading other modules when one fails.
-        
+
         This test verifies that when a single module fails to import during autodiscovery,
         the system continues to load other modules and does NOT raise an exception.
-        
+
         Note: Due to Python's module caching, we can't reliably test that specific functions
         are excluded. Instead, we verify that the registry still loads successfully even
         when some modules fail to import.
         """
-        from autocode.interfaces import registry
+        from autocode.core import registry
         import sys
         original_loaded = registry._loaded
         original_functions = get_all_functions()
-        
+
         # Save original modules state to restore later
-        modules_to_remove = [m for m in sys.modules if m.startswith('autocode.core.')]
+        # Exclude registry/models modules so @register_function still writes to the same _registry
+        _KEEP_MODULES = {'autocode.core.registry', 'autocode.core.models'}
+        modules_to_remove = [m for m in sys.modules if m.startswith('autocode.core.') and m not in _KEEP_MODULES]
         original_modules = {m: sys.modules[m] for m in modules_to_remove}
         
         try:
@@ -392,7 +394,7 @@ class TestLoadFunctions:
             registry._loaded = original_loaded
             clear_registry()
             # Re-add original functions using internal access (test cleanup only)
-            from autocode.interfaces.registry import _registry
+            from autocode.core.registry import _registry
             _registry.extend(original_functions)
             # Restore original modules
             for m, mod in original_modules.items():
@@ -483,7 +485,7 @@ def my_func() -> GenericOutput:
         """Test detection of @registry.register_function() with module prefix."""
         module_file = tmp_path / "test_module_prefix.py"
         module_file.write_text('''
-from autocode.interfaces import registry
+from autocode.core import registry
 from autocode.interfaces.models import GenericOutput
 
 @registry.register_function()
@@ -626,13 +628,15 @@ class TestStrictMode:
     
     def test_load_functions_strict_raises_on_failure(self):
         """Test that strict=True raises RegistryError when modules fail to import."""
-        from autocode.interfaces import registry
+        from autocode.core import registry
         import sys
         original_loaded = registry._loaded
         original_functions = get_all_functions()
         
         # Save original modules state
-        modules_to_remove = [m for m in sys.modules if m.startswith('autocode.core.')]
+        # Exclude registry/models modules so @register_function still writes to the same _registry
+        _KEEP_MODULES = {'autocode.core.registry', 'autocode.core.models'}
+        modules_to_remove = [m for m in sys.modules if m.startswith('autocode.core.') and m not in _KEEP_MODULES]
         original_modules = {m: sys.modules[m] for m in modules_to_remove}
         
         try:
@@ -661,19 +665,21 @@ class TestStrictMode:
             registry._loaded = original_loaded
             clear_registry()
             # Re-add original functions using internal access (test cleanup only)
-            from autocode.interfaces.registry import _registry
+            from autocode.core.registry import _registry
             _registry.extend(original_functions)
             for m, mod in original_modules.items():
                 sys.modules[m] = mod
     
     def test_load_functions_strict_false_tolerates_failures(self):
         """Test that strict=False (default) tolerates import failures."""
-        from autocode.interfaces import registry
+        from autocode.core import registry
         import sys
         original_loaded = registry._loaded
         original_functions = get_all_functions()
-        
-        modules_to_remove = [m for m in sys.modules if m.startswith('autocode.core.')]
+
+        # Exclude registry/models modules so @register_function still writes to the same _registry
+        _KEEP_MODULES = {'autocode.core.registry', 'autocode.core.models'}
+        modules_to_remove = [m for m in sys.modules if m.startswith('autocode.core.') and m not in _KEEP_MODULES]
         original_modules = {m: sys.modules[m] for m in modules_to_remove}
         
         try:
@@ -702,7 +708,7 @@ class TestStrictMode:
             registry._loaded = original_loaded
             clear_registry()
             # Re-add original functions using internal access (test cleanup only)
-            from autocode.interfaces.registry import _registry
+            from autocode.core.registry import _registry
             _registry.extend(original_functions)
             for m, mod in original_modules.items():
                 sys.modules[m] = mod

@@ -10,8 +10,8 @@ from typing import List, Optional, Literal
 
 from pydantic import BaseModel, Field
 
-from autocode.interfaces.registry import register_function
-from autocode.interfaces.models import GenericOutput
+from autocode.core.registry import register_function
+from autocode.core.models import GenericOutput
 
 logger = logging.getLogger(__name__)
 

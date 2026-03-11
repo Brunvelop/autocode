@@ -6,8 +6,8 @@ with DSPy generation for complete workflows.
 """
 from typing import Literal, Dict, Any, Optional, List, get_args
 import litellm
-from autocode.interfaces.registry import register_function, get_functions_for_interface
-from autocode.interfaces.models import GenericOutput
+from autocode.core.registry import register_function, get_functions_for_interface
+from autocode.core.models import GenericOutput
 from autocode.core.ai.models import DspyOutput
 from autocode.core.utils.openrouter import fetch_models_info
 from autocode.core.ai.dspy_utils import (
@@ -25,7 +25,7 @@ from autocode.core.ai.signatures import (
     ChatSignature
 )
 from autocode.core.ai.streaming import stream_chat
-from autocode.interfaces.models import FunctionInfo
+from autocode.core.models import FunctionInfo
 
 
 # Available signature types for UI selection

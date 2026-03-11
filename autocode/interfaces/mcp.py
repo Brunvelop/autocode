@@ -9,8 +9,8 @@ import logging
 from fastapi import FastAPI
 from fastapi_mcp import FastApiMCP
 from autocode.interfaces.api import create_api_app, create_handler
-from autocode.interfaces.registry import get_functions_for_interface
-from autocode.interfaces.models import GenericOutput
+from autocode.core.registry import get_functions_for_interface
+from autocode.core.models import GenericOutput
 
 # Setup logging
 logger = logging.getLogger(__name__)

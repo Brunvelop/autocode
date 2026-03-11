@@ -24,8 +24,8 @@ from typing import AsyncGenerator, List, Union
 import dspy
 from dspy.streaming import StatusMessage
 
-from autocode.interfaces.registry import register_function
-from autocode.interfaces.models import GenericOutput
+from autocode.core.registry import register_function
+from autocode.core.models import GenericOutput
 from autocode.core.ai.dspy_utils import (
     get_dspy_lm,
     ModelType,

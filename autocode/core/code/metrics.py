@@ -18,7 +18,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from autocode.interfaces.registry import register_function
+from autocode.core.registry import register_function
 from autocode.core.vcs.git import git, git_show, get_tracked_files
 from autocode.core.code.analyzer import analyze_file_metrics
 from autocode.core.code.coupling import analyze_coupling

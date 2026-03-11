@@ -7,7 +7,7 @@ consultar la estructura de archivos del repositorio git.
 import subprocess
 import logging
 
-from autocode.interfaces.registry import register_function
+from autocode.core.registry import register_function
 from autocode.core.vcs.models import GitNodeEntry, GitTreeGraph, GitTreeOutput
 
 logger = logging.getLogger(__name__)

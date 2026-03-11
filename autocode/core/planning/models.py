@@ -9,7 +9,7 @@ estructurados en .autocode/plans/ y visualizarlos como ghost nodes en git-dashbo
 from typing import List, Optional, Literal
 from pydantic import BaseModel, Field
 
-from autocode.interfaces.models import GenericOutput
+from autocode.core.models import GenericOutput
 
 
 # Tipos de tarea soportados (no restrictivo — str libre con ejemplos sugeridos)
