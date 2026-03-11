@@ -581,6 +581,73 @@ export const dependencyGraphStyles = css`
         background: var(--design-border-gray-dark, #d1d5db);
     }
 
+    /* ===== CIRCLE PACK MODE ===== */
+
+    /* Container circles (packages / directories) */
+    .pack-container {
+        cursor: default;
+    }
+
+    /* Leaf circles (files) */
+    .pack-leaf {
+        cursor: pointer;
+    }
+
+    .pack-leaf circle {
+        transition: opacity 0.1s, stroke-width 0.1s;
+    }
+
+    .pack-leaf:hover circle {
+        opacity: 1 !important;
+        stroke-width: 2 !important;
+        stroke: rgba(255, 255, 255, 0.7) !important;
+    }
+
+    /* Selected leaf: highlight ring */
+    .pack-leaf.selected circle {
+        stroke: var(--design-primary, #4f46e5) !important;
+        stroke-width: 2.5 !important;
+        opacity: 1 !important;
+    }
+
+    /* Dimmed leaf: fade out non-connected nodes */
+    .pack-leaf.dimmed {
+        opacity: 0.12;
+        pointer-events: none;
+    }
+
+    /* Pack link highlight states (same selectors as force mode, reused) */
+    .pack-links .graph-link.highlight-out {
+        stroke: #f97316 !important;
+        stroke-opacity: 0.85 !important;
+        stroke-width: 1.5 !important;
+    }
+
+    .pack-links .graph-link.highlight-in {
+        stroke: #3b82f6 !important;
+        stroke-opacity: 0.85 !important;
+        stroke-width: 1.5 !important;
+    }
+
+    .pack-links .graph-link.dimmed {
+        stroke-opacity: 0.03 !important;
+    }
+
+    /* Container labels */
+    .pack-label-container {
+        font-weight: 500;
+        letter-spacing: 0.02em;
+        pointer-events: none;
+        user-select: none;
+    }
+
+    /* Leaf labels */
+    .pack-label-leaf {
+        font-weight: 400;
+        pointer-events: none;
+        user-select: none;
+    }
+
     /* ===== EMPTY STATE ===== */
     .empty-state {
         display: flex;

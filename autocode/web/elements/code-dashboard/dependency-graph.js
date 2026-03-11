@@ -21,6 +21,7 @@
  *   - 🔍 Filtro texto: buscar por nombre/path
  *   - 🚫 Exclusión por path: patrones para ocultar nodos (tests, __init__, etc.)
  *   - Toggle granularidad: package ↔ file
+ *   - ⬡ Layout: Force graph ↔ Circle Packing
  *
  * Métricas de acoplamiento (calculadas client-side):
  *   - fan_in:      nº de archivos que importan este nodo
@@ -34,10 +35,10 @@
  *   - Captura circulares directas (A↔B) y transitivas (A→B→C→A)
  *
  * Interacciones:
- *   - Drag: mover nodos
- *   - Zoom/Pan: d3.zoom()
+ *   - Drag: mover nodos (force mode)
+ *   - Zoom/Pan: d3.zoom() (ambos modos)
  *   - Hover nodo: tooltip con detalles + métricas de acoplamiento
- *   - Hover link: tooltip con source→target + import_names
+ *   - Hover link: tooltip con source→target + import_names (force mode)
  *   - Click: highlight solo las dependencias del nodo (entrantes azul, salientes naranja)
  *
  * Props:
@@ -185,6 +186,13 @@ export class DependencyGraph extends LitElement {
 
         /** Current value of the exclude input field */
         _excludeInput: { state: true },
+
+        // ── Layout ──────────────────────────────────────────────────────
+        /** Active layout: 'force' | 'pack' */
+        _layoutMode: { state: true },
+
+        /** Show dependency links overlay in circle pack mode */
+        _showPackLinks: { state: true },
     };
 
     static styles = [themeTokens, dependencyGraphStyles];
@@ -207,6 +215,10 @@ export class DependencyGraph extends LitElement {
         this._filterText      = '';
         this._excludePatterns = [];
         this._excludeInput    = '';
+
+        // Layout
+        this._layoutMode    = 'force';
+        this._showPackLinks = true;
 
         this._resizeObserver = null;
         this._simulation     = null;
@@ -242,12 +254,13 @@ export class DependencyGraph extends LitElement {
     }
 
     updated(changed) {
-        // Full re-render on data or layout changes
+        // Full re-render on data, layout, or filter changes
         if (
             changed.has('nodes') || changed.has('dependencies') ||
             changed.has('circularDependencies') || changed.has('_depth') ||
             changed.has('_sizeMetric') || changed.has('_filterText') ||
-            changed.has('_excludePatterns')
+            changed.has('_excludePatterns') || changed.has('_layoutMode') ||
+            changed.has('_showPackLinks')
         ) {
             this._renderGraph();
             return;
@@ -410,24 +423,42 @@ export class DependencyGraph extends LitElement {
 
                 <div class="dg-controls-spacer"></div>
 
-                <!-- Depth stepper: − [ 📦 Label ] + -->
-                <div class="dg-depth-stepper">
+                <!-- Layout toggle: Force ↔ Circle Pack -->
+                <div class="dg-controls-separator"></div>
+                <button
+                    class="dg-filter-btn ${this._layoutMode === 'pack' ? 'active' : ''}"
+                    @click=${() => this._layoutMode = this._layoutMode === 'force' ? 'pack' : 'force'}
+                    title="Cambiar layout: Force graph ↔ Circle Packing"
+                >⬡ Pack</button>
+                ${this._layoutMode === 'pack' ? html`
                     <button
-                        class="dg-depth-btn"
-                        ?disabled=${this._depth <= 1}
-                        @click=${() => this._setDepth(this._depth - 1)}
-                        title="Menos detalle (agrupar más)"
-                    >−</button>
-                    <span class="dg-depth-label">
-                        ${this._depth >= this._getMaxDepth() ? '📄' : '📦'} ${this._depthLabel(this._depth, this._getMaxDepth())}
-                    </span>
-                    <button
-                        class="dg-depth-btn"
-                        ?disabled=${this._depth >= this._getMaxDepth()}
-                        @click=${() => this._setDepth(this._depth + 1)}
-                        title="Más detalle (desglosar más)"
-                    >+</button>
-                </div>
+                        class="dg-filter-btn ${this._showPackLinks ? 'active' : ''}"
+                        @click=${() => this._showPackLinks = !this._showPackLinks}
+                        title="Mostrar/ocultar enlaces de dependencia en Circle Pack"
+                    >🔗 Links</button>
+                ` : ''}
+
+                ${this._layoutMode === 'force' ? html`
+                    <div class="dg-controls-separator"></div>
+                    <!-- Depth stepper: − [ 📦 Label ] + -->
+                    <div class="dg-depth-stepper">
+                        <button
+                            class="dg-depth-btn"
+                            ?disabled=${this._depth <= 1}
+                            @click=${() => this._setDepth(this._depth - 1)}
+                            title="Menos detalle (agrupar más)"
+                        >−</button>
+                        <span class="dg-depth-label">
+                            ${this._depth >= this._getMaxDepth() ? '📄' : '📦'} ${this._depthLabel(this._depth, this._getMaxDepth())}
+                        </span>
+                        <button
+                            class="dg-depth-btn"
+                            ?disabled=${this._depth >= this._getMaxDepth()}
+                            @click=${() => this._setDepth(this._depth + 1)}
+                            title="Más detalle (desglosar más)"
+                        >+</button>
+                    </div>
+                ` : ''}
             </div>
         `;
     }
@@ -958,10 +989,318 @@ export class DependencyGraph extends LitElement {
     }
 
     // ========================================================================
-    // D3 GRAPH RENDERING
+    // PACK HIERARCHY BUILDER
+    // ========================================================================
+
+    /**
+     * Build a nested tree from flat file nodes for d3.hierarchy / d3.pack.
+     * Groups nodes by path segments to create package/directory nodes.
+     * File nodes with no path prefix are placed directly under root.
+     *
+     * @param {Array} filteredNodes — file nodes after filter application
+     * @returns {Object} Root node compatible with d3.hierarchy
+     */
+    _buildPackHierarchy(filteredNodes) {
+        const root = {
+            name:      'root',
+            id:        '__root__',
+            isPackage: true,
+            children:  [],
+        };
+        const nodeMap = new Map([['__root__', root]]);
+
+        for (const node of filteredNodes) {
+            const parts = (node.path || node.name || '').split('/').filter(Boolean);
+            let parentId = '__root__';
+
+            // Create intermediate directory/package nodes from path segments
+            for (let i = 0; i < parts.length - 1; i++) {
+                const pathId = parts.slice(0, i + 1).join('/');
+                if (!nodeMap.has(pathId)) {
+                    const dirNode = {
+                        name:      parts[i],
+                        id:        pathId,
+                        path:      pathId,
+                        isPackage: true,
+                        children:  [],
+                    };
+                    nodeMap.set(pathId, dirNode);
+                    nodeMap.get(parentId).children.push(dirNode);
+                }
+                parentId = pathId;
+            }
+
+            // Add leaf file node (copy to avoid mutating original)
+            const parent = nodeMap.get(parentId);
+            if (parent) {
+                parent.children.push({ ...node, isPackage: false, children: null });
+            }
+        }
+
+        // Prune empty package nodes (safety: shouldn't happen with valid data)
+        const prune = (n) => {
+            if (!n.children) return true; // leaf: keep
+            n.children = n.children.filter(prune);
+            return n.children.length > 0 || !n.isPackage;
+        };
+        prune(root);
+
+        return root;
+    }
+
+    // ========================================================================
+    // D3 GRAPH RENDERING — dispatcher
     // ========================================================================
 
     _renderGraph() {
+        // Dispatch to the appropriate layout renderer
+        if (this._layoutMode === 'pack') {
+            this._renderPackLayout();
+            return;
+        }
+        this._renderForceLayout();
+    }
+
+    // ========================================================================
+    // CIRCLE PACK LAYOUT
+    // ========================================================================
+
+    /**
+     * Render the dependency graph using D3 circle packing.
+     * Files are positioned hierarchically by their directory structure.
+     * Dependency links are optionally overlaid as thin lines.
+     * Color = colorMetric, size ∝ sizeMetric.
+     */
+    _renderPackLayout() {
+        const svgEl    = this.renderRoot.querySelector('.graph-svg');
+        const container = this.renderRoot.querySelector('.graph-container');
+        if (!svgEl || !container) return;
+        if (!this.nodes || this.nodes.length === 0) return;
+
+        const width  = container.clientWidth;
+        const height = container.clientHeight;
+        if (width <= 0 || height <= 0) return;
+
+        // Stop any running force simulation
+        if (this._simulation) {
+            this._simulation.stop();
+            this._simulation = null;
+        }
+
+        // Always use file-level data for pack (full hierarchy)
+        const rawFileGraph = this._buildFileGraph();
+        const { graphNodes: filteredFiles, graphLinks: filteredLinks } = this._applyFilters(rawFileGraph);
+
+        // Rebuild color scale
+        this._buildColorScale();
+
+        const svg = d3.select(svgEl);
+        svg.selectAll('*').remove();
+        svg.attr('width', width).attr('height', height);
+
+        if (filteredFiles.length === 0) {
+            svg.append('text')
+                .attr('x', width / 2).attr('y', height / 2)
+                .attr('text-anchor', 'middle')
+                .attr('fill', '#9ca3af')
+                .attr('font-size', 13)
+                .text('Sin nodos para los filtros activos');
+            return;
+        }
+
+        // ── Build d3 hierarchy ────────────────────────────────────────────
+        const treeData = this._buildPackHierarchy(filteredFiles);
+
+        const hierRoot = d3.hierarchy(
+            treeData,
+            d => (d.children && d.children.length > 0) ? d.children : null
+        )
+        .sum(d => {
+            const isLeaf = !d.children || d.children.length === 0;
+            if (!isLeaf) return 0;
+            return Math.max(d[this._sizeMetric] ?? 0, 1);
+        })
+        .sort((a, b) => b.value - a.value);
+
+        // ── Pack layout ───────────────────────────────────────────────────
+        const margin = 6;
+        const pack = d3.pack()
+            .size([width - margin * 2, height - margin * 2])
+            .padding(d => {
+                if (d.depth === 0) return 10;
+                if (d.depth === 1) return 6;
+                return 3;
+            });
+
+        const packedRoot = pack(hierRoot);
+
+        // Build lookup: file node id → packed leaf node (for link drawing)
+        const packNodeMap = new Map();
+        packedRoot.descendants().forEach(d => {
+            if (!d.children) {
+                packNodeMap.set(d.data.id, d);
+            }
+        });
+
+        // ── Zoom container ────────────────────────────────────────────────
+        const zoomG = svg.append('g')
+            .attr('class', 'zoom-container')
+            .attr('transform', `translate(${margin},${margin})`);
+
+        const zoom = d3.zoom()
+            .scaleExtent([0.1, 10])
+            .on('zoom', event => zoomG.attr('transform', event.transform));
+        svg.call(zoom);
+        svg.on('click', () => { this._selectedNode = null; });
+
+        // ── Draw links (optional overlay behind circles) ──────────────────
+        const linkGroup = zoomG.append('g').attr('class', 'pack-links');
+        let linkElements;
+
+        if (this._showPackLinks && filteredLinks.length > 0) {
+            linkElements = linkGroup.selectAll('.graph-link')
+                .data(filteredLinks)
+                .join('line')
+                .attr('class', d => `graph-link ${d.isCircular ? 'circular' : ''}`)
+                .attr('stroke',         d => d.isCircular ? '#dc2626' : '#6366f1')
+                .attr('stroke-width',   d => d.isCircular ? 1.5 : 1)
+                .attr('stroke-dasharray', d => d.isCircular ? '4 2' : null)
+                .attr('stroke-opacity', d => d.isCircular ? 0.55 : 0.18)
+                .attr('x1', d => {
+                    const src = packNodeMap.get(
+                        typeof d.source === 'object' ? d.source.id : d.source
+                    );
+                    return src ? src.x : 0;
+                })
+                .attr('y1', d => {
+                    const src = packNodeMap.get(
+                        typeof d.source === 'object' ? d.source.id : d.source
+                    );
+                    return src ? src.y : 0;
+                })
+                .attr('x2', d => {
+                    const tgt = packNodeMap.get(
+                        typeof d.target === 'object' ? d.target.id : d.target
+                    );
+                    return tgt ? tgt.x : 0;
+                })
+                .attr('y2', d => {
+                    const tgt = packNodeMap.get(
+                        typeof d.target === 'object' ? d.target.id : d.target
+                    );
+                    return tgt ? tgt.y : 0;
+                });
+        } else {
+            // Empty selection so _updateHighlight still works without errors
+            linkElements = linkGroup.selectAll('.graph-link').data([]).join('line');
+        }
+
+        // ── Draw circles for all nodes ────────────────────────────────────
+        const nodeGroup = zoomG.append('g').attr('class', 'pack-nodes');
+
+        const allNodes = nodeGroup.selectAll('g.pack-node')
+            .data(packedRoot.descendants())
+            .join('g')
+            .attr('class', d => `pack-node ${d.children ? 'pack-container' : 'pack-leaf'}`)
+            .attr('data-id', d => d.data.id)
+            .attr('transform', d => `translate(${d.x},${d.y})`);
+
+        // Circles
+        allNodes.append('circle')
+            .attr('r', d => d.r)
+            .attr('fill', d => {
+                if (d.data.isPackage) {
+                    // Container circles: subtle layered fill
+                    const alpha = Math.min(0.04 + d.depth * 0.018, 0.12);
+                    return `rgba(99, 102, 241, ${alpha})`;
+                }
+                return this._nodeColor(d.data);
+            })
+            .attr('stroke', d => {
+                if (d.data.isPackage) {
+                    const alpha = Math.min(0.2 + d.depth * 0.08, 0.55);
+                    return `rgba(99, 102, 241, ${alpha})`;
+                }
+                return 'rgba(255, 255, 255, 0.3)';
+            })
+            .attr('stroke-width', d => d.data.isPackage ? 1.5 : 1)
+            .attr('opacity',      d => d.data.isPackage ? 1 : 0.88);
+
+        // Package/directory labels (for containers with enough radius)
+        allNodes.filter(d => d.data.isPackage && d.r > 18)
+            .append('text')
+            .attr('class', 'pack-label-container')
+            .attr('text-anchor', 'middle')
+            .attr('y', d => -d.r + Math.min(d.r * 0.25, 14))
+            .attr('font-size', d => `${Math.min(Math.max(d.r * 0.18, 8), 13)}px`)
+            .attr('fill', 'rgba(180, 185, 220, 0.8)')
+            .attr('pointer-events', 'none')
+            .attr('user-select', 'none')
+            .text(d => d.data.name);
+
+        // File labels (for leaf nodes with enough radius)
+        const leafTextGroup = allNodes.filter(d => !d.data.isPackage && d.r > 10);
+
+        // Split name by CamelCase or spaces (from the original Observable example)
+        leafTextGroup.append('text')
+            .attr('class', 'pack-label-leaf')
+            .attr('text-anchor', 'middle')
+            .attr('pointer-events', 'none')
+            .attr('user-select', 'none')
+            .attr('clip-path', d => `circle(${d.r - 1})`)
+            .each(function(d) {
+                const el       = d3.select(this);
+                const words    = d.data.name.replace(/\.[^.]+$/, '') // strip extension
+                    .split(/(?=[A-Z][a-z])|[_\-.\s]+/g)
+                    .filter(Boolean);
+                const fontSize = Math.min(Math.max(d.r * 0.28, 7), 11);
+                const lineH    = fontSize * 1.2;
+                const halfH    = (words.length - 1) * lineH / 2;
+
+                el.attr('font-size', `${fontSize}px`).attr('fill', 'rgba(255,255,255,0.92)');
+
+                words.forEach((word, i) => {
+                    el.append('tspan')
+                        .attr('x', 0)
+                        .attr('dy', i === 0 ? `-${halfH}px` : `${lineH}px`)
+                        .text(word);
+                });
+            });
+
+        // ── Interactions on leaf nodes only ───────────────────────────────
+        const leafNodes = allNodes.filter(d => !d.data.isPackage);
+
+        leafNodes
+            .style('cursor', 'pointer')
+            .on('click', (event, d) => {
+                event.stopPropagation();
+                this._handleNodeClick(d.data);
+            })
+            .on('mouseenter', (event, d) => this._handleNodeMouseEnter(event, d.data))
+            .on('mouseleave', () => { this._tooltipData = null; });
+
+        // ── Store graph refs for highlight + color-only updates ───────────
+        this._graphRefs = {
+            nodeElements: leafNodes,
+            linkElements,
+            graphNodes:   filteredFiles,
+            graphLinks:   filteredLinks,
+            packNodeMap,
+            isPack:       true,
+        };
+
+        // Apply current selected state
+        if (this._selectedNode) this._updateHighlight();
+
+        // Render legend
+        this._renderLegendDOM();
+    }
+
+    // ========================================================================
+    // FORCE LAYOUT (original _renderGraph body)
+    // ========================================================================
+
+    _renderForceLayout() {
         const svgEl    = this.renderRoot.querySelector('.graph-svg');
         const container = this.renderRoot.querySelector('.graph-container');
         if (!svgEl || !container) return;
@@ -1153,7 +1492,13 @@ export class DependencyGraph extends LitElement {
         });
 
         // ── Legend + store refs ───────────────────────────────────────────
-        this._graphRefs = { nodeElements, linkElements, graphNodes, graphLinks };
+        this._graphRefs = {
+            nodeElements,
+            linkElements,
+            graphNodes,
+            graphLinks,
+            isPack: false,
+        };
 
         // Render legend (DOM element inside graph-container)
         this._renderLegendDOM();
@@ -1196,14 +1541,21 @@ export class DependencyGraph extends LitElement {
     }
 
     // ========================================================================
-    // COLOR-ONLY UPDATE (no sim restart)
+    // COLOR-ONLY UPDATE (no sim restart / no pack rebuild)
     // ========================================================================
 
     _updateNodeColors() {
         if (!this._graphRefs) return;
-        const { nodeElements } = this._graphRefs;
-        nodeElements.select('circle.node-circle')
-            .attr('fill', d => this._nodeColor(d));
+        const { nodeElements, isPack } = this._graphRefs;
+
+        if (isPack) {
+            // In pack mode, the circle is the first child of each leaf g
+            nodeElements.select('circle')
+                .attr('fill', d => this._nodeColor(d.data));
+        } else {
+            nodeElements.select('circle.node-circle')
+                .attr('fill', d => this._nodeColor(d));
+        }
     }
 
     _updateLegend() {
@@ -1216,8 +1568,15 @@ export class DependencyGraph extends LitElement {
 
     _updateHighlight() {
         if (!this._graphRefs) return;
-        const { nodeElements, linkElements } = this._graphRefs;
+        const { nodeElements, linkElements, isPack } = this._graphRefs;
         const selectedId = this._selectedNode;
+
+        // Helper to get node ID regardless of layout mode
+        // Force: d = raw node object (d.id)
+        // Pack:  d = d3 pack node (d.data.id)
+        const getId = isPack
+            ? d => (d.data?.id ?? d.id)
+            : d => d.id;
 
         if (!selectedId) {
             nodeElements.classed('dimmed', false).classed('selected', false);
@@ -1241,8 +1600,8 @@ export class DependencyGraph extends LitElement {
         const connectedIds = new Set([selectedId, ...outTargets, ...inSources]);
 
         nodeElements
-            .classed('selected', d => d.id === selectedId)
-            .classed('dimmed',   d => !connectedIds.has(d.id));
+            .classed('selected', d => getId(d) === selectedId)
+            .classed('dimmed',   d => !connectedIds.has(getId(d)));
 
         linkElements
             .classed('highlight-out', d => {
