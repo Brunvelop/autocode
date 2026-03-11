@@ -326,7 +326,7 @@ class TestBuiltInCommands:
         # Should pass import string and factory=True
         mock_uvicorn_run.assert_called_once_with(
             "autocode.interfaces.mcp:create_mcp_app", 
-            host="127.0.0.1", 
+            host="0.0.0.0", 
             port=8000, 
             reload=True,
             factory=True

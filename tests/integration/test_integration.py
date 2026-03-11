@@ -161,7 +161,7 @@ class TestFullIntegration:
         
         # Verify MCP was integrated
         mock_fastapi_mcp.assert_called_once()
-        mock_mcp_instance.mount.assert_called_once()
+        mock_mcp_instance.mount_http.assert_called_once()
     
     def test_registry_function_parameter_inference(self):
         """Test that parameter inference works correctly across interfaces."""
