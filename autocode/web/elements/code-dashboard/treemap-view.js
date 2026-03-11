@@ -128,6 +128,9 @@ const NODE_TYPE_ICONS = {
 // Node types that act as containers (rendered with padding, like directories)
 const CONTAINER_TYPES = new Set(['directory', 'class']);
 
+// Rank badge colors
+const RANK_COLORS = { A:'#059669', B:'#22c55e', C:'#eab308', D:'#f97316', E:'#ef4444', F:'#dc2626' };
+
 // Directory node colors by depth (darker = deeper hierarchy level)
 const DIR_COLORS = [
     'rgba(30, 41, 59, 0.82)',   // depth 0 – root
@@ -387,79 +390,74 @@ export class TreemapView extends LitElement {
     }
 
     // ========================================================================
-    // TOOLTIP
+    // TOOLTIP — dispatcher + sub-renderers + helpers
     // ========================================================================
 
+    /** Dispatches to the correct sub-renderer based on node type. CC ~4 */
     _renderTooltip() {
         if (!this._tooltipData) return html``;
         const d    = this._tooltipData;
         const icon = NODE_TYPE_ICONS[d.type] || '📄';
+        if (d.type === 'function' || d.type === 'method') return this._renderFnMethodTooltip(d, icon);
+        if (d.type === 'class')                           return this._renderClassTooltip(d, icon);
+        return this._renderFileOrDirTooltip(d, icon);
+    }
 
-        // ── function / method: show MI + CC + rank ────────────────────────
-        if (d.type === 'function' || d.type === 'method') {
-            const rankColors = { A:'#059669', B:'#22c55e', C:'#eab308', D:'#f97316', E:'#ef4444', F:'#dc2626' };
-            const rankColor  = rankColors[d.rank] || '#6b7280';
-            const miColor    = (d3.scaleLinear()
-                .domain(METRIC_COLOR_CONFIGS.mi.domain)
-                .range(METRIC_COLOR_CONFIGS.mi.range)
-                .clamp(true))(d.mi);
-            const miStatus   = d.mi >= 60 ? '✅' : d.mi >= 40 ? '⚠️' : '🔴';
-            return html`
-                <div class="treemap-tooltip visible" style="left:${d.x}px;top:${d.y}px;">
-                    <div class="tooltip-header">${icon} ${d.name}</div>
-                    <div class="tooltip-path">${d.path}</div>
-                    <div class="tooltip-grid">
-                        <span class="tooltip-label">SLOC</span>
-                        <span class="tooltip-value">${d.sloc}</span>
-                        <span class="tooltip-label">MI</span>
-                        <span class="tooltip-value">
-                            <span class="tooltip-mi-indicator" style="background:${miColor}"></span>
-                            ${d.mi?.toFixed(1)} ${miStatus}
-                        </span>
-                        <span class="tooltip-label">CC</span>
-                        <span class="tooltip-value">${d.complexity ?? d.avg_complexity?.toFixed(1)}</span>
-                        <span class="tooltip-label">Rank</span>
-                        <span class="tooltip-value" style="color:${rankColor};font-weight:700">${d.rank ?? '—'}</span>
-                    </div>
-                </div>`;
-        }
+    /** Tooltip for function / method nodes: SLOC, MI, CC, Rank. */
+    _renderFnMethodTooltip(d, icon) {
+        const rankColor = this._rankColor(d.rank);
+        const miColor   = this._tooltipMiColor(d.mi);
+        const miStatus  = this._miStatusIcon(d.mi);
+        return html`
+            <div class="treemap-tooltip visible" style="left:${d.x}px;top:${d.y}px;">
+                <div class="tooltip-header">${icon} ${d.name}</div>
+                <div class="tooltip-path">${d.path}</div>
+                <div class="tooltip-grid">
+                    <span class="tooltip-label">SLOC</span>
+                    <span class="tooltip-value">${d.sloc}</span>
+                    <span class="tooltip-label">MI</span>
+                    <span class="tooltip-value">
+                        <span class="tooltip-mi-indicator" style="background:${miColor}"></span>
+                        ${d.mi?.toFixed(1)} ${miStatus}
+                    </span>
+                    <span class="tooltip-label">CC</span>
+                    <span class="tooltip-value">${d.complexity ?? d.avg_complexity?.toFixed(1)}</span>
+                    <span class="tooltip-label">Rank</span>
+                    <span class="tooltip-value" style="color:${rankColor};font-weight:700">${d.rank ?? '—'}</span>
+                </div>
+            </div>`;
+    }
 
-        // ── class: show MI + method count + avg CC ────────────────────────
-        if (d.type === 'class') {
-            const miColor  = (d3.scaleLinear()
-                .domain(METRIC_COLOR_CONFIGS.mi.domain)
-                .range(METRIC_COLOR_CONFIGS.mi.range)
-                .clamp(true))(d.mi);
-            const miStatus = d.mi >= 60 ? '✅' : d.mi >= 40 ? '⚠️' : '🔴';
-            const ccStatus = d.avg_complexity < 5 ? '✅' : d.avg_complexity < 10 ? '⚠️' : '🔴';
-            return html`
-                <div class="treemap-tooltip visible" style="left:${d.x}px;top:${d.y}px;">
-                    <div class="tooltip-header">${icon} ${d.name}</div>
-                    <div class="tooltip-path">${d.path}</div>
-                    <div class="tooltip-grid">
-                        <span class="tooltip-label">SLOC</span>
-                        <span class="tooltip-value">${d.sloc}</span>
-                        <span class="tooltip-label">MI</span>
-                        <span class="tooltip-value">
-                            <span class="tooltip-mi-indicator" style="background:${miColor}"></span>
-                            ${d.mi?.toFixed(1)} ${miStatus}
-                        </span>
-                        <span class="tooltip-label">Métodos</span>
-                        <span class="tooltip-value">${d.functions_count}</span>
-                        <span class="tooltip-label">CC media</span>
-                        <span class="tooltip-value">${d.avg_complexity?.toFixed(1)} ${ccStatus}</span>
-                    </div>
-                </div>`;
-        }
+    /** Tooltip for class nodes: SLOC, MI, method count, avg CC. */
+    _renderClassTooltip(d, icon) {
+        const miColor  = this._tooltipMiColor(d.mi);
+        const miStatus = this._miStatusIcon(d.mi);
+        const ccStatus = this._ccStatusIcon(d.avg_complexity);
+        return html`
+            <div class="treemap-tooltip visible" style="left:${d.x}px;top:${d.y}px;">
+                <div class="tooltip-header">${icon} ${d.name}</div>
+                <div class="tooltip-path">${d.path}</div>
+                <div class="tooltip-grid">
+                    <span class="tooltip-label">SLOC</span>
+                    <span class="tooltip-value">${d.sloc}</span>
+                    <span class="tooltip-label">MI</span>
+                    <span class="tooltip-value">
+                        <span class="tooltip-mi-indicator" style="background:${miColor}"></span>
+                        ${d.mi?.toFixed(1)} ${miStatus}
+                    </span>
+                    <span class="tooltip-label">Métodos</span>
+                    <span class="tooltip-value">${d.functions_count}</span>
+                    <span class="tooltip-label">CC media</span>
+                    <span class="tooltip-value">${d.avg_complexity?.toFixed(1)} ${ccStatus}</span>
+                </div>
+            </div>`;
+    }
 
-        // ── directory / file (default): full metrics ──────────────────────
-        const miColor  = (d3.scaleLinear()
-            .domain(METRIC_COLOR_CONFIGS.mi.domain)
-            .range(METRIC_COLOR_CONFIGS.mi.range)
-            .clamp(true))(d.mi);
-        const miStatus = d.mi >= 60 ? '✅' : d.mi >= 40 ? '⚠️' : '🔴';
-        const ccStatus = d.avg_complexity < 5 ? '✅' : d.avg_complexity < 10 ? '⚠️' : '🔴';
-
+    /** Tooltip for file / directory nodes: LOC, SLOC, MI, avg CC, functions, classes. */
+    _renderFileOrDirTooltip(d, icon) {
+        const miColor  = this._tooltipMiColor(d.mi);
+        const miStatus = this._miStatusIcon(d.mi);
+        const ccStatus = this._ccStatusIcon(d.avg_complexity);
         return html`
             <div class="treemap-tooltip visible" style="left:${d.x}px;top:${d.y}px;">
                 <div class="tooltip-header">${icon} ${d.name}</div>
@@ -483,6 +481,21 @@ export class TreemapView extends LitElement {
                 </div>
             </div>`;
     }
+
+    /** Returns the badge color for a rank letter (A–F). */
+    _rankColor(rank) { return RANK_COLORS[rank] || '#6b7280'; }
+
+    /** Returns the MI color from the D3 scale for use in tooltips. */
+    _tooltipMiColor(mi) {
+        const cfg = METRIC_COLOR_CONFIGS.mi;
+        return d3.scaleLinear().domain(cfg.domain).range(cfg.range).clamp(true)(mi);
+    }
+
+    /** Returns a status emoji for a Maintainability Index value. */
+    _miStatusIcon(mi)  { return mi >= 60 ? '✅' : mi >= 40 ? '⚠️' : '🔴'; }
+
+    /** Returns a status emoji for a cyclomatic complexity value. */
+    _ccStatusIcon(cc)  { return cc < 5  ? '✅' : cc < 10  ? '⚠️' : '🔴'; }
 
     // ========================================================================
     // D3 — BUILD FULL TREEMAP (called on node change, resize, or sizeMetric change)
