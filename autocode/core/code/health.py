@@ -144,6 +144,175 @@ class HealthCheckResult:
 
 
 # ==============================================================================
+# PRIVATE CHECK HELPERS
+# ==============================================================================
+
+
+def _check_mi(config: HealthConfig, file_metrics: list[FileMetrics]) -> list[HealthViolation]:
+    """Comprueba el Maintainability Index por archivo."""
+    violations = []
+    for fm in file_metrics:
+        if fm.maintainability_index < config.critical_mi:
+            level, threshold = "critical", config.critical_mi
+        elif fm.maintainability_index < config.warning_mi:
+            level, threshold = "warning", config.warning_mi
+        else:
+            continue
+        violations.append(HealthViolation(
+            rule="mi", level=level, path=fm.path,
+            value=fm.maintainability_index, threshold=threshold,
+        ))
+    return violations
+
+
+def _check_sloc(config: HealthConfig, file_metrics: list[FileMetrics]) -> list[HealthViolation]:
+    """Comprueba el SLOC por archivo."""
+    violations = []
+    for fm in file_metrics:
+        if fm.sloc > config.critical_file_sloc:
+            level, threshold = "critical", float(config.critical_file_sloc)
+        elif fm.sloc > config.warning_file_sloc:
+            level, threshold = "warning", float(config.warning_file_sloc)
+        else:
+            continue
+        violations.append(HealthViolation(
+            rule="sloc", level=level, path=fm.path,
+            value=float(fm.sloc), threshold=threshold,
+        ))
+    return violations
+
+
+def _check_avg_complexity(
+    config: HealthConfig, file_metrics: list[FileMetrics]
+) -> list[HealthViolation]:
+    """Comprueba la CC media por archivo."""
+    violations = []
+    for fm in file_metrics:
+        if fm.avg_complexity > config.critical_avg_complexity:
+            level, threshold = "critical", config.critical_avg_complexity
+        elif fm.avg_complexity > config.warning_avg_complexity:
+            level, threshold = "warning", config.warning_avg_complexity
+        else:
+            continue
+        violations.append(HealthViolation(
+            rule="avg_cc", level=level, path=fm.path,
+            value=fm.avg_complexity, threshold=threshold,
+        ))
+    return violations
+
+
+def _check_function_cc(
+    config: HealthConfig, file_metrics: list[FileMetrics]
+) -> list[HealthViolation]:
+    """Comprueba la CC por función."""
+    violations = []
+    for fm in file_metrics:
+        for func in fm.functions:
+            if func.complexity > config.critical_function_cc:
+                level, threshold = "critical", float(config.critical_function_cc)
+            elif func.complexity > config.warning_function_cc:
+                level, threshold = "warning", float(config.warning_function_cc)
+            else:
+                continue
+            violations.append(HealthViolation(
+                rule="function_cc", level=level, path=func.file,
+                value=float(func.complexity), threshold=threshold,
+                detail=f"{func.name}() line {func.line}",
+            ))
+    return violations
+
+
+def _check_nesting(
+    config: HealthConfig, file_metrics: list[FileMetrics]
+) -> list[HealthViolation]:
+    """Comprueba la profundidad de anidamiento por función."""
+    violations = []
+    for fm in file_metrics:
+        for func in fm.functions:
+            if func.nesting_depth > config.critical_nesting:
+                level, threshold = "critical", float(config.critical_nesting)
+            elif func.nesting_depth > config.warning_nesting:
+                level, threshold = "warning", float(config.warning_nesting)
+            else:
+                continue
+            violations.append(HealthViolation(
+                rule="nesting", level=level, path=func.file,
+                value=float(func.nesting_depth), threshold=threshold,
+                detail=f"{func.name}() line {func.line}",
+            ))
+    return violations
+
+
+def _check_rank_f(
+    config: HealthConfig, all_funcs: list
+) -> list[HealthViolation]:
+    """Comprueba el número total de funciones con rank F en el proyecto."""
+    rank_f_funcs = [f for f in all_funcs if f.rank == "F"]
+    if len(rank_f_funcs) <= config.max_rank_f_functions:
+        return []
+    return [HealthViolation(
+        rule="rank_f", level="critical", path="<project>",
+        value=float(len(rank_f_funcs)),
+        threshold=float(config.max_rank_f_functions),
+        detail=", ".join(f"{f.name}() [{f.file}:{f.line}]" for f in rank_f_funcs),
+    )]
+
+
+def _check_circular_deps(
+    config: HealthConfig,
+    coupling_result: tuple[list[PackageCoupling], list[list[str]]],
+) -> list[HealthViolation]:
+    """Comprueba las dependencias circulares entre paquetes."""
+    _, circulars = coupling_result
+    if len(circulars) <= config.max_circular_deps:
+        return []
+    return [HealthViolation(
+        rule="circular_deps", level="critical", path="<project>",
+        value=float(len(circulars)),
+        threshold=float(config.max_circular_deps),
+        detail="; ".join(f"{a} ↔ {b}" for a, b in circulars),
+    )]
+
+
+def _check_project_mi(
+    config: HealthConfig, file_metrics: list[FileMetrics]
+) -> list[HealthViolation]:
+    """Comprueba la MI media del proyecto."""
+    if not file_metrics:
+        return []
+    avg_mi = sum(fm.maintainability_index for fm in file_metrics) / len(file_metrics)
+    if avg_mi < config.critical_project_avg_mi:
+        level, threshold = "critical", config.critical_project_avg_mi
+    elif avg_mi < config.warning_project_avg_mi:
+        level, threshold = "warning", config.warning_project_avg_mi
+    else:
+        return []
+    return [HealthViolation(
+        rule="project_mi", level=level, path="<project>",
+        value=avg_mi, threshold=threshold,
+    )]
+
+
+def _check_project_cc(
+    config: HealthConfig, all_funcs: list
+) -> list[HealthViolation]:
+    """Comprueba la CC media del proyecto."""
+    if not all_funcs:
+        return []
+    avg_cc = sum(f.complexity for f in all_funcs) / len(all_funcs)
+    if avg_cc > config.critical_project_avg_complexity:
+        level, threshold = "critical", config.critical_project_avg_complexity
+    elif avg_cc > config.warning_project_avg_complexity:
+        level, threshold = "warning", config.warning_project_avg_complexity
+    else:
+        return []
+    return [HealthViolation(
+        rule="project_cc", level=level, path="<project>",
+        value=avg_cc, threshold=threshold,
+    )]
+
+
+# ==============================================================================
 # RUN HEALTH CHECK
 # ==============================================================================
 
@@ -175,206 +344,23 @@ def run_health_check(
     Returns:
         HealthCheckResult con passed=True si no hay violations críticas.
     """
-    violations: list[HealthViolation] = []
-
-    # ------------------------------------------------------------------
-    # 1. Maintainability Index por archivo
-    # ------------------------------------------------------------------
-    for fm in file_metrics:
-        if fm.maintainability_index < config.critical_mi:
-            violations.append(HealthViolation(
-                rule="mi",
-                level="critical",
-                path=fm.path,
-                value=fm.maintainability_index,
-                threshold=config.critical_mi,
-            ))
-        elif fm.maintainability_index < config.warning_mi:
-            violations.append(HealthViolation(
-                rule="mi",
-                level="warning",
-                path=fm.path,
-                value=fm.maintainability_index,
-                threshold=config.warning_mi,
-            ))
-
-    # ------------------------------------------------------------------
-    # 2. SLOC por archivo
-    # ------------------------------------------------------------------
-    for fm in file_metrics:
-        if fm.sloc > config.critical_file_sloc:
-            violations.append(HealthViolation(
-                rule="sloc",
-                level="critical",
-                path=fm.path,
-                value=float(fm.sloc),
-                threshold=float(config.critical_file_sloc),
-            ))
-        elif fm.sloc > config.warning_file_sloc:
-            violations.append(HealthViolation(
-                rule="sloc",
-                level="warning",
-                path=fm.path,
-                value=float(fm.sloc),
-                threshold=float(config.warning_file_sloc),
-            ))
-
-    # ------------------------------------------------------------------
-    # 3. CC media por archivo
-    # ------------------------------------------------------------------
-    for fm in file_metrics:
-        if fm.avg_complexity > config.critical_avg_complexity:
-            violations.append(HealthViolation(
-                rule="avg_cc",
-                level="critical",
-                path=fm.path,
-                value=fm.avg_complexity,
-                threshold=config.critical_avg_complexity,
-            ))
-        elif fm.avg_complexity > config.warning_avg_complexity:
-            violations.append(HealthViolation(
-                rule="avg_cc",
-                level="warning",
-                path=fm.path,
-                value=fm.avg_complexity,
-                threshold=config.warning_avg_complexity,
-            ))
-
-    # ------------------------------------------------------------------
-    # 4. CC por función
-    # ------------------------------------------------------------------
-    for fm in file_metrics:
-        for func in fm.functions:
-            if func.complexity > config.critical_function_cc:
-                violations.append(HealthViolation(
-                    rule="function_cc",
-                    level="critical",
-                    path=func.file,
-                    value=float(func.complexity),
-                    threshold=float(config.critical_function_cc),
-                    detail=f"{func.name}() line {func.line}",
-                ))
-            elif func.complexity > config.warning_function_cc:
-                violations.append(HealthViolation(
-                    rule="function_cc",
-                    level="warning",
-                    path=func.file,
-                    value=float(func.complexity),
-                    threshold=float(config.warning_function_cc),
-                    detail=f"{func.name}() line {func.line}",
-                ))
-
-    # ------------------------------------------------------------------
-    # 5. Nesting depth por función
-    # ------------------------------------------------------------------
-    for fm in file_metrics:
-        for func in fm.functions:
-            if func.nesting_depth > config.critical_nesting:
-                violations.append(HealthViolation(
-                    rule="nesting",
-                    level="critical",
-                    path=func.file,
-                    value=float(func.nesting_depth),
-                    threshold=float(config.critical_nesting),
-                    detail=f"{func.name}() line {func.line}",
-                ))
-            elif func.nesting_depth > config.warning_nesting:
-                violations.append(HealthViolation(
-                    rule="nesting",
-                    level="warning",
-                    path=func.file,
-                    value=float(func.nesting_depth),
-                    threshold=float(config.warning_nesting),
-                    detail=f"{func.name}() line {func.line}",
-                ))
-
-    # ------------------------------------------------------------------
-    # 6. Rank F functions (total proyecto)
-    # ------------------------------------------------------------------
     all_funcs = [f for fm in file_metrics for f in fm.functions]
-    rank_f_funcs = [f for f in all_funcs if f.rank == "F"]
-    rank_f_count = len(rank_f_funcs)
+    rank_f_count = sum(1 for f in all_funcs if f.rank == "F")
 
-    if rank_f_count > config.max_rank_f_functions:
-        # Una sola violation a nivel de proyecto, con path vacío
-        violations.append(HealthViolation(
-            rule="rank_f",
-            level="critical",
-            path="<project>",
-            value=float(rank_f_count),
-            threshold=float(config.max_rank_f_functions),
-            detail=", ".join(f"{f.name}() [{f.file}:{f.line}]" for f in rank_f_funcs),
-        ))
-
-    # ------------------------------------------------------------------
-    # 7. Dependencias circulares
-    # ------------------------------------------------------------------
+    violations: list[HealthViolation] = []
+    violations.extend(_check_mi(config, file_metrics))
+    violations.extend(_check_sloc(config, file_metrics))
+    violations.extend(_check_avg_complexity(config, file_metrics))
+    violations.extend(_check_function_cc(config, file_metrics))
+    violations.extend(_check_nesting(config, file_metrics))
+    violations.extend(_check_rank_f(config, all_funcs))
     if coupling_result is not None:
-        _, circulars = coupling_result
-        circular_count = len(circulars)
-        if circular_count > config.max_circular_deps:
-            violations.append(HealthViolation(
-                rule="circular_deps",
-                level="critical",
-                path="<project>",
-                value=float(circular_count),
-                threshold=float(config.max_circular_deps),
-                detail="; ".join(f"{a} ↔ {b}" for a, b in circulars),
-            ))
+        violations.extend(_check_circular_deps(config, coupling_result))
+    violations.extend(_check_project_mi(config, file_metrics))
+    violations.extend(_check_project_cc(config, all_funcs))
 
-    # ------------------------------------------------------------------
-    # 8. MI media del proyecto
-    # ------------------------------------------------------------------
-    if file_metrics:
-        avg_mi = sum(fm.maintainability_index for fm in file_metrics) / len(file_metrics)
-        if avg_mi < config.critical_project_avg_mi:
-            violations.append(HealthViolation(
-                rule="project_mi",
-                level="critical",
-                path="<project>",
-                value=avg_mi,
-                threshold=config.critical_project_avg_mi,
-            ))
-        elif avg_mi < config.warning_project_avg_mi:
-            violations.append(HealthViolation(
-                rule="project_mi",
-                level="warning",
-                path="<project>",
-                value=avg_mi,
-                threshold=config.warning_project_avg_mi,
-            ))
-
-    # ------------------------------------------------------------------
-    # 9. CC media del proyecto
-    # ------------------------------------------------------------------
-    if all_funcs:
-        avg_cc = sum(f.complexity for f in all_funcs) / len(all_funcs)
-        if avg_cc > config.critical_project_avg_complexity:
-            violations.append(HealthViolation(
-                rule="project_cc",
-                level="critical",
-                path="<project>",
-                value=avg_cc,
-                threshold=config.critical_project_avg_complexity,
-            ))
-        elif avg_cc > config.warning_project_avg_complexity:
-            violations.append(HealthViolation(
-                rule="project_cc",
-                level="warning",
-                path="<project>",
-                value=avg_cc,
-                threshold=config.warning_project_avg_complexity,
-            ))
-
-    # ------------------------------------------------------------------
-    # Resultado final
-    # ------------------------------------------------------------------
-    has_critical = any(v.level == "critical" for v in violations)
-    passed = not has_critical
-
-    # Summary para display
+    passed = not any(v.level == "critical" for v in violations)
     summary = _build_summary(config, file_metrics, all_funcs, rank_f_count, coupling_result)
-
     return HealthCheckResult(passed=passed, violations=violations, summary=summary)
 
 
