@@ -25,8 +25,8 @@ create_dynamic_model = _create_dynamic_model
 extract_function_params = _extract_params
 execute_function_with_params = _execute_function
 register_dynamic_endpoints = _register_dynamic_endpoints
-from autocode.interfaces.models import GenericOutput, FunctionInfo, ParamSchema
-from autocode.interfaces.registry import _registry, clear_registry
+from autocode.core.models import GenericOutput, FunctionInfo, ParamSchema
+from autocode.core.registry import _registry, clear_registry
 
 
 class TestCreateResultResponse:

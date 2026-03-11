@@ -8,12 +8,12 @@ import pytest
 from unittest.mock import Mock, patch
 from fastapi.testclient import TestClient
 
-from autocode.interfaces.registry import (
+from autocode.core.registry import (
     register_function, clear_registry, get_stream_func,
     get_all_schemas, load_functions, get_function_by_name
 )
 from autocode.interfaces.api import create_api_app
-from autocode.interfaces.models import GenericOutput
+from autocode.core.models import GenericOutput
 
 
 class TestStreamingEndToEnd:

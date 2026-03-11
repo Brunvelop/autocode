@@ -1,5 +1,5 @@
 """
-Tests for autocode.interfaces.registry module.
+Tests for autocode.core.registry module.
 
 Tests the central registry system that enables automatic generation of CLI commands,
 API endpoints, and MCP tools through function registration and parameter inference.
@@ -10,13 +10,13 @@ import importlib
 from typing import Any
 from unittest.mock import patch, Mock
 
-from autocode.interfaces.registry import (
+from autocode.core.registry import (
     _generate_function_info, register_function,
     get_all_schemas, get_all_functions, get_function_by_name, function_count,
     clear_registry, load_functions, get_stream_func,
     RegistryError, _has_register_decorator, _stream_registry
 )
-from autocode.interfaces.models import FunctionInfo, ParamSchema, GenericOutput, FunctionSchema
+from autocode.core.models import FunctionInfo, ParamSchema, GenericOutput, FunctionSchema
 
 
 class TestGenerateFunctionInfo:
@@ -457,8 +457,8 @@ class TestDecoratorDetection:
         # Create a temporary file with the decorator
         module_file = tmp_path / "test_module.py"
         module_file.write_text('''
-from autocode.interfaces.registry import register_function
-from autocode.interfaces.models import GenericOutput
+from autocode.core.registry import register_function
+from autocode.core.models import GenericOutput
 
 @register_function()
 def my_func() -> GenericOutput:
@@ -471,8 +471,8 @@ def my_func() -> GenericOutput:
         """Test detection of @register_function without parentheses."""
         module_file = tmp_path / "test_module_no_parens.py"
         module_file.write_text('''
-from autocode.interfaces.registry import register_function
-from autocode.interfaces.models import GenericOutput
+from autocode.core.registry import register_function
+from autocode.core.models import GenericOutput
 
 @register_function
 def my_func() -> GenericOutput:
@@ -486,7 +486,7 @@ def my_func() -> GenericOutput:
         module_file = tmp_path / "test_module_prefix.py"
         module_file.write_text('''
 from autocode.core import registry
-from autocode.interfaces.models import GenericOutput
+from autocode.core.models import GenericOutput
 
 @registry.register_function()
 def my_func() -> GenericOutput:

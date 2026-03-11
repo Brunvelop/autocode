@@ -1,5 +1,5 @@
 """
-Tests for autocode.interfaces.models module.
+Tests for autocode.core.models module.
 
 Tests the Pydantic models that define input/output contracts for functions
 registered in the registry, ensuring data validation and type safety.
@@ -8,7 +8,7 @@ import pytest
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 from pydantic import ValidationError
 
-from autocode.interfaces.models import (
+from autocode.core.models import (
     ParamSchema, FunctionInfo, FunctionSchema, GenericOutput
 )
 

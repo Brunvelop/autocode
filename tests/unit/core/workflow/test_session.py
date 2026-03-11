@@ -20,7 +20,7 @@ from autocode.core.workflow.session import (
     CONTEXT_DIR_NAME,
     VALID_SESSION_TYPES,
 )
-from autocode.interfaces.models import GenericOutput
+from autocode.core.models import GenericOutput
 
 
 # ============================================================================

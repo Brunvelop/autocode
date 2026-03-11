@@ -6,8 +6,8 @@ from unittest.mock import Mock, MagicMock, patch
 from typing import Dict, Any, List
 import logging
 
-from autocode.interfaces.models import ParamSchema, FunctionInfo, GenericOutput
-from autocode.interfaces.registry import clear_registry, get_all_functions, get_function_by_name
+from autocode.core.models import ParamSchema, FunctionInfo, GenericOutput
+from autocode.core.registry import clear_registry, get_all_functions, get_function_by_name
 
 # Configure logging for tests
 logging.basicConfig(level=logging.DEBUG)
@@ -98,7 +98,7 @@ def populated_registry(sample_function_info):
     Tests should use public API (get_function_by_name, get_all_functions) to verify.
     """
     # Import here to limit scope - this is intentional test-only access
-    from autocode.interfaces.registry import _registry
+    from autocode.core.registry import _registry
     _registry.append(sample_function_info)
     # Return None - tests should use public API to access registry
     return None

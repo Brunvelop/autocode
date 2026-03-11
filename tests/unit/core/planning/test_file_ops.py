@@ -212,7 +212,7 @@ class TestFileOpsRegistration:
     def test_functions_registered_as_mcp(self):
         """Las 4 funciones se registran con interfaces=['mcp']."""
         import importlib
-        from autocode.interfaces import registry as reg_module
+        from autocode.core import registry as reg_module
         import autocode.core.planning.file_ops as file_ops_module
 
         importlib.reload(file_ops_module)
@@ -226,7 +226,7 @@ class TestFileOpsRegistration:
     def test_functions_not_registered_as_api(self):
         """Las file_ops NO se exponen como API endpoints."""
         import importlib
-        from autocode.interfaces import registry as reg_module
+        from autocode.core import registry as reg_module
         import autocode.core.planning.file_ops as file_ops_module
 
         importlib.reload(file_ops_module)

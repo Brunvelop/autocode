@@ -9,14 +9,14 @@ from unittest.mock import Mock, patch, MagicMock
 from fastapi.testclient import TestClient
 from click.testing import CliRunner
 
-from autocode.interfaces.registry import (
+from autocode.core.registry import (
     register_function, clear_registry, function_count,
     get_function_by_name, get_all_functions
 )
 from autocode.interfaces.api import create_api_app
 from autocode.interfaces.cli import app as cli_app, _register_commands
 from autocode.interfaces.mcp import create_mcp_app
-from autocode.interfaces.models import GenericOutput
+from autocode.core.models import GenericOutput
 
 
 class TestFullIntegration:
@@ -372,7 +372,7 @@ class TestCrossModuleDependencies:
         
         # Test that API would handle registry errors
         from autocode.interfaces.api import _execute_function as execute_function_with_params
-        from autocode.interfaces.models import FunctionInfo
+        from autocode.core.models import FunctionInfo
         
         # Create a function info that references nonexistent function
         fake_func = lambda: None  # This won't be called

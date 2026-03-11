@@ -15,7 +15,7 @@ from autocode.interfaces.api import (
     _register_dynamic_endpoints,
     _create_dynamic_model,
 )
-from autocode.interfaces.models import FunctionInfo, ParamSchema, GenericOutput
+from autocode.core.models import FunctionInfo, ParamSchema, GenericOutput
 
 
 class TestCreateStreamHandler:

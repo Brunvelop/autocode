@@ -13,10 +13,10 @@ from autocode.interfaces.cli import (
     app, _add_command_options, _create_handler, _register_commands,
     list_functions_cmd, serve_api, serve_mcp, serve, TYPE_MAP
 )
-from autocode.interfaces.registry import (
+from autocode.core.registry import (
     RegistryError, function_count, get_all_functions, get_function_by_name, clear_registry
 )
-from autocode.interfaces.models import ParamSchema, FunctionInfo, GenericOutput
+from autocode.core.models import ParamSchema, FunctionInfo, GenericOutput
 
 
 class TestTypeMappingAndUtils:
@@ -117,7 +117,7 @@ class TestCreateHandler:
     
     def test_create_handler_execution_success(self, sample_function_info):
         """Test successful handler execution."""
-        from autocode.interfaces.models import GenericOutput
+        from autocode.core.models import GenericOutput
         handler = _create_handler("test_add", sample_function_info)
         
         # Mock click.echo to capture output
@@ -134,7 +134,7 @@ class TestCreateHandler:
     
     def test_create_handler_execution_with_defaults(self, sample_function_info):
         """Test handler execution using default parameter values."""
-        from autocode.interfaces.models import GenericOutput
+        from autocode.core.models import GenericOutput
         handler = _create_handler("test_add", sample_function_info)
         
         with patch('click.echo') as mock_echo:
@@ -218,7 +218,7 @@ class TestRegisterCommands:
             
         finally:
             # Restore - need internal access for test cleanup
-            from autocode.interfaces.registry import _registry
+            from autocode.core.registry import _registry
             app.commands = original_commands
             _registry.extend(original_functions)
 
@@ -439,7 +439,7 @@ class TestCLIErrorScenarios:
         )
         
         # Temporarily add to registry - need internal access for test setup
-        from autocode.interfaces.registry import _registry
+        from autocode.core.registry import _registry
         original_functions = get_all_functions()
         _registry.append(error_func_info)
         
