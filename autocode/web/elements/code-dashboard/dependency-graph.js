@@ -51,101 +51,22 @@ import { LitElement, html } from 'https://cdn.jsdelivr.net/gh/lit/dist@3/core/li
 import * as d3 from 'https://cdn.jsdelivr.net/npm/d3@7/+esm';
 import { themeTokens } from './styles/theme.js';
 import { dependencyGraphStyles } from './styles/dependency-graph.styles.js';
-
-// ============================================================================
-// METRIC CONFIGURATIONS
-// ============================================================================
-
-/**
- * Color scale configuration per color metric.
- * Low instability = stable = good (like CC, inverted scale).
- */
-const METRIC_COLOR_CONFIGS = {
-    mi: {
-        domain: [0, 40, 70, 100],
-        range:  ['#dc2626', '#eab308', '#22c55e', '#059669'],
-        label:  'MI',
-        legend: [
-            { color: '#dc2626', text: 'MI bajo (0–40)' },
-            { color: '#eab308', text: 'MI medio (40–70)' },
-            { color: '#22c55e', text: 'MI bueno (70–100)' },
-        ],
-    },
-    avg_complexity: {
-        domain: [0, 5, 15, 25],
-        range:  ['#059669', '#22c55e', '#eab308', '#dc2626'],
-        label:  'CC media',
-        legend: [
-            { color: '#059669', text: 'CC baja (0–5)' },
-            { color: '#eab308', text: 'CC media (5–15)' },
-            { color: '#dc2626', text: 'CC alta (>15)' },
-        ],
-    },
-    max_complexity: {
-        domain: [0, 10, 25, 50],
-        range:  ['#059669', '#22c55e', '#eab308', '#dc2626'],
-        label:  'CC máx',
-        legend: [
-            { color: '#059669', text: 'CC máx baja (0–10)' },
-            { color: '#eab308', text: 'CC máx media (10–25)' },
-            { color: '#dc2626', text: 'CC máx alta (>25)' },
-        ],
-    },
-    sloc: {
-        domain: [0, 100, 500, 2000],
-        range:  ['#dbeafe', '#93c5fd', '#3b82f6', '#1d4ed8'],
-        label:  'SLOC',
-        legend: [
-            { color: '#dbeafe', text: 'Pequeño (<100)' },
-            { color: '#3b82f6', text: 'Mediano (100–500)' },
-            { color: '#1d4ed8', text: 'Grande (>500)' },
-        ],
-    },
-    instability: {
-        domain: [0, 0.3, 0.7, 1],
-        range:  ['#059669', '#22c55e', '#eab308', '#dc2626'],
-        label:  'Inestab.',
-        legend: [
-            { color: '#059669', text: 'Estable (0–0.3)' },
-            { color: '#eab308', text: 'Parcial (0.3–0.7)' },
-            { color: '#dc2626', text: 'Inestable (0.7–1)' },
-        ],
-    },
-};
-
-/** Métricas disponibles para el tamaño de los nodos. */
-const SIZE_METRICS = [
-    { value: 'sloc',            label: 'SLOC' },
-    { value: 'loc',             label: 'LOC' },
-    { value: 'functions_count', label: 'Funciones' },
-    { value: 'avg_complexity',  label: 'CC media' },
-    { value: 'max_complexity',  label: 'CC máx' },
-    { value: 'fan_in_out',      label: 'Fan-in+out' },
-];
-
-/** Métricas disponibles para el color de los nodos. */
-const COLOR_METRICS = [
-    { value: 'mi',              label: 'MI' },
-    { value: 'avg_complexity',  label: 'CC media' },
-    { value: 'max_complexity',  label: 'CC máx' },
-    { value: 'sloc',            label: 'SLOC' },
-    { value: 'instability',     label: 'Inestabilidad' },
-];
-
-/** Presets de exclusión rápida por path pattern. */
-const EXCLUDE_PRESETS = [
-    { label: '🧪 Tests',    pattern: 'test' },
-    { label: '📦 Init',     pattern: '__init__' },
-    { label: '⚙️ Config',   pattern: 'conftest' },
-];
-
-// Radius scale bounds
-const MIN_RADIUS = 8;
-const MAX_RADIUS = 35;
-
-// Link width scale bounds
-const MIN_LINK_WIDTH = 1;
-const MAX_LINK_WIDTH = 4;
+import {
+    METRIC_COLOR_CONFIGS,
+    SIZE_METRICS,
+    COLOR_METRICS,
+    EXCLUDE_PRESETS,
+    MIN_RADIUS,
+    MAX_RADIUS,
+    MIN_LINK_WIDTH,
+    MAX_LINK_WIDTH,
+} from './graph-config.js';
+import {
+    buildFileGraph,
+    buildPackageGraph,
+    buildPackHierarchy,
+    applyFilters,
+} from './graph-algorithms.js';
 
 export class DependencyGraph extends LitElement {
     static properties = {
@@ -684,368 +605,8 @@ export class DependencyGraph extends LitElement {
     _buildGraphData() {
         const maxDepth = this._getMaxDepth();
         return this._depth >= maxDepth
-            ? this._buildFileGraph()
-            : this._buildPackageGraph(Math.max(1, this._depth));
-    }
-
-    /**
-     * File-level graph: each file node is a graph node, each dependency is a link.
-     * Also computes fan_in, fan_out, instability, fan_in_out per node.
-     * Circular detection via Tarjan SCC (client-side).
-     */
-    _buildFileGraph() {
-        const nodeIds = new Set(this.nodes.map(n => n.id));
-
-        const graphNodes = this.nodes.map(n => ({
-            id:              n.id,
-            name:            n.name,
-            path:            n.path,
-            sloc:            n.sloc            || 0,
-            loc:             n.loc             || 0,
-            mi:              n.mi              ?? 100,
-            avg_complexity:  n.avg_complexity  ?? 0,
-            max_complexity:  n.max_complexity  ?? 0,
-            functions_count: n.functions_count || 0,
-            classes_count:   n.classes_count   || 0,
-            // coupling metrics (filled below)
-            fan_in:      0,
-            fan_out:     0,
-            instability: 0,
-            fan_in_out:  0,
-        }));
-
-        const graphLinks = (this.dependencies || [])
-            .filter(d => nodeIds.has(d.source) && nodeIds.has(d.target))
-            .map(d => ({
-                source:      d.source,
-                target:      d.target,
-                importCount: d.import_names?.length || 1,
-                importNames: d.import_names || [],
-                isCircular:  false, // filled by _markCircularLinks
-            }));
-
-        // Compute coupling metrics
-        this._computeCouplingMetrics(graphNodes, graphLinks);
-
-        // Mark circular links via Tarjan SCC
-        this._markCircularLinks(graphNodes, graphLinks);
-
-        return { graphNodes, graphLinks };
-    }
-
-    /**
-     * Package-level graph: group file nodes by the first `depth` path segments,
-     * aggregate metrics and dependencies between resulting package nodes.
-     * Also computes fan_in, fan_out, instability, fan_in_out per package node.
-     *
-     * Example at depth=2: "autocode/core/ai/pipelines.py" → group "autocode/core"
-     *
-     * @param {number} depth — number of path segments used as group key (≥1)
-     */
-    _buildPackageGraph(depth) {
-        const packages = new Map();
-
-        for (const node of this.nodes) {
-            // Only aggregate file nodes — directories/classes/methods are not grouped
-            if (node.type !== 'file') continue;
-            const parts = (node.path || '').split('/');
-            const pkgId = parts.slice(0, depth).join('/') || '.';
-            if (!packages.has(pkgId)) {
-                packages.set(pkgId, {
-                    id:              pkgId,
-                    name:            pkgId === '.' ? 'root' : pkgId.split('/').pop(),
-                    path:            pkgId,
-                    files:           [],
-                    sloc:            0,
-                    loc:             0,
-                    mi_sum:          0,
-                    mi_weight:       0,
-                    cc_sum:          0,
-                    cc_max:          0,
-                    functions_count: 0,
-                    classes_count:   0,
-                });
-            }
-            const pkg = packages.get(pkgId);
-            pkg.files.push(node.id);
-            pkg.sloc += node.sloc || 0;
-            pkg.loc  += node.loc  || 0;
-            const weight   = node.sloc || 1;
-            pkg.mi_sum    += (node.mi ?? 100) * weight;
-            pkg.mi_weight += weight;
-            pkg.cc_sum    += (node.avg_complexity ?? 0) * weight;
-            pkg.cc_max     = Math.max(pkg.cc_max, node.max_complexity ?? 0);
-            pkg.functions_count += node.functions_count || 0;
-            pkg.classes_count   += node.classes_count   || 0;
-        }
-
-        const graphNodes    = [];
-        const fileToPackage = new Map();
-
-        for (const [pkgId, pkg] of packages) {
-            for (const fileId of pkg.files) {
-                fileToPackage.set(fileId, pkgId);
-            }
-            graphNodes.push({
-                id:              pkgId,
-                name:            pkg.name,
-                path:            pkg.path,
-                sloc:            pkg.sloc,
-                loc:             pkg.loc,
-                mi:              pkg.mi_weight > 0 ? pkg.mi_sum / pkg.mi_weight : 100,
-                avg_complexity:  pkg.mi_weight > 0 ? pkg.cc_sum / pkg.mi_weight : 0,
-                max_complexity:  pkg.cc_max,
-                functions_count: pkg.functions_count,
-                classes_count:   pkg.classes_count,
-                fan_in:      0,
-                fan_out:     0,
-                instability: 0,
-                fan_in_out:  0,
-            });
-        }
-
-        // Aggregate dependencies between packages
-        const edgeMap = new Map();
-        for (const dep of (this.dependencies || [])) {
-            const srcPkg = fileToPackage.get(dep.source);
-            const tgtPkg = fileToPackage.get(dep.target);
-            if (!srcPkg || !tgtPkg || srcPkg === tgtPkg) continue;
-
-            const key = `${srcPkg}→${tgtPkg}`;
-            if (!edgeMap.has(key)) {
-                edgeMap.set(key, {
-                    source:      srcPkg,
-                    target:      tgtPkg,
-                    importCount: 0,
-                    importNames: [],
-                    isCircular:  false,
-                });
-            }
-            const edge = edgeMap.get(key);
-            edge.importCount += dep.import_names?.length || 1;
-            if (dep.import_names) edge.importNames.push(...dep.import_names);
-        }
-
-        const graphLinks = Array.from(edgeMap.values());
-
-        // Compute coupling metrics
-        this._computeCouplingMetrics(graphNodes, graphLinks);
-
-        // Mark circular links via Tarjan SCC
-        this._markCircularLinks(graphNodes, graphLinks);
-
-        return { graphNodes, graphLinks };
-    }
-
-    /**
-     * Computes fan_in, fan_out, instability, fan_in_out for each node in-place.
-     * @param {Array} graphNodes
-     * @param {Array} graphLinks  (source/target are IDs here, before D3 resolves them)
-     */
-    _computeCouplingMetrics(graphNodes, graphLinks) {
-        const fanIn  = new Map(graphNodes.map(n => [n.id, 0]));
-        const fanOut = new Map(graphNodes.map(n => [n.id, 0]));
-
-        for (const link of graphLinks) {
-            const srcId = typeof link.source === 'object' ? link.source.id : link.source;
-            const tgtId = typeof link.target === 'object' ? link.target.id : link.target;
-            fanOut.set(srcId, (fanOut.get(srcId) || 0) + 1);
-            fanIn.set(tgtId,  (fanIn.get(tgtId)  || 0) + 1);
-        }
-
-        for (const node of graphNodes) {
-            node.fan_in    = fanIn.get(node.id)  || 0;
-            node.fan_out   = fanOut.get(node.id) || 0;
-            const total    = node.fan_in + node.fan_out;
-            node.instability = total > 0 ? node.fan_out / total : 0;
-            node.fan_in_out  = total;
-        }
-    }
-
-    /**
-     * Tarjan's Strongly Connected Components algorithm.
-     * Marks links as isCircular=true if both endpoints belong to an SCC with >1 node.
-     * This detects direct (A↔B) and transitive (A→B→C→A) cycles.
-     *
-     * @param {Array} graphNodes
-     * @param {Array} graphLinks  (source/target are IDs, pre-D3)
-     */
-    _markCircularLinks(graphNodes, graphLinks) {
-        // Build adjacency list (node id → list of neighbor ids)
-        const adj = new Map();
-        for (const n of graphNodes) adj.set(n.id, []);
-
-        for (const l of graphLinks) {
-            const src = typeof l.source === 'object' ? l.source.id : l.source;
-            const tgt = typeof l.target === 'object' ? l.target.id : l.target;
-            if (adj.has(src)) adj.get(src).push(tgt);
-        }
-
-        // Tarjan's SCC (iterative to avoid call stack overflow on large graphs)
-        let idx = 0;
-        const stack      = [];
-        const onStack    = new Set();
-        const indices    = new Map();
-        const lowlinks   = new Map();
-        const cycleNodes = new Set(); // nodes that belong to a cycle (SCC size > 1)
-
-        const strongConnect = (startV) => {
-            const callStack = [{ v: startV, neighborIdx: 0 }];
-            indices.set(startV, idx);
-            lowlinks.set(startV, idx);
-            idx++;
-            stack.push(startV);
-            onStack.add(startV);
-
-            while (callStack.length > 0) {
-                const frame = callStack[callStack.length - 1];
-                const { v } = frame;
-                const neighbors = adj.get(v) || [];
-
-                if (frame.neighborIdx < neighbors.length) {
-                    const w = neighbors[frame.neighborIdx++];
-                    if (!indices.has(w)) {
-                        indices.set(w, idx);
-                        lowlinks.set(w, idx);
-                        idx++;
-                        stack.push(w);
-                        onStack.add(w);
-                        callStack.push({ v: w, neighborIdx: 0 });
-                    } else if (onStack.has(w)) {
-                        lowlinks.set(v, Math.min(lowlinks.get(v), indices.get(w)));
-                    }
-                } else {
-                    // Finished processing v's neighbors
-                    callStack.pop();
-                    if (callStack.length > 0) {
-                        const parent = callStack[callStack.length - 1].v;
-                        lowlinks.set(parent, Math.min(lowlinks.get(parent), lowlinks.get(v)));
-                    }
-
-                    // Check if v is root of an SCC
-                    if (lowlinks.get(v) === indices.get(v)) {
-                        const scc = [];
-                        let w;
-                        do {
-                            w = stack.pop();
-                            onStack.delete(w);
-                            scc.push(w);
-                        } while (w !== v);
-
-                        if (scc.length > 1) {
-                            for (const nodeId of scc) cycleNodes.add(nodeId);
-                        }
-                    }
-                }
-            }
-        };
-
-        for (const n of graphNodes) {
-            if (!indices.has(n.id)) strongConnect(n.id);
-        }
-
-        // Mark links where both endpoints are in a cycle
-        for (const l of graphLinks) {
-            const src = typeof l.source === 'object' ? l.source.id : l.source;
-            const tgt = typeof l.target === 'object' ? l.target.id : l.target;
-            l.isCircular = cycleNodes.has(src) && cycleNodes.has(tgt);
-        }
-    }
-
-    /**
-     * Apply all active filters to the graph data.
-     * @param {{ graphNodes: Array, graphLinks: Array }}
-     * @returns {{ graphNodes: Array, graphLinks: Array }}
-     */
-    _applyFilters({ graphNodes, graphLinks }) {
-        let visibleNodes = [...graphNodes];
-
-        // Text filter (name or path)
-        if (this._filterText) {
-            const q = this._filterText.toLowerCase();
-            visibleNodes = visibleNodes.filter(n =>
-                n.name.toLowerCase().includes(q) || n.path.toLowerCase().includes(q));
-        }
-
-        // Path exclusion patterns
-        if (this._excludePatterns.length > 0) {
-            visibleNodes = visibleNodes.filter(n => {
-                const pathLower = n.path.toLowerCase();
-                const nameLower = n.name.toLowerCase();
-                return !this._excludePatterns.some(p =>
-                    pathLower.includes(p) || nameLower.includes(p));
-            });
-        }
-
-        // Filter links: only those with both endpoints visible
-        const visibleIds   = new Set(visibleNodes.map(n => n.id));
-        const visibleLinks = graphLinks.filter(l => {
-            const srcId = typeof l.source === 'object' ? l.source.id : l.source;
-            const tgtId = typeof l.target === 'object' ? l.target.id : l.target;
-            return visibleIds.has(srcId) && visibleIds.has(tgtId);
-        });
-
-        return { graphNodes: visibleNodes, graphLinks: visibleLinks };
-    }
-
-    // ========================================================================
-    // PACK HIERARCHY BUILDER
-    // ========================================================================
-
-    /**
-     * Build a nested tree from flat file nodes for d3.hierarchy / d3.pack.
-     * Groups nodes by path segments to create package/directory nodes.
-     * File nodes with no path prefix are placed directly under root.
-     *
-     * @param {Array} filteredNodes — file nodes after filter application
-     * @returns {Object} Root node compatible with d3.hierarchy
-     */
-    _buildPackHierarchy(filteredNodes) {
-        const root = {
-            name:      'root',
-            id:        '__root__',
-            isPackage: true,
-            children:  [],
-        };
-        const nodeMap = new Map([['__root__', root]]);
-
-        for (const node of filteredNodes) {
-            const parts = (node.path || node.name || '').split('/').filter(Boolean);
-            let parentId = '__root__';
-
-            // Create intermediate directory/package nodes from path segments
-            for (let i = 0; i < parts.length - 1; i++) {
-                const pathId = parts.slice(0, i + 1).join('/');
-                if (!nodeMap.has(pathId)) {
-                    const dirNode = {
-                        name:      parts[i],
-                        id:        pathId,
-                        path:      pathId,
-                        isPackage: true,
-                        children:  [],
-                    };
-                    nodeMap.set(pathId, dirNode);
-                    nodeMap.get(parentId).children.push(dirNode);
-                }
-                parentId = pathId;
-            }
-
-            // Add leaf file node (copy to avoid mutating original)
-            const parent = nodeMap.get(parentId);
-            if (parent) {
-                parent.children.push({ ...node, isPackage: false, children: null });
-            }
-        }
-
-        // Prune empty package nodes (safety: shouldn't happen with valid data)
-        const prune = (n) => {
-            if (!n.children) return true; // leaf: keep
-            n.children = n.children.filter(prune);
-            return n.children.length > 0 || !n.isPackage;
-        };
-        prune(root);
-
-        return root;
+            ? buildFileGraph(this.nodes, this.dependencies)
+            : buildPackageGraph(this.nodes, this.dependencies, Math.max(1, this._depth));
     }
 
     // ========================================================================
@@ -1088,8 +649,11 @@ export class DependencyGraph extends LitElement {
         }
 
         // Always use file-level data for pack (full hierarchy)
-        const rawFileGraph = this._buildFileGraph();
-        const { graphNodes: filteredFiles, graphLinks: filteredLinks } = this._applyFilters(rawFileGraph);
+        const rawFileGraph = buildFileGraph(this.nodes, this.dependencies);
+        const { graphNodes: filteredFiles, graphLinks: filteredLinks } = applyFilters(
+            rawFileGraph.graphNodes, rawFileGraph.graphLinks,
+            this._filterText, this._excludePatterns
+        );
 
         // Rebuild color scale
         this._buildColorScale();
@@ -1109,7 +673,7 @@ export class DependencyGraph extends LitElement {
         }
 
         // ── Build d3 hierarchy ────────────────────────────────────────────
-        const treeData = this._buildPackHierarchy(filteredFiles);
+        const treeData = buildPackHierarchy(filteredFiles);
 
         const hierRoot = d3.hierarchy(
             treeData,
@@ -1320,7 +884,10 @@ export class DependencyGraph extends LitElement {
         const raw = this._buildGraphData();
 
         // Apply filters
-        const { graphNodes, graphLinks } = this._applyFilters(raw);
+        const { graphNodes, graphLinks } = applyFilters(
+            raw.graphNodes, raw.graphLinks,
+            this._filterText, this._excludePatterns
+        );
         if (graphNodes.length === 0) {
             const svg = d3.select(svgEl);
             svg.selectAll('*').remove();
