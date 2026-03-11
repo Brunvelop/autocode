@@ -109,18 +109,18 @@ critical_mi = 3.0
 warning_mi = 20.0
 # Cyclomatic Complexity por función
 # Peor función actual: treemap._renderTooltip() = 90
-critical_function_cc = 95
+critical_function_cc = 91
 warning_function_cc = 15
 # Máximo de funciones con rank F (CC > 25) permitidas
-# Estado actual: 4 funciones (generate_with_dspy, stream_chat, 2x _renderTooltip)
-max_rank_f_functions = 4
+# Estado actual: 3 funciones (generate_with_dspy, stream_chat, _renderTooltip)
+max_rank_f_functions = 2
 # Nesting depth por función
 # Peor función actual: treemap-view._renderTooltip() = 18
-critical_nesting = 19
+critical_nesting = 18
 warning_nesting = 5
 # SLOC por archivo
 # Peor archivo actual: test_architecture.py = 1191 SLOC
-critical_file_sloc = 1300
+critical_file_sloc = 1200
 warning_file_sloc = 500
 # CC media por archivo
 critical_avg_complexity = 15.0
