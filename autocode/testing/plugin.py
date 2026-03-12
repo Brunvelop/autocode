@@ -60,26 +60,25 @@ def pytest_addoption(parser):
 
 
 def pytest_configure(config):
-    """Registra el marker 'health' y, si --autocode-health está activo, añade las gates."""
+    """Registra el marker 'health'. La inyección de gates.py se hace en pytest_sessionstart."""
     config.addinivalue_line(
         "markers",
         "health: Code health quality gate tests (run with --autocode-health or -m health)",
     )
 
-    # Cuando --autocode-health está activo, inyectamos la ruta de gates.py
-    # en los args de colección para que pytest la encuentre y llame a pytest_collect_file.
-    # Usamos try/except porque pytest_configure puede llamarse antes de parsear opciones
-    # (por ejemplo durante el discovery de plugins en etapa temprana).
-    try:
-        if config.getoption("autocode_health"):
-            gates_path = Path(__file__).parent / "gates.py"
-            if gates_path.exists():
-                gates_str = str(gates_path)
-                if gates_str not in (config.args or []):
-                    config.args = list(config.args or []) + [gates_str]
-    except (ValueError, AttributeError):
-        # Opción no registrada aún (llamada early) — se procesa en pytest_collection_start
-        pass
+
+def pytest_sessionstart(session):
+    """Inyecta gates.py en los args de colección cuando --autocode-health está activo.
+
+    Se hace aquí en lugar de pytest_configure porque en esta fase del lifecycle
+    getoption() está garantizado que funciona (las opciones ya están parseadas).
+    """
+    if session.config.getoption("autocode_health", default=False):
+        gates_path = Path(__file__).parent / "gates.py"
+        if gates_path.exists():
+            gates_str = str(gates_path)
+            if gates_str not in (session.config.args or []):
+                session.config.args.append(gates_str)
 
 
 # ==============================================================================
@@ -88,10 +87,10 @@ def pytest_configure(config):
 
 
 def pytest_collect_file(parent, file_path):
-    """Cuando --autocode-health está activo, colecta el módulo de built-in gates.
+    """Gatekeeper: solo colecta gates.py del paquete cuando --autocode-health está activo.
 
-    Este hook actúa como "gatekeeper": solo devuelve el módulo si el archivo
-    es exactamente gates.py del paquete. El resto de archivos se ignoran.
+    Devuelve None si gates.py ya está en config.args (inyectado por pytest_sessionstart),
+    porque pytest lo colectará normalmente vía su mecanismo estándar — evita duplicación.
     """
     if not parent.config.getoption("autocode_health", default=False):
         return None
@@ -101,6 +100,9 @@ def pytest_collect_file(parent, file_path):
         return None
 
     if file_path == gates_path:
+        # Si ya está en config.args, pytest lo colecta solo — no duplicar
+        if str(gates_path) in (parent.config.args or []):
+            return None
         return pytest.Module.from_parent(parent, path=file_path)
 
     return None

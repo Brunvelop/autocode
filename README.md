@@ -11,12 +11,19 @@ Write a Python function, decorate it with `@register_function`, and it's instant
 
 ## Quick Start
 
-```bash
-# Clone & install
-git clone https://github.com/Brunvelop/autocode.git
-cd autocode
-uv sync            # or: pip install -e .
+> Autocode uses [uv](https://docs.astral.sh/uv/) as its package manager. Install it with:
+> `curl -LsSf https://astral.sh/uv/install.sh | sh`
 
+### Install
+
+```bash
+# Add to your project
+uv add git+https://github.com/Brunvelop/autocode.git
+```
+
+### Run
+
+```bash
 # Start the unified server (API + MCP + Web Dashboard)
 uv run autocode serve
 
@@ -38,8 +45,18 @@ uv run autocode health-check
 # CLI — any registered function becomes a command
 uv run autocode generate --signature-type qa --inputs '{"question": "What is Python?"}'
 
-# pytest plugin — zero config
+# pytest plugin — zero config (requires pytest: uv add --dev pytest)
 uv run pytest --autocode-health
+```
+
+### For development
+
+```bash
+git clone https://github.com/Brunvelop/autocode.git
+cd autocode
+uv sync
+
+uv run autocode serve --reload
 ```
 
 ---
@@ -149,10 +166,17 @@ Type hints become validations. Docstrings become help text. No glue code.
 
 ## Pytest Plugin: Code Health Quality Gates
 
-Autocode includes a pytest plugin that runs **code health quality gates** against your project. It installs automatically and activates with a single flag:
+Autocode includes a pytest plugin that runs **code health quality gates** against **your project**. Once autocode is installed, the plugin auto-registers — no configuration needed. Just add pytest and run:
 
 ```bash
-pytest --autocode-health
+# 1. Add autocode (if not already installed)
+uv add git+https://github.com/Brunvelop/autocode.git
+
+# 2. Add pytest as a dev dependency
+uv add --dev pytest
+
+# 3. Run health gates against your project's code
+uv run pytest --autocode-health
 ```
 
 Output:
@@ -343,8 +367,8 @@ uv run autocode serve --reload
 ## Requirements
 
 - **Python 3.12+**
-- **[uv](https://github.com/astral-sh/uv)** (recommended) or pip
-- **OPENROUTER_API_KEY** environment variable (for AI features)
+- **[uv](https://docs.astral.sh/uv/)** — `curl -LsSf https://astral.sh/uv/install.sh | sh`
+- **OPENROUTER_API_KEY** environment variable (for AI features only)
 
 ### Key dependencies
 
