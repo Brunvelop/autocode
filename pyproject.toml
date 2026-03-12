@@ -1,6 +1,6 @@
 [project]
 name = "autocode"
-version = "0.3.0"
+version = "0.1.0"
 description = "Automated code quality and development tools with AI integration"
 readme = "README.md"
 license = {text = "MIT"}

@@ -2,6 +2,7 @@
 import logging
 import os
 import re
+from importlib.metadata import version as pkg_version
 from typing import Any, Callable, Dict, Type
 
 from fastapi import Depends, FastAPI, HTTPException
@@ -35,7 +36,7 @@ def create_api_app() -> FastAPI:
     app = FastAPI(
         title="Autocode API",
         description="Minimalistic framework for autocode",
-        version="1.0.0"
+        version=pkg_version("autocode")
     )
 
     _load_and_validate_functions()

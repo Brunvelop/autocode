@@ -1,387 +1,366 @@
-# Autocode - Automated Development Tools
+# Autocode
 
-Automated code quality and development tools with AI integration, featuring continuous monitoring and web interface.
+Minimalistic, registry-driven framework for code quality and AI-assisted development.
+
+Write a Python function, decorate it with `@register_function`, and it's instantly available as a **REST endpoint**, a **CLI command**, an **MCP tool** for AI assistants, and a **web component** — with zero boilerplate.
 
 [![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Code Quality](https://img.shields.io/badge/code%20quality-autocode-brightgreen.svg)](https://github.com/brunvelop/autocode)
-
-## 🚀 Features
-
-### CLI Tools
-- **📋 Documentation Check**: Verify documentation is up-to-date with code changes
-- **🔍 Git Analysis**: Analyze git changes for commit message generation  
-- **🧪 Test Checker**: Validate test coverage and identify missing tests
-- **🤖 OpenCode Integration**: AI-powered code analysis and generation
-- **📊 Token Counter**: Count LLM tokens for cost estimation
-
-### Continuous Monitoring
-- **⚡ Real-time Dashboard**: Clean web interface to view check results
-- **🔄 Automatic Checks**: Periodic execution of quality checks
-- **📈 Live Updates**: Dashboard auto-refreshes every 5 seconds
-- **🎛️ Manual Controls**: Run checks on-demand via web interface
-- **⚙️ Configurable**: Adjust intervals and enable/disable checks
-
-## 📦 Installation
-
-### Prerequisites
-Autocode uses [uv](https://github.com/astral-sh/uv) for dependency management. Install it first:
-
-```bash
-# Linux/macOS
-curl -LsSf https://astral.sh/uv/install.sh | sh
-
-# Windows
-powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
-
-# Alternative: Install via pip
-pip install uv
-```
-
-### 🔧 Development Installation
-For development and contribution:
-
-```bash
-# 1. Clone the repository
-git clone https://github.com/brunvelop/autocode.git
-cd autocode
-
-# 2. Install dependencies and setup environment
-uv sync
-
-# 3. Verify installation
-uv run autocode --help
-
-# 4. Run tests (optional)
-uv run pytest tests/
-
-# 5. Start development server
-uv run autocode daemon
-```
-
-### 🚀 Production Installation
-For using Autocode in your projects:
-
-```bash
-# Clone and install
-git clone https://github.com/brunvelop/autocode.git
-cd autocode
-uv sync
-
-# Or with pip (alternative)
-pip install -e .
-```
-
-### 📋 Installation Verification
-After installation, verify everything works:
-
-```bash
-# Check CLI access
-uv run autocode --help
-
-# Test basic functionality
-uv run autocode check-docs
-uv run autocode git-changes
-
-# Start web dashboard
-uv run autocode daemon
-# Then open: http://127.0.0.1:8080
-```
-
-### 🔮 Future PyPI Installation
-Once published, it will be available as:
-```bash
-uv add autocode
-# or: pip install autocode
-```
-
-## 🏃 Quick Start
-
-### CLI Usage
-```bash
-# Check documentation status
-uv run autocode check-docs
-
-# Analyze git changes
-uv run autocode git-changes --verbose
-
-# Check test coverage
-uv run autocode check-tests
-
-# Count tokens in files
-uv run autocode count-tokens --directory src --model gpt-4
-
-# AI-powered code analysis with OpenCode
-uv run autocode opencode --prompt "Analyze code quality and suggest improvements"
-```
-
-### Web Dashboard
-```bash
-# Start monitoring daemon
-uv run autocode daemon
-
-# Open browser to http://127.0.0.1:8080
-# View real-time status and run checks manually
-```
-
-## 🛠️ Configuration
-
-Create `autocode_config.yml` in your project root:
-
-```yaml
-# Daemon configuration
-daemon:
-  doc_check:
-    enabled: true
-    interval_minutes: 1
-  git_check:
-    enabled: true
-    interval_minutes: 1
-  test_check:
-    enabled: true
-    interval_minutes: 5
-  auto_update:
-    enabled: false
-    trigger_on_docs: true
-    trigger_on_git: true
-    interval_minutes: 15
-
-# API server settings
-api:
-  port: 8080
-  host: "127.0.0.1"
-
-# Documentation settings
-docs:
-  enabled: true
-  directories:
-    - "autocode/"
-    - "examples/"
-    - "docs/"
-  file_extensions:
-    - ".py"
-    - ".js"
-    - ".html"
-    - ".css"
-    - ".md"
-  exclude:
-    - "__pycache__/"
-    - "*.pyc"
-    - "__init__.py"
-
-# Test settings  
-tests:
-  enabled: true
-  directories:
-    - "tests/"
-  exclude:
-    - "__pycache__/"
-    - "*.pyc"
-    - "__init__.py"
-  test_frameworks:
-    - "pytest"
-  auto_execute: true
-  
-# Doc index generation
-doc_index:
-  enabled: true
-  auto_generate: true
-  output_path: ".clinerules/docs_index.json"
-  update_on_docs_change: true
-
-# OpenCode integration
-opencode:
-  enabled: true
-  model: "claude-4-sonnet"
-  max_tokens: 64000
-  config_path: ".opencode.json"
-  timeout: 300
-  quiet_mode: true
-  json_output: true
-```
-
-## 📚 Documentation
-
-- **[CLI Interface](docs/autocode/cli.md)**: Interfaz unificada de comandos
-- **[Módulo Core](docs/autocode/core/_module.md)**: Herramientas fundamentales de análisis
-- **[Módulo API](docs/autocode/api/_module.md)**: Interfaz web y REST API  
-- **[Módulo Orchestration](docs/autocode/orchestration/_module.md)**: Automatización y programación
-- **[Módulo Web](docs/autocode/web/_module.md)**: Dashboard web interactivo
-- **[Examples](examples/)**: Ejemplos de uso y plantillas
-
-## 🔧 Architecture
-
-```
-autocode/
-├── cli.py              # CLI interface
-├── core/               # Core functionality
-│   ├── doc_checker.py     # Documentation verification
-│   ├── test_checker.py    # Test validation
-│   ├── git_analyzer.py    # Git change analysis
-│   ├── opencode_executor.py # OpenCode integration
-│   └── token_counter.py   # Token counting
-├── api/                # Web API
-│   ├── server.py          # FastAPI application
-│   └── models.py          # Pydantic models
-├── orchestration/      # Automation
-│   ├── daemon.py          # Monitoring daemon
-│   └── scheduler.py       # Task scheduler
-└── web/               # Web interface
-    ├── templates/         # HTML templates
-    └── static/           # CSS/JS assets
-```
-
-## 🌐 Web Interface
-
-The web dashboard provides:
-
-- **📊 System Status**: Daemon uptime, total checks, last check time
-- **✅ Active Checks**: Real-time status of all enabled checks
-- **⚙️ Configuration**: Live adjustment of check intervals
-- **🎮 Manual Controls**: Run any check immediately
-- **📈 Results**: Detailed output from each check
-
-### Keyboard Shortcuts
-- **Space**: Manual refresh
-- **R**: Toggle auto-refresh on/off
-
-## 🤖 AI Integration
-
-### OpenCode Support
-Autocode integrates with [OpenCode](https://github.com/opencode-ai/opencode) for AI-powered analysis:
-
-```bash
-# Setup OpenCode configuration
-uv run autocode opencode --validate
-
-# List available prompts
-uv run autocode opencode --list-prompts
-
-# Run AI analysis
-uv run autocode opencode --prompt "Review code for security vulnerabilities"
-
-# Use predefined prompts
-uv run autocode opencode --prompt-file code-review
-```
-
-## 🧪 Development
-
-### Running Tests
-```bash
-uv run pytest tests/
-```
-
-### Starting Development Server
-```bash
-uv run autocode daemon --verbose
-```
-
-### Adding New Checks
-1. Create checker in `autocode/core/`
-2. Add to daemon's task setup
-3. Update web interface
-4. Add tests
-
-## 📊 API Reference
-
-- `GET /` - Web dashboard
-- `GET /api/status` - System status
-- `GET /api/checks` - All check results
-- `POST /api/checks/{check_name}/run` - Run specific check
-- `GET /api/config` - Current configuration
-- `PUT /api/config` - Update configuration
-- `GET /health` - Health check
-
-## 🔧 Troubleshooting
-
-### Common Issues
-
-#### `ModuleNotFoundError: No module named 'autocode'`
-**Solution**: Ensure you're in the correct directory and the package is installed:
-```bash
-# Make sure you're in the autocode directory
-cd autocode
-
-# Reinstall the package
-uv sync
-# or
-pip install -e .
-
-# Verify installation
-uv run autocode --help
-```
-
-#### `Port 8080 already in use`
-**Solution**: Change the port in `autocode_config.yml`:
-```yaml
-api:
-  port: 8081  # or any other available port
-  host: "127.0.0.1"
-```
-
-#### `uv` command not found
-**Solution**: Install uv first:
-```bash
-# Windows
-powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
-
-# Linux/macOS
-curl -LsSf https://astral.sh/uv/install.sh | sh
-
-# Alternative
-pip install uv
-```
-
-#### Permission denied errors
-**Solution**: On Windows, run PowerShell as administrator. On Linux/macOS:
-```bash
-chmod +x ~/.local/bin/uv
-```
-
-#### Dashboard not loading
-**Solution**: 
-1. Ensure daemon is running: `uv run autocode daemon`
-2. Check if port is accessible: `http://127.0.0.1:8080`
-3. Check firewall settings
-4. Try different browser or incognito mode
-
-#### Token count warnings
-**Solution**: This is normal for large projects. Adjust token threshold in config:
-```yaml
-opencode:
-  max_tokens: 100000  # increase limit
-```
-
-### Getting Help
-
-If you encounter issues not covered here:
-
-1. **Check the logs**: Run daemon with `--verbose` flag
-2. **Search issues**: Check [GitHub Issues](https://github.com/brunvelop/autocode/issues)
-3. **Create an issue**: Include error logs and system information
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit changes (`git commit -m 'Add amazing feature'`)
-4. Push to branch (`git push origin feature/amazing-feature`)
-5. Open Pull Request
-
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🙏 Acknowledgments
-
-- Built with [FastAPI](https://fastapi.tiangolo.com/) for the web interface
-- Integrates with [OpenCode](https://github.com/opencode-ai/opencode) for AI analysis
-- Uses [tiktoken](https://github.com/openai/tiktoken) for token counting
 
 ---
 
-**Made with ❤️ for developers who value code quality**
+## Quick Start
 
 ```bash
-uv lock --upgrade-package autocode && uv sync
+# Clone & install
+git clone https://github.com/Brunvelop/autocode.git
+cd autocode
+uv sync            # or: pip install -e .
+
+# Start the unified server (API + MCP + Web Dashboard)
+uv run autocode serve
+
+# Open in browser
+#   Dashboard:      http://localhost:8000
+#   API Docs:       http://localhost:8000/docs      (auto-generated OpenAPI/Swagger)
+#   Functions UI:   http://localhost:8000/functions
 ```
+
+### Other ways to interact
+
+```bash
+# CLI — list all registered functions
+uv run autocode list
+
+# CLI — run code health quality gates
+uv run autocode health-check
+
+# CLI — any registered function becomes a command
+uv run autocode generate --signature-type qa --inputs '{"question": "What is Python?"}'
+
+# pytest plugin — zero config
+uv run pytest --autocode-health
+```
+
+---
+
+## How It Works
+
+Autocode uses a **Registry-Driven Architecture**. The registry is the single source of truth:
+
+```python
+from autocode.core.registry import register_function
+from autocode.core.models import GenericOutput
+
+@register_function(http_methods=["GET", "POST"])
+def my_function(x: int, y: str = "default") -> GenericOutput:
+    """Does something useful.
+
+    Args:
+        x: First parameter
+        y: Second parameter
+    """
+    return GenericOutput(success=True, result=x, message=y)
+```
+
+That single decorator gives you:
+
+| Interface | What you get | Zero config? |
+|-----------|-------------|:---:|
+| **REST API** | `GET /my_function?x=5` and `POST /my_function` with JSON body | ✅ |
+| **CLI** | `autocode my-function --x 5 --y hello` | ✅ |
+| **MCP** | AI assistants discover and call it as a tool | ✅ |
+| **Web UI** | `<auto-my-function>` web component auto-generated | ✅ |
+| **OpenAPI** | Full schema at `/docs` with params, types, descriptions | ✅ |
+
+Type hints become validations. Docstrings become help text. No glue code.
+
+---
+
+## Features
+
+### 🤖 AI / Chat
+
+| Function | Description | Interfaces |
+|----------|-------------|------------|
+| `generate` | Generic generator with signature selection (code, design, QA) | API, CLI |
+| `chat` | Conversational AI with context and history | API, CLI |
+| `chat_stream` | Streaming chat via SSE | API |
+| `calculate_context_usage` | Token usage calculation for context window | API, CLI |
+| `get_chat_config` | Current chat configuration | API |
+
+### 📊 Code Analysis
+
+| Function | Description | Interfaces |
+|----------|-------------|------------|
+| `get_code_structure` | Full code structure tree | API |
+| `get_code_summary` | Compact code summary | API, MCP |
+| `generate_code_metrics` | Generate metrics snapshot (CC, MI, SLOC) | API, MCP |
+| `get_metrics_snapshots` | List saved metrics snapshots | API, MCP |
+| `get_commit_metrics` | Metrics for a specific commit | API, MCP |
+| `get_metrics_history` | Metrics over time | API, MCP |
+| `get_architecture_snapshot` | Dependency graph and architecture | API |
+
+### 🔀 Git / VCS
+
+| Function | Description | Interfaces |
+|----------|-------------|------------|
+| `get_git_tree` | Full repository file tree | API |
+| `get_git_status` | Detailed working directory status | API |
+| `get_git_status_summary` | Compact status summary | API, MCP |
+| `get_git_log` | Commit history | API |
+| `get_git_log_summary` | Compact commit log | API, MCP |
+| `get_commit_detail` | Full diff and metadata for a commit | API, MCP |
+
+### 📋 Planning
+
+| Function | Description | Interfaces |
+|----------|-------------|------------|
+| `create_commit_plan` | AI-assisted commit plan creation | API, MCP |
+| `list_commit_plans` | List plans by status | API, MCP |
+| `get_commit_plan` | Get plan details | API, MCP |
+| `update_commit_plan` | Modify plan | API, MCP |
+| `delete_commit_plan` | Delete plan | API, MCP |
+| `approve_plan` | Approve and execute plan | API, MCP |
+| `revert_plan` | Revert executed plan | API, MCP |
+| `get_plan_review_metrics` | Plan review metrics | API |
+
+### 📁 File Operations
+
+| Function | Description | Interfaces |
+|----------|-------------|------------|
+| `read_file_content` | Read file content | MCP |
+| `write_file_content` | Write file content | MCP |
+| `replace_in_file` | Search & replace in file | MCP |
+| `delete_file` | Delete file | MCP |
+
+### 🔄 Workflow / Sessions
+
+| Function | Description | Interfaces |
+|----------|-------------|------------|
+| `start_ai_session` | Start tracked AI session | API, CLI |
+| `save_conversation` | Save conversation to session | API, CLI |
+| `finalize_ai_session` | Finalize session with summary | API, CLI |
+| `abort_ai_session` | Abort session | API, CLI |
+| `get_current_session` | Get active session | API, CLI |
+| `list_ai_sessions` | List all sessions | API, CLI |
+
+---
+
+## Pytest Plugin: Code Health Quality Gates
+
+Autocode includes a pytest plugin that runs **code health quality gates** against your project. It installs automatically and activates with a single flag:
+
+```bash
+pytest --autocode-health
+```
+
+Output:
+```
+╔══════════════════════════════════════════════════════╗
+║            CODE HEALTH QUALITY GATES                 ║
+╠══════════════════════════════════════════════════════╣
+║  Files analyzed           42                         ║
+║  Avg MI                   67.3 ✅                    ║
+║  Avg CC                   2.43 ✅                    ║
+║  Rank F functions         0 ✅                       ║
+║  Circular deps            0 ✅                       ║
+╠══════════════════════════════════════════════════════╣
+║  ✅  ALL GATES PASSED                                ║
+╚══════════════════════════════════════════════════════╝
+```
+
+### What it checks
+
+| Level | Gate | What it measures |
+|-------|------|-----------------|
+| File | **Maintainability Index** | Composite index (0-100). Higher = more maintainable |
+| File | **SLOC** | Source lines of code per file |
+| File | **Avg CC** | Average cyclomatic complexity per file |
+| Function | **Cyclomatic Complexity** | Independent execution paths per function |
+| Function | **Nesting Depth** | Max nesting level (if/for/while/try) |
+| Project | **Rank F Budget** | Number of functions with CC > 25 |
+| Project | **Avg MI / Avg CC** | Project-wide trends |
+| Project | **Circular Dependencies** | Cycles in the package dependency graph |
+
+### Configuration
+
+Add to your `pyproject.toml`:
+
+```toml
+[tool.codehealth]
+critical_mi = 20.0
+warning_mi = 40.0
+critical_function_cc = 25
+warning_function_cc = 15
+critical_nesting = 8
+warning_nesting = 5
+critical_file_sloc = 1000
+warning_file_sloc = 500
+max_rank_f_functions = 0
+max_circular_deps = 0
+exclude = ["tests/*"]
+```
+
+`critical` = test **fails** (exit code 1). `warning` = visible warning in output.
+
+> 📖 Full documentation: [`autocode/testing/README.md`](autocode/testing/README.md)
+
+---
+
+## CLI Reference
+
+```bash
+autocode serve                    # Start unified server (API + MCP + Web) [recommended]
+autocode serve-api                # Start API-only server
+autocode serve-mcp                # Start API + MCP server
+autocode list                     # List all registered functions with parameters
+autocode health-check             # Run quality gates (standalone, no pytest needed)
+autocode health-check --format json   # Machine-readable output for CI
+autocode health-check --strict        # Ignore pyproject.toml, use strict defaults
+autocode <function-name> [--params]   # Execute any registered function
+```
+
+Options for `serve*`:
+```bash
+--host TEXT     Host to bind to (default: 0.0.0.0)
+--port INT      Port (default: 8000)
+--reload        Auto-reload on code changes
+```
+
+---
+
+## Web Dashboard
+
+The web UI is served automatically by `autocode serve` at the root URL. It includes:
+
+- **Dashboard** (`/`) — Overview with code metrics, git status, and chat
+- **Functions** (`/functions`) — Auto-generated UI for every registered function
+- **API Docs** (`/docs`) — Interactive OpenAPI/Swagger documentation
+- **Tests** (`/tests`) — Browser-based test runner for web components
+
+Web components are built with [Lit](https://lit.dev/) and auto-generated from the function registry. Custom components include:
+- `<autocode-chat>` — AI chat with streaming, context tracking, and session management
+- `<code-dashboard>` — Metrics visualization with treemap, charts, and dependency graph
+- `<git-dashboard>` — Git status, commit history, and commit plan management
+- `<code-explorer>` — Interactive code structure browser
+- `<screen-recorder>` — In-browser screen recording utility
+
+> 📖 Architecture details: [`autocode/web/elements/ARCHITECTURE.md`](autocode/web/elements/ARCHITECTURE.md)
+
+---
+
+## Architecture
+
+```
+autocode/
+├── core/                    # Business logic (the only place to add features)
+│   ├── registry.py             # Central function registry (source of truth)
+│   ├── models.py               # Shared models (GenericOutput, FunctionInfo, etc.)
+│   ├── ai/                     # AI chat & generation (DSPy-based)
+│   ├── code/                   # Code analysis, metrics, health checks
+│   ├── planning/               # Commit planning & file operations
+│   ├── vcs/                    # Git integration
+│   ├── workflow/               # AI session management
+│   └── utils/                  # File I/O, OpenRouter client
+├── interfaces/              # Auto-generated interfaces (stable, don't touch)
+│   ├── api.py                  # FastAPI — dynamic endpoints from registry
+│   ├── cli.py                  # Click — dynamic commands from registry
+│   └── mcp.py                  # MCP — dynamic tools from registry
+├── testing/                 # Pytest plugin for code health
+│   ├── plugin.py               # pytest11 entry point
+│   └── gates.py                # Quality gate test classes
+└── web/                     # Frontend
+    ├── views/                  # HTML pages
+    └── elements/               # Lit web components (auto-generated + custom)
+```
+
+**Key principle:** Add functions in `core/`, the interfaces adapt automatically. You never edit `api.py` to add an endpoint.
+
+> 📖 Interface architecture: [`autocode/interfaces/ARCHITECTURE.md`](autocode/interfaces/ARCHITECTURE.md)
+
+---
+
+## Extending Autocode
+
+### Add a new function
+
+1. Create your function in `autocode/core/`:
+
+```python
+from autocode.core.registry import register_function
+from autocode.core.models import GenericOutput
+
+@register_function(
+    http_methods=["GET", "POST"],       # REST methods
+    interfaces=["api", "cli", "mcp"],   # Where to expose
+)
+def my_new_feature(name: str, count: int = 5) -> GenericOutput:
+    """Short description shown in help and OpenAPI.
+
+    Args:
+        name: Who to greet
+        count: How many times
+    """
+    greeting = f"Hello {name}! " * count
+    return GenericOutput(success=True, result=greeting, message="Done")
+```
+
+2. That's it. Restart the server and you have:
+   - `GET /my_new_feature?name=World`
+   - `POST /my_new_feature` with `{"name": "World", "count": 3}`
+   - `autocode my-new-feature --name World --count 3`
+   - MCP tool `my_new_feature` discovered by AI assistants
+   - `<auto-my-new-feature>` web component
+
+### Add a new quality gate
+
+See [`autocode/testing/README.md`](autocode/testing/README.md#añadir-un-nuevo-quality-gate).
+
+---
+
+## Development
+
+```bash
+# Install dev dependencies
+uv sync
+
+# Run all tests
+uv run pytest
+
+# Run only health gates
+uv run pytest --autocode-health
+
+# Run unit tests only
+uv run pytest tests/unit/ -v
+
+# Start with auto-reload
+uv run autocode serve --reload
+```
+
+---
+
+## Requirements
+
+- **Python 3.12+**
+- **[uv](https://github.com/astral-sh/uv)** (recommended) or pip
+- **OPENROUTER_API_KEY** environment variable (for AI features)
+
+### Key dependencies
+
+| Package | Purpose |
+|---------|---------|
+| FastAPI + Uvicorn | REST API server |
+| Click | CLI framework |
+| fastapi-mcp | MCP protocol integration |
+| DSPy | AI pipeline framework |
+| LiteLLM | Multi-provider LLM routing |
+| GitPython | Git operations |
+| Lizard | Code complexity analysis |
+| Pydantic | Data validation and serialization |
+
+---
+
+## License
+
+MIT — see [LICENSE](LICENSE).

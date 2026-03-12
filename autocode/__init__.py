@@ -2,4 +2,9 @@
 Autocode - Minimalistic framework for code quality tools
 """
 
-__version__ = "0.3.0"
+from importlib.metadata import version, PackageNotFoundError
+
+try:
+    __version__ = version("autocode")
+except PackageNotFoundError:
+    __version__ = "0.0.0-dev"

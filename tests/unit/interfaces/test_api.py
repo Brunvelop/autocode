@@ -471,7 +471,7 @@ class TestCreateApiApp:
         # Verify app configuration
         assert app.title == "Autocode API"
         assert app.description == "Minimalistic framework for autocode"
-        assert app.version == "1.0.0"
+        assert app.version  # Dynamically read from pyproject.toml
         
         # Verify functions were loaded and endpoints registered
         mock_load.assert_called_once()
