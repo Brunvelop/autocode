@@ -60,52 +60,27 @@ def pytest_addoption(parser):
 
 
 def pytest_configure(config):
-    """Registra el marker 'health'. La inyección de gates.py se hace en pytest_sessionstart."""
+    """Registra el marker 'health' e inyecta gates.py en los args de colección.
+
+    La inyección de gates.py se hace AQUÍ (en pytest_configure) y no en
+    pytest_sessionstart, porque en configure los args todavía no han sido
+    consumidos por la fase de colección. Si se hiciera más tarde, pytest ya
+    habría decidido qué paths escanear y la modificación no tendría efecto.
+    """
     config.addinivalue_line(
         "markers",
         "health: Code health quality gate tests (run with --autocode-health or -m health)",
     )
 
-
-def pytest_sessionstart(session):
-    """Inyecta gates.py en los args de colección cuando --autocode-health está activo.
-
-    Se hace aquí en lugar de pytest_configure porque en esta fase del lifecycle
-    getoption() está garantizado que funciona (las opciones ya están parseadas).
-    """
-    if session.config.getoption("autocode_health", default=False):
+    # Inyectar gates.py antes de que pytest decida qué paths colectar.
+    # getoption con default=False es seguro aquí: si las opciones aún no están
+    # completamente parseadas simplemente devuelve False y no inyecta nada.
+    if config.getoption("autocode_health", default=False):
         gates_path = Path(__file__).parent / "gates.py"
         if gates_path.exists():
             gates_str = str(gates_path)
-            if gates_str not in (session.config.args or []):
-                session.config.args.append(gates_str)
-
-
-# ==============================================================================
-# FILE COLLECTION (para --autocode-health)
-# ==============================================================================
-
-
-def pytest_collect_file(parent, file_path):
-    """Gatekeeper: solo colecta gates.py del paquete cuando --autocode-health está activo.
-
-    Devuelve None si gates.py ya está en config.args (inyectado por pytest_sessionstart),
-    porque pytest lo colectará normalmente vía su mecanismo estándar — evita duplicación.
-    """
-    if not parent.config.getoption("autocode_health", default=False):
-        return None
-
-    gates_path = Path(__file__).parent / "gates.py"
-    if not gates_path.exists():
-        return None
-
-    if file_path == gates_path:
-        # Si ya está en config.args, pytest lo colecta solo — no duplicar
-        if str(gates_path) in (parent.config.args or []):
-            return None
-        return pytest.Module.from_parent(parent, path=file_path)
-
-    return None
+            if gates_str not in (config.args or []):
+                config.args.append(gates_str)
 
 
 # ==============================================================================
