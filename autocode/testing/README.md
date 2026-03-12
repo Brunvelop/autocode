@@ -208,6 +208,30 @@ autocode health-check --project-root /path/to  # especificar raíz del proyecto
 
 Exit code 0 = todos los gates pasan. Exit code 1 = hay violations críticas.
 
+### `pytest tests/test_health.py` (VS Code Test Explorer y control explícito)
+
+Si quieres que los health gates aparezcan en el **VS Code Test Explorer** o prefieres tener un archivo explícito en tu proyecto, crea `tests/test_health.py`:
+
+```python
+"""
+Autocode Code Health Quality Gates
+Re-exporta los tests de quality gates de autocode para que pytest los descubra
+dentro del proyecto (útil para VS Code Test Explorer y `pytest tests/`).
+
+Los fixtures (health_config, all_file_metrics, coupling_result) son
+proporcionados automáticamente por el plugin autocode (pytest11 entry-point).
+
+Ejecución:
+    uv run pytest tests/test_health.py -v          # solo health gates
+    uv run pytest --autocode-health                # equivalente (vía plugin)
+"""
+from autocode.testing.gates import TestFileHealth, TestFunctionHealth, TestProjectHealth
+
+__all__ = ["TestFileHealth", "TestFunctionHealth", "TestProjectHealth"]
+```
+
+Con este archivo, VS Code descubre los tests automáticamente porque viven en `tests/` (dentro del proyecto), no en `.venv/`. Si además usas `--autocode-health`, el plugin detecta que ya están presentes y **no los duplica**.
+
 ### `pytest -m health` (desarrollo de autocode)
 
 Cuando desarrollas en el propio repo de autocode, los tests de health están en `tests/health/test_code_health.py` que re-exporta las clases de `autocode/testing/gates.py`. No requiere el flag `--autocode-health`.

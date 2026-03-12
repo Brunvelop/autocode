@@ -60,27 +60,52 @@ def pytest_addoption(parser):
 
 
 def pytest_configure(config):
-    """Registra el marker 'health' e inyecta gates.py en los args de colección.
-
-    La inyección de gates.py se hace AQUÍ (en pytest_configure) y no en
-    pytest_sessionstart, porque en configure los args todavía no han sido
-    consumidos por la fase de colección. Si se hiciera más tarde, pytest ya
-    habría decidido qué paths escanear y la modificación no tendría efecto.
-    """
+    """Registra el marker 'health'."""
     config.addinivalue_line(
         "markers",
         "health: Code health quality gate tests (run with --autocode-health or -m health)",
     )
 
-    # Inyectar gates.py antes de que pytest decida qué paths colectar.
-    # getoption con default=False es seguro aquí: si las opciones aún no están
-    # completamente parseadas simplemente devuelve False y no inyecta nada.
-    if config.getoption("autocode_health", default=False):
-        gates_path = Path(__file__).parent / "gates.py"
-        if gates_path.exists():
-            gates_str = str(gates_path)
-            if gates_str not in (config.args or []):
-                config.args.append(gates_str)
+
+def _collect_items_recursive(collector) -> list:
+    """Recorre el árbol de collectors y extrae los test Items hoja."""
+    items = []
+    for thing in collector.collect():
+        if isinstance(thing, pytest.Item):
+            items.append(thing)
+        elif hasattr(thing, "collect"):
+            items.extend(_collect_items_recursive(thing))
+    return items
+
+
+def pytest_collection_modifyitems(session, config, items):
+    """Inyecta los tests de gates.py después de la colección normal.
+
+    Se usa este hook —en lugar de modificar config.args en pytest_configure—
+    porque pytest 9.x excluye los paths dentro de .venv/ vía norecursedirs
+    aunque estén añadidos explícitamente a config.args. Al construir el Module
+    directamente aquí, ese filtro no aplica y los items se añaden al resultado
+    final de colección independientemente de dónde viva el archivo instalado.
+
+    Si los tests ya están presentes (p.ej. el consumidor creó su propio
+    tests/test_health.py re-exportando las clases de gates.py), no se duplican.
+    """
+    if not config.getoption("autocode_health", default=False):
+        return
+
+    gates_path = Path(__file__).parent / "gates.py"
+    if not gates_path.exists():
+        return
+
+    gates_str = str(gates_path)
+
+    # Evitar duplicados: si ya hay items de gates.py (p.ej. via tests/test_health.py
+    # que re-exporta las clases), no añadir de nuevo.
+    if any(gates_str in str(getattr(item, "path", "")) for item in items):
+        return
+
+    module = pytest.Module.from_parent(session, path=gates_path)
+    items.extend(_collect_items_recursive(module))
 
 
 # ==============================================================================
