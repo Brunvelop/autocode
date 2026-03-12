@@ -33,10 +33,15 @@ def create_api_app() -> FastAPI:
     Entry point for creating the complete API with dynamic endpoints,
     standard endpoints (health, functions list), and web UI.
     """
+    try:
+        _version = pkg_version("autocode")
+    except Exception:
+        _version = "unknown"
+
     app = FastAPI(
         title="Autocode API",
         description="Minimalistic framework for autocode",
-        version=pkg_version("autocode")
+        version=_version
     )
 
     _load_and_validate_functions()

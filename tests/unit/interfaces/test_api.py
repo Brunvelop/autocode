@@ -7,6 +7,7 @@ request/response handling, and integration with the function registry.
 import pytest
 import asyncio
 import os
+import tempfile
 from typing import Dict, Any, List
 from unittest.mock import Mock, patch, MagicMock
 from fastapi import HTTPException
@@ -16,7 +17,7 @@ from pydantic import BaseModel
 from autocode.interfaces.api import (
     _format_response, _create_dynamic_model, _extract_params,
     _execute_function, create_handler, _register_dynamic_endpoints,
-    create_api_app
+    _register_static_files, create_api_app
 )
 
 # Aliases for backward compatibility with tests
@@ -958,91 +959,95 @@ class TestExecuteFunctionWithParamsExtended:
 
 class TestStaticFilesAndRootEndpoint:
     """Unit tests for static files mounting and root endpoint logic."""
-    
-    @patch('autocode.interfaces.api.load_functions')
-    @patch('os.path.exists')
-    @patch('os.path.join')
-    @patch('os.path.isdir')
-    def test_static_files_mounting_when_dir_exists(self, mock_isdir, mock_join, mock_exists, mock_load, populated_registry):
-        """Test static files are mounted when web directory exists."""
-        mock_exists.return_value = True
-        mock_isdir.return_value = True
-        mock_join.return_value = "/fake/path/to/web"
-        
-        app = create_api_app()
-        
-        # Verify os.path.join was called for web directory
-        mock_join.assert_called()
-        # Verify existence check was performed
-        mock_exists.assert_called_with("/fake/path/to/web")
-        
-        # Check that app has static mount (indirectly through routes)
-        # Note: This test verifies the mounting logic is called, not the actual mounting
-        routes = [route for route in app.routes if hasattr(route, 'path')]
-        # The exact verification depends on FastAPI's internal structure
-    
-    @patch('autocode.interfaces.api.load_functions')
-    @patch('os.path.exists')
-    def test_static_files_not_mounted_when_dir_missing(self, mock_exists, mock_load, populated_registry):
-        """Test static files are not mounted when web directory doesn't exist."""
-        mock_exists.return_value = False
-        
-        app = create_api_app()
-        
-        # Verify existence check was performed
-        mock_exists.assert_called()
-        
-        # App should still be created successfully
-        assert app.title == "Autocode API"
-    
-    @patch('autocode.interfaces.api.load_functions')
-    def test_root_endpoint_file_response(self, mock_load, populated_registry):
-        """Test root endpoint returns a response (verifying route exists)."""
-        app = create_api_app()
-        
-        # Verify the root route exists
-        root_route = None
-        for route in app.routes:
-            if hasattr(route, 'path') and route.path == "/":
-                root_route = route
-                break
-        
-        assert root_route is not None, "Root endpoint should exist"
-        
-        # Test with actual client - should either return file or error
-        client = TestClient(app)
-        response = client.get("/")
-        
-        # The response might be 200 (file found) or 404/500 (file not found in test)
-        # We just verify the endpoint is reachable
-        assert response.status_code in [200, 404, 500]
-    
+
+    def test_mounts_only_existing_subdirectories(self):
+        """When some web subdirectories exist, only those get mounted."""
+        with tempfile.TemporaryDirectory() as base_dir:
+            interfaces_dir = os.path.join(base_dir, "interfaces")
+            os.makedirs(interfaces_dir)
+            os.makedirs(os.path.join(base_dir, "web", "elements"))
+            os.makedirs(os.path.join(base_dir, "web", "tests"))
+            # "static" subdir intentionally missing
+
+            mock_app = Mock()
+            with patch('autocode.interfaces.api.os.path.dirname', return_value=interfaces_dir):
+                _register_static_files(mock_app)
+
+            assert mock_app.mount.call_count == 2
+            routes = [c[0][0] for c in mock_app.mount.call_args_list]
+            names = [c[1]['name'] for c in mock_app.mount.call_args_list]
+            assert "/elements" in routes
+            assert "/tests" in routes
+            assert "/static" not in routes
+            assert "elements" in names
+            assert "tests" in names
+
+    def test_not_mounted_when_no_directories_exist(self):
+        """When no web subdirectories exist, app.mount is never called."""
+        with tempfile.TemporaryDirectory() as base_dir:
+            interfaces_dir = os.path.join(base_dir, "interfaces")
+            os.makedirs(interfaces_dir)
+            # No web subdirectories created
+
+            mock_app = Mock()
+            with patch('autocode.interfaces.api.os.path.dirname', return_value=interfaces_dir):
+                _register_static_files(mock_app)
+
+            mock_app.mount.assert_not_called()
+
+    def test_tests_subdir_mounted_with_html_mode(self):
+        """'tests' subdir is mounted with html=True; others with html=False."""
+        with tempfile.TemporaryDirectory() as base_dir:
+            interfaces_dir = os.path.join(base_dir, "interfaces")
+            os.makedirs(interfaces_dir)
+            for sub in ["elements", "tests", "static"]:
+                os.makedirs(os.path.join(base_dir, "web", sub))
+
+            mock_app = Mock()
+            with patch('autocode.interfaces.api.os.path.dirname', return_value=interfaces_dir):
+                _register_static_files(mock_app)
+
+            assert mock_app.mount.call_count == 3
+            # Second positional arg is the StaticFiles instance
+            mounted = {c[1]['name']: c[0][1] for c in mock_app.mount.call_args_list}
+            assert mounted['tests'].html is True
+            assert mounted['elements'].html is False
+            assert mounted['static'].html is False
+
+    def test_correct_mount_routes(self):
+        """Static files are mounted at /elements, /tests, /static routes."""
+        with tempfile.TemporaryDirectory() as base_dir:
+            interfaces_dir = os.path.join(base_dir, "interfaces")
+            os.makedirs(interfaces_dir)
+            for sub in ["elements", "tests", "static"]:
+                os.makedirs(os.path.join(base_dir, "web", sub))
+
+            mock_app = Mock()
+            with patch('autocode.interfaces.api.os.path.dirname', return_value=interfaces_dir):
+                _register_static_files(mock_app)
+
+            routes = [c[0][0] for c in mock_app.mount.call_args_list]
+            assert set(routes) == {"/elements", "/tests", "/static"}
+
     @patch('autocode.interfaces.api.load_functions')
     @patch('autocode.interfaces.api._register_dynamic_endpoints')
-    def test_root_endpoint_path_construction(self, mock_register, mock_load):
-        """Test that root endpoint constructs correct path to index.html."""
-        with patch('os.path.dirname') as mock_dirname, \
-             patch('os.path.join') as mock_join, \
-             patch('fastapi.responses.FileResponse') as mock_file_response:
-            
-            mock_dirname.return_value = "/fake/interfaces/dir"
-            mock_join.return_value = "/fake/web/index.html"
-            
-            app = create_api_app()
-            
-            # Access the root endpoint function to test path logic
-            # This verifies the path construction without making HTTP request
-            import inspect
-            root_handler = None
-            for route in app.routes:
-                if hasattr(route, 'path') and route.path == "/" and hasattr(route, 'endpoint'):
-                    root_handler = route.endpoint
-                    break
-            
-            assert root_handler is not None
-            
-            # The path construction logic is tested through the mocks above
-            # mock_join should have been called with directory traversal
-            expected_calls = mock_join.call_args_list
-            # Should include call to join interface dir with "..", "web", "index.html"
-            assert len(expected_calls) > 0
+    def test_root_endpoint_is_registered(self, mock_register, mock_load):
+        """The root '/' endpoint exists in the created app."""
+        app = create_api_app()
+
+        root_routes = [r for r in app.routes if hasattr(r, 'path') and r.path == "/"]
+        assert len(root_routes) == 1
+
+    @patch('autocode.interfaces.api.load_functions')
+    @patch('autocode.interfaces.api._register_dynamic_endpoints')
+    def test_health_endpoint_returns_healthy(self, mock_register, mock_load):
+        """The /health endpoint returns status=healthy."""
+        app = create_api_app()
+        client = TestClient(app)
+
+        response = client.get("/health")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "healthy"
+        assert "functions" in data
