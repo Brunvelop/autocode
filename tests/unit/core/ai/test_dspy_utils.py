@@ -212,3 +212,342 @@ class TestCreateToolWrapper:
         wrapper = _create_tool_wrapper(func_info)
         
         assert "choices: a, b, c" in wrapper.__doc__
+
+
+# ============================================================================
+# NEW TESTS — COMMIT 8 EXPANSION
+# ============================================================================
+
+
+class TestGetDspyLm:
+    """Tests for get_dspy_lm() public API."""
+
+    @patch.dict('os.environ', {}, clear=True)
+    @patch('autocode.core.ai.dspy_utils.os.getenv', return_value=None)
+    def test_raises_without_api_key(self, mock_getenv):
+        """Raises ValueError when no API key in params or environment."""
+        from autocode.core.ai.dspy_utils import get_dspy_lm
+
+        with pytest.raises(ValueError, match="OPENROUTER_API_KEY"):
+            get_dspy_lm('openrouter/openai/gpt-4o')
+
+    @patch('autocode.core.ai.dspy_utils.dspy.LM')
+    def test_uses_explicit_api_key(self, mock_lm_class):
+        """When api_key is passed explicitly, configures dspy.LM correctly."""
+        from autocode.core.ai.dspy_utils import get_dspy_lm
+
+        get_dspy_lm('openrouter/openai/gpt-4o', api_key='test-key-123')
+
+        mock_lm_class.assert_called_once_with(
+            'openrouter/openai/gpt-4o',
+            api_key='test-key-123',
+            max_tokens=16000,
+            temperature=0.7,
+        )
+
+    @patch('autocode.core.ai.dspy_utils.dspy.LM')
+    def test_passes_extra_kwargs_to_lm(self, mock_lm_class):
+        """Extra kwargs (e.g. cache=False) are forwarded to dspy.LM."""
+        from autocode.core.ai.dspy_utils import get_dspy_lm
+
+        get_dspy_lm('openrouter/openai/gpt-4o', api_key='key', cache=False, num_retries=3)
+
+        _, call_kwargs = mock_lm_class.call_args
+        assert call_kwargs['cache'] is False
+        assert call_kwargs['num_retries'] == 3
+
+
+class TestGenerateWithDspyErrorPaths:
+    """Tests for generate_with_dspy() error-handling paths."""
+
+    def test_invalid_module_type_returns_error(self):
+        """Invalid module_type returns DspyOutput with success=False."""
+        from autocode.core.ai.dspy_utils import generate_with_dspy
+
+        result = generate_with_dspy(
+            signature_class=ChatSignature,
+            inputs={"message": "Hi", "conversation_history": ""},
+            module_type='NonExistent',
+        )
+
+        assert result.success is False
+        assert "NonExistent" in result.message
+
+    @patch('autocode.core.ai.dspy_utils.get_dspy_lm', side_effect=ValueError("OPENROUTER_API_KEY no está configurada"))
+    def test_lm_config_error_returns_error(self, mock_get_lm):
+        """When get_dspy_lm raises ValueError, returns DspyOutput with success=False."""
+        from autocode.core.ai.dspy_utils import generate_with_dspy
+
+        result = generate_with_dspy(
+            signature_class=ChatSignature,
+            inputs={"message": "Hi", "conversation_history": ""},
+        )
+
+        assert result.success is False
+        assert "Error configurando LM" in result.message
+
+    @patch('autocode.core.ai.dspy_utils.get_dspy_lm')
+    @patch('autocode.core.ai.dspy_utils._create_and_execute_module', side_effect=RuntimeError("API timeout"))
+    def test_execution_exception_returns_error(self, mock_execute, mock_get_lm):
+        """When module execution raises, returns DspyOutput with success=False."""
+        from autocode.core.ai.dspy_utils import generate_with_dspy
+
+        mock_get_lm.return_value = Mock(history=[])
+
+        result = generate_with_dspy(
+            signature_class=ChatSignature,
+            inputs={"message": "Hi", "conversation_history": ""},
+        )
+
+        assert result.success is False
+        assert "Error en generación DSPy" in result.message
+        assert "API timeout" in result.message
+
+    @patch('autocode.core.ai.dspy_utils.get_dspy_lm')
+    @patch('autocode.core.ai.dspy_utils._create_and_execute_module')
+    def test_response_without_output_fields_returns_error_with_metadata(self, mock_execute, mock_get_lm):
+        """Response with no matching output fields returns error but preserves metadata."""
+        from autocode.core.ai.dspy_utils import generate_with_dspy
+
+        mock_lm = Mock()
+        mock_lm.history = [{"prompt": "test", "response": "test"}]
+        mock_get_lm.return_value = mock_lm
+
+        # Response con atributo 'response' pero ChatSignature espera 'response'
+        # Simular que ningún output_field está en el response
+        mock_response = Mock(spec=[])  # spec vacío: ningún atributo
+        mock_response.completions = None
+        mock_response.reasoning = "some reasoning"
+        mock_response.trajectory = None
+        mock_execute.return_value = mock_response
+
+        result = generate_with_dspy(
+            signature_class=ChatSignature,
+            inputs={"message": "Hi", "conversation_history": ""},
+        )
+
+        assert result.success is False
+        assert result.history is not None  # metadata de debug preservada
+
+
+class TestNormalizeMetadata:
+    """Tests for _normalize_metadata() private helper."""
+
+    def test_reasoning_non_string_converted_to_str(self):
+        """Non-string reasoning is converted to string."""
+        from autocode.core.ai.dspy_utils import _normalize_metadata
+
+        obj_reasoning = Mock()
+        obj_reasoning.__str__ = Mock(return_value="my reasoning")
+
+        reasoning, _, _, _ = _normalize_metadata(obj_reasoning, None, None, None)
+        assert isinstance(reasoning, str)
+        assert reasoning == "my reasoning"
+
+    def test_reasoning_none_stays_none(self):
+        """None reasoning stays None."""
+        from autocode.core.ai.dspy_utils import _normalize_metadata
+
+        reasoning, _, _, _ = _normalize_metadata(None, None, None, None)
+        assert reasoning is None
+
+    def test_completions_with_prediction_objects_converted(self):
+        """Completion objects with .response attribute are converted to strings."""
+        from autocode.core.ai.dspy_utils import _normalize_metadata
+
+        pred1 = MockPrediction("Answer 1")
+        pred2 = MockPrediction("Answer 2")
+
+        _, completions, _, _ = _normalize_metadata(None, [pred1, pred2], None, None)
+        assert completions == ["Answer 1", "Answer 2"]
+        assert all(isinstance(c, str) for c in completions)
+
+    def test_completions_plain_strings_stay(self):
+        """String completions pass through unchanged."""
+        from autocode.core.ai.dspy_utils import _normalize_metadata
+
+        _, completions, _, _ = _normalize_metadata(None, ["a", "b"], None, None)
+        assert completions == ["a", "b"]
+
+    def test_history_with_model_dump_serialized(self):
+        """History items with model_dump() are converted to dicts."""
+        from autocode.core.ai.dspy_utils import _normalize_metadata
+
+        item = Mock()
+        item.model_dump = Mock(return_value={"prompt": "hello", "response": "world"})
+        del item.__dict__  # force model_dump path
+
+        _, _, history, _ = _normalize_metadata(None, None, [item], None)
+        assert history == [{"prompt": "hello", "response": "world"}]
+
+    def test_history_with_dict_attribute_serialized(self):
+        """History items with __dict__ (but no model_dump) are converted."""
+        from autocode.core.ai.dspy_utils import _normalize_metadata
+
+        class SimpleItem:
+            def __init__(self):
+                self.prompt = "hello"
+                self.tokens = 42
+
+        _, _, history, _ = _normalize_metadata(None, None, [SimpleItem()], None)
+        assert isinstance(history[0], dict)
+        assert history[0]["prompt"] == "hello"
+
+    def test_trajectory_dict_serialized(self):
+        """Trajectory as dict with complex values is serialized."""
+        from autocode.core.ai.dspy_utils import _normalize_metadata
+
+        class Step:
+            def __init__(self):
+                self.action = "search"
+
+        _, _, _, trajectory = _normalize_metadata(None, None, None, {"step_0": Step()})
+        assert isinstance(trajectory, dict)
+        assert isinstance(trajectory["step_0"], dict)
+
+    def test_trajectory_list_serialized(self):
+        """Trajectory as list with complex values is serialized."""
+        from autocode.core.ai.dspy_utils import _normalize_metadata
+
+        class Step:
+            def __init__(self):
+                self.action = "search"
+
+        _, _, _, trajectory = _normalize_metadata(None, None, None, [Step()])
+        assert isinstance(trajectory, list)
+        assert isinstance(trajectory[0], dict)
+
+    def test_trajectory_unknown_type_becomes_none(self):
+        """Non-dict, non-list trajectory becomes None to avoid validation errors."""
+        from autocode.core.ai.dspy_utils import _normalize_metadata
+
+        _, _, _, trajectory = _normalize_metadata(None, None, None, object())
+        assert trajectory is None
+
+
+class TestExtractSignatureOutputs:
+    """Tests for _extract_signature_outputs() private helper."""
+
+    def test_extracts_existing_fields(self):
+        """Fields present in both response and signature are extracted."""
+        from autocode.core.ai.dspy_utils import _extract_signature_outputs
+
+        response = Mock()
+        response.response = "Hello!"  # ChatSignature output field
+
+        result = _extract_signature_outputs(response, ChatSignature)
+
+        assert "response" in result
+        assert result["response"] == "Hello!"
+
+    def test_skips_none_fields(self):
+        """Fields that exist on response but are None are not included."""
+        from autocode.core.ai.dspy_utils import _extract_signature_outputs
+
+        response = Mock()
+        response.response = None  # None → should be skipped
+
+        result = _extract_signature_outputs(response, ChatSignature)
+
+        assert "response" not in result
+
+
+class TestGetModuleKwargsSchema:
+    """Tests for get_module_kwargs_schema()."""
+
+    def test_invalid_module_returns_empty_schema(self):
+        """Unknown module_type returns empty schema with supports_tools=False."""
+        from autocode.core.ai.dspy_utils import get_module_kwargs_schema
+
+        schema = get_module_kwargs_schema('NonExistentModule')
+
+        assert schema == {'params': [], 'supports_tools': False}
+
+    def test_react_supports_tools(self):
+        """ReAct module reports supports_tools=True."""
+        from autocode.core.ai.dspy_utils import get_module_kwargs_schema
+
+        schema = get_module_kwargs_schema('ReAct')
+
+        assert schema['supports_tools'] is True
+
+    def test_predict_schema_has_no_tools(self):
+        """Predict module reports supports_tools=False."""
+        from autocode.core.ai.dspy_utils import get_module_kwargs_schema
+
+        schema = get_module_kwargs_schema('Predict')
+
+        assert schema['supports_tools'] is False
+
+    def test_schema_returns_params_list(self):
+        """get_module_kwargs_schema returns a list under 'params' key."""
+        from autocode.core.ai.dspy_utils import get_module_kwargs_schema
+
+        schema = get_module_kwargs_schema('ChainOfThought')
+
+        assert 'params' in schema
+        assert isinstance(schema['params'], list)
+
+
+class TestGetAllModuleKwargsSchemas:
+    """Tests for get_all_module_kwargs_schemas()."""
+
+    def test_returns_schema_for_all_modules(self):
+        """Returns a dict with an entry for every module in MODULE_MAP."""
+        from autocode.core.ai.dspy_utils import get_all_module_kwargs_schemas, MODULE_MAP
+
+        schemas = get_all_module_kwargs_schemas()
+
+        assert set(schemas.keys()) == set(MODULE_MAP.keys())
+
+    def test_each_entry_has_expected_keys(self):
+        """Each schema entry has 'params' and 'supports_tools' keys."""
+        from autocode.core.ai.dspy_utils import get_all_module_kwargs_schemas
+
+        schemas = get_all_module_kwargs_schemas()
+
+        for module_type, schema in schemas.items():
+            assert 'params' in schema, f"{module_type} missing 'params'"
+            assert 'supports_tools' in schema, f"{module_type} missing 'supports_tools'"
+
+
+class TestGetAvailableToolsInfo:
+    """Tests for get_available_tools_info()."""
+
+    def test_none_returns_empty_list(self):
+        """None input returns empty list."""
+        from autocode.core.ai.dspy_utils import get_available_tools_info
+
+        result = get_available_tools_info(None)
+        assert result == []
+
+    def test_empty_list_returns_empty_list(self):
+        """Empty list returns empty list."""
+        from autocode.core.ai.dspy_utils import get_available_tools_info
+
+        result = get_available_tools_info([])
+        assert result == []
+
+    def test_returns_sorted_tool_info(self):
+        """Returns sorted list of dicts with name, description, enabled_by_default."""
+        from autocode.core.ai.dspy_utils import get_available_tools_info
+        from autocode.core.models import FunctionInfo, GenericOutput
+
+        func_b = FunctionInfo(
+            name="zebra_tool", func=Mock(), description="Z tool",
+            params=[], http_methods=["GET"], interfaces=["mcp"], return_type=GenericOutput
+        )
+        func_a = FunctionInfo(
+            name="alpha_tool", func=Mock(), description="A tool",
+            params=[], http_methods=["GET"], interfaces=["mcp"], return_type=GenericOutput
+        )
+
+        result = get_available_tools_info([func_b, func_a])
+
+        assert len(result) == 2
+        # Sorted alphabetically
+        assert result[0]['name'] == 'alpha_tool'
+        assert result[1]['name'] == 'zebra_tool'
+        # Each entry has required keys
+        assert result[0]['description'] == 'A tool'
+        assert result[0]['enabled_by_default'] is True
