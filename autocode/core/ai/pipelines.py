@@ -5,6 +5,7 @@ This module contains orchestration functions that combine file I/O
 with DSPy generation for complete workflows.
 """
 from typing import Dict, Any, Optional, List, get_args
+import os
 import litellm
 from autocode.core.registry import register_function, get_functions_for_interface
 from autocode.core.models import GenericOutput
@@ -22,28 +23,75 @@ from autocode.core.ai.signatures import ChatSignature
 from autocode.core.ai.streaming import stream_chat
 
 
+def _read_path_content(path: str) -> str:
+    """
+    Lee recursivamente todos los archivos de texto de un directorio (o un único archivo).
+    
+    Ignora silenciosamente archivos binarios o con errores de lectura.
+    
+    Args:
+        path: Ruta a un directorio o archivo
+        
+    Returns:
+        Contenido concatenado de todos los archivos de texto encontrados
+    """
+    if os.path.isfile(path):
+        try:
+            with open(path, 'r', encoding='utf-8') as f:
+                return f.read()
+        except Exception:
+            return ""
+
+    contents = []
+    for root, _, files in os.walk(path):
+        for filename in sorted(files):
+            filepath = os.path.join(root, filename)
+            try:
+                with open(filepath, 'r', encoding='utf-8') as f:
+                    contents.append(f.read())
+            except Exception:
+                # Ignorar archivos binarios, sin permisos, etc.
+                continue
+
+    return "\n".join(contents)
+
+
 @register_function(http_methods=["POST"], interfaces=["api", "cli"])
 def calculate_context_usage(
     model: ModelType,
-    messages: List[Dict[str, str]]
+    messages: Optional[List[Dict[str, str]]] = None,
+    path: Optional[str] = None,
 ) -> GenericOutput:
     """
-    Calcula el uso actual y máximo de la ventana de contexto para un modelo y mensajes dados.
+    Calcula el uso actual y máximo de la ventana de contexto para un modelo.
     
-    Usa litellm para:
-    - Contar tokens del mensaje actual usando token_counter
-    - Obtener el tamaño máximo de ventana de contexto usando get_max_tokens
+    Acepta mensajes, un path a un directorio/archivo, o ambos combinados.
+    Usa litellm para contar tokens y obtener el tamaño máximo de contexto.
     
     Args:
         model: Modelo de inferencia a utilizar
-        messages: Lista de mensajes en formato OpenAI [{"role": "user"|"assistant", "content": "..."}]
+        messages: Lista de mensajes en formato OpenAI [{"role": "user"|"assistant", "content": "..."}].
+                  Opcional si se proporciona `path`.
+        path: Ruta a un directorio o archivo. Si se proporciona, lee recursivamente todos
+              los archivos de texto y los contabiliza como un mensaje user adicional.
+              Opcional si se proporcionan `messages`.
         
     Returns:
         GenericOutput con result={"current": int, "max": int, "percentage": float}
     """
     try:
+        all_messages: List[Dict[str, str]] = list(messages) if messages else []
+
+        # Si se proporciona path, añadir su contenido como mensaje user sintético
+        if path is not None:
+            if not os.path.exists(path):
+                raise FileNotFoundError(f"Path no encontrado: {path}")
+            path_content = _read_path_content(path)
+            if path_content:
+                all_messages.append({"role": "user", "content": path_content})
+
         # Calcular tokens actuales usando litellm.token_counter
-        current_tokens = litellm.token_counter(model=model, messages=messages)
+        current_tokens = litellm.token_counter(model=model, messages=all_messages)
         
         # Obtener tamaño máximo de ventana de contexto
         max_tokens = litellm.get_max_tokens(model)

@@ -95,6 +95,154 @@ class TestCalculateContextUsage:
 
 
 # =============================================================================
+# calculate_context_usage — path parameter
+# =============================================================================
+
+class TestCalculateContextUsageWithPath:
+    """Tests for calculate_context_usage with the path parameter."""
+
+    @patch('autocode.core.ai.pipelines.litellm')
+    def test_path_only_directory_reads_files_and_counts_tokens(self, mock_litellm, tmp_path):
+        """With only path (no messages), reads files recursively and counts tokens."""
+        (tmp_path / "main.py").write_text("def hello(): pass")
+        (tmp_path / "README.md").write_text("# Project")
+
+        mock_litellm.token_counter.return_value = 200
+        mock_litellm.get_max_tokens.return_value = 4000
+
+        result = calculate_context_usage(
+            model='openrouter/openai/gpt-4o',
+            path=str(tmp_path)
+        )
+
+        assert result.success is True
+        assert result.result["current"] == 200
+
+        # token_counter was called with a list containing one user message with the file content
+        call_kwargs = mock_litellm.token_counter.call_args.kwargs
+        messages_passed = call_kwargs['messages']
+        assert len(messages_passed) == 1
+        assert messages_passed[0]["role"] == "user"
+        assert "def hello(): pass" in messages_passed[0]["content"]
+        assert "# Project" in messages_passed[0]["content"]
+
+    @patch('autocode.core.ai.pipelines.litellm')
+    def test_path_and_messages_combines_both(self, mock_litellm, tmp_path):
+        """When both messages and path are given, both contribute to the token count."""
+        (tmp_path / "code.py").write_text("x = 42")
+
+        mock_litellm.token_counter.return_value = 300
+        mock_litellm.get_max_tokens.return_value = 8000
+
+        messages = [{"role": "user", "content": "Analyze this"}]
+        result = calculate_context_usage(
+            model='openrouter/openai/gpt-4o',
+            messages=messages,
+            path=str(tmp_path)
+        )
+
+        assert result.success is True
+        assert result.result["current"] == 300
+
+        # token_counter was called with the original message + the path content message
+        call_kwargs = mock_litellm.token_counter.call_args.kwargs
+        messages_passed = call_kwargs['messages']
+        assert len(messages_passed) == 2
+        assert messages_passed[0]["content"] == "Analyze this"
+        assert "x = 42" in messages_passed[1]["content"]
+
+    @patch('autocode.core.ai.pipelines.litellm')
+    def test_path_single_file_reads_its_content(self, mock_litellm, tmp_path):
+        """When path points to a single file, reads that file directly."""
+        single_file = tmp_path / "config.py"
+        single_file.write_text("DEBUG = True")
+
+        mock_litellm.token_counter.return_value = 10
+        mock_litellm.get_max_tokens.return_value = 4000
+
+        result = calculate_context_usage(
+            model='openrouter/openai/gpt-4o',
+            path=str(single_file)
+        )
+
+        assert result.success is True
+        call_kwargs = mock_litellm.token_counter.call_args.kwargs
+        messages_passed = call_kwargs['messages']
+        assert len(messages_passed) == 1
+        assert messages_passed[0]["content"] == "DEBUG = True"
+
+    @patch('autocode.core.ai.pipelines.litellm')
+    def test_path_ignores_unreadable_binary_files(self, mock_litellm, tmp_path):
+        """Binary files that can't be decoded as UTF-8 are silently skipped."""
+        (tmp_path / "readable.py").write_text("print('hi')")
+        (tmp_path / "binary.bin").write_bytes(b'\x80\x81\x82\xff')  # invalid UTF-8
+
+        mock_litellm.token_counter.return_value = 50
+        mock_litellm.get_max_tokens.return_value = 4000
+
+        result = calculate_context_usage(
+            model='openrouter/openai/gpt-4o',
+            path=str(tmp_path)
+        )
+
+        assert result.success is True
+        # The readable file content is passed; binary file is ignored
+        call_kwargs = mock_litellm.token_counter.call_args.kwargs
+        messages_passed = call_kwargs['messages']
+        assert len(messages_passed) == 1
+        assert "print('hi')" in messages_passed[0]["content"]
+
+    @patch('autocode.core.ai.pipelines.litellm')
+    def test_path_nonexistent_returns_failure(self, mock_litellm):
+        """A path that does not exist returns success=False with a clear message."""
+        mock_litellm.get_max_tokens.return_value = 4000
+
+        result = calculate_context_usage(
+            model='openrouter/openai/gpt-4o',
+            path='/this/path/definitely/does/not/exist/xyz123'
+        )
+
+        assert result.success is False
+        assert result.result["current"] == 0
+        assert "Path no encontrado" in result.message
+
+    @patch('autocode.core.ai.pipelines.litellm')
+    def test_path_empty_directory_adds_no_content(self, mock_litellm, tmp_path):
+        """An empty directory produces no content and is not added to messages."""
+        mock_litellm.token_counter.return_value = 0
+        mock_litellm.get_max_tokens.return_value = 4000
+
+        result = calculate_context_usage(
+            model='openrouter/openai/gpt-4o',
+            path=str(tmp_path)  # empty directory
+        )
+
+        assert result.success is True
+        # No content to add → token_counter called with empty messages list
+        call_kwargs = mock_litellm.token_counter.call_args.kwargs
+        assert call_kwargs['messages'] == []
+
+    @patch('autocode.core.ai.pipelines.litellm')
+    def test_messages_not_mutated_by_path_processing(self, mock_litellm, tmp_path):
+        """The original messages list is not mutated when path content is added."""
+        (tmp_path / "file.py").write_text("x = 1")
+        mock_litellm.token_counter.return_value = 100
+        mock_litellm.get_max_tokens.return_value = 4000
+
+        original_messages = [{"role": "user", "content": "hello"}]
+        messages_copy = list(original_messages)
+
+        calculate_context_usage(
+            model='openrouter/openai/gpt-4o',
+            messages=original_messages,
+            path=str(tmp_path)
+        )
+
+        # Original list must not have been modified
+        assert original_messages == messages_copy
+
+
+# =============================================================================
 # chat
 # =============================================================================
 
