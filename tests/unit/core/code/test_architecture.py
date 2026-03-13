@@ -1717,3 +1717,289 @@ class TestOrphanClassNodes:
         assert node_map["app.py::Config"].type == "class"
         assert node_map["app.py::Config"].parent_id == "app.py"
         assert node_map["app.py::Config"].functions_count == 0
+
+
+# ==============================================================================
+# L) BUG REPRODUCTION: funciones faltantes en models.py (Commit A1)
+# ==============================================================================
+
+
+class TestMethodIdCollisionBug:
+    """L) Reproduce bug: method IDs collision when two classes share same method name.
+
+    In _create_function_class_nodes(), method_id is built as f"{fpath}::{method.name}".
+    Lizard does NOT prefix Python method names with their class name, so two classes
+    with an __init__ method both get ID "fpath::__init__" — the second overwrites the
+    first in any dict-keyed lookup and the treemap loses nodes.
+
+    Fix (Commit A2): change to f"{fpath}::{class_name}::{method.name}".
+    """
+
+    # ------------------------------------------------------------------
+    # L.1  Direct collision test (unit)
+    # ------------------------------------------------------------------
+
+    def test_method_id_includes_class_name_to_avoid_collision(self):
+        """Two classes with __init__ must produce two distinct method node IDs.
+
+        🔴 RED: currently both get id='models.py::__init__' → collision.
+        """
+        from autocode.core.code.architecture import _create_function_class_nodes
+        from autocode.core.code.models import FunctionMetrics, FileMetrics
+
+        fpath = "models.py"
+
+        # Simulate what lizard + analyzer produce for Python:
+        # bare method names, class_name set separately via AST line detection.
+        method_a = FunctionMetrics(
+            name="__init__",
+            file=fpath,
+            line=3,
+            complexity=1,
+            rank="A",
+            nesting_depth=0,
+            sloc=4,
+            is_method=True,
+            class_name="UserCreate",
+        )
+        method_b = FunctionMetrics(
+            name="__init__",
+            file=fpath,
+            line=12,
+            complexity=1,
+            rank="A",
+            nesting_depth=0,
+            sloc=4,
+            is_method=True,
+            class_name="UserUpdate",
+        )
+
+        fm = FileMetrics(
+            path=fpath,
+            language="python",
+            sloc=20,
+            comments=0,
+            blanks=0,
+            total_loc=20,
+            functions=[method_a, method_b],
+            classes=[],
+            classes_count=2,
+            functions_count=2,
+            avg_complexity=1.0,
+            max_complexity=1,
+            max_nesting=0,
+            maintainability_index=80.0,
+        )
+
+        nodes = _create_function_class_nodes(fpath, fm)
+        method_ids = [n.id for n in nodes if n.type == "method"]
+
+        # Both __init__ methods must get unique IDs that include the class name
+        assert len(method_ids) == 2, (
+            f"Expected 2 method nodes but got {len(method_ids)}: {method_ids}\n"
+            "Bug: both __init__ methods get the same id='models.py::__init__'"
+        )
+        assert len(set(method_ids)) == 2, (
+            f"Method IDs are not unique: {method_ids}\n"
+            "Bug: id collision because class name is missing from method ID"
+        )
+        # IDs must contain the class name to be unambiguous
+        id_set = set(method_ids)
+        assert any("UserCreate" in mid for mid in id_set), (
+            f"No method ID contains 'UserCreate': {method_ids}"
+        )
+        assert any("UserUpdate" in mid for mid in id_set), (
+            f"No method ID contains 'UserUpdate': {method_ids}"
+        )
+
+    # ------------------------------------------------------------------
+    # L.2  Pydantic orphan classes produce nodes (should be GREEN)
+    # ------------------------------------------------------------------
+
+    def test_models_file_pydantic_classes_produce_nodes(self):
+        """Pydantic BaseModel subclasses with only fields produce class nodes.
+
+        These have no methods, so they rely on the orphan-class path.
+        🟢 GREEN: orphan-class handling already works correctly.
+        """
+        from autocode.core.code.analyzer import analyze_file_metrics
+        from autocode.core.code.architecture import _create_function_class_nodes
+
+        pydantic_models_code = (
+            "from pydantic import BaseModel\n"
+            "from typing import Optional\n"
+            "\n"
+            "class UserCreate(BaseModel):\n"
+            "    name: str\n"
+            "    email: str\n"
+            "    age: int\n"
+            "\n"
+            "class UserUpdate(BaseModel):\n"
+            "    name: Optional[str] = None\n"
+            "    email: Optional[str] = None\n"
+            "\n"
+            "class UserResponse(BaseModel):\n"
+            "    id: int\n"
+            "    name: str\n"
+            "    email: str\n"
+        )
+
+        fm = analyze_file_metrics("models.py", pydantic_models_code)
+        nodes = _create_function_class_nodes("models.py", fm)
+        node_ids = {n.id for n in nodes}
+
+        # All three Pydantic model classes must produce class nodes
+        assert "models.py::UserCreate" in node_ids, (
+            f"Missing node for UserCreate. Got: {node_ids}"
+        )
+        assert "models.py::UserUpdate" in node_ids, (
+            f"Missing node for UserUpdate. Got: {node_ids}"
+        )
+        assert "models.py::UserResponse" in node_ids, (
+            f"Missing node for UserResponse. Got: {node_ids}"
+        )
+
+        # All produced nodes must be type='class'
+        class_nodes = [n for n in nodes if n.type == "class"]
+        assert len(class_nodes) == 3, (
+            f"Expected 3 class nodes, got {len(class_nodes)}: "
+            f"{[n.id for n in class_nodes]}"
+        )
+
+    # ------------------------------------------------------------------
+    # L.3  Pydantic models with validators (🔴 RED — collision)
+    # ------------------------------------------------------------------
+
+    def test_models_file_with_validators_produce_method_nodes(self):
+        """Two Pydantic models with same-named validator must produce distinct method nodes.
+
+        🔴 RED: both validators get id='models.py::validate_name' → only one survives.
+        """
+        from autocode.core.code.analyzer import analyze_file_metrics
+        from autocode.core.code.architecture import _create_function_class_nodes
+
+        pydantic_with_validators = (
+            "from pydantic import BaseModel, validator\n"
+            "\n"
+            "class UserCreate(BaseModel):\n"
+            "    name: str\n"
+            "\n"
+            "    @validator('name')\n"
+            "    def validate_name(cls, v):\n"
+            "        if not v.strip():\n"
+            "            raise ValueError('name cannot be empty')\n"
+            "        return v.strip()\n"
+            "\n"
+            "class ProductCreate(BaseModel):\n"
+            "    name: str\n"
+            "\n"
+            "    @validator('name')\n"
+            "    def validate_name(cls, v):\n"
+            "        if len(v) > 100:\n"
+            "            raise ValueError('name too long')\n"
+            "        return v\n"
+        )
+
+        fm = analyze_file_metrics("models.py", pydantic_with_validators)
+        nodes = _create_function_class_nodes("models.py", fm)
+
+        method_nodes = [n for n in nodes if n.type == "method"]
+        method_ids = [n.id for n in method_nodes]
+
+        # Both validate_name methods must survive with distinct IDs
+        assert len(method_nodes) == 2, (
+            f"Expected 2 method nodes (one per class) but got {len(method_nodes)}: "
+            f"{method_ids}\n"
+            "Bug: both validators get the same id='models.py::validate_name'"
+        )
+        assert len(set(method_ids)) == 2, (
+            f"Method IDs are not unique: {method_ids}"
+        )
+
+        # Each method must be under its own class
+        class_ids_of_methods = {n.parent_id for n in method_nodes}
+        assert "models.py::UserCreate" in class_ids_of_methods, (
+            f"No method under UserCreate. Parent IDs: {class_ids_of_methods}"
+        )
+        assert "models.py::ProductCreate" in class_ids_of_methods, (
+            f"No method under ProductCreate. Parent IDs: {class_ids_of_methods}"
+        )
+
+    # ------------------------------------------------------------------
+    # L.4  Full pipeline: complete models.py snapshot (🔴 RED — collision)
+    # ------------------------------------------------------------------
+
+    def test_build_nodes_models_file_complete_pipeline(self):
+        """Full _build_architecture_nodes pipeline for models.py with duplicate method names.
+
+        🔴 RED: due to collision, the total method node count will be less than expected.
+        """
+        from unittest.mock import patch
+        from pathlib import Path
+        from autocode.core.code.architecture import _build_architecture_nodes
+
+        models_py_code = (
+            "from pydantic import BaseModel, validator\n"
+            "from typing import Optional\n"
+            "\n"
+            "class CreateRequest(BaseModel):\n"
+            "    name: str\n"
+            "    value: int\n"
+            "\n"
+            "    def __init__(self, **data):\n"
+            "        super().__init__(**data)\n"
+            "\n"
+            "    @validator('name')\n"
+            "    def validate_name(cls, v):\n"
+            "        return v.strip()\n"
+            "\n"
+            "class UpdateRequest(BaseModel):\n"
+            "    name: Optional[str] = None\n"
+            "    value: Optional[int] = None\n"
+            "\n"
+            "    def __init__(self, **data):\n"
+            "        super().__init__(**data)\n"
+            "\n"
+            "    @validator('name')\n"
+            "    def validate_name(cls, v):\n"
+            "        return v.strip() if v else v\n"
+        )
+
+        fpath = "autocode/api/models.py"
+
+        with patch.object(Path, "read_text", return_value=models_py_code):
+            nodes = _build_architecture_nodes([fpath])
+
+        node_map = {n.id: n for n in nodes}
+
+        # Both classes must appear in the tree
+        assert f"{fpath}::CreateRequest" in node_map, (
+            f"Missing CreateRequest class node. IDs: {list(node_map.keys())}"
+        )
+        assert f"{fpath}::UpdateRequest" in node_map, (
+            f"Missing UpdateRequest class node. IDs: {list(node_map.keys())}"
+        )
+
+        # Each class must have BOTH its methods (4 method nodes total)
+        method_nodes = [n for n in nodes if n.type == "method"]
+        method_ids = [n.id for n in method_nodes]
+
+        assert len(method_nodes) == 4, (
+            f"Expected 4 method nodes (2 classes × 2 methods each) but got "
+            f"{len(method_nodes)}: {method_ids}\n"
+            "Bug: __init__ and validate_name from both classes get colliding IDs"
+        )
+
+        # Verify specific IDs exist
+        assert f"{fpath}::CreateRequest::__init__" in node_map, (
+            f"Missing CreateRequest::__init__. Got: {method_ids}"
+        )
+        assert f"{fpath}::UpdateRequest::__init__" in node_map, (
+            f"Missing UpdateRequest::__init__. Got: {method_ids}"
+        )
+        assert f"{fpath}::CreateRequest::validate_name" in node_map, (
+            f"Missing CreateRequest::validate_name. Got: {method_ids}"
+        )
+        assert f"{fpath}::UpdateRequest::validate_name" in node_map, (
+            f"Missing UpdateRequest::validate_name. Got: {method_ids}"
+        )
