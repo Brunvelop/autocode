@@ -84,6 +84,10 @@ export class CodeDashboard extends LitElement {
     // ========================================================================
 
     async refresh() {
+        // Preserve navigation state before reload
+        const savedNodeId = this._currentNodeId;
+        const savedViewMode = this._viewMode;
+
         this._loading = true;
         this._error = null;
         try {
@@ -92,12 +96,23 @@ export class CodeDashboard extends LitElement {
                 {}
             );
             this._snapshot = result;
-            this._currentNodeId = result?.root_id || '.';
 
             // Build tree from flat nodes
             if (result?.nodes) {
                 this._tree = this._buildTreeFromNodes(result.nodes, result.root_id);
             }
+
+            // Restore node: keep saved node if it still exists in the new tree,
+            // otherwise fall back to root (e.g. file was deleted/renamed)
+            if (savedNodeId && this._tree && this._findNode(this._tree, savedNodeId)) {
+                this._currentNodeId = savedNodeId;
+            } else {
+                this._currentNodeId = result?.root_id || '.';
+            }
+
+            // Restore view mode (unchanged, but explicit for clarity)
+            this._viewMode = savedViewMode;
+
         } catch (e) {
             this._error = e.message || 'Error cargando arquitectura';
         } finally {
@@ -308,6 +323,7 @@ export class CodeDashboard extends LitElement {
         return html`
             <div class="snapshot-info">
                 📊 Commit ${snap.commit_short} · ${snap.branch} · ${this._formatDate(snap.timestamp)}
+                <button class="refresh-btn" @click=${() => this.refresh()} title="Recargar snapshot">🔄</button>
             </div>
         `;
     }

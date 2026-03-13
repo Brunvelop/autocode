@@ -232,5 +232,25 @@ export const codeDashboardStyles = css`
         text-align: center;
         padding-top: var(--design-spacing-sm);
         border-top: 1px solid var(--design-border-gray-light);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: var(--design-spacing-xs);
+    }
+
+    .refresh-btn {
+        background: none;
+        border: none;
+        cursor: pointer;
+        font-size: 11px;
+        padding: 1px 4px;
+        border-radius: var(--design-radius-sm);
+        transition: background-color var(--design-transition-fast);
+        line-height: 1;
+        color: inherit;
+    }
+
+    .refresh-btn:hover {
+        background-color: var(--design-bg-gray-50);
     }
 `;
