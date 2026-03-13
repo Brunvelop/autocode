@@ -1720,6 +1720,67 @@ class TestOrphanClassNodes:
 
 
 # ==============================================================================
+# M) CONTENT READER INJECTION (Commit 3)
+# ==============================================================================
+
+
+class TestBuildArchitectureNodesContentReader:
+    """Tests for content_reader injection in _build_architecture_nodes."""
+
+    def _mock_fm(self, path):
+        from autocode.core.code.models import FileMetrics
+        return FileMetrics(
+            path=path, language="python",
+            sloc=2, comments=0, blanks=0, total_loc=2,
+            functions=[], classes_count=0, functions_count=0,
+            avg_complexity=0.0, max_complexity=0, max_nesting=0,
+            maintainability_index=100.0,
+        )
+
+    def test_uses_custom_content_reader(self):
+        """_build_architecture_nodes should call content_reader instead of Path.read_text."""
+        from unittest.mock import patch
+        from autocode.core.code.architecture import _build_architecture_nodes
+
+        contents = {"app.py": "x = 1\ny = 2\n"}
+        reader = lambda fpath: contents[fpath]
+
+        with patch("autocode.core.code.architecture.analyze_file_metrics") as mock_analyze:
+            mock_analyze.return_value = self._mock_fm("app.py")
+            _build_architecture_nodes(["app.py"], content_reader=reader)
+
+        mock_analyze.assert_called_once_with("app.py", "x = 1\ny = 2\n")
+
+    def test_default_content_reader_uses_disk(self):
+        """Without content_reader, falls back to Path.read_text (backward compatible)."""
+        from unittest.mock import patch
+        from pathlib import Path
+        from autocode.core.code.architecture import _build_architecture_nodes
+
+        with patch.object(Path, "read_text", return_value="z = 3\n") as mock_read, \
+             patch("autocode.core.code.architecture.analyze_file_metrics") as mock_analyze:
+            mock_analyze.return_value = self._mock_fm("app.py")
+            _build_architecture_nodes(["app.py"])
+
+        mock_read.assert_called_once()
+
+    def test_custom_reader_not_calling_path_read_text(self):
+        """When content_reader is provided, Path.read_text must NOT be called."""
+        from unittest.mock import patch
+        from pathlib import Path
+        from autocode.core.code.architecture import _build_architecture_nodes
+
+        reader = lambda fpath: "injected content\n"
+
+        with patch.object(Path, "read_text") as mock_read, \
+             patch("autocode.core.code.architecture.analyze_file_metrics") as mock_analyze:
+            mock_analyze.return_value = self._mock_fm("app.py")
+            _build_architecture_nodes(["app.py"], content_reader=reader)
+
+        mock_read.assert_not_called()
+
+
+# ==============================================================================
 # L) BUG REPRODUCTION: funciones faltantes en models.py (Commit A1)
 # ==============================================================================
 

@@ -125,7 +125,9 @@ def get_architecture_snapshot(path: str = ".") -> ArchitectureSnapshotOutput:
 # ==============================================================================
 
 
-def _build_architecture_nodes(py_files: List[str]) -> List[ArchitectureNode]:
+def _build_architecture_nodes(
+    py_files: List[str], content_reader=None
+) -> List[ArchitectureNode]:
     """Build a flat list of ArchitectureNode from a list of .py file paths.
 
     Creates the root node, intermediate directory nodes, and file nodes
@@ -133,10 +135,15 @@ def _build_architecture_nodes(py_files: List[str]) -> List[ArchitectureNode]:
 
     Args:
         py_files: List of relative paths to Python files (from git ls-files)
+        content_reader: Optional callable(fpath) -> str to read file content.
+            Defaults to Path(fpath).read_text(encoding="utf-8") when None.
 
     Returns:
         List of ArchitectureNode in adjacency-list format
     """
+    if content_reader is None:
+        content_reader = lambda fpath: Path(fpath).read_text(encoding="utf-8")
+
     root_id = "."
     root = ArchitectureNode(
         id=root_id, parent_id=None, name="root", type="directory", path=root_id,
@@ -172,7 +179,7 @@ def _build_architecture_nodes(py_files: List[str]) -> List[ArchitectureNode]:
         # Create file node with metrics
         file_name = parts[-1]
         try:
-            content = Path(fpath).read_text(encoding="utf-8")
+            content = content_reader(fpath)
             fm = analyze_file_metrics(fpath, content)
             file_node = ArchitectureNode(
                 id=fpath,
