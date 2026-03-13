@@ -323,21 +323,21 @@ def generate_with_dspy(
         ValueError: Si la API key no está configurada o module_type es inválido
         
     Examples:
-        >>> # Ejemplo básico con un solo output
+        >>> # Ejemplo básico con ChatSignature
         >>> result = generate_with_dspy(
-        ...     CodeGenerationSignature,
-        ...     {"design_text": "Create a hello world function"}
+        ...     ChatSignature,
+        ...     {"message": "Hola", "conversation_history": ""}
         ... )
-        >>> print(result.result['python_code'])
+        >>> print(result.result['response'])
         >>> print(result.success)  # True
         
         >>> # Ejemplo con ChainOfThought (incluye reasoning)
         >>> result = generate_with_dspy(
-        ...     QASignature,
-        ...     {"question": "What is Python?"},
+        ...     ChatSignature,
+        ...     {"message": "¿Qué es Python?", "conversation_history": ""},
         ...     module_type='ChainOfThought'
         ... )
-        >>> print(result.result['answer'])
+        >>> print(result.result['response'])
         >>> print(result.reasoning)  # Razonamiento paso a paso
     """
     # Inicializar module_kwargs si no se proporciona

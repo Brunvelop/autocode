@@ -4,7 +4,7 @@ High-level pipelines for AI operations.
 This module contains orchestration functions that combine file I/O
 with DSPy generation for complete workflows.
 """
-from typing import Literal, Dict, Any, Optional, List, get_args
+from typing import Dict, Any, Optional, List, get_args
 import litellm
 from autocode.core.registry import register_function, get_functions_for_interface
 from autocode.core.models import GenericOutput
@@ -18,87 +18,8 @@ from autocode.core.ai.dspy_utils import (
     get_available_tools_info,
     prepare_chat_tools
 )
-from autocode.core.ai.signatures import (
-    CodeGenerationSignature,
-    DesignDocumentSignature,
-    QASignature,
-    ChatSignature
-)
+from autocode.core.ai.signatures import ChatSignature
 from autocode.core.ai.streaming import stream_chat
-from autocode.core.models import FunctionInfo
-
-
-# Available signature types for UI selection
-SignatureType = Literal['code_generation', 'design_document', 'qa']
-
-
-# Mapping from signature type strings to signature classes
-SIGNATURE_MAP = {
-    'code_generation': CodeGenerationSignature,
-    'design_document': DesignDocumentSignature,
-    'qa': QASignature
-}
-
-
-@register_function(http_methods=["GET", "POST"], interfaces=["api", "cli"])
-def generate(
-    signature_type: SignatureType,
-    inputs: Dict[str, Any],
-    model: ModelType = 'openrouter/openai/gpt-4o',
-    module_type: ModuleType = 'ChainOfThought',
-    module_kwargs: Optional[Dict[str, Any]] = None,
-    max_tokens: int = 16000,
-    temperature: float = 0.7
-) -> DspyOutput:
-    """
-    Generador genérico con selección de signature y módulo DSPy desde la UI.
-    
-    Ejecuta cualquier signature disponible con los inputs proporcionados,
-    usando el módulo DSPy seleccionado (Predict, ChainOfThought, ReAct, etc.).
-    
-    Args:
-        signature_type: Tipo de signature a utilizar (code_generation, design_document, qa)
-        inputs: Diccionario con los parámetros de entrada para la signature seleccionada
-        model: Modelo de inferencia a utilizar
-        module_type: Tipo de módulo DSPy (Predict, ChainOfThought, ProgramOfThought, ReAct, MultiChainComparison)
-        module_kwargs: Parámetros adicionales específicos del módulo (ej: tools para ReAct, n para Predict)
-        max_tokens: Número máximo de tokens a generar (default: 16000). Aumentar si las respuestas se truncan
-        temperature: Temperature para la generación (default: 0.7). Valores más altos = más creatividad
-        
-    Returns:
-        DspyOutput con todos los outputs de la signature y metadata DSPy
-        
-    Example inputs por signature_type:
-        - code_generation: {"design_text": "Create a function that..."}
-        - design_document: {"python_code": "def foo()...", "include_diagrams": true}
-        - qa: {"question": "What is...?"}
-    
-    Example module_kwargs:
-        - ReAct: {"tools": [function1, function2], "max_iters": 5}
-        - Predict: {"n": 5}  # Para múltiples completions
-    
-    LM Parameters:
-        - max_tokens: Controla la longitud máxima de la respuesta. Aumentar si ves warnings de truncamiento
-        - temperature: Controla la aleatoriedad (0.0 = determinista, 1.0+ = más creativo)
-    """
-    signature_class = SIGNATURE_MAP.get(signature_type)
-    if not signature_class:
-        return DspyOutput(
-            success=False,
-            result={},
-            message=f"Signature type '{signature_type}' no válido. Opciones: {list(SIGNATURE_MAP.keys())}"
-        )
-    
-    # Retorna DspyOutput completo (útil para funciones genéricas con múltiples outputs)
-    return generate_with_dspy(
-        signature_class=signature_class,
-        inputs=inputs,
-        model=model,
-        module_type=module_type,
-        module_kwargs=module_kwargs or {},
-        max_tokens=max_tokens,
-        temperature=temperature
-    )
 
 
 @register_function(http_methods=["POST"], interfaces=["api", "cli"])

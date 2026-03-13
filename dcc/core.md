@@ -99,7 +99,7 @@ SessionData:
 │          ↑                  ├─ models.py               │
 │          │                  │  (DspyOutput)            │
 │          │                  ├─ signatures.py           │
-│          └──────────────────┤  (CodeGen, QA, Chat...)  │
+│          └──────────────────┤  (Chat, TaskExecution)   │
 │                             ├─ streaming.py            │
 │                             │  (stream_chat, SSE)      │
 │                             └─ pipelines.py            │
@@ -255,8 +255,9 @@ Invariante: stream_chat comparte prepare_chat_tools() con chat()
 ```
                     AI GENERATION
 Signature + Inputs ──────────────────►  DspyOutput
-  CodeGenerationSignature               result.python_code
-  + {design_text: "..."}                reasoning (si ChainOfThought)
+  ChatSignature                         result.response
+  + {message: "...",                    reasoning (si ChainOfThought)
+     conversation_history: "..."}
 
 Python Type        ──────────────────►  DSPy Field Type
   str                                   dspy.InputField/OutputField
@@ -338,8 +339,8 @@ abort_session      ──────────────────►  Ch
 ```
 AÑADIR NUEVA SIGNATURE DSPy:
 1. Crear clase en autocode/core/ai/signatures.py
-2. Añadir a SIGNATURE_MAP en pipelines.py (si aplica)
-3. Crear función wrapper con @register_function si se expone
+2. Crear función wrapper con @register_function en pipelines.py
+3. Llamar generate_with_dspy(signature_class=MiNuevaSignature, ...)
 
 AÑADIR NUEVO PIPELINE AI:
 1. Definir signature (o usar existente)
@@ -380,9 +381,9 @@ autocode/core/
 │   ├── __init__.py
 │   ├── dspy_utils.py        # get_dspy_lm, generate_with_dspy, prepare_chat_tools
 │   ├── models.py            # DspyOutput (con @staticmethod helpers)
-│   ├── pipelines.py         # Funciones registradas: chat, chat_stream, generate...
+│   ├── pipelines.py         # Funciones registradas: chat, chat_stream, calculate_context_usage...
 │   ├── streaming.py         # stream_chat, AutocodeStatusProvider, _format_sse
-│   ├── signatures.py        # DSPy Signatures: CodeGeneration, QA, Chat...
+│   ├── signatures.py        # DSPy Signatures: ChatSignature, TaskExecutionSignature
 │   └── README.md
 ├── utils/
 │   ├── __init__.py
@@ -421,10 +422,8 @@ print(f'✓ {len(FUNCTION_REGISTRY)} funciones verificadas')
 # Verificar signatures DSPy
 python -c "
 import dspy
-from autocode.core.ai.signatures import (
-    CodeGenerationSignature, DesignDocumentSignature, QASignature, ChatSignature
-)
-for sig in [CodeGenerationSignature, DesignDocumentSignature, QASignature, ChatSignature]:
+from autocode.core.ai.signatures import ChatSignature, TaskExecutionSignature
+for sig in [ChatSignature, TaskExecutionSignature]:
     assert issubclass(sig, dspy.Signature)
     assert len(sig.input_fields) >= 1
     assert len(sig.output_fields) >= 1

@@ -4,7 +4,7 @@ Unit tests for DSPy utilities.
 import pytest
 from unittest.mock import Mock, patch
 from autocode.core.ai.dspy_utils import generate_with_dspy
-from autocode.core.ai.signatures import QASignature
+from autocode.core.ai.signatures import ChatSignature
 
 class MockPrediction:
     def __init__(self, response):
@@ -40,8 +40,8 @@ class TestGenerateWithDspy:
         
         # Execute
         result = generate_with_dspy(
-            signature_class=QASignature,
-            inputs={"question": "Test"},
+            signature_class=ChatSignature,
+            inputs={"message": "Test", "conversation_history": ""},
             module_type='Predict'
         )
         
