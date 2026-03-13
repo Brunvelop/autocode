@@ -254,7 +254,8 @@ def _create_function_class_nodes(fpath: str, fm) -> List[ArchitectureNode]:
         nodes.append(class_node)
 
         for method in methods:
-            method_id = f"{fpath}::{method.name}"
+            method_name = method.name.split(".")[-1]
+            method_id = f"{fpath}::{class_name}::{method_name}"
             method_mi = round(maintainability_index(
                 sloc=method.sloc,
                 avg_cc=float(method.complexity),
