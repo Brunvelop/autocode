@@ -223,8 +223,7 @@ class TestGetDspyLm:
     """Tests for get_dspy_lm() public API."""
 
     @patch.dict('os.environ', {}, clear=True)
-    @patch('autocode.core.ai.dspy_utils.os.getenv', return_value=None)
-    def test_raises_without_api_key(self, mock_getenv):
+    def test_raises_without_api_key(self):
         """Raises ValueError when no API key in params or environment."""
         from autocode.core.ai.dspy_utils import get_dspy_lm
 
@@ -551,3 +550,153 @@ class TestGetAvailableToolsInfo:
         # Each entry has required keys
         assert result[0]['description'] == 'A tool'
         assert result[0]['enabled_by_default'] is True
+
+
+# ============================================================================
+# COVERAGE GAP TESTS — fill remaining uncovered branches
+# ============================================================================
+
+
+class TestNormalizeMetadataEdgeCases:
+    """Additional branch coverage for _normalize_metadata()."""
+
+    def test_completions_no_response_attr_converted_to_str(self):
+        """Completion objects without .response are converted via str()."""
+        from autocode.core.ai.dspy_utils import _normalize_metadata
+
+        class NoResponseObj:
+            def __str__(self):
+                return "fallback-str"
+
+        _, completions, _, _ = _normalize_metadata(None, [NoResponseObj()], None, None)
+        assert completions == ["fallback-str"]
+        assert isinstance(completions[0], str)
+
+    def test_trajectory_dict_with_model_dump_values(self):
+        """Trajectory dict values with model_dump() use that method."""
+        from autocode.core.ai.dspy_utils import _normalize_metadata
+
+        class WithModelDump:
+            def model_dump(self):
+                return {"step": "search", "result": "found"}
+
+        _, _, _, trajectory = _normalize_metadata(
+            None, None, None, {"step_0": WithModelDump()}
+        )
+        assert trajectory == {"step_0": {"step": "search", "result": "found"}}
+
+    def test_trajectory_list_with_model_dump_items(self):
+        """Trajectory list items with model_dump() use that method."""
+        from autocode.core.ai.dspy_utils import _normalize_metadata
+
+        class WithModelDump:
+            def model_dump(self):
+                return {"action": "tool_call"}
+
+        _, _, _, trajectory = _normalize_metadata(
+            None, None, None, [WithModelDump()]
+        )
+        assert trajectory == [{"action": "tool_call"}]
+
+    def test_trajectory_dict_with_plain_values(self):
+        """Trajectory dict values without model_dump or __dict__ are kept as-is (else branch)."""
+        from autocode.core.ai.dspy_utils import _normalize_metadata
+
+        # Plain str/int values have neither model_dump nor __dict__
+        _, _, _, trajectory = _normalize_metadata(
+            None, None, None, {"step_0": "plain string", "step_1": 42}
+        )
+        assert trajectory == {"step_0": "plain string", "step_1": 42}
+
+    def test_trajectory_list_with_plain_values(self):
+        """Trajectory list items without model_dump or __dict__ are kept as-is (else branch)."""
+        from autocode.core.ai.dspy_utils import _normalize_metadata
+
+        # Plain str/int values have neither model_dump nor __dict__
+        _, _, _, trajectory = _normalize_metadata(
+            None, None, None, ["step_a", "step_b", 99]
+        )
+        assert trajectory == ["step_a", "step_b", 99]
+
+
+class TestCreateAndExecuteModule:
+    """Tests for _create_and_execute_module() private helper (lines 215-218)."""
+
+    def test_creates_and_executes_module_with_context(self):
+        """_create_and_execute_module creates the correct module and calls it."""
+        from autocode.core.ai.dspy_utils import _create_and_execute_module
+        import dspy
+
+        mock_lm = Mock()
+        mock_response = Mock()
+        mock_generator = Mock(return_value=mock_response)
+        mock_module_class = Mock(return_value=mock_generator)
+
+        with patch('autocode.core.ai.dspy_utils.MODULE_MAP', {'Predict': mock_module_class}), \
+             patch('autocode.core.ai.dspy_utils.dspy.context') as mock_ctx:
+            mock_ctx.return_value.__enter__ = Mock(return_value=None)
+            mock_ctx.return_value.__exit__ = Mock(return_value=False)
+
+            result = _create_and_execute_module(
+                mock_lm,
+                ChatSignature,
+                {"message": "hi", "conversation_history": ""},
+                'Predict',
+                {}
+            )
+
+        mock_module_class.assert_called_once_with(ChatSignature)
+        mock_generator.assert_called_once_with(message="hi", conversation_history="")
+        assert result == mock_response
+
+
+class TestGetModuleKwargsSchemaEdgeCases:
+    """Additional tests for get_module_kwargs_schema() edge branches."""
+
+    def test_react_tools_excluded_from_params_list(self):
+        """'tools' parameter is excluded from ReAct schema params list."""
+        from autocode.core.ai.dspy_utils import get_module_kwargs_schema
+
+        schema = get_module_kwargs_schema('ReAct')
+
+        param_names = [p['name'] for p in schema['params']]
+        assert 'tools' not in param_names
+
+    def test_inspect_signature_failure_returns_empty_schema(self):
+        """When inspect.signature raises, returns empty schema."""
+        from autocode.core.ai.dspy_utils import get_module_kwargs_schema
+
+        with patch('autocode.core.ai.dspy_utils.inspect.signature',
+                   side_effect=ValueError("Cannot inspect")):
+            schema = get_module_kwargs_schema('Predict')
+
+        assert schema == {'params': [], 'supports_tools': False}
+
+    def test_non_serializable_default_with_name_attribute(self):
+        """Default values with __name__ are serialized as that name."""
+        from autocode.core.ai.dspy_utils import get_module_kwargs_schema
+
+        def my_func():
+            pass
+
+        class FakeModule:
+            def __init__(self, callback=my_func):
+                pass
+
+        with patch('autocode.core.ai.dspy_utils.MODULE_MAP', {'FakeModule': FakeModule}):
+            schema = get_module_kwargs_schema('FakeModule')
+
+        assert len(schema['params']) == 1
+        # Function objects have __name__, so default should be serialized as 'my_func'
+        assert schema['params'][0]['default'] == 'my_func'
+
+    def test_all_schemas_are_json_serializable(self):
+        """All module kwargs schemas can be JSON-serialized without error."""
+        import json
+        from autocode.core.ai.dspy_utils import get_all_module_kwargs_schemas
+
+        schemas = get_all_module_kwargs_schemas()
+        # Should not raise TypeError
+        json_output = json.dumps(schemas)
+        assert json_output is not None
+        assert len(json_output) > 0

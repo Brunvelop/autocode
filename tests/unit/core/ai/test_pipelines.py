@@ -5,6 +5,7 @@ All tests use mocks to avoid real API calls.
 Coverage target: calculate_context_usage, chat, chat_stream, get_chat_config.
 """
 import pytest
+import os
 from unittest.mock import Mock, patch
 
 from autocode.core.ai.pipelines import (
@@ -529,3 +530,46 @@ class TestGetChatConfig:
         assert result.success is False
         assert result.result == {}
         assert "Network error" in result.message
+
+
+# =============================================================================
+# _read_path_content — private helper
+# =============================================================================
+
+class TestReadPathContent:
+    """Direct unit tests for _read_path_content() private helper."""
+
+    def test_unreadable_single_file_returns_empty_string(self, tmp_path):
+        """When a single file raises on read, returns empty string (lines 42-43)."""
+        from autocode.core.ai.pipelines import _read_path_content
+
+        single_file = tmp_path / "locked.py"
+        single_file.write_text("content")
+
+        with patch('builtins.open', side_effect=PermissionError("no access")):
+            result = _read_path_content(str(single_file))
+
+        assert result == ""
+
+    def test_readable_single_file_returns_content(self, tmp_path):
+        """When a single file is readable, returns its full content."""
+        from autocode.core.ai.pipelines import _read_path_content
+
+        single_file = tmp_path / "script.py"
+        single_file.write_text("print('hello')")
+
+        result = _read_path_content(str(single_file))
+
+        assert result == "print('hello')"
+
+    def test_directory_concatenates_readable_files(self, tmp_path):
+        """Directory path returns concatenated content of all readable files."""
+        from autocode.core.ai.pipelines import _read_path_content
+
+        (tmp_path / "a.py").write_text("x = 1")
+        (tmp_path / "b.py").write_text("y = 2")
+
+        result = _read_path_content(str(tmp_path))
+
+        assert "x = 1" in result
+        assert "y = 2" in result
