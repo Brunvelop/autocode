@@ -178,3 +178,74 @@ class TestDspyOutputStaticMethods:
         assert dump["success"] is True
         assert dump["result"] == {"response": "hello"}
         assert dump["reasoning"] == "Some reasoning"
+
+
+class TestSerializeComplexObject:
+    """Tests for DspyOutput._serialize_complex_object static method."""
+
+    def test_pydantic_model_dump_path(self):
+        """_serialize_complex_object uses model_dump() for Pydantic-like objects."""
+        class FakePydantic:
+            def model_dump(self):
+                return {"field": "value", "number": 7}
+
+        result = DspyOutput._serialize_complex_object(FakePydantic())
+        assert result == {"field": "value", "number": 7}
+
+    def test_pydantic_model_dump_failure_falls_back_to_dict(self):
+        """_serialize_complex_object falls back to __dict__ if model_dump() raises."""
+        class BrokenModelDump:
+            def model_dump(self):
+                raise RuntimeError("broken")
+
+            def __init__(self):
+                self.name = "fallback"
+                self.value = 99
+
+        result = DspyOutput._serialize_complex_object(BrokenModelDump())
+        assert result == {"name": "fallback", "value": 99}
+
+    def test_object_with_dict_path(self):
+        """_serialize_complex_object uses __dict__ for plain objects."""
+        class Plain:
+            def __init__(self):
+                self.x = 1
+                self.y = "hello"
+                self._private = "hidden"
+
+        result = DspyOutput._serialize_complex_object(Plain())
+        assert result == {"x": 1, "y": "hello"}
+        assert "_private" not in result
+
+    def test_json_fallback_for_non_dict_objects(self):
+        """_serialize_complex_object falls back to json for objects without __dict__."""
+        # A tuple goes through the json.dumps/loads path
+        result = DspyOutput._serialize_complex_object((1, 2, 3))
+        assert result == [1, 2, 3]  # json serializes tuples as arrays
+
+    def test_str_fallback_for_unserializable_objects(self):
+        """_serialize_complex_object returns str() as last resort via json default=str."""
+        class NoDict:
+            __slots__ = []  # disables __dict__, forces json/str fallback path
+
+            def __str__(self):
+                return "NoDict-instance"
+
+        result = DspyOutput._serialize_complex_object(NoDict())
+        # json.dumps with default=str converts it to a string representation
+        assert isinstance(result, str)
+        assert "NoDict-instance" in result
+
+    def test_nested_object_via_model_dump_is_recursively_serialized(self):
+        """_serialize_complex_object recursively serializes nested objects from model_dump."""
+        class Inner:
+            def __init__(self):
+                self.val = 42
+
+        class Outer:
+            def model_dump(self):
+                return {"inner": Inner()}  # returns a non-basic value
+
+        result = DspyOutput._serialize_complex_object(Outer())
+        # The inner object should be recursively serialized via serialize_value
+        assert result == {"inner": {"val": 42}}

@@ -111,9 +111,50 @@ class DspyOutput(GenericOutput):
         return ordered_steps
 
     @staticmethod
+    def _serialize_complex_object(value: Any) -> Any:
+        """
+        Serializa un objeto complejo (Pydantic, __dict__, o fallback JSON/str).
+        
+        Gestiona la cascada de intentos para objetos que no son tipos básicos,
+        listas ni dicts: model_dump → __dict__ → json → str.
+        
+        Args:
+            value: Objeto complejo a serializar
+            
+        Returns:
+            Valor serializado a tipos básicos
+        """
+        # Si tiene método model_dump (Pydantic), usarlo
+        if hasattr(value, 'model_dump') and callable(getattr(value, 'model_dump')):
+            try:
+                return DspyOutput.serialize_value(value.model_dump())
+            except Exception:
+                pass
+
+        # Si tiene __dict__, convertir a dict saltando atributos privados
+        if hasattr(value, '__dict__'):
+            try:
+                obj_dict = {}
+                for key, val in value.__dict__.items():
+                    if not key.startswith('_'):
+                        obj_dict[key] = DspyOutput.serialize_value(val)
+                return obj_dict
+            except Exception:
+                pass
+
+        # Como último recurso, usar json.dumps/loads para forzar serialización
+        try:
+            return json.loads(json.dumps(value, default=str))
+        except (TypeError, ValueError):
+            return str(value)
+
+    @staticmethod
     def serialize_value(value: Any) -> Any:
         """
         Serializa recursivamente un valor a tipos básicos de Python.
+        
+        Actúa como dispatcher limpio: delega casos complejos a
+        _serialize_complex_object().
         
         Args:
             value: Valor a serializar (puede ser dict, list, object, etc.)
@@ -123,44 +164,10 @@ class DspyOutput(GenericOutput):
         """
         if value is None:
             return None
-        
-        # Si ya es un tipo básico, retornar directamente
         if isinstance(value, (str, int, float, bool)):
             return value
-        
-        # Si es una lista, serializar cada elemento
         if isinstance(value, list):
             return [DspyOutput.serialize_value(item) for item in value]
-        
-        # Si es un dict, serializar cada valor
         if isinstance(value, dict):
             return {key: DspyOutput.serialize_value(val) for key, val in value.items()}
-        
-        # Si tiene método model_dump (Pydantic), usarlo
-        if hasattr(value, 'model_dump') and callable(getattr(value, 'model_dump')):
-            try:
-                return DspyOutput.serialize_value(value.model_dump())
-            except Exception:
-                # Si falla model_dump, intentar con __dict__
-                pass
-        
-        # Si tiene __dict__, convertir a dict
-        if hasattr(value, '__dict__'):
-            try:
-                obj_dict = {}
-                for key, val in value.__dict__.items():
-                    # Saltar atributos privados
-                    if not key.startswith('_'):
-                        obj_dict[key] = DspyOutput.serialize_value(val)
-                return obj_dict
-            except Exception:
-                # Si falla, intentar convertir a string
-                pass
-        
-        # Como último recurso, usar json.dumps/loads para forzar serialización
-        try:
-            # Esto fallará si el objeto no es serializable, en cuyo caso retornamos str
-            return json.loads(json.dumps(value, default=str))
-        except (TypeError, ValueError):
-            # Si todo falla, convertir a string
-            return str(value)
+        return DspyOutput._serialize_complex_object(value)
