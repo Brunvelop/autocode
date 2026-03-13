@@ -181,20 +181,10 @@ def _extract_signature_outputs(response: Any, signature_class: Type[dspy.Signatu
     """
     result = {}
 
-    # 1. Intentar obtener campos definidos en la signature
     for field_name in signature_class.output_fields:
         val = getattr(response, field_name, None)
         if val is not None:
             result[field_name] = val
-
-    # 2. Fallback: Si no se encontraron campos, revisar si 'response' existe (comportamiento legacy/chat)
-    if not result and hasattr(response, 'response'):
-        raw_response = getattr(response, 'response')
-        if raw_response:
-            if isinstance(raw_response, dict):
-                result = raw_response
-            elif isinstance(raw_response, str) and 'response' not in result:
-                pass
 
     return result
 
