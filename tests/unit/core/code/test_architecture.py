@@ -1720,6 +1720,139 @@ class TestOrphanClassNodes:
 
 
 # ==============================================================================
+# L2) HISTORICAL SNAPSHOT (Commit 4)
+# ==============================================================================
+
+
+class TestGetArchitectureSnapshotHistorical:
+    """Tests for get_architecture_snapshot(commit_hash=...) — historical mode."""
+
+    def _mock_fm(self, path):
+        from autocode.core.code.models import FileMetrics
+        return FileMetrics(
+            path=path, language="python",
+            sloc=50, comments=5, blanks=5, total_loc=60,
+            functions=[], classes_count=1, functions_count=2,
+            avg_complexity=2.0, max_complexity=4, max_nesting=1,
+            maintainability_index=75.0,
+        )
+
+    @patch("autocode.core.code.architecture.git_show")
+    @patch("autocode.core.code.architecture.get_tracked_files_at_commit")
+    @patch("autocode.core.code.architecture.get_tracked_files")
+    @patch("autocode.core.code.architecture.git")
+    @patch("autocode.core.code.architecture.analyze_file_metrics")
+    def test_snapshot_with_commit_hash_uses_get_tracked_files_at_commit(
+        self, mock_analyze, mock_git, mock_get_files, mock_get_files_at, mock_git_show
+    ):
+        """commit_hash set → must call get_tracked_files_at_commit, NOT get_tracked_files."""
+        from autocode.core.code.architecture import get_architecture_snapshot
+
+        mock_git.side_effect = lambda *args, **kwargs: {
+            ("rev-parse", "abc123"): "abc123def456",
+            ("rev-parse", "--short", "abc123"): "abc123d",
+            ("log", "-1", "--format=%D", "abc123"): "HEAD -> main",
+        }.get(args, "")
+        mock_get_files_at.return_value = ["src/app.py"]
+        mock_git_show.return_value = "x = 1\n"
+        mock_analyze.return_value = self._mock_fm("src/app.py")
+
+        result = get_architecture_snapshot(commit_hash="abc123")
+
+        assert result.success is True
+        mock_get_files_at.assert_called_once()
+        mock_get_files.assert_not_called()
+
+    @patch("autocode.core.code.architecture.git_show")
+    @patch("autocode.core.code.architecture.get_tracked_files_at_commit")
+    @patch("autocode.core.code.architecture.get_tracked_files")
+    @patch("autocode.core.code.architecture.git")
+    @patch("autocode.core.code.architecture.analyze_file_metrics")
+    def test_snapshot_with_commit_hash_uses_git_show_as_content_reader(
+        self, mock_analyze, mock_git, mock_get_files, mock_get_files_at, mock_git_show
+    ):
+        """commit_hash set → file content must come from git_show, NOT from disk."""
+        from autocode.core.code.architecture import get_architecture_snapshot
+        from pathlib import Path
+
+        mock_git.side_effect = lambda *args, **kwargs: {
+            ("rev-parse", "abc123"): "abc123def456",
+            ("rev-parse", "--short", "abc123"): "abc123d",
+            ("log", "-1", "--format=%D", "abc123"): "HEAD -> main",
+        }.get(args, "")
+        mock_get_files_at.return_value = ["src/app.py"]
+        mock_git_show.return_value = "x = 1\n"
+        mock_analyze.return_value = self._mock_fm("src/app.py")
+
+        with patch.object(Path, "read_text") as mock_read:
+            result = get_architecture_snapshot(commit_hash="abc123")
+            mock_read.assert_not_called()
+
+        assert result.success is True
+        mock_git_show.assert_called()
+        # git_show called with commit_hash:fpath format
+        call_args = mock_git_show.call_args_list
+        assert any("abc123:src/app.py" in str(c) for c in call_args)
+
+    @patch("autocode.core.code.architecture.git_show")
+    @patch("autocode.core.code.architecture.get_tracked_files_at_commit")
+    @patch("autocode.core.code.architecture.get_tracked_files")
+    @patch("autocode.core.code.architecture.git")
+    @patch("autocode.core.code.architecture.analyze_file_metrics")
+    def test_snapshot_with_commit_hash_returns_correct_commit_metadata(
+        self, mock_analyze, mock_git, mock_get_files, mock_get_files_at, mock_git_show
+    ):
+        """commit_hash set → result must carry the resolved hash and short hash."""
+        from autocode.core.code.architecture import get_architecture_snapshot
+
+        mock_git.side_effect = lambda *args, **kwargs: {
+            ("rev-parse", "abc123"): "abc123def456789",
+            ("rev-parse", "--short", "abc123"): "abc123d",
+            ("log", "-1", "--format=%D", "abc123"): "HEAD -> main",
+        }.get(args, "")
+        mock_get_files_at.return_value = ["src/app.py"]
+        mock_git_show.return_value = "x = 1\n"
+        mock_analyze.return_value = self._mock_fm("src/app.py")
+
+        result = get_architecture_snapshot(commit_hash="abc123")
+
+        assert result.success is True
+        snapshot = result.result
+        assert snapshot.commit_hash == "abc123def456789"
+        assert snapshot.commit_short == "abc123d"
+
+    @patch("autocode.core.code.architecture.git_show")
+    @patch("autocode.core.code.architecture.get_tracked_files_at_commit")
+    @patch("autocode.core.code.architecture.get_tracked_files")
+    @patch("autocode.core.code.architecture.git")
+    @patch("autocode.core.code.architecture.analyze_file_metrics")
+    @patch("pathlib.Path.read_text")
+    def test_snapshot_without_commit_hash_unchanged(
+        self, mock_read, mock_analyze, mock_git,
+        mock_get_files, mock_get_files_at, mock_git_show
+    ):
+        """commit_hash='' → existing behavior: get_tracked_files + disk reads."""
+        from autocode.core.code.architecture import get_architecture_snapshot
+        from autocode.core.code.models import FileMetrics
+
+        mock_git.side_effect = lambda *args, **kwargs: {
+            ("rev-parse", "HEAD"): "abc123def456789",
+            ("rev-parse", "--short", "HEAD"): "abc123d",
+            ("rev-parse", "--abbrev-ref", "HEAD"): "main",
+        }.get(args, "")
+        mock_get_files.return_value = ["src/app.py"]
+        mock_read.return_value = "x = 1\n"
+        mock_analyze.return_value = self._mock_fm("src/app.py")
+
+        result = get_architecture_snapshot()  # no commit_hash
+
+        assert result.success is True
+        mock_get_files.assert_called_once()
+        mock_get_files_at.assert_not_called()
+        mock_git_show.assert_not_called()
+
+
+# ==============================================================================
 # M) CONTENT READER INJECTION (Commit 3)
 # ==============================================================================
 

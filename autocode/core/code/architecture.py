@@ -26,7 +26,7 @@ from autocode.core.code.models import (
     ArchitectureSnapshotOutput,
     FileDependency,
 )
-from autocode.core.vcs.git import git, get_tracked_files
+from autocode.core.vcs.git import git, git_show, get_tracked_files, get_tracked_files_at_commit
 from autocode.core.code.analyzer import analyze_file_metrics, maintainability_index
 
 from autocode.core.code.coupling import JS_IMPORT_RE
@@ -43,7 +43,7 @@ _ALL_EXTENSIONS = (".py", ".js", ".mjs", ".jsx")
 
 
 @register_function(http_methods=["GET"], interfaces=["api"])
-def get_architecture_snapshot(path: str = ".") -> ArchitectureSnapshotOutput:
+def get_architecture_snapshot(path: str = ".", commit_hash: str = "") -> ArchitectureSnapshotOutput:
     """
     Obtiene un snapshot de la arquitectura del proyecto con métricas por nodo.
 
@@ -54,18 +54,26 @@ def get_architecture_snapshot(path: str = ".") -> ArchitectureSnapshotOutput:
 
     Args:
         path: Path relativo al directorio a analizar (default: directorio actual)
+        commit_hash: Hash del commit a analizar. Si está vacío, usa HEAD (default: "")
     """
     try:
-        # Git metadata
-        commit_hash = git("rev-parse", "HEAD")
-        commit_short = git("rev-parse", "--short", "HEAD")
-        branch = git("rev-parse", "--abbrev-ref", "HEAD")
-
-        # Get tracked files (Python + JavaScript)
-        all_files = get_tracked_files(*_ALL_EXTENSIONS)
+        if commit_hash:
+            # Historical mode: read files from git object store at the given commit
+            commit_full = git("rev-parse", commit_hash)
+            commit_short = git("rev-parse", "--short", commit_hash)
+            branch = git("log", "-1", "--format=%D", commit_hash)
+            all_files = get_tracked_files_at_commit(commit_hash, *_ALL_EXTENSIONS)
+            content_reader = lambda fpath: git_show(f"{commit_hash}:{fpath}") or ""
+        else:
+            # Current mode (unchanged): read files from disk at HEAD
+            commit_full = git("rev-parse", "HEAD")
+            commit_short = git("rev-parse", "--short", "HEAD")
+            branch = git("rev-parse", "--abbrev-ref", "HEAD")
+            all_files = get_tracked_files(*_ALL_EXTENSIONS)
+            content_reader = None  # default: Path.read_text
 
         # Build hierarchy with per-file metrics
-        nodes = _build_architecture_nodes(all_files)
+        nodes = _build_architecture_nodes(all_files, content_reader=content_reader)
 
         # Propagate metrics bottom-up
         root_id = "."
@@ -89,12 +97,14 @@ def get_architecture_snapshot(path: str = ".") -> ArchitectureSnapshotOutput:
             avg_complexity = 0.0
 
         # Resolve file-level dependencies (Python AST + JS regex)
-        dependencies, circular_dependencies = _resolve_file_dependencies(all_files)
+        dependencies, circular_dependencies = _resolve_file_dependencies(
+            all_files, content_reader=content_reader
+        )
 
         snapshot = ArchitectureSnapshot(
             root_id=root_id,
             nodes=nodes,
-            commit_hash=commit_hash,
+            commit_hash=commit_full,
             commit_short=commit_short,
             branch=branch,
             timestamp=datetime.now().isoformat(),
@@ -429,6 +439,7 @@ def _compute_depths(
 
 def _resolve_file_dependencies(
     all_files: List[str],
+    content_reader=None,
 ) -> Tuple[List[FileDependency], List[List[str]]]:
     """Resolve file-level import dependencies between Python and JS files.
 
@@ -442,6 +453,8 @@ def _resolve_file_dependencies(
 
     Args:
         all_files: List of relative file paths (.py, .js, .mjs, .jsx)
+        content_reader: Optional callable(fpath) -> str to read file content.
+            Defaults to Path(fpath).read_text(encoding="utf-8") when None.
 
     Returns:
         Tuple of (dependencies, circular_dependencies) where:
@@ -450,6 +463,9 @@ def _resolve_file_dependencies(
     """
     if not all_files:
         return [], []
+
+    if content_reader is None:
+        content_reader = lambda fpath: Path(fpath).read_text(encoding="utf-8")
 
     # Separate by language
     py_files = [f for f in all_files if f.endswith(".py")]
@@ -464,10 +480,10 @@ def _resolve_file_dependencies(
     edges: Dict[Tuple[str, str], Set[str]] = defaultdict(set)
 
     # --- Python files (AST) ---
-    _collect_python_file_deps(py_files, top_packages, module_to_file, file_set, edges)
+    _collect_python_file_deps(py_files, top_packages, module_to_file, file_set, edges, content_reader)
 
     # --- JS files (regex) ---
-    _collect_js_file_deps(js_files, file_set, edges)
+    _collect_js_file_deps(js_files, file_set, edges, content_reader)
 
     # Build FileDependency list and detect circulars
     dependencies = _build_dependency_list(edges)
@@ -533,11 +549,14 @@ def _collect_python_file_deps(
     module_to_file: Dict[str, str],
     file_set: Set[str],
     edges: Dict[Tuple[str, str], Set[str]],
+    content_reader=None,
 ) -> None:
     """Collect file-level dependencies from Python files using AST."""
+    if content_reader is None:
+        content_reader = lambda fpath: Path(fpath).read_text(encoding="utf-8")
     for fpath in py_files:
         try:
-            content = Path(fpath).read_text(encoding="utf-8")
+            content = content_reader(fpath)
             tree = ast.parse(content, filename=fpath)
         except Exception:
             logger.debug(f"Skipping {fpath} for dependency analysis (parse error)")
@@ -571,15 +590,18 @@ def _collect_js_file_deps(
     js_files: List[str],
     file_set: Set[str],
     edges: Dict[Tuple[str, str], Set[str]],
+    content_reader=None,
 ) -> None:
     """Collect file-level dependencies from JS files using regex.
 
     Only relative imports (starting with './' or '../') are processed.
     Bare specifiers like 'lit' or 'd3' are external and skipped.
     """
+    if content_reader is None:
+        content_reader = lambda fpath: Path(fpath).read_text(encoding="utf-8")
     for fpath in js_files:
         try:
-            content = Path(fpath).read_text(encoding="utf-8")
+            content = content_reader(fpath)
         except Exception:
             logger.debug(f"Skipping {fpath} for JS dependency analysis")
             continue
