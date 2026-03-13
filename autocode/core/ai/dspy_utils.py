@@ -77,6 +77,128 @@ def _validate_module_type(module_type: ModuleType) -> Optional[str]:
     return None
 
 
+def _extract_metadata(response: Any, lm: dspy.LM):
+    """
+    Extrae los metadatos crudos de la respuesta DSPy y el LM.
+
+    Args:
+        response: Objeto de respuesta del módulo DSPy
+        lm: Language Model que ejecutó la llamada
+
+    Returns:
+        Tupla (reasoning, completions, trajectory, history)
+    """
+    reasoning = getattr(response, 'reasoning', None)
+    completions = getattr(response, 'completions', None)
+    trajectory = getattr(response, 'trajectory', None)
+    history = getattr(lm, 'history', None)
+    return reasoning, completions, trajectory, history
+
+
+def _normalize_metadata(
+    reasoning: Any,
+    completions: Any,
+    history: Any,
+    trajectory: Any
+):
+    """
+    Normaliza los metadatos de DSPy a tipos serializables.
+
+    Convierte objetos complejos (Prediction, ModelResponse, GenericOutput, etc.)
+    a tipos básicos de Python seguros para Pydantic y JSON.
+
+    Args:
+        reasoning: Razonamiento raw de DSPy (puede ser str u objeto)
+        completions: Lista de completions (pueden contener Prediction objects)
+        history: Historial de llamadas al LM (puede contener ModelResponse objects)
+        trajectory: Trayectoria de ReAct (puede contener objetos anidados)
+
+    Returns:
+        Tupla normalizada (reasoning, completions, history, trajectory)
+    """
+    if reasoning is not None and not isinstance(reasoning, str):
+        reasoning = str(reasoning)
+
+    if completions is not None:
+        normalized_completions = []
+        for c in completions:
+            if isinstance(c, str):
+                normalized_completions.append(c)
+            elif hasattr(c, 'response'):  # dspy.Prediction
+                normalized_completions.append(str(c.response))
+            else:
+                normalized_completions.append(str(c))
+        completions = normalized_completions
+
+    if history:
+        serialized_history = []
+        for item in history:
+            if hasattr(item, 'model_dump'):
+                serialized_history.append(item.model_dump())
+            elif hasattr(item, '__dict__'):
+                serialized_history.append(vars(item))
+            else:
+                serialized_history.append(item)
+        history = serialized_history
+
+    if isinstance(trajectory, dict):
+        serialized_trajectory = {}
+        for key, value in trajectory.items():
+            if hasattr(value, 'model_dump'):
+                serialized_trajectory[key] = value.model_dump()
+            elif hasattr(value, '__dict__'):
+                serialized_trajectory[key] = vars(value)
+            else:
+                serialized_trajectory[key] = value
+        trajectory = serialized_trajectory
+    elif isinstance(trajectory, list):
+        serialized_trajectory = []
+        for item in trajectory:
+            if hasattr(item, 'model_dump'):
+                serialized_trajectory.append(item.model_dump())
+            elif hasattr(item, '__dict__'):
+                serialized_trajectory.append(vars(item))
+            else:
+                serialized_trajectory.append(item)
+        trajectory = serialized_trajectory
+    else:
+        # Si no es dict ni lista (ej: Mock, objeto extraño), forzar a None para evitar error de validación
+        trajectory = None
+
+    return reasoning, completions, history, trajectory
+
+
+def _extract_signature_outputs(response: Any, signature_class: Type[dspy.Signature]) -> Dict[str, Any]:
+    """
+    Extrae dinámicamente los campos de output de la respuesta DSPy según la signature.
+
+    Args:
+        response: Objeto de respuesta del módulo DSPy
+        signature_class: La clase de signature que define los output_fields esperados
+
+    Returns:
+        Diccionario con los campos de output encontrados en la respuesta
+    """
+    result = {}
+
+    # 1. Intentar obtener campos definidos en la signature
+    for field_name in signature_class.output_fields:
+        val = getattr(response, field_name, None)
+        if val is not None:
+            result[field_name] = val
+
+    # 2. Fallback: Si no se encontraron campos, revisar si 'response' existe (comportamiento legacy/chat)
+    if not result and hasattr(response, 'response'):
+        raw_response = getattr(response, 'response')
+        if raw_response:
+            if isinstance(raw_response, dict):
+                result = raw_response
+            elif isinstance(raw_response, str) and 'response' not in result:
+                pass
+
+    return result
+
+
 def _create_and_execute_module(
     lm: dspy.LM,
     signature_class: Type[dspy.Signature],
@@ -261,89 +383,13 @@ def generate_with_dspy(
         error_msg = f"Error en generación DSPy: {str(e)}"
         logger.error(error_msg, exc_info=True)
         return DspyOutput(success=False, result={}, message=error_msg)
-    
-    # Extracción de metadatos
-    reasoning = getattr(response, 'reasoning', None)
-    completions = getattr(response, 'completions', None)
-    trajectory = getattr(response, 'trajectory', None)
-    history = getattr(lm, 'history', None)
 
-    # Normalización de tipos para DSPy (que a veces devuelve objetos complejos)
-    if reasoning is not None and not isinstance(reasoning, str):
-        reasoning = str(reasoning)
+    # Extraer y normalizar metadatos
+    reasoning, completions, trajectory, history = _extract_metadata(response, lm)
+    reasoning, completions, history, trajectory = _normalize_metadata(reasoning, completions, history, trajectory)
 
-    if completions is not None:
-        normalized_completions = []
-        for c in completions:
-            if isinstance(c, str):
-                normalized_completions.append(c)
-            elif hasattr(c, 'response'): # dspy.Prediction
-                normalized_completions.append(str(c.response))
-            else:
-                normalized_completions.append(str(c))
-        completions = normalized_completions
-
-    # Convertir campos complejos a formatos serializables para API (ANTES de retornar error)
-    # History: Convertir ModelResponse y otros objetos a dicts
-    if history:
-        serialized_history = []
-        for item in history:
-            if hasattr(item, 'model_dump'):
-                serialized_history.append(item.model_dump())
-            elif hasattr(item, '__dict__'):
-                serialized_history.append(vars(item))
-            else:
-                serialized_history.append(item)
-        history = serialized_history
-    
-    # Trajectory: Convertir objetos anidados (como GenericOutput) a dicts
-    if isinstance(trajectory, dict):
-        serialized_trajectory = {}
-        for key, value in trajectory.items():
-            if hasattr(value, 'model_dump'):
-                serialized_trajectory[key] = value.model_dump()
-            elif hasattr(value, '__dict__'):
-                serialized_trajectory[key] = vars(value)
-            else:
-                serialized_trajectory[key] = value
-        trajectory = serialized_trajectory
-    elif isinstance(trajectory, list):
-        # Si es lista (ya normalizada o lista de pasos), intentar serializar items internos si son objetos
-        serialized_trajectory = []
-        for item in trajectory:
-            if hasattr(item, 'model_dump'):
-                serialized_trajectory.append(item.model_dump())
-            elif hasattr(item, '__dict__'):
-                serialized_trajectory.append(vars(item))
-            else:
-                serialized_trajectory.append(item)
-        trajectory = serialized_trajectory
-    else:
-        # Si no es dict ni lista (ej: Mock, objeto extraño), forzar a None para evitar error de validación
-        trajectory = None
-
-    # Extracción dinámica de outputs basada en la signature
-    result = {}
-    
-    # 1. Intentar obtener campos definidos en la signature
-    for field_name in signature_class.output_fields:
-        val = getattr(response, field_name, None)
-        if val is not None:
-            result[field_name] = val
-            
-    # 2. Fallback: Si no se encontraron campos, revisar si 'response' existe (comportamiento legacy/chat)
-    if not result and hasattr(response, 'response'):
-        raw_response = getattr(response, 'response')
-        if raw_response:
-             # Si response es un dict y no tenemos resultado, asumimos que es el resultado
-            if isinstance(raw_response, dict):
-                result = raw_response
-            # Si es string y la signature tiene un campo 'response', ya debería haberlo capturado el loop.
-            # Pero si la signature espera otra cosa y dspy devolvió todo en .response, esto podría ayudar.
-            elif isinstance(raw_response, str) and 'response' not in result:
-                 # Solo si no tenemos nada más, lo guardamos como 'response' (aunque la signature no lo espere?)
-                 # Mejor no inventar campos.
-                 pass
+    # Extraer outputs dinámicos de la signature
+    result = _extract_signature_outputs(response, signature_class)
 
     if not result:
         expected_fields = list(signature_class.output_fields.keys())
