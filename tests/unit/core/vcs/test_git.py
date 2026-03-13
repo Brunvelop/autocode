@@ -244,6 +244,75 @@ class TestGitAddAndCommit:
 
 
 # ==============================================================================
+# TestGetTrackedFilesAtCommit — files tracked at a specific commit
+# ==============================================================================
+
+
+class TestGetTrackedFilesAtCommit:
+    """Tests for get_tracked_files_at_commit() — list files tracked at a historical commit."""
+
+    def test_returns_filtered_files_for_commit(self):
+        """get_tracked_files_at_commit() returns files matching the given extensions."""
+        with patch("autocode.core.vcs.git.git") as mock_git:
+            mock_git.return_value = "src/app.py\nsrc/utils.js\nREADME.md"
+
+            from autocode.core.vcs.git import get_tracked_files_at_commit
+
+            result = get_tracked_files_at_commit("abc123", ".py", ".js")
+
+        assert "src/app.py" in result
+        assert "src/utils.js" in result
+        assert "README.md" not in result
+
+    def test_returns_empty_for_empty_output(self):
+        """get_tracked_files_at_commit() returns empty list when git returns no output."""
+        with patch("autocode.core.vcs.git.git") as mock_git:
+            mock_git.return_value = ""
+
+            from autocode.core.vcs.git import get_tracked_files_at_commit
+
+            result = get_tracked_files_at_commit("abc123", ".py")
+
+        assert result == []
+
+    def test_calls_git_ls_tree(self):
+        """get_tracked_files_at_commit() calls git ls-tree -r --name-only <commit>."""
+        with patch("autocode.core.vcs.git.git") as mock_git:
+            mock_git.return_value = ""
+
+            from autocode.core.vcs.git import get_tracked_files_at_commit
+
+            get_tracked_files_at_commit("abc123", ".py")
+
+        mock_git.assert_called_once_with(
+            "ls-tree", "-r", "--name-only", "abc123", cwd="."
+        )
+
+    def test_returns_empty_when_no_extensions_given(self):
+        """get_tracked_files_at_commit() returns empty list when no extensions are requested."""
+        with patch("autocode.core.vcs.git.git") as mock_git:
+            from autocode.core.vcs.git import get_tracked_files_at_commit
+
+            result = get_tracked_files_at_commit("abc123")
+
+        mock_git.assert_not_called()
+        assert result == []
+
+    def test_passes_cwd_to_git(self):
+        """get_tracked_files_at_commit() passes cwd parameter to git helper."""
+        with patch("autocode.core.vcs.git.git") as mock_git:
+            mock_git.return_value = "src/main.py"
+
+            from autocode.core.vcs.git import get_tracked_files_at_commit
+
+            get_tracked_files_at_commit("abc123", ".py", cwd="/tmp/repo")
+
+        mock_git.assert_called_once_with(
+            "ls-tree", "-r", "--name-only", "abc123", cwd="/tmp/repo"
+        )
+
+
+# ==============================================================================
 # TestGetTrackedFiles — multi-extension
 # ==============================================================================
 

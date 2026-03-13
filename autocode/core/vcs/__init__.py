@@ -36,7 +36,7 @@ from autocode.core.vcs.status import (
     GitStatusOutput,
 )
 from autocode.core.vcs.log import get_git_log, get_git_log_summary, get_commit_detail
-from autocode.core.vcs.git import git, git_checked, git_show, git_add_and_commit, get_tracked_files
+from autocode.core.vcs.git import git, git_checked, git_show, git_add_and_commit, get_tracked_files, get_tracked_files_at_commit
 
 __all__ = [
     # Operations
@@ -71,4 +71,5 @@ __all__ = [
     "git_show",
     "git_add_and_commit",
     "get_tracked_files",
+    "get_tracked_files_at_commit",
 ]

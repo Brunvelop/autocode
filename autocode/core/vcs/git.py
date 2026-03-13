@@ -105,6 +105,34 @@ def git_add_and_commit(
     return result.stdout.strip()
 
 
+def get_tracked_files_at_commit(
+    commit: str, *extensions: str, cwd: str = "."
+) -> List[str]:
+    """Get all files tracked by git at a specific commit matching the given extensions.
+
+    Uses `git ls-tree -r --name-only <commit>` to list files at a historical
+    commit, then filters results to ensure exact extension match.
+
+    Args:
+        commit: Git commit hash or ref to inspect.
+        *extensions: File extensions to include (e.g., ".py", ".js", ".mjs")
+        cwd: Working directory for the git command (default: ".")
+
+    Returns:
+        List of relative file paths matching the requested extensions at that commit.
+    """
+    if not extensions:
+        return []
+
+    output = git("ls-tree", "-r", "--name-only", commit, cwd=cwd)
+
+    if not output:
+        return []
+
+    ext_set = set(extensions)
+    return [f for f in output.split("\n") if f and Path(f).suffix in ext_set]
+
+
 def get_tracked_files(*extensions: str, cwd: str = ".") -> List[str]:
     """Get all files tracked by git matching the given extensions.
 
