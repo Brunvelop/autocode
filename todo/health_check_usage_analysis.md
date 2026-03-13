@@ -1,6 +1,59 @@
 # feat(health): add symbol usage analysis to health-check (dead code + hotspots)
 
-## Descripción
+## ⚠️ Lecciones aprendidas — implementado y revertido
+
+Esta feature fue implementada completamente (commits 758ecdd → 43b80d7) y posteriormente
+**revertida** porque el enfoque tiene problemas fundamentales:
+
+### Problema 1: Regex `\bname\b` genera falsos positivos masivos en proyectos multi-lenguaje
+
+El flujo implementado era:
+- `all_file_metrics` extrae símbolos de **todos** los archivos trackeados (`.py` + `.js` + `.mjs` + `.jsx`)
+- `build_usage_index()` buscaba referencias solo en `.py`
+
+**Resultado:** 100% de los símbolos JS aparecían con 0 referencias → falso positivo masivo.
+
+La "solución" de escanear también `.js` topaba con otro problema:
+
+| Patrón JS | Problema |
+|-----------|---------|
+| `connectedCallback()` | Lo llama el browser, no el código → siempre 0 refs |
+| `(anonymous)()` | Lizard lo extrae pero no es referenciable por nombre |
+| Event handlers en HTML | `.html` no se escanea → falso positivo |
+| `customElements.define()` | Tag se usa en HTML, no en JS |
+
+### Problema 2: Los falsos positivos son inherentes a la técnica
+
+La detección por regex no puede distinguir entre:
+- Una función realmente muerta
+- Una función usada vía `getattr`, `globals()`, o invocación dinámica
+- Un entry point registrado en `pyproject.toml` (ej: `app = "cli:app"`)
+- Un callback/hook llamado por un framework externo
+- Una función pública de librería usada por consumidores externos
+
+Para proyectos reales, la lista `dead_code_exclude_patterns` crece indefinidamente
+intentando tapar falsos positivos, destruyendo el valor de la herramienta.
+
+### Problema 3: La herramienta correcta ya existe: `vulture`
+
+`vulture` analiza el AST completo, entiende:
+- Decoradores (`@app.route`, `@pytest.fixture`)  
+- Clases base y overrides
+- `__all__` exports
+- Uso vía `getattr` (heurística)
+- Confianza configurable por tipo de item
+
+```bash
+pip install vulture
+vulture autocode/ --min-confidence 80
+```
+
+Es estrictamente superior a regex, no requiere mantenimiento, y es Python-only
+(lo que evita el problema de los símbolos JS).
+
+---
+
+## Descripción original
 
 Añadir al health-check (y como comando independiente) análisis de **uso de símbolos** a nivel de proyecto:
 
@@ -61,149 +114,68 @@ dead_code_exclude_patterns = [      # excluir símbolos que empiezan por estos p
 ]
 ```
 
-## Implementación propuesta
+## Implementación propuesta (revisada)
 
-### Enfoque: búsqueda de referencias por nombre (sin AST completo)
+### Enfoque recomendado: integrar `vulture` como backend
 
-La aproximación más pragmática es **búsqueda por nombre en el source**, no un análisis de flujo completo. Acepta falsos negativos (ej: uso vía `getattr`) pero es rápido y no requiere deps nuevas.
-
-### 1. Nuevo módulo `autocode/core/code/usage.py`
+En lugar de reimplementar la detección por regex, wrappear `vulture`:
 
 ```python
-"""
-usage.py — Symbol usage analysis across a Python project.
-
-Provides:
-- SymbolUsage: dataclass con nombre, origen y conteo de referencias
-- build_usage_index(project_root): escanea todos los .py y cuenta referencias
-"""
-import re
+# autocode/core/code/usage.py
+import subprocess
 from pathlib import Path
-from dataclasses import dataclass
-from typing import Optional
 
-
-@dataclass
-class SymbolUsage:
-    name: str               # nombre del símbolo
-    defined_in: str         # archivo donde está definido
-    defined_line: int       # línea de definición
-    reference_count: int    # cuántas veces aparece referenciado fuera de su definición
-    references: list[str]   # lista de "file:line" donde se referencia
-
-
-def build_usage_index(
+def build_usage_index_vulture(
     project_root: Path,
-    symbols: list[dict],        # [{"name": "foo", "file": "...", "line": 42}, ...]
-    exclude_patterns: list[str] = None,
+    min_confidence: int = 80,
+    exclude_patterns: list[str] | None = None,
 ) -> list[SymbolUsage]:
-    """
-    Para cada símbolo en `symbols`, cuenta cuántas veces aparece
-    referenciado en los .py del proyecto (excluyendo su propia definición).
-    
-    Estrategia: regex simple `\bname\b` en todos los archivos .py,
-    ignorando líneas de definición (def name / class name).
-    """
-    ...
-```
-
-### 2. Nueva función en `health.py`
-
-```python
-def _check_dead_code(
-    config: HealthConfig,
-    file_metrics: list[FileMetrics],
-    project_root: Path,
-) -> list[HealthViolation]:
-    """Detecta funciones/clases sin ninguna referencia en el proyecto."""
-    from autocode.core.code.usage import build_usage_index
-    
-    # Extraer todos los símbolos del proyecto
-    symbols = [
-        {"name": f.name, "file": f.file, "line": f.line}
-        for fm in file_metrics
-        for f in fm.functions
-    ]
-    
-    usage_index = build_usage_index(
-        project_root,
-        symbols,
-        exclude_patterns=config.dead_code_exclude_patterns
+    """Detecta dead code usando vulture (requiere: pip install vulture)."""
+    result = subprocess.run(
+        ["vulture", str(project_root), f"--min-confidence={min_confidence}"],
+        capture_output=True, text=True
     )
-    
-    violations = []
-    for usage in usage_index:
-        if usage.reference_count <= config.dead_code_min_refs:
-            violations.append(HealthViolation(
-                rule="dead_code",
-                level=config.dead_code_level,
-                path=usage.defined_in,
-                value=float(usage.reference_count),
-                threshold=float(config.dead_code_min_refs),
-                detail=f"{usage.name}() line {usage.defined_line}, {usage.reference_count} references"
-            ))
-    return violations
-```
-
-### 3. Nuevo comando CLI `usage-report`
-
-En `autocode/interfaces/cli.py`, añadir:
-
-```python
-@app.command("usage-report")
-def usage_report(
-    project_root: str = typer.Option(".", help="Directorio raíz del proyecto"),
-    top: int = typer.Option(10, help="Top N símbolos más/menos usados"),
-    output_format: str = typer.Option("table", help="table | json"),
-):
-    """Analiza el uso de símbolos: dead code, hotspots y underused."""
+    # Parsear output de vulture: "path:line: unused function 'name' (confidence%)"
     ...
 ```
 
-### 4. Añadir a `HealthConfig`
+**Ventajas:**
+- Sin falsos positivos de JS (vulture solo analiza Python)
+- Sin necesidad de exclusion_patterns para casos comunes
+- AST-based → respeta decoradores, `__all__`, herencia
 
-```python
-check_dead_code: bool = False
-dead_code_level: str = "warning"
-dead_code_min_refs: int = 0
-dead_code_exclude_patterns: list[str] = field(default_factory=lambda: [
-    "test_", "__", "main", "setup", "teardown"
-])
+**Limitación:** Añade dependencia de `vulture`. Puede añadirse como optional dep:
+```toml
+[project.optional-dependencies]
+dead-code = ["vulture>=2.10"]
 ```
+
+### Alternativa más simple: script `make dead-code`
+
+```makefile
+dead-code:
+    vulture autocode/ --min-confidence 80
+```
+
+Sin integración en el health system, sin complejidad. El desarrollador lo corre manualmente
+cuando quiere revisar dead code.
+
+## Archivos a tocar (si se implementa con vulture)
+
+- `autocode/core/code/usage.py` — wrapper de vulture (**nuevo archivo, muy simple**)
+- `autocode/interfaces/cli.py` — nuevo comando `usage-report` que invoca vulture
+- `pyproject.toml` — `[project.optional-dependencies] dead-code = ["vulture>=2.10"]`
+- `tests/unit/core/code/test_usage.py` — tests (mockeando el subprocess de vulture)
 
 ## Consideraciones y limitaciones conocidas
 
-| Caso | Comportamiento |
-|------|---------------|
-| `getattr(obj, 'foo')` | Falso negativo (no detecta uso) |
-| `from module import foo` | Contado como referencia ✅ |
-| Funciones de test (`test_*`) | Excluidas por defecto |
-| Dunders (`__init__`, etc.) | Excluidos por defecto |
-| Entry points (`main`) | Excluido por defecto |
-| Clases Pydantic (usadas como type hints) | Detectadas ✅ (aparecen como `ClassName`) |
-| Funciones usadas solo en templates/HTML | Falso positivo posible |
-
-## Archivos a tocar
-
-- `autocode/core/code/usage.py` — nuevo módulo de análisis de uso (**nuevo archivo**)
-- `autocode/core/code/health.py` — nueva gate `_check_dead_code()` + config
-- `autocode/core/code/models.py` — posiblemente añadir `SymbolUsage` a los modelos
-- `autocode/interfaces/cli.py` — nuevo comando `usage-report`
-- `autocode/interfaces/api.py` — nuevo endpoint `GET /code/usage`
-- `tests/unit/core/code/test_usage.py` — tests unitarios (**nuevo archivo**)
-
-## Fases de implementación recomendadas
-
-### Fase 1 (MVP): Reporte offline, sin gate
-- Implementar `usage.py` con la lógica de búsqueda por regex
-- Añadir comando CLI `usage-report` que imprime tabla
-- Sin tocar `health.py` todavía
-
-### Fase 2: Integración en health-check
-- Añadir `_check_dead_code()` a `health.py` como opt-in gate
-- Añadir config a `HealthConfig`
-- Tests
-
-### Fase 3: Endpoint API + visualización
-- Exponer `/code/usage` en la API
-- Integrar en el treemap del code-dashboard (colorear por usage frequency)
+| Caso | Comportamiento con vulture |
+|------|---------------------------|
+| `getattr(obj, 'foo')` | Detectable con whitelist de vulture ✅ |
+| `from module import foo` | Detectado como uso ✅ |
+| Funciones de test (`test_*`) | Vulture las ignora por convención ✅ |
+| Dunders (`__init__`, etc.) | Vulture los ignora ✅ |
+| Entry points (`main`) | Añadir a `whitelist.py` de vulture ✅ |
+| Clases Pydantic (type hints) | Detectadas ✅ |
+| Símbolos JS | Vulture es Python-only → sin falsos positivos ✅ |
+| Web Component lifecycle | Fuera de scope (JS) → sin falsos positivos ✅ |

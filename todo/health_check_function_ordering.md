@@ -1,6 +1,63 @@
 # feat(health): add function ordering convention check to health-check
 
-## Descripción
+## ⚠️ Lecciones aprendidas — implementado y revertido
+
+Esta feature fue implementada (commits 77d20d9 → 0f37c9d) y posteriormente **revertida**
+porque tiene problemas de diseño fundamentales:
+
+### Problema 1: Es una convención de estilo, no una métrica de salud
+
+El health-check system está diseñado para métricas **cuantitativas y objetivas** (MI, CC, nesting,
+SLOC, rank F, circular deps). Estas métricas miden cosas concretas calculadas por Lizard y
+tienen umbrales numéricos claros.
+
+El orden de funciones es una **convención de estilo** — subjetiva, contextual, y debatible.
+Mezclar ambas en el mismo sistema diluye el propósito de cada uno.
+
+### Problema 2: Falsos positivos estructurales
+
+La implementación solo detecta "público después de privado" a nivel de archivo, sin
+distinción de clase. Casos legítimos que generan violaciones:
+
+- Módulos con secciones explícitas: `# PUBLIC API` y `# PRIVATE HELPERS` intercaladas
+  por razones de proximidad lógica
+- Archivos con múltiples clases donde el orden per-clase es correcto pero el orden
+  file-level viola la regla
+- Código generado, parsers, y state machines donde el orden refleja la lógica,
+  no la visibilidad
+
+Para proyectos reales, la tasa de falsos positivos fue suficientemente alta
+como para que los warnings perdieran credibilidad.
+
+### Problema 3: La herramienta correcta ya existe: `ruff`
+
+`ruff` tiene reglas de ordering con soporte per-clase, configurable por tipo
+de método (dunder, property, classmethod, staticmethod, etc.):
+
+```toml
+# pyproject.toml
+[tool.ruff]
+select = ["D"]  # o reglas específicas de ordering
+
+# O más específicamente con pylint-style ordering:
+select = ["C0"]
+```
+
+También existen plugins como `ruff-isort` para imports. Para method ordering
+en clases, la regla `D` de pydocstyle o las extensiones de `pylint` (C0202, C0204)
+hacen esto con precisión AST real.
+
+```bash
+# Uso inmediato, sin implementar nada:
+ruff check autocode/ --select D
+```
+
+Es estrictamente superior: AST-based, entiende clases, configurable por tipo de método,
+auto-fixable (`ruff check --fix`), y no requiere mantenimiento.
+
+---
+
+## Descripción original
 
 Añadir al health-check una nueva quality gate que detecte archivos donde el orden de definición de funciones/métodos no sigue un convenio establecido. El problema más común: mezclar funciones públicas y privadas (`_prefijo`) de forma aleatoria en lugar de agruparlas de forma coherente.
 
@@ -47,80 +104,44 @@ check_function_ordering = true          # activar/desactivar (default: false, op
 function_ordering_level = "warning"     # "warning" | "critical"
 ```
 
-## Implementación propuesta
+## Implementación recomendada (si se decide retomar)
 
-### 1. Datos ya disponibles
+### Opción A: Delegar a ruff (recomendado)
 
-`FunctionMetrics` (en `autocode/core/code/models.py`) ya tiene:
-- `name: str`
-- `line: int`
-- `file: str`
+Documentar en el README que la convención de ordering se enforza con `ruff`,
+no con autocode health-check. Añadir a `pyproject.toml` del proyecto la configuración
+de ruff para method ordering.
 
-Solo falta clasificar cada función como `dunder`, `public` o `private`.
+**Sin código que mantener. Sin falsos positivos. Auto-fixable.**
 
-### 2. Nueva función en `health.py`
+### Opción B: Implementación per-clase (si se quiere en-house)
 
-```python
-def _classify_function(name: str) -> str:
-    """Clasifica una función como 'dunder', 'private' o 'public'."""
-    if name.startswith('__') and name.endswith('__'):
-        return 'dunder'
-    elif name.startswith('_'):
-        return 'private'
-    return 'public'
-
-def _check_function_ordering(
-    config: HealthConfig, file_metrics: list[FileMetrics]
-) -> list[HealthViolation]:
-    """Detecta mezclas de funciones públicas y privadas."""
-    violations = []
-    for fm in file_metrics:
-        funcs_sorted = sorted(fm.functions, key=lambda f: f.line)
-        categories = [_classify_function(f.name) for f in funcs_sorted]
-        
-        # Detectar si hay un 'public' después de un 'private' (ignorando dunders)
-        last_was_private = False
-        for func, cat in zip(funcs_sorted, categories):
-            if cat == 'dunder':
-                continue
-            if cat == 'private':
-                last_was_private = True
-            elif cat == 'public' and last_was_private:
-                violations.append(HealthViolation(
-                    rule="function_ordering",
-                    level=config.function_ordering_level,
-                    path=fm.path,
-                    value=float(func.line),
-                    threshold=0.0,
-                    detail=f"{func.name}() at line {func.line} appears after private methods"
-                ))
-    return violations
-```
-
-### 3. Añadir a `HealthConfig`
+Si se decide mantenerlo en el health system, la implementación debe ser **per-clase**,
+no per-archivo:
 
 ```python
-check_function_ordering: bool = False
-function_ordering_level: str = "warning"  # "warning" | "critical"
+def _check_function_ordering_in_class(
+    class_name: str, methods: list[FunctionMetrics]
+) -> list[str]:
+    """Detecta métodos públicos después de privados DENTRO de una clase."""
+    ...
 ```
 
-### 4. Integrar en `run_health_check()`
+Esto requiere que `FileMetrics.functions` incluya información de a qué clase
+pertenece cada método (`class_name: str | None`). Actualmente `FunctionMetrics`
+no tiene este dato — habría que añadirlo al parser.
 
-```python
-if config.check_function_ordering:
-    violations.extend(_check_function_ordering(config, file_metrics))
-```
+## Archivos a tocar (si se implementa per-clase)
 
-## Archivos a tocar
-
-- `autocode/core/code/health.py` — nueva función `_check_function_ordering()` + config
-- `autocode/core/code/models.py` — posiblemente añadir campo `kind` a `FunctionMetrics`
+- `autocode/core/code/models.py` — añadir `class_name: str | None` a `FunctionMetrics`
+- `autocode/core/code/parsers/python_parser.py` — trackear clase contenedora al parsear
+- `autocode/core/code/parsers/js_parser.py` — ídem para JS
+- `autocode/core/code/health.py` — `_classify_function()`, `_check_function_ordering()`
 - `tests/unit/core/code/test_health.py` — tests para la nueva gate
-- `autocode/testing/README.md` — documentar nueva opción de config
 
 ## Notas
 
-- Empezar como **opt-in** (`check_function_ordering = false` por defecto) para no romper proyectos existentes
-- El análisis es por archivo, no por clase — una mejora futura podría ser por clase
-- Los módulos con sección `# PUBLIC API` / `# PRIVATE HELPERS` en comentarios podrían ser excluidos opcionalmente
-- Para clases, el orden dentro de `__init__` debería tratarse separado del nivel módulo
+- Solo tiene sentido como **opt-in** (`check_function_ordering = false` por defecto)
+- Evaluar si `ruff` con reglas de ordering cubre el caso de uso antes de implementar
+- Los módulos con sección `# PUBLIC API` / `# PRIVATE HELPERS` en comentarios
+  podrían ser excluidos opcionalmente
