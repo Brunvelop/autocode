@@ -65,7 +65,7 @@ FunctionInfo:
 ┌─────────────────────────────────────────────────────────┐
 │                        CORE                             │
 │  (Funciones puras + @register_function)                 │
-│  ai/ · utils/ · vcs/ · workflow/                        │
+│  ai/ · utils/ · vcs/                                    │
 └───────────────────────┬─────────────────────────────────┘
                         │
                         ▼ popula

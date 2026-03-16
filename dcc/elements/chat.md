@@ -1,6 +1,6 @@
 # DCC: elements/chat
 > Document-Code Compression v1.0
-> Componente de chat AI con gestión de sesiones Git
+> Componente de chat AI
 
 ---
 
@@ -59,8 +59,6 @@ AutocodeChat extends AutoFunctionController:
     'submit' → _handleInputSubmit()
     'settings-change' → _handleSettingsChange()
     'toggle' → _handleWindowToggle()
-    'session-changed' → _handleSessionChange()
-    'session-started' → _handleSessionStarted()
 
 // === Ventana Flotante ===
 ChatWindow extends LitElement:
@@ -164,23 +162,6 @@ ContextBar extends LitElement:
     70-90% → amarillo
     > 90%  → rojo
 
-// === Gestión de Sesiones ===
-SessionManager extends LitElement:
-    // Propiedades
-    currentSession: Object? (state)     // Sesión activa o null
-    _errorMessage: String? (state)      // Error temporal
-    
-    // API Pública
-    hasActiveSession() → Boolean
-    getCurrentSession() → Object?
-    saveConversation(messages) → Promise<Boolean>
-    refresh() → Promise                 // Fuerza check de sesión
-    
-    // Eventos emitidos
-    'session-changed' { session: Object? }
-    'session-started' { session: Object }
-    'session-ended' { session, merged_to }
-    'session-aborted' { session }
 ```
 
 ---
@@ -203,13 +184,13 @@ SessionManager extends LitElement:
 │  └──────────────────────────────────────────────────────────────┘   │
 └───────────────────────────────┬─────────────────────────────────────┘
                                 │ compone
-                ┌───────────────┼───────────────┐
-                ▼               ▼               ▼
-┌───────────────────┐  ┌──────────────┐  ┌─────────────────┐
-│    ChatWindow     │  │ ChatSettings │  │ SessionManager  │
-│  (chat-window.js) │  │              │  │                 │
-│  drag + resize    │  │ dialog modal │  │ git workflow    │
-└─────────┬─────────┘  └──────────────┘  └─────────────────┘
+                ┌───────────────┴───────────────┐
+                ▼                               ▼
+┌───────────────────┐                  ┌──────────────┐
+│    ChatWindow     │                  │ ChatSettings │
+│  (chat-window.js) │                  │              │
+│  drag + resize    │                  │ dialog modal │
+└─────────┬─────────┘                  └──────────────┘
           │
           │ slots
           ├─────────────────────────────────────┐
@@ -234,7 +215,6 @@ chat/
 ├── chat-settings.js      # Panel de configuración
 ├── chat-debug-info.js    # Metadata técnica
 ├── context-bar.js        # Barra de uso de contexto
-├── session-manager.js    # Gestión de sesiones Git
 └── styles/
     ├── theme.js                    # Re-export de shared
     ├── common.js                   # Utilidades CSS compartidas
@@ -244,8 +224,7 @@ chat/
     ├── chat-input.styles.js
     ├── chat-settings.styles.js
     ├── chat-debug-info.styles.js
-    ├── context-bar.styles.js
-    └── session-manager.styles.js
+    └── context-bar.styles.js
 ```
 
 ---
@@ -424,10 +403,6 @@ ChatSettings:
     getSettings() incluye module_kwargs y enabled_tools si aplica
     configure(funcInfo) debe llamarse antes de usar
 
-SessionManager:
-    currentSession = null ∨ Object con {branch, description, ...}
-    saveConversation() solo funciona si hasActiveSession()
-    Eventos de sesión siempre incluyen session en detail
 ```
 
 ---
@@ -454,11 +429,6 @@ ChatSettings       ──────────────────►  Au
   model, temperature, max_tokens        params directos
   module_kwargs.*                       params.module_kwargs = {}
   enabled_tools                         params.enabled_tools = []
-
-                    SESSION → UI
-SessionData        ──────────────────►  SessionManager UI
-  null                                  Botón "Nueva Sesión"
-  {description, ...}                    Badge verde + "Finalizar" + "Cancelar"
 
                     CONTEXT → BAR
 {current, max}     ──────────────────►  ContextBar visual
@@ -488,9 +458,8 @@ SSE events         ──────────────────►  Ch
    → _loadStreamFuncInfo() → fetch chat_stream info (pre-carga)
    
    firstUpdated()
-   → Obtener referencias: _window, _messages, _input, _settings, _sessionManager
+   → Obtener referencias: _window, _messages, _input, _settings
    → Setup event listeners en shadowRoot
-   → SessionManager._checkCurrentSession()
 
 2. CONFIGURACIÓN (funcInfo loaded)
    updated(changedProperties)
@@ -519,12 +488,10 @@ SSE events         ──────────────────►  Ch
       - complete → finalizeStreaming(streamId, envelope), save state
       - error → finalizeStreaming(streamId, errorEnvelope)
    d. Actualizar conversationHistory con texto acumulado
-   e. Si sesión activa y success: saveConversation()
 
 3b. ENVÍO SÍNCRONO (_sendMessageSync)
    a. await this.execute() → callAPI()
    b. _processResult(envelope)
-   c. Si sesión activa: sessionManager.saveConversation()
 
 4. PROCESAMIENTO DE RESPUESTA (solo sync path)
    _processResult(envelope)
@@ -536,14 +503,7 @@ SSE events         ──────────────────►  Ch
        d. Push assistant msg a conversationHistory
        e. setParam('conversation_history', _formatHistory())
 
-5. GESTIÓN DE SESIONES
-   SessionManager:
-   → "Nueva Sesión" → start_ai_session() → branch ai/session-*
-   → "Finalizar" → finalize_ai_session() → squash merge a main
-   → "Cancelar" → abort_ai_session() → delete branch
-   → Cada respuesta exitosa: saveConversation() auto-guarda
-
-6. CICLO DE CONTEXTO
+5. CICLO DE CONTEXTO
    _updateContext()
    → Construir mensajes (history + input actual)
    → executeFunction('calculate_context_usage', {model, messages})
@@ -606,11 +566,6 @@ AÑADIR NUEVO TAB DE DEBUG:
 2. Crear método _renderMiTab()
 3. Añadir botón en tabs si hay datos
 
-CAMBIAR COMPORTAMIENTO DE SESIÓN:
-1. SessionManager maneja todo el workflow
-2. Para nuevo tipo: Añadir a session_type en backend
-3. Para nueva acción: Añadir método _handle* + API call
-
 PERSONALIZAR ESTILOS:
 1. Nunca modificar shared/styles/theme.js para un componente
 2. Override en el .styles.js específico usando variables CSS
@@ -637,7 +592,6 @@ customElements.get('chat-input')        // ChatInput
 customElements.get('chat-settings')     // ChatSettings
 customElements.get('chat-debug-info')   // ChatDebugInfo
 customElements.get('context-bar')       // ContextBar
-customElements.get('session-manager')   // SessionManager
 
 # Verificar eventos (en consola)
 const chat = document.querySelector('autocode-chat');
