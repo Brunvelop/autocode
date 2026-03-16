@@ -20,6 +20,7 @@ import './commit-detail.js';
 import './commit-plan-node.js';
 import './commit-plan-detail.js';
 import './git-status.js';
+import './working-changes-node.js';
 
 export class GitDashboard extends LitElement {
     static properties = {
@@ -40,9 +41,6 @@ export class GitDashboard extends LitElement {
         // Collapsible commit panel
         _panelCollapsed: { state: true },
 
-        // View mode toggle: 'commits' | 'status'
-        _viewMode: { state: true },
-
         // Git status view
         _gitStatus: { state: true },
         _gitLoading: { state: true },
@@ -51,6 +49,9 @@ export class GitDashboard extends LitElement {
         // Commit plans (ghost nodes)
         _plans: { state: true },
         _selectedPlan: { state: true },
+
+        // Working changes node (presente)
+        _selectedWorkingChanges: { state: true },
     };
 
     static styles = [themeTokens, gitDashboardStyles];
@@ -68,12 +69,12 @@ export class GitDashboard extends LitElement {
         this._error = null;
         this._layoutData = null;
         this._panelCollapsed = false;
-        this._viewMode = 'commits';
         this._gitStatus = null;
         this._gitLoading = false;
         this._gitError = null;
         this._plans = [];
         this._selectedPlan = null;
+        this._selectedWorkingChanges = false;
     }
 
     connectedCallback() {
@@ -84,6 +85,8 @@ export class GitDashboard extends LitElement {
         this.addEventListener('commit-selected', this._handleCommitSelected.bind(this));
         this.addEventListener('detail-closed', this._handleDetailClosed.bind(this));
         this.addEventListener('navigate-commit', this._handleNavigateCommit.bind(this));
+        // Working changes events
+        this.addEventListener('working-changes-selected', this._handleWorkingChangesSelected.bind(this));
         // Plan events
         this.addEventListener('plan-selected', this._handlePlanSelected.bind(this));
         this.addEventListener('plan-closed', this._handlePlanClosed.bind(this));
@@ -126,15 +129,11 @@ export class GitDashboard extends LitElement {
                 <!-- Header -->
                 ${this._renderHeader()}
 
-                <!-- Body: commits graph or git status -->
-                ${this._viewMode === 'status'
-                    ? this._renderStatusPanel()
-                    : html`
-                        <div class="graph-body">
-                            ${this._renderGraphPanel()}
-                            ${this._renderDetailPanel()}
-                        </div>
-                    `}
+                <!-- Body: grafo + detalle -->
+                <div class="graph-body">
+                    ${this._renderGraphPanel()}
+                    ${this._renderDetailPanel()}
+                </div>
             </div>
         `;
     }
@@ -149,58 +148,25 @@ export class GitDashboard extends LitElement {
                 <div class="header-left">
                     <span class="header-title-icon">🌳</span>
                     <h3 class="header-title">Git</h3>
-                    <!-- View toggle -->
-                    <button
-                        class="action-btn ${this._viewMode === 'commits' ? 'active' : ''}"
-                        @click=${() => this._setViewMode('commits')}
-                        title="Ver commits"
-                    >
-                        🌳 Commits
-                    </button>
-                    <button
-                        class="action-btn ${this._viewMode === 'status' ? 'active' : ''}"
-                        @click=${() => this._setViewMode('status')}
-                        title="Ver estado del repositorio"
-                    >
-                        🌿 Status
-                    </button>
                 </div>
                 <div class="header-actions">
-                    ${this._viewMode === 'commits' ? html`
-                        <!-- Branch filter (solo en vista commits) -->
-                        <select 
-                            class="branch-select"
-                            .value=${this._selectedBranch}
-                            @change=${this._handleBranchFilter}
-                        >
-                            <option value="">Todas las ramas</option>
-                            ${this._branches.map(b => html`
-                                <option value="${b.name}" ?selected=${b.name === this._selectedBranch}>
-                                    ${b.is_current ? '● ' : ''}${b.name}
-                                </option>
-                            `)}
-                        </select>
-                    ` : ''}
+                    <!-- Branch filter -->
+                    <select 
+                        class="branch-select"
+                        .value=${this._selectedBranch}
+                        @change=${this._handleBranchFilter}
+                    >
+                        <option value="">Todas las ramas</option>
+                        ${this._branches.map(b => html`
+                            <option value="${b.name}" ?selected=${b.name === this._selectedBranch}>
+                                ${b.is_current ? '● ' : ''}${b.name}
+                            </option>
+                        `)}
+                    </select>
                     <button class="action-btn" @click=${this._handleRefresh} title="Recargar">
                         🔄
                     </button>
                 </div>
-            </div>
-        `;
-    }
-
-    // ========================================================================
-    // STATUS PANEL (full-width, view mode 'status')
-    // ========================================================================
-
-    _renderStatusPanel() {
-        return html`
-            <div class="graph-body" style="overflow-y: auto; padding: var(--design-spacing-md, 0.75rem);">
-                <git-status
-                    .status=${this._gitStatus}
-                    .loading=${this._gitLoading}
-                    .error=${this._gitError}
-                ></git-status>
             </div>
         `;
     }
@@ -254,7 +220,7 @@ export class GitDashboard extends LitElement {
         return html`
             <div class="graph-panel">
                 <div class="commit-list">
-                    <!-- Ghost nodes: planned commits -->
+                    <!-- 1. FUTURO: planes -->
                     ${this._plans.map(plan => html`
                         <commit-plan-node
                             .plan=${plan}
@@ -262,6 +228,14 @@ export class GitDashboard extends LitElement {
                         ></commit-plan-node>
                     `)}
 
+                    <!-- 2. PRESENTE: working changes -->
+                    <working-changes-node
+                        .status=${this._gitStatus}
+                        .loading=${this._gitLoading}
+                        .selected=${this._selectedWorkingChanges}
+                    ></working-changes-node>
+
+                    <!-- 3. PASADO: commits reales -->
                     ${this._layoutData.rows.map(row => html`
                         <commit-node
                             .commit=${row.commit}
@@ -292,9 +266,10 @@ export class GitDashboard extends LitElement {
     // ========================================================================
 
     _renderDetailPanel() {
-        const showPlanDetail = this._selectedPlan;
-        const showCommitDetail = !this._selectedPlan && this._selectedCommit;
-        const showPlaceholder = !this._selectedPlan && !this._selectedCommit;
+        const showPlanDetail = !!this._selectedPlan;
+        const showWCDetail = !this._selectedPlan && this._selectedWorkingChanges;
+        const showCommitDetail = !this._selectedPlan && !this._selectedWorkingChanges && !!this._selectedCommit;
+        const showPlaceholder = !showPlanDetail && !showWCDetail && !showCommitDetail;
 
         return html`
             <div class="detail-panel">
@@ -305,6 +280,13 @@ export class GitDashboard extends LitElement {
                     <commit-plan-detail
                         .planId=${this._selectedPlan.id}
                     ></commit-plan-detail>
+                ` : ''}
+                ${showWCDetail ? html`
+                    <git-status
+                        .status=${this._gitStatus}
+                        .loading=${this._gitLoading}
+                        .error=${this._gitError}
+                    ></git-status>
                 ` : ''}
                 ${showCommitDetail ? html`
                     <commit-detail
@@ -327,28 +309,10 @@ export class GitDashboard extends LitElement {
     // ========================================================================
 
     /**
-     * Cambia el modo de vista entre 'commits' y 'status'.
-     * Si se cambia a 'status' y no hay datos, los carga automáticamente.
-     * @param {'commits' | 'status'} mode
-     */
-    _setViewMode(mode) {
-        if (this._viewMode === mode) return;
-        this._viewMode = mode;
-
-        if (mode === 'status' && !this._gitStatus && !this._gitLoading) {
-            this.refreshGitStatus();
-        }
-    }
-
-    /**
-     * Delega el refresh al método correcto según la vista activa.
+     * Recarga todos los datos del dashboard.
      */
     _handleRefresh() {
-        if (this._viewMode === 'status') {
-            this.refreshGitStatus();
-        } else {
-            this.refresh();
-        }
+        this.refresh();
     }
 
     /**
@@ -405,6 +369,9 @@ export class GitDashboard extends LitElement {
 
             // Load commit plans (non-blocking)
             this._loadPlans();
+
+            // Load git status (non-blocking)
+            this.refreshGitStatus();
 
             this.dispatchEvent(new CustomEvent('graph-loaded', {
                 detail: { commits: this._commits.length, branches: this._branches.length },
@@ -587,6 +554,15 @@ export class GitDashboard extends LitElement {
     // PLAN HANDLERS
     // ========================================================================
 
+    _handleWorkingChangesSelected() {
+        // Toggle: si ya está seleccionado, deseleccionar
+        this._selectedWorkingChanges = !this._selectedWorkingChanges;
+        if (this._selectedWorkingChanges) {
+            this._selectedCommit = null;
+            this._selectedPlan = null;
+        }
+    }
+
     _handlePlanSelected(e) {
         const plan = e.detail.plan;
         // Toggle: if clicking same plan, deselect
@@ -595,6 +571,7 @@ export class GitDashboard extends LitElement {
         } else {
             this._selectedPlan = plan;
             this._selectedCommit = null; // Deselect commit when selecting plan
+            this._selectedWorkingChanges = false; // Deselect WC when selecting plan
         }
     }
 
@@ -614,13 +591,14 @@ export class GitDashboard extends LitElement {
     }
 
     _handleCommitSelected(e) {
-        // Override: also deselect plan when selecting commit
+        // Override: also deselect plan and WC when selecting commit
         const commit = e.detail.commit;
         if (this._selectedCommit?.hash === commit.hash) {
             this._selectedCommit = null;
         } else {
             this._selectedCommit = commit;
             this._selectedPlan = null; // Deselect plan when selecting commit
+            this._selectedWorkingChanges = false; // Deselect WC when selecting commit
         }
     }
 
