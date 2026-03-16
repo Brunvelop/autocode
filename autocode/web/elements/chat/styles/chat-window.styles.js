@@ -13,8 +13,8 @@ export const chatWindowStyles = css`
 
     .toggle-btn {
         position: fixed;
-        top: var(--design-spacing-lg, 1rem);
-        left: var(--design-spacing-lg, 1rem);
+        bottom: var(--design-spacing-lg, 1rem);
+        right: var(--design-spacing-lg, 1rem);
         z-index: var(--design-z-tooltip, 110);
         background: var(--design-bg-white, white);
         color: var(--design-primary, #4f46e5);
