@@ -2,10 +2,13 @@
  * git-status.js
  * Componente para mostrar el estado actual del repositorio git.
  * Muestra archivos modificados, añadidos, eliminados, etc. con badges.
+ * Para archivos .py/.js, muestra métricas de código via files-metrics-table.
  */
 
 import { LitElement, html, css } from 'https://cdn.jsdelivr.net/gh/lit/dist@3/core/lit-core.min.js';
+import { AutoFunctionController } from '../auto-element-generator.js';
 import { themeTokens } from './styles/theme.js';
+import './files-metrics-table.js';
 
 // Mapeo de status a iconos y colores
 const STATUS_CONFIG = {
@@ -21,7 +24,9 @@ export class GitStatus extends LitElement {
     static properties = {
         status: { type: Object },
         loading: { type: Boolean },
-        error: { type: String }
+        error: { type: String },
+        _metrics: { state: true },
+        _metricsLoading: { state: true },
     };
 
     static styles = [themeTokens, css`
@@ -82,67 +87,6 @@ export class GitStatus extends LitElement {
             font-weight: var(--design-font-weight-medium, 500);
         }
 
-        /* Files list */
-        .files-list {
-            display: flex;
-            flex-direction: column;
-            gap: 2px;
-            max-height: 400px;
-            overflow-y: auto;
-        }
-
-        .file-item {
-            display: flex;
-            align-items: center;
-            gap: var(--design-spacing-sm, 0.5rem);
-            padding: var(--design-spacing-xs, 0.25rem) var(--design-spacing-sm, 0.5rem);
-            border-radius: var(--design-radius-sm, 0.25rem);
-            cursor: pointer;
-            transition: background var(--design-transition-fast, 0.15s);
-        }
-
-        .file-item:hover {
-            background: var(--design-bg-secondary, #f9fafb);
-        }
-
-        .file-status-icon {
-            font-size: 12px;
-            flex-shrink: 0;
-        }
-
-        .file-path {
-            flex: 1;
-            font-size: var(--design-font-size-sm, 0.875rem);
-            font-family: var(--design-font-mono, monospace);
-            color: var(--design-text-primary, #1f2937);
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-
-        .file-stats {
-            display: flex;
-            gap: 4px;
-            font-size: var(--design-font-size-xs, 0.75rem);
-            font-family: var(--design-font-mono, monospace);
-        }
-
-        .stat-add {
-            color: #22c55e;
-        }
-
-        .stat-del {
-            color: #ef4444;
-        }
-
-        .staged-indicator {
-            font-size: 10px;
-            padding: 1px 4px;
-            background: #3b82f620;
-            color: #3b82f6;
-            border-radius: var(--design-radius-sm, 0.25rem);
-        }
-
         /* Empty state */
         .empty-state {
             display: flex;
@@ -189,25 +133,6 @@ export class GitStatus extends LitElement {
             color: var(--design-error-text, #991b1b);
             font-size: var(--design-font-size-sm, 0.875rem);
         }
-
-        /* Group headers */
-        .group-header {
-            display: flex;
-            align-items: center;
-            gap: var(--design-spacing-xs, 0.25rem);
-            padding: var(--design-spacing-xs, 0.25rem) var(--design-spacing-sm, 0.5rem);
-            font-size: var(--design-font-size-xs, 0.75rem);
-            font-weight: var(--design-font-weight-semibold, 600);
-            color: var(--design-text-secondary, #6b7280);
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-            border-bottom: 1px solid var(--design-border-color, #e5e7eb);
-            margin-top: var(--design-spacing-sm, 0.5rem);
-        }
-
-        .group-header:first-child {
-            margin-top: 0;
-        }
     `];
 
     constructor() {
@@ -215,6 +140,15 @@ export class GitStatus extends LitElement {
         this.status = null;
         this.loading = false;
         this.error = null;
+        this._metrics = null;
+        this._metricsLoading = false;
+    }
+
+    willUpdate(changed) {
+        if (changed.has('status') && this.status && !this.status.is_clean) {
+            this._metrics = null;
+            this._loadWorkingMetrics();
+        }
     }
 
     render() {
@@ -321,67 +255,65 @@ export class GitStatus extends LitElement {
             `;
         }
 
-        // Agrupar archivos por estado
-        const staged = files.filter(f => f.staged);
-        const unstaged = files.filter(f => !f.staged && f.status !== 'untracked');
-        const untracked = files.filter(f => f.status === 'untracked');
-
         return html`
-            <div class="files-list">
-                ${staged.length > 0 ? html`
-                    <div class="group-header">
-                        📦 Staged (${staged.length})
-                    </div>
-                    ${staged.map(f => this._renderFileItem(f))}
-                ` : ''}
-
-                ${unstaged.length > 0 ? html`
-                    <div class="group-header">
-                        📝 Cambios sin stage (${unstaged.length})
-                    </div>
-                    ${unstaged.map(f => this._renderFileItem(f))}
-                ` : ''}
-
-                ${untracked.length > 0 ? html`
-                    <div class="group-header">
-                        ❓ Sin trackear (${untracked.length})
-                    </div>
-                    ${untracked.map(f => this._renderFileItem(f))}
-                ` : ''}
-            </div>
+            <files-metrics-table
+                .files=${this._mergeFilesWithMetrics()}
+                .metricsLoading=${this._metricsLoading}
+            ></files-metrics-table>
         `;
     }
 
-    _renderFileItem(file) {
-        const config = STATUS_CONFIG[file.status] || STATUS_CONFIG.modified;
-        const hasStats = file.additions > 0 || file.deletions > 0;
+    // ========================================================================
+    // API
+    // ========================================================================
 
-        return html`
-            <div 
-                class="file-item"
-                @click=${() => this._handleFileClick(file)}
-                title="${file.path}"
-            >
-                <span class="file-status-icon">${config.icon}</span>
-                <span class="file-path">${file.path}</span>
-                
-                ${hasStats ? html`
-                    <span class="file-stats">
-                        ${file.additions > 0 ? html`
-                            <span class="stat-add">+${file.additions}</span>
-                        ` : ''}
-                        ${file.deletions > 0 ? html`
-                            <span class="stat-del">-${file.deletions}</span>
-                        ` : ''}
-                    </span>
-                ` : ''}
-
-                ${file.staged ? html`
-                    <span class="staged-indicator">staged</span>
-                ` : ''}
-            </div>
-        `;
+    async _loadWorkingMetrics() {
+        this._metricsLoading = true;
+        try {
+            const result = await AutoFunctionController.executeFunction(
+                'get_working_changes_metrics',
+                {}
+            );
+            this._metrics = result;
+        } catch (e) {
+            console.error('❌ Error loading working metrics:', e);
+            this._metrics = { files: [], summary: {} };
+        } finally {
+            this._metricsLoading = false;
+        }
     }
+
+    // ========================================================================
+    // DATA HELPERS
+    // ========================================================================
+
+    /**
+     * Merge status.files (all changed files) with metrics.files (.py/.js metrics)
+     * Returns array of { path, status, additions, deletions, staged, metrics: {...} | null }
+     */
+    _mergeFilesWithMetrics() {
+        const statusFiles = this.status?.files || [];
+        const metricsFiles = this._metrics?.files || [];
+
+        // Build lookup by path from metrics
+        const metricsMap = new Map();
+        for (const mf of metricsFiles) {
+            metricsMap.set(mf.path, mf);
+        }
+
+        return statusFiles.map(f => ({
+            path: f.path,
+            status: f.status,
+            additions: f.additions || 0,
+            deletions: f.deletions || 0,
+            staged: f.staged || false,
+            metrics: metricsMap.get(f.path) || null,
+        }));
+    }
+
+    // ========================================================================
+    // EVENTS
+    // ========================================================================
 
     _handleFileClick(file) {
         this.dispatchEvent(new CustomEvent('file-selected', {

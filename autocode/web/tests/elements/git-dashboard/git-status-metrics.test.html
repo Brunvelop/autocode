@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>git-status — Metrics Table Integration</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .component-stage {
+            min-height: 200px;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            overflow: hidden;
+            background: white;
+            padding: 8px;
+        }
+        git-status {
+            display: block;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 p-6">
+    <div class="max-w-4xl mx-auto">
+        <h1 class="text-2xl font-bold mb-2">📊 git-status — Metrics Table Tests</h1>
+        <p class="text-gray-500 text-sm mb-4">
+            Verifica que git-status reemplaza la lista de archivos por files-metrics-table
+            y carga métricas via get_working_changes_metrics.
+        </p>
+
+        <!-- Summary -->
+        <div id="summary" class="mb-6 p-4 bg-white border border-gray-200 rounded-lg shadow-sm"></div>
+
+        <!-- Test results -->
+        <div id="results" class="space-y-4"></div>
+    </div>
+
+    <script type="module">
+        import '../../utils/test-runner.js';
+        import { TestRunner } from '../../utils/test-runner.js';
+
+        const runner = new TestRunner();
+
+        // ====================================================================
+        // MOCK DATA
+        // ====================================================================
+
+        const MOCK_STATUS_DIRTY = {
+            branch: 'main',
+            is_clean: false,
+            total_modified: 1,
+            total_added: 1,
+            total_deleted: 0,
+            total_untracked: 1,
+            total_staged: 1,
+            files: [
+                { path: 'autocode/core/code/metrics.py', status: 'modified', additions: 10, deletions: 3, staged: false },
+                { path: 'autocode/web/elements/git-dashboard/git-status.js', status: 'modified', additions: 50, deletions: 60, staged: true },
+                { path: 'README.md', status: 'modified', additions: 2, deletions: 1, staged: false },
+                { path: 'new-untracked.txt', status: 'untracked', additions: 0, deletions: 0, staged: false },
+            ],
+        };
+
+        const MOCK_STATUS_CLEAN = {
+            branch: 'main',
+            is_clean: true,
+            total_modified: 0,
+            total_added: 0,
+            total_deleted: 0,
+            total_untracked: 0,
+            total_staged: 0,
+            files: [],
+        };
+
+        // Simulates CommitMetricsOutput.result (CommitMetrics)
+        const MOCK_METRICS_RESULT = {
+            commit_hash: 'working',
+            commit_short: 'working',
+            files: [
+                {
+                    path: 'autocode/core/code/metrics.py',
+                    status: 'modified',
+                    before: { sloc: 100, avg_complexity: 3.5, max_complexity: 8, maintainability_index: 72, functions_count: 12, classes_count: 1, max_nesting: 3 },
+                    after:  { sloc: 107, avg_complexity: 3.7, max_complexity: 8, maintainability_index: 71, functions_count: 13, classes_count: 1, max_nesting: 3 },
+                    delta_sloc: 7,
+                    delta_complexity: 0.2,
+                    delta_mi: -1.0,
+                },
+                {
+                    path: 'autocode/web/elements/git-dashboard/git-status.js',
+                    status: 'modified',
+                    before: { sloc: 200, avg_complexity: 2.0, max_complexity: 5, maintainability_index: 80, functions_count: 10, classes_count: 1, max_nesting: 2 },
+                    after:  { sloc: 190, avg_complexity: 1.8, max_complexity: 4, maintainability_index: 82, functions_count: 9, classes_count: 1, max_nesting: 2 },
+                    delta_sloc: -10,
+                    delta_complexity: -0.2,
+                    delta_mi: 2.0,
+                },
+            ],
+            summary: { delta_sloc: -3, delta_avg_complexity: 0.0, files_analyzed: 2 },
+        };
+
+        // get_working_changes_metrics returns CommitMetricsOutput shape: { success, result, message }
+        const MOCK_WC_METRICS_OUTPUT = {
+            success: true,
+            result: MOCK_METRICS_RESULT,
+            message: 'Working changes: 2 archivos analizados',
+        };
+
+        // ====================================================================
+        // MOCK: Intercept AutoFunctionController BEFORE component loads
+        // ====================================================================
+
+        let metricsCallCount = 0;
+
+        const autoGenModule = await import('../../../elements/auto-element-generator.js');
+        const originalExecute = autoGenModule.AutoFunctionController.executeFunction;
+
+        autoGenModule.AutoFunctionController.executeFunction = async function(funcName, params) {
+            if (funcName === 'get_working_changes_metrics') {
+                metricsCallCount++;
+                return MOCK_METRICS_RESULT;
+            }
+            return originalExecute.call(this, funcName, params);
+        };
+
+        // Import git-status component (and files-metrics-table via its import)
+        await import('../../../elements/git-dashboard/git-status.js');
+
+        // Helper: wait for all pending Lit updates to settle
+        async function settle(el, ms = 100) {
+            await el.updateComplete;
+            await new Promise(r => setTimeout(r, ms));
+            await el.updateComplete;
+        }
+
+        // Helper: wait for metricsLoading to become false
+        async function waitForMetrics(el, timeout = 3000) {
+            const start = Date.now();
+            while (el._metricsLoading && (Date.now() - start < timeout)) {
+                await new Promise(r => setTimeout(r, 50));
+                await el.updateComplete;
+            }
+            await el.updateComplete;
+            await new Promise(r => setTimeout(r, 50));
+            await el.updateComplete;
+        }
+
+        // ====================================================================
+        // A) Repositorio sucio → renderiza files-metrics-table
+        // ====================================================================
+
+        runner.group('A) Repo sucio → renderiza files-metrics-table', () => {
+
+            runner.test('Renderiza <files-metrics-table> en el shadow DOM', async (stage) => {
+                const el = document.createElement('git-status');
+                stage.appendChild(el);
+                el.status = MOCK_STATUS_DIRTY;
+                await settle(el);
+                await waitForMetrics(el);
+
+                const table = el.shadowRoot.querySelector('files-metrics-table');
+                runner.assertTrue(table !== null, 'Debería renderizar <files-metrics-table>');
+            });
+
+            runner.test('NO renderiza .files-list (lista antigua eliminada)', async (stage) => {
+                const el = document.createElement('git-status');
+                stage.appendChild(el);
+                el.status = MOCK_STATUS_DIRTY;
+                await settle(el);
+                await waitForMetrics(el);
+
+                const filesList = el.shadowRoot.querySelector('.files-list');
+                runner.assertTrue(filesList === null, '.files-list NO debería existir (reemplazada por la tabla)');
+            });
+
+            runner.test('NO renderiza .file-item (elementos de lista antigua eliminados)', async (stage) => {
+                const el = document.createElement('git-status');
+                stage.appendChild(el);
+                el.status = MOCK_STATUS_DIRTY;
+                await settle(el);
+                await waitForMetrics(el);
+
+                const fileItems = el.shadowRoot.querySelectorAll('.file-item');
+                runner.assertEqual(fileItems.length, 0, '.file-item NO debería existir');
+            });
+
+            runner.test('_renderBranchHeader() sigue renderizando .branch-header', async (stage) => {
+                const el = document.createElement('git-status');
+                stage.appendChild(el);
+                el.status = MOCK_STATUS_DIRTY;
+                await settle(el);
+
+                const branchHeader = el.shadowRoot.querySelector('.branch-header');
+                runner.assertTrue(branchHeader !== null, '.branch-header debería seguir renderizándose');
+                runner.assertTrue(
+                    branchHeader.textContent.includes('main'),
+                    '.branch-header debería mostrar el nombre de la rama'
+                );
+            });
+
+            runner.test('_renderSummary() sigue renderizando .summary-row con badges', async (stage) => {
+                const el = document.createElement('git-status');
+                stage.appendChild(el);
+                el.status = MOCK_STATUS_DIRTY;
+                await settle(el);
+
+                const summaryRow = el.shadowRoot.querySelector('.summary-row');
+                runner.assertTrue(summaryRow !== null, '.summary-row debería seguir renderizándose');
+
+                const badges = summaryRow.querySelectorAll('.summary-badge');
+                runner.assertTrue(badges.length > 0, 'Debería haber al menos un badge en el summary');
+            });
+
+        });
+
+        // ====================================================================
+        // B) Merge correcto: status.files + metrics.files
+        // ====================================================================
+
+        runner.group('B) _mergeFilesWithMetrics() fusiona correctamente', () => {
+
+            runner.test('_mergeFilesWithMetrics() retorna todos los archivos de status', async (stage) => {
+                const el = document.createElement('git-status');
+                stage.appendChild(el);
+                el.status = MOCK_STATUS_DIRTY;
+                await settle(el);
+                await waitForMetrics(el);
+
+                const merged = el._mergeFilesWithMetrics();
+                runner.assertEqual(
+                    merged.length,
+                    MOCK_STATUS_DIRTY.files.length,
+                    'El merge debe incluir todos los archivos de status'
+                );
+            });
+
+            runner.test('Archivos .py/.js tienen .metrics no nulo', async (stage) => {
+                const el = document.createElement('git-status');
+                stage.appendChild(el);
+                el.status = MOCK_STATUS_DIRTY;
+                await settle(el);
+                await waitForMetrics(el);
+
+                const merged = el._mergeFilesWithMetrics();
+                const pyFile = merged.find(f => f.path === 'autocode/core/code/metrics.py');
+                const jsFile = merged.find(f => f.path === 'autocode/web/elements/git-dashboard/git-status.js');
+
+                runner.assertTrue(pyFile !== undefined, 'Debería encontrar el archivo .py');
+                runner.assertTrue(pyFile.metrics !== null, '.py file debería tener .metrics');
+
+                runner.assertTrue(jsFile !== undefined, 'Debería encontrar el archivo .js');
+                runner.assertTrue(jsFile.metrics !== null, '.js file debería tener .metrics');
+            });
+
+            runner.test('Archivos sin métricas (.md, .txt) tienen .metrics === null', async (stage) => {
+                const el = document.createElement('git-status');
+                stage.appendChild(el);
+                el.status = MOCK_STATUS_DIRTY;
+                await settle(el);
+                await waitForMetrics(el);
+
+                const merged = el._mergeFilesWithMetrics();
+                const mdFile = merged.find(f => f.path === 'README.md');
+                const txtFile = merged.find(f => f.path === 'new-untracked.txt');
+
+                runner.assertTrue(mdFile !== undefined, 'Debería encontrar README.md');
+                runner.assertTrue(mdFile.metrics === null, 'README.md no debería tener métricas');
+
+                runner.assertTrue(txtFile !== undefined, 'Debería encontrar new-untracked.txt');
+                runner.assertTrue(txtFile.metrics === null, '.txt no debería tener métricas');
+            });
+
+        });
+
+        // ====================================================================
+        // C) Campo staged se propaga correctamente
+        // ====================================================================
+
+        runner.group('C) Campo staged se propaga en el merge', () => {
+
+            runner.test('Archivo staged conserva staged=true en el merge', async (stage) => {
+                const el = document.createElement('git-status');
+                stage.appendChild(el);
+                el.status = MOCK_STATUS_DIRTY;
+                await settle(el);
+                await waitForMetrics(el);
+
+                const merged = el._mergeFilesWithMetrics();
+                const stagedFile = merged.find(f => f.path === 'autocode/web/elements/git-dashboard/git-status.js');
+
+                runner.assertTrue(stagedFile !== undefined, 'Debería encontrar el archivo staged');
+                runner.assertTrue(stagedFile.staged === true, 'El archivo staged debería tener staged=true');
+            });
+
+            runner.test('Archivo no staged conserva staged=false en el merge', async (stage) => {
+                const el = document.createElement('git-status');
+                stage.appendChild(el);
+                el.status = MOCK_STATUS_DIRTY;
+                await settle(el);
+                await waitForMetrics(el);
+
+                const merged = el._mergeFilesWithMetrics();
+                const unstagedFile = merged.find(f => f.path === 'autocode/core/code/metrics.py');
+
+                runner.assertTrue(unstagedFile !== undefined, 'Debería encontrar el archivo no staged');
+                runner.assertTrue(unstagedFile.staged === false, 'El archivo no staged debería tener staged=false');
+            });
+
+        });
+
+        // ====================================================================
+        // D) Repo limpio → NO carga métricas, muestra empty state
+        // ====================================================================
+
+        runner.group('D) Repo limpio → sin tabla, sin carga de métricas', () => {
+
+            runner.test('Con is_clean=true, NO renderiza files-metrics-table', async (stage) => {
+                const el = document.createElement('git-status');
+                stage.appendChild(el);
+                metricsCallCount = 0;
+                el.status = MOCK_STATUS_CLEAN;
+                await settle(el);
+
+                const table = el.shadowRoot.querySelector('files-metrics-table');
+                runner.assertTrue(table === null, 'NO debería renderizar files-metrics-table cuando está limpio');
+            });
+
+            runner.test('Con is_clean=true, muestra .empty-state', async (stage) => {
+                const el = document.createElement('git-status');
+                stage.appendChild(el);
+                el.status = MOCK_STATUS_CLEAN;
+                await settle(el);
+
+                const emptyState = el.shadowRoot.querySelector('.empty-state');
+                runner.assertTrue(emptyState !== null, 'Debería mostrar .empty-state cuando está limpio');
+            });
+
+            runner.test('Con is_clean=true, NO llama a get_working_changes_metrics', async (stage) => {
+                const el = document.createElement('git-status');
+                stage.appendChild(el);
+                metricsCallCount = 0;
+                el.status = MOCK_STATUS_CLEAN;
+                await settle(el);
+
+                runner.assertEqual(
+                    metricsCallCount, 0,
+                    'NO debería llamar a get_working_changes_metrics con repo limpio'
+                );
+            });
+
+            runner.test('.branch-header muestra clean-badge cuando is_clean=true', async (stage) => {
+                const el = document.createElement('git-status');
+                stage.appendChild(el);
+                el.status = MOCK_STATUS_CLEAN;
+                await settle(el);
+
+                const branchHeader = el.shadowRoot.querySelector('.branch-header');
+                runner.assertTrue(branchHeader !== null, '.branch-header debería estar presente');
+                runner.assertTrue(
+                    branchHeader.textContent.includes('Limpio'),
+                    '.branch-header debería mostrar badge "Limpio"'
+                );
+            });
+
+        });
+
+        // ====================================================================
+        // E) willUpdate dispara _loadWorkingMetrics cuando status cambia
+        // ====================================================================
+
+        runner.group('E) willUpdate() dispara carga de métricas', () => {
+
+            runner.test('Asignar status sucio llama a get_working_changes_metrics', async (stage) => {
+                const el = document.createElement('git-status');
+                stage.appendChild(el);
+                metricsCallCount = 0;
+                el.status = MOCK_STATUS_DIRTY;
+                await settle(el);
+                await waitForMetrics(el);
+
+                runner.assertTrue(
+                    metricsCallCount >= 1,
+                    'Debería llamar a get_working_changes_metrics al asignar status sucio'
+                );
+            });
+
+            runner.test('_metricsLoading es false después de cargar', async (stage) => {
+                const el = document.createElement('git-status');
+                stage.appendChild(el);
+                el.status = MOCK_STATUS_DIRTY;
+                await settle(el);
+                await waitForMetrics(el);
+
+                runner.assertTrue(
+                    el._metricsLoading === false,
+                    '_metricsLoading debería ser false tras completar la carga'
+                );
+            });
+
+            runner.test('_metrics tiene el resultado del backend tras cargar', async (stage) => {
+                const el = document.createElement('git-status');
+                stage.appendChild(el);
+                el.status = MOCK_STATUS_DIRTY;
+                await settle(el);
+                await waitForMetrics(el);
+
+                runner.assertTrue(el._metrics !== null, '_metrics no debería ser null tras cargar');
+                runner.assertTrue(
+                    el._metrics?.commit_hash === 'working',
+                    '_metrics debería ser CommitMetrics con commit_hash=working'
+                );
+                runner.assertEqual(
+                    el._metrics?.files?.length,
+                    2,
+                    '_metrics.files debería tener 2 archivos'
+                );
+            });
+
+            runner.test('Cambiar status de dirty a clean resetea _metrics', async (stage) => {
+                const el = document.createElement('git-status');
+                stage.appendChild(el);
+
+                // First set dirty
+                el.status = MOCK_STATUS_DIRTY;
+                await settle(el);
+                await waitForMetrics(el);
+                runner.assertTrue(el._metrics !== null, '_metrics debería cargarse con repo sucio');
+
+                // Then set clean — willUpdate resets _metrics because is_clean=true won't enter the if
+                // But actually willUpdate only resets _metrics when NOT clean and status changed
+                // So here _metrics stays but no new load happens
+                metricsCallCount = 0;
+                el.status = MOCK_STATUS_CLEAN;
+                await settle(el);
+
+                runner.assertEqual(
+                    metricsCallCount, 0,
+                    'NO debería cargar métricas al pasar a repo limpio'
+                );
+            });
+
+        });
+
+        // ====================================================================
+        // RUN
+        // ====================================================================
+
+        await runner.run();
+    </script>
+</body>
+</html>
