@@ -19,7 +19,6 @@ import './chat-messages.js';
 import './chat-window.js';
 import './context-bar.js';
 import './chat-settings.js';
-import './session-manager.js';
 
 export class AutocodeChat extends AutoFunctionController {
     static properties = {
@@ -60,15 +59,11 @@ export class AutocodeChat extends AutoFunctionController {
         this._input = this.shadowRoot.querySelector('chat-input');
         this._contextBar = this.shadowRoot.querySelector('context-bar');
         this._settings = this.shadowRoot.querySelector('chat-settings');
-        this._sessionManager = this.shadowRoot.querySelector('session-manager');
         
         // Setup event listeners
         this.shadowRoot.addEventListener('submit', this._handleInputSubmit.bind(this));
         this.shadowRoot.addEventListener('settings-change', this._handleSettingsChange.bind(this));
         this.shadowRoot.addEventListener('toggle', this._handleWindowToggle.bind(this));
-        this.shadowRoot.addEventListener('session-changed', this._handleSessionChange.bind(this));
-        this.shadowRoot.addEventListener('session-started', this._handleSessionStarted.bind(this));
-        
         // Click en botón Nueva
         const newBtn = this.shadowRoot.querySelector('[data-ref="newChatBtn"]');
         if (newBtn) {
@@ -100,9 +95,6 @@ export class AutocodeChat extends AutoFunctionController {
                     </div>
 
                     <chat-settings .chatConfig=${this._chatConfig}></chat-settings>
-                    
-                    <!-- Session Manager: Reemplaza toda la lógica de sesiones -->
-                    <session-manager></session-manager>
                     
                     <button 
                         data-ref="newChatBtn"
@@ -290,20 +282,6 @@ export class AutocodeChat extends AutoFunctionController {
         }
     }
 
-    // ========================================================================
-    // SESSION MANAGEMENT (Delegado a session-manager)
-    // ========================================================================
-
-    _handleSessionChange(e) {
-        // El session-manager notifica cambios en la sesión
-        console.log('📊 Sesión cambió:', e.detail.session);
-    }
-
-    _handleSessionStarted(e) {
-        console.log('✅ Sesión iniciada:', e.detail.session);
-        // Aquí podrías agregar lógica adicional si es necesario
-    }
-
     async _sendMessage(message) {
         if (!message?.trim()) return;
 
@@ -420,11 +398,6 @@ export class AutocodeChat extends AutoFunctionController {
             this.conversationHistory.push({ role: 'assistant', content: responseText });
             this.setParam('conversation_history', this._formatHistory());
 
-            // Auto-save sesión (solo si success)
-            if (this._sessionManager?.hasActiveSession() && this.envelope?.success !== false) {
-                await this._sessionManager.saveConversation(this.conversationHistory);
-            }
-
         } catch (error) {
             this._messages.finalizeStreaming(streamId, {
                 _isError: true, _message: error.message, _statusLog: statusLog
@@ -446,10 +419,6 @@ export class AutocodeChat extends AutoFunctionController {
             // Notify other components (e.g. git-dashboard) that plans may have changed
             window.dispatchEvent(new CustomEvent('plans-changed'));
 
-            // Auto-save si estamos en sesión (después de respuesta del asistente)
-            if (this._sessionManager?.hasActiveSession() && this.envelope && this.envelope.success !== false && !this.envelope._isError) {
-                await this._sessionManager.saveConversation(this.conversationHistory);
-            }
         } catch (error) {
             if (this._messages) {
                 this._messages.addMessage('error', error.message || 'Error desconocido');

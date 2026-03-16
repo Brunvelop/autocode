@@ -18,11 +18,7 @@ A3. DSPy como motor de IA
     → Signatures declarativas definen inputs/outputs de IA
     → generate_with_dspy() es el único punto de entrada a DSPy
 
-A4. Git como backend de estado
-    → Sesiones AI viven en ramas git (ai/*)
-    → El working directory ES el estado de la sesión
-
-A5. Utilidades sin efectos secundarios globales
+A4. Utilidades sin efectos secundarios globales
     → utils/* son funciones puras sin estado compartido
     → Excepciones explícitas para errores de I/O
 ```
@@ -71,15 +67,6 @@ dspy.Signature:
     input_fields: {name: InputField}
     output_fields: {name: OutputField}
 
-# === Contrato de Sesión ===
-SessionData:
-    session_id: str          # Timestamp YYYYMMDD-HHMMSS
-    description: str
-    base_branch: str
-    session_type: "session"|"docs"|"tests"|"review"
-    started_at: str          # ISO datetime
-    status: "in_progress"|"completed"
-    branch: str              # ai/{type}-{timestamp}
 ```
 
 ---
@@ -113,10 +100,6 @@ SessionData:
 │   └─ models.py                         │               │
 │      (GitNodeEntry, GitTreeOutput)     │               │
 │                                        │               │
-│   workflow/                            │               │
-│   └─ session.py  ──────────────────────┘               │
-│      (AISessionManager, start_ai_session...)           │
-│                                                         │
 └───────────────────────┬─────────────────────────────────┘
                         │ popula via @register_function
                         ▼
@@ -126,11 +109,10 @@ SessionData:
 └─────────────────────────────────────────────────────────┘
 
 Dependencias internas de core:
-  utils/ ← ai/pipelines ← workflow/session
-  vcs/operations ← workflow/session
+  utils/ ← ai/pipelines
   vcs/models ← vcs/tree
   interfaces/models ← {ai/models, vcs/models}
-  interfaces/registry ← {ai/pipelines, vcs/tree, workflow/session}
+  interfaces/registry ← {ai/pipelines, vcs/tree}
 ```
 
 ---
@@ -152,7 +134,6 @@ Invariante: La signature define QUÉ generar
 ```
 Clase interna:        Funciones registradas:
 GitOperations         get_git_tree()
-AISessionManager      start_ai_session(), finalize_ai_session()...
 
 Invariante: La clase encapsula lógica compleja
             Las funciones @register_function son thin wrappers
@@ -180,20 +161,7 @@ Invariante: 0 schemas hardcodeados
             Introspección en runtime descubre parámetros
 ```
 
-### P5: Git Branch as Session State
-```
-Entrada:  start_ai_session(description, type)
-Proceso:  Crear rama ai/{type}-{timestamp}
-          Guardar session.json en .ai-context/
-Estado:   La rama ES la sesión (commit = checkpoint)
-Salida:   finalize_ai_session() → squash merge a main
-
-Invariante: Todo trabajo AI está aislado en rama
-            El merge es squash (historia limpia en main)
-            .ai-context/ se excluye del merge a main
-```
-
-### P6: SSE Streaming Pattern
+### P5: SSE Streaming Pattern
 ```
 Entrada:  stream_chat(message, ...) — mismos params que chat()
 Proceso:  1. Configurar LM y tools (vía prepare_chat_tools)
@@ -238,11 +206,6 @@ Invariante: stream_chat comparte prepare_chat_tools() con chat()
     len(signature.output_fields) >= 1
     fields tienen desc para autodocumentación
 
-∀ sesión en workflow:
-    branch.startswith("ai/")
-    exists(.ai-context/session.json)
-    session.status ∈ {"in_progress", "completed"}
-
 ∀ output ∈ DspyOutput:
     output.success = True → len(output.result) >= 1
     output.success = False → output.message explica error
@@ -267,10 +230,6 @@ Python Type        ──────────────────►  DS
 git ls-tree -r -l  ──────────────────►  GitTreeGraph
   "100644 blob <sha> 1234\tpath"        nodes: [GitNodeEntry...]
 
-                    SESSION LIFECYCLE
-start_ai_session   ──────────────────►  Rama git + session.json
-finalize_session   ──────────────────►  Squash merge a main
-abort_session      ──────────────────►  Checkout base + delete branch
 ```
 
 ---
@@ -293,16 +252,6 @@ abort_session      ──────────────────►  Ch
    API:  POST /my_pipeline {"input_text": "..."}
    CLI:  autocode my_pipeline --input-text "..."
    MCP:  tool.my_pipeline({input_text: "..."})
-
-4. SESIÓN AI (Workflow completo)
-   start_ai_session("Implementar feature X")
-   → Rama: ai/session-20260104-214500
-   
-   [trabajo, commits, chat...]
-   
-   finalize_ai_session("feat: Añadir feature X")
-   → Squash merge a main
-   → Rama conservada o eliminada
 ```
 
 ---
@@ -324,12 +273,6 @@ abort_session      ──────────────────►  Ch
 
 ✗ Hardcodear schemas de módulos DSPy
   → Usar get_module_kwargs_schema() para introspección
-
-✗ Hacer checkout a ramas de sesión manualmente
-  → Usar AISessionManager para gestionar estado
-
-✗ Guardar estado de sesión fuera de git
-  → .ai-context/ dentro de la rama es el estado
 ```
 
 ---
@@ -351,11 +294,6 @@ AÑADIR NUEVO PIPELINE AI:
 AÑADIR OPERACIÓN GIT:
 1. Añadir método a GitOperations en vcs/operations.py
 2. Si se expone: crear función @register_function en vcs/
-
-AÑADIR TIPO DE SESIÓN:
-1. Añadir valor a SessionType Literal
-2. Añadir a VALID_SESSION_TYPES
-3. (Opcional) Añadir lógica específica en AISessionManager
 
 EXTENDER OUTPUT MODEL:
 1. Crear clase que herede de GenericOutput
@@ -394,10 +332,6 @@ autocode/core/
 │   ├── models.py            # GitNodeEntry, GitTreeGraph, GitTreeOutput
 │   ├── operations.py        # GitOperations (wrapper GitPython)
 │   └── tree.py              # get_git_tree() registrada
-└── workflow/
-    ├── __init__.py
-    ├── session.py           # AISessionManager + funciones registradas
-    └── README.md
 ```
 
 ---
