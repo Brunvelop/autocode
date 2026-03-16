@@ -253,4 +253,60 @@ export const codeDashboardStyles = css`
     .refresh-btn:hover {
         background-color: var(--design-bg-gray-50);
     }
+
+    /* ===== COMMIT SELECTOR ===== */
+    .commit-select {
+        font-size: 10px;
+        font-family: var(--design-font-mono);
+        color: var(--design-text-secondary);
+        background: var(--design-bg-white);
+        border: 1px solid var(--design-border-gray);
+        border-radius: var(--design-radius-sm);
+        padding: 1px var(--design-spacing-xs);
+        cursor: pointer;
+        max-width: 280px;
+        transition: border-color var(--design-transition-fast);
+        vertical-align: middle;
+    }
+
+    .commit-select:hover {
+        border-color: var(--design-primary);
+    }
+
+    .commit-select:focus {
+        outline: none;
+        border-color: var(--design-primary);
+        box-shadow: 0 0 0 2px var(--design-indigo-50);
+    }
+
+    /* ===== HISTORICAL BANNER ===== */
+    .historical-banner {
+        font-size: 11px;
+        color: #92400e;
+        background: #fef3c7;
+        border: 1px solid #fcd34d;
+        border-radius: var(--design-radius-md);
+        padding: var(--design-spacing-xs) var(--design-spacing-md);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: var(--design-spacing-sm);
+    }
+
+    .back-to-current-btn {
+        padding: 2px var(--design-spacing-sm);
+        background: #92400e;
+        color: white;
+        border: none;
+        border-radius: var(--design-radius-sm);
+        cursor: pointer;
+        font-size: 10px;
+        font-family: inherit;
+        transition: opacity var(--design-transition-fast);
+        white-space: nowrap;
+    }
+
+    .back-to-current-btn:hover {
+        opacity: 0.85;
+    }
 `;

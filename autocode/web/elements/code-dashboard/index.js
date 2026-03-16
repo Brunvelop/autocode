@@ -49,6 +49,12 @@ export class CodeDashboard extends LitElement {
         // Lazy activation flags for embedded components
         _codeActivated: { state: true },
         _metricsActivated: { state: true },
+
+        // Commit history for selector (loaded from get_git_log)
+        _commits: { state: true },
+
+        // Currently selected commit hash ('' = HEAD / current)
+        _selectedCommitHash: { state: true },
     };
 
     // Styles extracted in Commit 3: theme tokens + component styles
@@ -64,11 +70,14 @@ export class CodeDashboard extends LitElement {
         this._tree = null;
         this._codeActivated = false;
         this._metricsActivated = false;
+        this._commits = [];
+        this._selectedCommitHash = '';
     }
 
     connectedCallback() {
         super.connectedCallback();
         this.refresh();
+        this._loadCommits();
 
         // Listen for navigation events from child components (treemap, graph)
         this.addEventListener('navigate-into', this._handleNavigateInto.bind(this));
@@ -83,7 +92,21 @@ export class CodeDashboard extends LitElement {
     // DATA LOADING
     // ========================================================================
 
-    async refresh() {
+    async _loadCommits() {
+        try {
+            const result = await AutoFunctionController.executeFunction(
+                'get_git_log',
+                { max_count: 20 }
+            );
+            if (result?.commits) {
+                this._commits = result.commits;
+            }
+        } catch (e) {
+            // Silently fail — selector simply won't appear
+        }
+    }
+
+    async refresh(commitHash = '') {
         // Preserve navigation state before reload
         const savedNodeId = this._currentNodeId;
         const savedViewMode = this._viewMode;
@@ -91,9 +114,10 @@ export class CodeDashboard extends LitElement {
         this._loading = true;
         this._error = null;
         try {
+            const params = commitHash ? { commit_hash: commitHash } : {};
             const result = await AutoFunctionController.executeFunction(
                 'get_architecture_snapshot',
-                {}
+                params
             );
             this._snapshot = result;
 
@@ -112,6 +136,9 @@ export class CodeDashboard extends LitElement {
 
             // Restore view mode (unchanged, but explicit for clarity)
             this._viewMode = savedViewMode;
+
+            // Store selected commit hash
+            this._selectedCommitHash = commitHash;
 
         } catch (e) {
             this._error = e.message || 'Error cargando arquitectura';
@@ -320,12 +347,42 @@ export class CodeDashboard extends LitElement {
     // ========================================================================
 
     _renderSnapshotInfo(snap) {
+        const isHistorical = this._selectedCommitHash !== '';
+
+        const commitSelector = this._commits.length > 0
+            ? html`
+                <select class="commit-select" @change=${this._onCommitSelect.bind(this)}>
+                    ${this._commits.map(c => html`
+                        <option
+                            value="${c.hash}"
+                            ?selected=${this._selectedCommitHash
+                                ? c.hash === this._selectedCommitHash
+                                : c.hash === this._commits[0]?.hash}
+                        >${c.short_hash} · ${c.message.length > 45 ? c.message.slice(0, 45) + '…' : c.message}</option>
+                    `)}
+                </select>
+            `
+            : html`Commit ${snap.commit_short}`;
+
         return html`
+            ${isHistorical ? html`
+                <div class="historical-banner">
+                    📸 Viendo snapshot histórico
+                    <button class="back-to-current-btn" @click=${() => this.refresh('')}>Volver al actual</button>
+                </div>
+            ` : ''}
             <div class="snapshot-info">
-                📊 Commit ${snap.commit_short} · ${snap.branch} · ${this._formatDate(snap.timestamp)}
-                <button class="refresh-btn" @click=${() => this.refresh()} title="Recargar snapshot">🔄</button>
+                📊 ${commitSelector} · ${snap.branch} · ${this._formatDate(snap.timestamp)}
+                <button class="refresh-btn" @click=${() => this.refresh(this._selectedCommitHash)} title="Recargar snapshot">🔄</button>
             </div>
         `;
+    }
+
+    _onCommitSelect(e) {
+        const selectedHash = e.target.value;
+        // If user selects the most recent commit (HEAD), use '' so backend uses current mode
+        const isHead = selectedHash === this._commits[0]?.hash;
+        this.refresh(isHead ? '' : selectedHash);
     }
 
     // ========================================================================
