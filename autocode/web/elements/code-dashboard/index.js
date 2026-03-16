@@ -184,7 +184,6 @@ export class CodeDashboard extends LitElement {
                     </div>
                 ` : ''}
                 <div class="dashboard">
-                    ${this._renderSummary(snap)}
                     ${this._renderViewTabs()}
                     ${this._renderContentArea()}
                     ${this._renderSnapshotInfo(snap)}
@@ -339,11 +338,11 @@ export class CodeDashboard extends LitElement {
             `;
         }
 
-        // Metrics tab — metrics-panel (hide-summary: code-dashboard already shows summary cards)
+        // Metrics tab — metrics-panel (summary cards shown inside the panel)
         if (mode === 'metrics') {
             return html`
                 <div class="content-area">
-                    <metrics-panel hide-summary></metrics-panel>
+                    <metrics-panel></metrics-panel>
                 </div>
             `;
         }
