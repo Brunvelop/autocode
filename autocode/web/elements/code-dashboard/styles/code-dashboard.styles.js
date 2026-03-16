@@ -229,6 +229,11 @@ export const codeDashboardStyles = css`
         position: relative;
     }
 
+    .content-area > * {
+        flex: 1;
+        min-width: 0;
+    }
+
     .content-placeholder {
         display: flex;
         flex-direction: column;

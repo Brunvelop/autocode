@@ -7,6 +7,9 @@ import { css } from 'https://cdn.jsdelivr.net/gh/lit/dist@3/core/lit-core.min.js
 export const metricsPanelStyles = css`
     :host {
         display: block;
+        flex: 1;
+        min-width: 0;
+        width: 100%;
         height: 100%;
         overflow-y: auto;
         font-family: var(--design-font-family, system-ui, sans-serif);
@@ -17,6 +20,8 @@ export const metricsPanelStyles = css`
         display: flex;
         flex-direction: column;
         gap: var(--design-spacing-lg, 1rem);
+        width: 100%;
+        box-sizing: border-box;
     }
 
     /* ===== LOADING / ERROR ===== */
