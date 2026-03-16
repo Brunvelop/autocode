@@ -23,6 +23,24 @@ export const codeDashboardStyles = css`
         box-sizing: border-box;
     }
 
+    /* ===== DASHBOARD WRAPPER (para overlay no intrusivo) ===== */
+    .dashboard-wrapper {
+        position: relative;
+        height: 100%;
+    }
+
+    .loading-overlay {
+        position: absolute;
+        inset: 0;
+        background: rgba(255, 255, 255, 0.65);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 10;
+        border-radius: var(--design-radius-md);
+        backdrop-filter: blur(1px);
+    }
+
     /* ===== LOADING / ERROR ===== */
     .loading-container, .error-container {
         display: flex;

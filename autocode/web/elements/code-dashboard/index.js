@@ -152,7 +152,8 @@ export class CodeDashboard extends LitElement {
     // ========================================================================
 
     render() {
-        if (this._loading) {
+        // Primera carga: aún no hay snapshot, mostrar spinner full-page
+        if (this._loading && !this._snapshot) {
             return html`
                 <div class="loading-container">
                     <div class="spinner"></div>
@@ -174,12 +175,20 @@ export class CodeDashboard extends LitElement {
 
         const snap = this._snapshot;
 
+        // Recargas posteriores: mantener el dashboard visible con overlay no intrusivo
         return html`
-            <div class="dashboard">
-                ${this._renderSummary(snap)}
-                ${this._renderViewTabs()}
-                ${this._renderContentArea()}
-                ${this._renderSnapshotInfo(snap)}
+            <div class="dashboard-wrapper">
+                ${this._loading ? html`
+                    <div class="loading-overlay">
+                        <div class="spinner"></div>
+                    </div>
+                ` : ''}
+                <div class="dashboard">
+                    ${this._renderSummary(snap)}
+                    ${this._renderViewTabs()}
+                    ${this._renderContentArea()}
+                    ${this._renderSnapshotInfo(snap)}
+                </div>
             </div>
         `;
     }
