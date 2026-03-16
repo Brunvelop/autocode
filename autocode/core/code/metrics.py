@@ -135,6 +135,27 @@ def get_commit_metrics(commit_hash: str) -> CommitMetricsOutput:
 
 
 @register_function(http_methods=["GET"], interfaces=["api", "mcp"])
+def get_working_changes_metrics() -> CommitMetricsOutput:
+    """
+    Calcula métricas before/after de los archivos modificados en el working directory.
+
+    Para cada archivo Python o JavaScript con cambios sin commitear (staged o unstaged),
+    compara el contenido en HEAD con el contenido actual en disco.
+    Útil para ver el impacto de código a punto de ser commiteado.
+    """
+    try:
+        metrics = _analyze_working_changes()
+        return CommitMetricsOutput(
+            success=True,
+            result=metrics,
+            message=f"Working changes: {len(metrics.files)} archivos analizados",
+        )
+    except Exception as e:
+        logger.error(f"Error analizando working changes: {e}")
+        return CommitMetricsOutput(success=False, message=str(e))
+
+
+@register_function(http_methods=["GET"], interfaces=["api", "mcp"])
 def get_metrics_history(max_count: int = 100) -> MetricsHistoryOutput:
     """
     Obtiene la serie temporal de métricas agregadas para graficar.
@@ -396,6 +417,126 @@ def _analyze_file_pair(
         after_content = git_show(f"{full_hash}:{fpath}")
         if after_content:
             after_fm = analyze_file_metrics(fpath, after_content)
+
+    d_sloc = (after_fm.sloc if after_fm else 0) - (before_fm.sloc if before_fm else 0)
+    d_cc = (after_fm.avg_complexity if after_fm else 0) - (
+        before_fm.avg_complexity if before_fm else 0
+    )
+    d_mi = (after_fm.maintainability_index if after_fm else 0) - (
+        before_fm.maintainability_index if before_fm else 0
+    )
+
+    return CommitFileMetrics(
+        path=fpath,
+        status=status,
+        before=before_fm,
+        after=after_fm,
+        delta_sloc=d_sloc,
+        delta_complexity=round(d_cc, 2),
+        delta_mi=round(d_mi, 1),
+    )
+
+
+def _analyze_working_changes() -> CommitMetrics:
+    """Analyze the impact of uncommitted working directory changes on code metrics.
+
+    Inspects both staged and unstaged changes (git diff HEAD) plus untracked files
+    (git ls-files --others), comparing HEAD content with the current disk content
+    for each Python or JavaScript file.
+
+    Returns:
+        CommitMetrics with commit_hash='working' containing per-file deltas.
+    """
+    # Tracked changes (staged + unstaged vs HEAD)
+    diff_output = git("diff", "--name-status", "HEAD")
+    # Untracked new files not yet added to index
+    untracked_output = git("ls-files", "--others", "--exclude-standard")
+
+    changed_files: list[tuple[str, str]] = []
+
+    # Parse diff output: "M\tpath", "A\tpath", "D\tpath"
+    for line in diff_output.strip().split("\n"):
+        if not line or "\t" not in line:
+            continue
+        parts = line.split("\t")
+        if len(parts) < 2:
+            continue
+        status_letter = parts[0].strip()[0]
+        fpath = parts[-1].strip()
+
+        ext = Path(fpath).suffix
+        if ext != ".py" and ext not in JS_EXTENSIONS:
+            continue
+
+        status = {"A": "added", "M": "modified", "D": "deleted"}.get(
+            status_letter, "modified"
+        )
+        changed_files.append((status, fpath))
+
+    # Parse untracked files (new files not in index)
+    for fpath in untracked_output.strip().split("\n"):
+        if not fpath:
+            continue
+        ext = Path(fpath).suffix
+        if ext != ".py" and ext not in JS_EXTENSIONS:
+            continue
+        changed_files.append(("added", fpath))
+
+    # Analyze each file
+    file_metrics: list[CommitFileMetrics] = []
+    total_delta_sloc = 0
+    total_delta_cc = 0.0
+    count_cc = 0
+
+    for status, fpath in changed_files:
+        cfm = _analyze_working_file(fpath, status)
+        file_metrics.append(cfm)
+        total_delta_sloc += cfm.delta_sloc
+        total_delta_cc += cfm.delta_complexity
+        count_cc += 1
+
+    avg_delta_cc = round(total_delta_cc / count_cc, 2) if count_cc else 0
+
+    return CommitMetrics(
+        commit_hash="working",
+        commit_short="working",
+        files=file_metrics,
+        summary={
+            "delta_sloc": total_delta_sloc,
+            "delta_avg_complexity": avg_delta_cc,
+            "files_analyzed": len(file_metrics),
+        },
+    )
+
+
+def _analyze_working_file(fpath: str, status: str) -> CommitFileMetrics:
+    """Analyze before/after metrics for a single file in the working directory.
+
+    Compares HEAD content (via git show) with current disk content (Path.read_text).
+
+    Args:
+        fpath: Relative file path
+        status: One of 'added', 'modified', 'deleted'
+
+    Returns:
+        CommitFileMetrics with before/after analysis and deltas
+    """
+    before_fm = None
+    after_fm = None
+
+    # "before": content at HEAD
+    if status != "added":
+        before_content = git_show(f"HEAD:{fpath}")
+        if before_content:
+            before_fm = analyze_file_metrics(fpath, before_content)
+
+    # "after": content on disk
+    if status != "deleted":
+        try:
+            after_content = Path(fpath).read_text(encoding="utf-8")
+            after_fm = analyze_file_metrics(fpath, after_content)
+        except Exception as e:
+            logger.debug(f"Cannot read working file {fpath}: {e}")
 
     d_sloc = (after_fm.sloc if after_fm else 0) - (before_fm.sloc if before_fm else 0)
     d_cc = (after_fm.avg_complexity if after_fm else 0) - (
