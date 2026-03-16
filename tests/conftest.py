@@ -140,10 +140,3 @@ def fastapi_test_client():
     return _create_test_client
 
 
-@pytest.fixture
-def mock_core_functions():
-    """Mock core function imports to prevent actual loading."""
-    with patch('autocode.core.ai.pipelines', create=True), \
-         patch('autocode.core.vcs.tree', create=True), \
-         patch('autocode.core.workflow.session', create=True):
-        yield

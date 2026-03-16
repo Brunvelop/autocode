@@ -275,7 +275,7 @@ class TestRegistryPublicAPI:
 class TestLoadFunctions:
     """Tests for function loading."""
     
-    def test_load_functions_success(self, mock_core_functions):
+    def test_load_functions_success(self):
         """Test successful loading of core functions."""
         # Import the module's _loaded to manipulate it
         from autocode.core import registry
@@ -294,7 +294,7 @@ class TestLoadFunctions:
         finally:
             registry._loaded = original_loaded
     
-    def test_load_functions_already_loaded(self, mock_core_functions):
+    def test_load_functions_already_loaded(self):
         """Test that load_functions doesn't reload if already loaded."""
         from autocode.core import registry
         original_loaded = registry._loaded
