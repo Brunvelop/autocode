@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Optional
 
 from autocode.core.planning.persistence import save_plan, load_plan, list_plan_summaries, PLANS_DIR
+from autocode.core.planning.transitions import validate_transition, InvalidTransitionError, REVIEWABLE_STATUSES
 from autocode.core.registry import register_function
 from autocode.core.vcs.git import git, git_checked
 from autocode.core.models import GenericOutput
@@ -172,48 +173,45 @@ def update_commit_plan(
         context_json: JSON object de contexto (vacío = no cambiar)
         tags: Tags separados por coma (vacío = no cambiar)
     """
-    # Estados gestionados por el executor/approve/revert — no editables manualmente
-    EXECUTOR_MANAGED_STATUSES = {
-        "executing", "completed", "failed",
-        "pending_review", "pending_commit", "reverted",
-    }
+    # Statuses that can be set manually via update endpoint
+    MANUALLY_SETTABLE = {"draft", "ready", "abandoned"}
 
     try:
         plan = _load_plan(plan_id)
         if plan is None:
             return CommitPlanOutput(success=False, message=f"Plan '{plan_id}' no encontrado")
 
-        # Recovery: plan stuck en "executing" sin completed_at → permitir reset a draft
-        # Esto ocurre cuando la ejecución murió (crash, timeout, refresh del navegador)
-        if (
-            status == "draft"
-            and plan.status == "executing"
-            and (plan.execution is None or not plan.execution.completed_at)
-        ):
-            plan.status = "draft"
-            plan.execution = None  # Limpiar para fresh start
-            plan.updated_at = datetime.now().isoformat()
-            _save_plan(plan)
-            logger.info(f"Plan '{plan_id}' recovered from stuck executing → draft")
-            return CommitPlanOutput(
-                success=True,
-                result=plan,
-                message=f"Plan '{plan_id}' recovered from stuck executing state",
-            )
+        # Handle status change
+        if status:
+            # Recovery: plan stuck in "executing" without completed_at → allow reset to draft
+            if _try_recover_stuck_plan(plan, status):
+                _save_plan(plan)
+                return CommitPlanOutput(
+                    success=True,
+                    result=plan,
+                    message=f"Plan '{plan_id}' recovered from stuck executing state",
+                )
 
-        if status and status in EXECUTOR_MANAGED_STATUSES:
-            return CommitPlanOutput(
-                success=False,
-                message=f"Status '{status}' is managed by the executor and cannot be set manually",
-            )
+            # Only allow manually settable statuses through this endpoint
+            if status not in MANUALLY_SETTABLE:
+                return CommitPlanOutput(
+                    success=False,
+                    message=f"Status '{status}' is managed by the executor and cannot be set manually",
+                )
 
-        # Actualización parcial
+            # Validate the transition is allowed by the state machine
+            try:
+                validate_transition(plan.status, status)
+            except InvalidTransitionError as e:
+                return CommitPlanOutput(success=False, message=str(e))
+
+            plan.status = status
+
+        # Partial update of other fields
         if title:
             plan.title = title
         if description:
             plan.description = description
-        if status and status in ("draft", "ready", "abandoned"):
-            plan.status = status
         if tasks_json and tasks_json.strip():
             raw_tasks = json.loads(tasks_json)
             plan.tasks = [PlanTask(**t) for t in raw_tasks]
@@ -264,11 +262,34 @@ def delete_commit_plan(plan_id: str) -> GenericOutput:
 
 
 # ==============================================================================
-# REGISTERED ENDPOINTS — APPROVE / REVERT
+# PRIVATE HELPERS
 # ==============================================================================
 
-# Statuses from which a plan can be approved or reverted
-_REVIEWABLE_STATUSES = {"pending_review", "pending_commit"}
+
+def _try_recover_stuck_plan(plan: CommitPlan, target_status: str) -> bool:
+    """Try to recover a plan stuck in 'executing' state.
+
+    A plan gets stuck when execution dies (crash, timeout, browser refresh).
+    If the plan is in 'executing' with no completed_at, allow reset to draft.
+
+    Returns True if recovery was performed, False otherwise.
+    """
+    if (
+        target_status == "draft"
+        and plan.status == "executing"
+        and (plan.execution is None or not plan.execution.completed_at)
+    ):
+        plan.status = "draft"
+        plan.execution = None
+        plan.updated_at = datetime.now().isoformat()
+        logger.info(f"Plan '{plan.id}' recovered from stuck executing → draft")
+        return True
+    return False
+
+
+# ==============================================================================
+# REGISTERED ENDPOINTS — APPROVE / REVERT
+# ==============================================================================
 
 
 @register_function(http_methods=["POST"], interfaces=["api", "mcp"])
@@ -291,12 +312,12 @@ def approve_plan(plan_id: str, commit_message: str = "") -> CommitPlanOutput:
                 message=f"Plan '{plan_id}' no encontrado",
             )
 
-        if plan.status not in _REVIEWABLE_STATUSES:
+        if plan.status not in REVIEWABLE_STATUSES:
             return CommitPlanOutput(
                 success=False,
                 message=(
                     f"Cannot approve plan in status '{plan.status}'. "
-                    f"Must be in: {', '.join(sorted(_REVIEWABLE_STATUSES))}"
+                    f"Must be in: {', '.join(sorted(REVIEWABLE_STATUSES))}"
                 ),
             )
 
@@ -350,12 +371,12 @@ def revert_plan(plan_id: str) -> CommitPlanOutput:
                 message=f"Plan '{plan_id}' no encontrado",
             )
 
-        if plan.status not in _REVIEWABLE_STATUSES:
+        if plan.status not in REVIEWABLE_STATUSES:
             return CommitPlanOutput(
                 success=False,
                 message=(
                     f"Cannot revert plan in status '{plan.status}'. "
-                    f"Must be in: {', '.join(sorted(_REVIEWABLE_STATUSES))}"
+                    f"Must be in: {', '.join(sorted(REVIEWABLE_STATUSES))}"
                 ),
             )
 

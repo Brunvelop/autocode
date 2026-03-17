@@ -65,15 +65,22 @@ class TestStatusTransitionValidation:
             assert result.success is False
 
     def test_allow_manual_statuses(self, tmp_path):
-        """update_commit_plan permite draft, ready, abandoned."""
+        """update_commit_plan permite draft, ready, abandoned via valid transitions."""
         with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)), \
              patch("autocode.core.planning.planner.git", return_value="abc123"):
             create_result = create_commit_plan(title="Test Plan")
             plan_id = create_result.result.id
 
-            for status in ("draft", "ready", "abandoned"):
-                result = update_commit_plan(plan_id=plan_id, status=status)
-                assert result.success is True, f"Status '{status}' should be allowed"
+            # Plan starts as "draft" — test valid transition sequences
+            # draft → ready (valid)
+            result = update_commit_plan(plan_id=plan_id, status="ready")
+            assert result.success is True, "Status 'ready' should be allowed from draft"
+            # ready → draft (valid)
+            result = update_commit_plan(plan_id=plan_id, status="draft")
+            assert result.success is True, "Status 'draft' should be allowed from ready"
+            # draft → abandoned (valid)
+            result = update_commit_plan(plan_id=plan_id, status="abandoned")
+            assert result.success is True, "Status 'abandoned' should be allowed from draft"
 
     def test_list_plans_includes_new_statuses(self, tmp_path):
         """list_commit_plans filtra correctamente los nuevos estados."""
@@ -163,23 +170,21 @@ class TestRecoveryFromStuckExecuting:
             assert result.result.execution is None
 
     def test_recovery_blocked_if_completed_at_set(self, tmp_path):
-        """Plan en executing con completed_at (terminó normalmente) rechaza reset manual."""
+        """Plan en executing con completed_at (terminó normalmente) rechaza reset manual.
+
+        Recovery path is NOT taken (completed_at is set), and the state machine
+        rejects executing→draft since it's not a valid transition.
+        """
         with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)):
             plan_id = self._create_executing_plan(
                 tmp_path, completed_at="2026-01-01T12:05:00"
             )
 
-            # Should be rejected: plan has completed_at, meaning execution finished
-            # but status wasn't updated (shouldn't happen, but if it does, block manual change)
             result = update_commit_plan(plan_id=plan_id, status="draft")
-            # This falls through to the normal EXECUTOR_MANAGED check, which blocks
-            # setting 'draft' for a plan already in executing (since it's not a stuck plan)
-            # Actually, "draft" is NOT in EXECUTOR_MANAGED_STATUSES, so it would pass through.
-            # Let's verify the behavior: since completed_at is set, the recovery path
-            # is NOT taken, and the normal update logic handles it.
-            # "draft" is in ("draft", "ready", "abandoned"), so it should succeed normally.
-            assert result.success is True
-            assert result.result.status == "draft"
+            # Recovery not triggered (completed_at is set), and
+            # executing→draft is not a valid state machine transition
+            assert result.success is False
+            assert "invalid transition" in result.message.lower()
 
     def test_executing_cannot_be_set_manually_from_draft(self, tmp_path):
         """No se puede setear 'executing' manualmente desde draft."""

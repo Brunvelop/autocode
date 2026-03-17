@@ -44,6 +44,7 @@ from autocode.core.planning.models import (
 )
 from autocode.core.vcs.git import git_add_and_commit
 from autocode.core.planning.planner import _save_plan, _load_plan
+from autocode.core.planning.transitions import can_execute
 from autocode.core.planning.reviewer import auto_review, compute_review_metrics
 
 logger = logging.getLogger(__name__)
@@ -53,9 +54,6 @@ logger = logging.getLogger(__name__)
 # CONSTANTS
 # ============================================================================
 
-# Statuses desde los que se puede ejecutar un plan
-# Includes "executing" to allow recovery/re-execution of stuck plans
-EXECUTOR_ALLOWED_STATUSES = {"draft", "ready", "failed", "executing"}
 
 # Tools que modifican archivos (para extraer files_changed de la trajectory)
 WRITE_TOOLS = {"write_file_content", "replace_in_file", "delete_file"}
@@ -115,7 +113,7 @@ async def stream_execute_plan(
             )
             return
 
-        if plan.status not in EXECUTOR_ALLOWED_STATUSES:
+        if not can_execute(plan):
             yield _format_sse(
                 "error",
                 {
