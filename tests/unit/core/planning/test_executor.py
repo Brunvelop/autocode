@@ -52,7 +52,7 @@ class TestStreamExecutePlan:
 
         stack = ExitStack()
         stack.enter_context(
-            patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path))
+            patch("autocode.core.planning.persistence.PLANS_DIR", str(tmp_path))
         )
         stack.enter_context(
             patch(
@@ -160,7 +160,7 @@ class TestStreamExecutePlan:
         with self._execution_patches(tmp_path) as stack:
             stack.enter_context(
                 patch(
-                    "autocode.core.planning.executor._save_plan",
+                    "autocode.core.planning.executor.save_plan",
                     side_effect=spy_save,
                 )
             )
@@ -210,7 +210,7 @@ class TestStreamExecutePlan:
         plan = _create_test_plan(tmp_path, status="completed")
 
         events = []
-        with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)):
+        with patch("autocode.core.planning.persistence.PLANS_DIR", str(tmp_path)):
             async for event in stream_execute_plan(plan_id=plan.id):
                 events.append(_parse_sse(event))
 
@@ -472,7 +472,7 @@ class TestExecutorReviewMode:
 
         stack = ExitStack()
         stack.enter_context(
-            patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path))
+            patch("autocode.core.planning.persistence.PLANS_DIR", str(tmp_path))
         )
         stack.enter_context(
             patch(
@@ -506,7 +506,7 @@ class TestExecutorReviewMode:
         with self._execution_patches(tmp_path) as stack:
             stack.enter_context(
                 patch(
-                    "autocode.core.planning.executor._save_plan",
+                    "autocode.core.planning.executor.save_plan",
                     side_effect=spy_save,
                 )
             )
@@ -547,7 +547,7 @@ class TestExecutorReviewMode:
         with self._execution_patches(tmp_path) as stack:
             stack.enter_context(
                 patch(
-                    "autocode.core.planning.executor._save_plan",
+                    "autocode.core.planning.executor.save_plan",
                     side_effect=spy_save,
                 )
             )
@@ -604,7 +604,7 @@ class TestExecutorReviewMode:
         with self._execution_patches(tmp_path) as stack:
             stack.enter_context(
                 patch(
-                    "autocode.core.planning.executor._save_plan",
+                    "autocode.core.planning.executor.save_plan",
                     side_effect=spy_save,
                 )
             )
@@ -652,7 +652,7 @@ class TestExecutorReviewMode:
         with self._execution_patches(tmp_path) as stack:
             stack.enter_context(
                 patch(
-                    "autocode.core.planning.executor._save_plan",
+                    "autocode.core.planning.executor.save_plan",
                     side_effect=spy_save,
                 )
             )
@@ -744,7 +744,7 @@ class TestExecutorReviewMode:
         with self._execution_patches(tmp_path) as stack:
             stack.enter_context(
                 patch(
-                    "autocode.core.planning.executor._save_plan",
+                    "autocode.core.planning.executor.save_plan",
                     side_effect=spy_save,
                 )
             )
@@ -795,7 +795,7 @@ class TestExecutorReviewMode:
         with self._execution_patches(tmp_path) as stack:
             stack.enter_context(
                 patch(
-                    "autocode.core.planning.executor._save_plan",
+                    "autocode.core.planning.executor.save_plan",
                     side_effect=spy_save,
                 )
             )

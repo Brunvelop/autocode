@@ -21,7 +21,7 @@ class TestStatusTransitionValidation:
 
     def test_reject_executing_status_via_update(self, tmp_path):
         """update_commit_plan rechaza status='executing' (solo executor puede setearlo)."""
-        with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)), \
+        with patch("autocode.core.planning.persistence.PLANS_DIR", str(tmp_path)), \
              patch("autocode.core.planning.planner.git", return_value="abc123"):
             create_result = create_commit_plan(title="Test Plan")
             plan_id = create_result.result.id
@@ -32,7 +32,7 @@ class TestStatusTransitionValidation:
 
     def test_reject_completed_status_via_update(self, tmp_path):
         """update_commit_plan rechaza status='completed'."""
-        with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)), \
+        with patch("autocode.core.planning.persistence.PLANS_DIR", str(tmp_path)), \
              patch("autocode.core.planning.planner.git", return_value="abc123"):
             create_result = create_commit_plan(title="Test Plan")
             plan_id = create_result.result.id
@@ -42,7 +42,7 @@ class TestStatusTransitionValidation:
 
     def test_reject_failed_status_via_update(self, tmp_path):
         """update_commit_plan rechaza status='failed'."""
-        with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)), \
+        with patch("autocode.core.planning.persistence.PLANS_DIR", str(tmp_path)), \
              patch("autocode.core.planning.planner.git", return_value="abc123"):
             create_result = create_commit_plan(title="Test Plan")
             plan_id = create_result.result.id
@@ -52,7 +52,7 @@ class TestStatusTransitionValidation:
 
     def test_allow_manual_statuses(self, tmp_path):
         """update_commit_plan permite draft, ready, abandoned via valid transitions."""
-        with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)), \
+        with patch("autocode.core.planning.persistence.PLANS_DIR", str(tmp_path)), \
              patch("autocode.core.planning.planner.git", return_value="abc123"):
             create_result = create_commit_plan(title="Test Plan")
             plan_id = create_result.result.id
@@ -70,7 +70,7 @@ class TestStatusTransitionValidation:
 
     def test_list_plans_includes_new_statuses(self, tmp_path):
         """list_commit_plans filtra correctamente los nuevos estados."""
-        with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)), \
+        with patch("autocode.core.planning.persistence.PLANS_DIR", str(tmp_path)), \
              patch("autocode.core.planning.planner.git", return_value="abc123"):
             create_commit_plan(title="Plan 1")
 
@@ -122,7 +122,7 @@ class TestRecoveryFromStuckExecuting:
 
     def test_recovery_executing_to_draft_with_empty_completed_at(self, tmp_path):
         """Plan en executing con completed_at vacío puede transicionar a draft."""
-        with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)):
+        with patch("autocode.core.planning.persistence.PLANS_DIR", str(tmp_path)):
             plan_id = self._create_executing_plan(tmp_path, completed_at="")
 
             result = update_commit_plan(plan_id=plan_id, status="draft")
@@ -131,7 +131,7 @@ class TestRecoveryFromStuckExecuting:
 
     def test_recovery_executing_to_draft_clears_execution(self, tmp_path):
         """Al resetear a draft, execution se limpia a None."""
-        with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)):
+        with patch("autocode.core.planning.persistence.PLANS_DIR", str(tmp_path)):
             plan_id = self._create_executing_plan(tmp_path, completed_at="")
 
             result = update_commit_plan(plan_id=plan_id, status="draft")
@@ -149,7 +149,7 @@ class TestRecoveryFromStuckExecuting:
         }
         (tmp_path / "20260101-130000.json").write_text(json.dumps(plan_data))
 
-        with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)):
+        with patch("autocode.core.planning.persistence.PLANS_DIR", str(tmp_path)):
             result = update_commit_plan(plan_id="20260101-130000", status="draft")
             assert result.success is True
             assert result.result.status == "draft"
@@ -161,7 +161,7 @@ class TestRecoveryFromStuckExecuting:
         Recovery path is NOT taken (completed_at is set), and the state machine
         rejects executing→draft since it's not a valid transition.
         """
-        with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)):
+        with patch("autocode.core.planning.persistence.PLANS_DIR", str(tmp_path)):
             plan_id = self._create_executing_plan(
                 tmp_path, completed_at="2026-01-01T12:05:00"
             )
@@ -174,7 +174,7 @@ class TestRecoveryFromStuckExecuting:
 
     def test_executing_cannot_be_set_manually_from_draft(self, tmp_path):
         """No se puede setear 'executing' manualmente desde draft."""
-        with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)), \
+        with patch("autocode.core.planning.persistence.PLANS_DIR", str(tmp_path)), \
              patch("autocode.core.planning.planner.git", return_value="abc123"):
             create_result = create_commit_plan(title="Test Plan")
             plan_id = create_result.result.id
@@ -184,7 +184,7 @@ class TestRecoveryFromStuckExecuting:
 
     def test_recovery_message_indicates_recovery(self, tmp_path):
         """El mensaje de respuesta indica que fue una recovery."""
-        with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)):
+        with patch("autocode.core.planning.persistence.PLANS_DIR", str(tmp_path)):
             plan_id = self._create_executing_plan(tmp_path, completed_at="")
 
             result = update_commit_plan(plan_id=plan_id, status="draft")
@@ -207,7 +207,7 @@ class TestStatusTransitionsUpdated:
 
     def test_pending_review_not_manually_settable(self, tmp_path):
         """update_commit_plan rechaza status='pending_review'."""
-        with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)), \
+        with patch("autocode.core.planning.persistence.PLANS_DIR", str(tmp_path)), \
              patch("autocode.core.planning.planner.git", return_value="abc123"):
             create_result = create_commit_plan(title="Test Plan")
             plan_id = create_result.result.id
@@ -218,7 +218,7 @@ class TestStatusTransitionsUpdated:
 
     def test_pending_commit_not_manually_settable(self, tmp_path):
         """update_commit_plan rechaza status='pending_commit'."""
-        with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)), \
+        with patch("autocode.core.planning.persistence.PLANS_DIR", str(tmp_path)), \
              patch("autocode.core.planning.planner.git", return_value="abc123"):
             create_result = create_commit_plan(title="Test Plan")
             plan_id = create_result.result.id
@@ -228,7 +228,7 @@ class TestStatusTransitionsUpdated:
 
     def test_reverted_not_manually_settable(self, tmp_path):
         """update_commit_plan rechaza status='reverted'."""
-        with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)), \
+        with patch("autocode.core.planning.persistence.PLANS_DIR", str(tmp_path)), \
              patch("autocode.core.planning.planner.git", return_value="abc123"):
             create_result = create_commit_plan(title="Test Plan")
             plan_id = create_result.result.id

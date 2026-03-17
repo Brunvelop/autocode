@@ -89,7 +89,7 @@ class TestApprovePlanWorkflow:
         """Plan en pending_review → approve → git add+commit → completed."""
         plan_id = self._create_pending_review_plan(tmp_path)
 
-        with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)), \
+        with patch("autocode.core.planning.persistence.PLANS_DIR", str(tmp_path)), \
              patch("autocode.core.planning.workflow.git_checked") as mock_git:
             mock_git.return_value = "new_commit_hash_abc"
 
@@ -113,7 +113,7 @@ class TestApprovePlanWorkflow:
         }
         (tmp_path / "20260501-130000.json").write_text(json.dumps(plan_data))
 
-        with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)):
+        with patch("autocode.core.planning.persistence.PLANS_DIR", str(tmp_path)):
             result = approve_plan(plan_id="20260501-130000")
 
         assert result.success is False
@@ -123,7 +123,7 @@ class TestApprovePlanWorkflow:
         """Tras approve, execution.commit_hash se rellena con el hash del commit."""
         plan_id = self._create_pending_review_plan(tmp_path)
 
-        with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)), \
+        with patch("autocode.core.planning.persistence.PLANS_DIR", str(tmp_path)), \
              patch("autocode.core.planning.workflow.git_checked") as mock_git:
             mock_git.return_value = "def456789"
 
@@ -136,7 +136,7 @@ class TestApprovePlanWorkflow:
         """approve con commit_message usa ese mensaje en vez del plan title."""
         plan_id = self._create_pending_review_plan(tmp_path, title="original title")
 
-        with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)), \
+        with patch("autocode.core.planning.persistence.PLANS_DIR", str(tmp_path)), \
              patch("autocode.core.planning.workflow.git_checked") as mock_git:
             mock_git.return_value = "abc123"
 
@@ -151,7 +151,7 @@ class TestApprovePlanWorkflow:
 
     def test_approve_nonexistent_plan(self, tmp_path):
         """approve_plan con plan inexistente → error."""
-        with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)):
+        with patch("autocode.core.planning.persistence.PLANS_DIR", str(tmp_path)):
             result = approve_plan(plan_id="nonexistent")
 
         assert result.success is False
@@ -222,7 +222,7 @@ class TestRevertPlanWorkflow:
             tmp_path, files_changed=["src/main.py", "src/utils.py"]
         )
 
-        with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)), \
+        with patch("autocode.core.planning.persistence.PLANS_DIR", str(tmp_path)), \
              patch("autocode.core.planning.workflow.git_checked") as mock_git:
             result = revert_plan(plan_id=plan_id)
 
@@ -245,7 +245,7 @@ class TestRevertPlanWorkflow:
         }
         (tmp_path / "20260501-150000.json").write_text(json.dumps(plan_data))
 
-        with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)):
+        with patch("autocode.core.planning.persistence.PLANS_DIR", str(tmp_path)):
             result = revert_plan(plan_id="20260501-150000")
 
         assert result.success is False
@@ -255,7 +255,7 @@ class TestRevertPlanWorkflow:
         """Tras revert, el status es 'reverted'."""
         plan_id = self._create_pending_review_plan(tmp_path)
 
-        with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)), \
+        with patch("autocode.core.planning.persistence.PLANS_DIR", str(tmp_path)), \
              patch("autocode.core.planning.workflow.git_checked"):
             result = revert_plan(plan_id=plan_id)
 
@@ -268,7 +268,7 @@ class TestRevertPlanWorkflow:
             tmp_path, parent_commit="deadbeef123"
         )
 
-        with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)), \
+        with patch("autocode.core.planning.persistence.PLANS_DIR", str(tmp_path)), \
              patch("autocode.core.planning.workflow.git_checked") as mock_git:
             result = revert_plan(plan_id=plan_id)
 
@@ -282,7 +282,7 @@ class TestRevertPlanWorkflow:
             tmp_path, files_changed=[]
         )
 
-        with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)):
+        with patch("autocode.core.planning.persistence.PLANS_DIR", str(tmp_path)):
             result = revert_plan(plan_id=plan_id)
 
         assert result.success is False
@@ -290,7 +290,7 @@ class TestRevertPlanWorkflow:
 
     def test_revert_nonexistent_plan(self, tmp_path):
         """revert_plan con plan inexistente → error."""
-        with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)):
+        with patch("autocode.core.planning.persistence.PLANS_DIR", str(tmp_path)):
             result = revert_plan(plan_id="nonexistent")
 
         assert result.success is False
@@ -373,7 +373,7 @@ class TestGetPlanReviewMetricsWorkflow:
         """Plan con review → returns file_metrics, summary, quality_gates."""
         plan_id = self._create_plan_with_review(tmp_path, has_review=True)
 
-        with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)):
+        with patch("autocode.core.planning.persistence.PLANS_DIR", str(tmp_path)):
             result = get_plan_review_metrics(plan_id=plan_id)
 
         assert result.success is True
@@ -400,7 +400,7 @@ class TestGetPlanReviewMetricsWorkflow:
         """Plan sin review → returns empty files/summary/quality_gates."""
         plan_id = self._create_plan_with_review(tmp_path, has_review=False)
 
-        with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)):
+        with patch("autocode.core.planning.persistence.PLANS_DIR", str(tmp_path)):
             result = get_plan_review_metrics(plan_id=plan_id)
 
         assert result.success is True
@@ -411,7 +411,7 @@ class TestGetPlanReviewMetricsWorkflow:
 
     def test_nonexistent_plan_returns_error(self, tmp_path):
         """Plan inexistente → success=False."""
-        with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)):
+        with patch("autocode.core.planning.persistence.PLANS_DIR", str(tmp_path)):
             result = get_plan_review_metrics(plan_id="nonexistent")
 
         assert result.success is False

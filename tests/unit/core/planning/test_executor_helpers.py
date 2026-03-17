@@ -374,7 +374,7 @@ class TestValidateAndPreparePlan:
 
         stack = ExitStack()
         stack.enter_context(
-            patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path))
+            patch("autocode.core.planning.persistence.PLANS_DIR", str(tmp_path))
         )
         stack.enter_context(
             patch(
@@ -468,7 +468,7 @@ class TestValidateAndPreparePlan:
         with self._execution_patches(tmp_path) as stack:
             stack.enter_context(
                 patch(
-                    "autocode.core.planning.executor._save_plan",
+                    "autocode.core.planning.executor.save_plan",
                     side_effect=spy_save,
                 )
             )
@@ -660,7 +660,7 @@ class TestRunReviewFlow:
         with patch(
             "autocode.core.planning.executor.compute_review_metrics",
             return_value=[],
-        ), patch("autocode.core.planning.executor._save_plan"):
+        ), patch("autocode.core.planning.executor.save_plan"):
             async for item in _run_review_flow(plan, "human", ["a.py"]):
                 items.append(item)
 
@@ -699,7 +699,7 @@ class TestRunReviewFlow:
         ), patch(
             "autocode.core.planning.executor.git_add_and_commit",
             return_value="abc123",
-        ), patch("autocode.core.planning.executor._save_plan"):
+        ), patch("autocode.core.planning.executor.save_plan"):
             async for item in _run_review_flow(plan, "auto", ["a.py"]):
                 items.append(item)
 
@@ -735,7 +735,7 @@ class TestRunReviewFlow:
         with patch(
             "autocode.core.planning.executor.auto_review",
             return_value=rejected_review,
-        ), patch("autocode.core.planning.executor._save_plan"):
+        ), patch("autocode.core.planning.executor.save_plan"):
             async for item in _run_review_flow(plan, "auto", ["a.py"]):
                 items.append(item)
 
@@ -760,7 +760,7 @@ class TestRunReviewFlow:
         with patch(
             "autocode.core.planning.executor.compute_review_metrics",
             return_value=[],
-        ), patch("autocode.core.planning.executor._save_plan"):
+        ), patch("autocode.core.planning.executor.save_plan"):
             async for item in _run_review_flow(plan, "human", ["a.py"]):
                 items.append(item)
 
