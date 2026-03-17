@@ -41,7 +41,7 @@ class TestBuildTaskInstruction:
 
     def test_includes_task_description(self):
         """La instrucción incluye la descripción de la task."""
-        from autocode.core.planning.executor import _build_task_instruction
+        from autocode.core.planning.executor_helpers import _build_task_instruction
 
         task = PlanTask(type="modify", path="src/main.py", description="Add logging")
         plan = CommitPlan(id="t", title="t")
@@ -50,7 +50,7 @@ class TestBuildTaskInstruction:
 
     def test_includes_task_details(self):
         """Si la task tiene details, se incluyen."""
-        from autocode.core.planning.executor import _build_task_instruction
+        from autocode.core.planning.executor_helpers import _build_task_instruction
 
         task = PlanTask(
             type="modify",
@@ -64,7 +64,7 @@ class TestBuildTaskInstruction:
 
     def test_includes_acceptance_criteria(self):
         """Si la task tiene acceptance_criteria, se incluyen."""
-        from autocode.core.planning.executor import _build_task_instruction
+        from autocode.core.planning.executor_helpers import _build_task_instruction
 
         task = PlanTask(
             type="create",
@@ -79,7 +79,7 @@ class TestBuildTaskInstruction:
 
     def test_includes_plan_context(self):
         """La instrucción incluye el contexto del plan (description, architectural_notes)."""
-        from autocode.core.planning.executor import _build_task_instruction
+        from autocode.core.planning.executor_helpers import _build_task_instruction
 
         task = PlanTask(type="modify", path="x.py", description="Change x")
         plan = CommitPlan(
@@ -103,7 +103,7 @@ class TestExtractFilesChanged:
 
     def test_extract_from_trajectory_dict(self):
         """Extrae paths de archivos de las tool calls en la trajectory de ReAct."""
-        from autocode.core.planning.executor import _extract_files_changed
+        from autocode.core.planning.executor_helpers import _extract_files_changed
 
         trajectory = {
             "Action_1": "write_file_content",
@@ -124,7 +124,7 @@ class TestExtractFilesChanged:
 
     def test_extract_deduplicates(self):
         """No retorna duplicados si un archivo fue tocado múltiples veces."""
-        from autocode.core.planning.executor import _extract_files_changed
+        from autocode.core.planning.executor_helpers import _extract_files_changed
 
         trajectory = {
             "Action_1": "replace_in_file",
@@ -145,7 +145,7 @@ class TestExtractFilesChanged:
 
     def test_extract_empty_trajectory(self):
         """Trajectory vacía retorna lista vacía."""
-        from autocode.core.planning.executor import _extract_files_changed
+        from autocode.core.planning.executor_helpers import _extract_files_changed
 
         assert _extract_files_changed({}) == []
         assert _extract_files_changed(None) == []
@@ -161,7 +161,7 @@ class TestExtractCostFromHistory:
 
     def test_no_history(self):
         """Sin historial retorna zeros."""
-        from autocode.core.planning.executor import _extract_cost_from_history
+        from autocode.core.planning.executor_helpers import _extract_cost_from_history
 
         lm = MagicMock()
         lm.history = []
@@ -171,7 +171,7 @@ class TestExtractCostFromHistory:
 
     def test_no_history_attr(self):
         """Sin atributo history retorna zeros."""
-        from autocode.core.planning.executor import _extract_cost_from_history
+        from autocode.core.planning.executor_helpers import _extract_cost_from_history
 
         lm = MagicMock(spec=[])  # no attributes
         result = _extract_cost_from_history(lm)
@@ -180,7 +180,7 @@ class TestExtractCostFromHistory:
 
     def test_sums_tokens_from_usage(self):
         """Suma tokens de usage de cada llamada."""
-        from autocode.core.planning.executor import _extract_cost_from_history
+        from autocode.core.planning.executor_helpers import _extract_cost_from_history
 
         lm = MagicMock()
         lm.history = [
@@ -194,7 +194,7 @@ class TestExtractCostFromHistory:
 
     def test_sums_cost_from_response_cost(self):
         """Suma coste de response_cost de cada llamada."""
-        from autocode.core.planning.executor import _extract_cost_from_history
+        from autocode.core.planning.executor_helpers import _extract_cost_from_history
 
         lm = MagicMock()
         lm.history = [
@@ -206,7 +206,7 @@ class TestExtractCostFromHistory:
 
     def test_handles_input_output_tokens(self):
         """Maneja variante input_tokens/output_tokens de LiteLLM."""
-        from autocode.core.planning.executor import _extract_cost_from_history
+        from autocode.core.planning.executor_helpers import _extract_cost_from_history
 
         lm = MagicMock()
         lm.history = [
@@ -219,7 +219,7 @@ class TestExtractCostFromHistory:
 
     def test_handles_hidden_params_cost(self):
         """Extrae coste de _hidden_params.response_cost."""
-        from autocode.core.planning.executor import _extract_cost_from_history
+        from autocode.core.planning.executor_helpers import _extract_cost_from_history
 
         lm = MagicMock()
         lm.history = [
@@ -233,7 +233,7 @@ class TestExtractCostFromHistory:
 
     def test_handles_non_dict_entries(self):
         """Ignora entradas que no son dict en el historial."""
-        from autocode.core.planning.executor import _extract_cost_from_history
+        from autocode.core.planning.executor_helpers import _extract_cost_from_history
 
         lm = MagicMock()
         lm.history = [
@@ -257,7 +257,7 @@ class TestWithHeartbeat:
 
     async def test_forwards_all_items_from_source(self):
         """Todos los items del source generator se forwardean sin modificación."""
-        from autocode.core.planning.executor import _with_heartbeat
+        from autocode.core.planning.executor_helpers import _with_heartbeat
 
         async def _source():
             yield "event_1"
@@ -276,7 +276,7 @@ class TestWithHeartbeat:
     async def test_emits_heartbeat_during_delay(self):
         """Emite heartbeat events cuando el source generator tarda."""
         import asyncio
-        from autocode.core.planning.executor import _with_heartbeat
+        from autocode.core.planning.executor_helpers import _with_heartbeat
 
         async def _slow_source():
             await asyncio.sleep(0.25)  # Enough for 2 heartbeats at 0.1s interval
@@ -304,7 +304,7 @@ class TestWithHeartbeat:
     async def test_heartbeat_cancelled_after_completion(self):
         """El heartbeat task se cancela después de que el source termina."""
         import asyncio
-        from autocode.core.planning.executor import _with_heartbeat
+        from autocode.core.planning.executor_helpers import _with_heartbeat
 
         async def _fast_source():
             yield "done"
@@ -322,7 +322,7 @@ class TestWithHeartbeat:
 
     async def test_propagates_exception_from_source(self):
         """Excepciones del source generator se propagan correctamente."""
-        from autocode.core.planning.executor import _with_heartbeat
+        from autocode.core.planning.executor_helpers import _with_heartbeat
 
         async def _failing_source():
             yield "first"
@@ -340,7 +340,7 @@ class TestWithHeartbeat:
     async def test_heartbeat_includes_elapsed_time(self):
         """El campo elapsed_s del heartbeat refleja tiempo real transcurrido."""
         import asyncio
-        from autocode.core.planning.executor import _with_heartbeat
+        from autocode.core.planning.executor_helpers import _with_heartbeat
 
         async def _slow_source():
             await asyncio.sleep(0.15)
