@@ -43,6 +43,7 @@ export class CommitPlanDetail extends LitElement {
         _executionSummary: { state: true }, // Final result {success, filesChanged, commitHash, ...}
         _selectedModel: { state: true }, // Selected model for execution
         _modelChoices: { state: true },  // Available models from registry
+        _selectedBackend: { state: true }, // Selected backend: "opencode", "cline", "dspy"
         _selectedReviewMode: { state: true }, // Review mode: "human" or "auto"
         _elapsedDisplay: { state: true }, // Elapsed time string "1m 23s"
         _lastHeartbeat: { state: true },  // Timestamp of last heartbeat event
@@ -64,6 +65,7 @@ export class CommitPlanDetail extends LitElement {
         this._executionSummary = null;
         this._selectedModel = DEFAULT_MODEL;
         this._modelChoices = [];
+        this._selectedBackend = 'opencode';
         this._selectedReviewMode = 'human';
         // Timer & heartbeat
         this._elapsedDisplay = '';
@@ -196,6 +198,15 @@ export class CommitPlanDetail extends LitElement {
                                     `)}
                                 </select>
                             ` : ''}
+                            <select class="backend-select"
+                                .value=${this._selectedBackend}
+                                ?disabled=${this._isExecuting}
+                                @change=${e => this._selectedBackend = e.target.value}
+                                title="Backend de ejecución">
+                                <option value="opencode" ?selected=${this._selectedBackend === 'opencode'}>⚡ OpenCode</option>
+                                <option value="cline" ?selected=${this._selectedBackend === 'cline'}>🤖 Cline</option>
+                                <option value="dspy" ?selected=${this._selectedBackend === 'dspy'}>🧪 DSPy (legacy)</option>
+                            </select>
                             <select class="review-mode-select"
                                 .value=${this._selectedReviewMode}
                                 ?disabled=${this._isExecuting}
@@ -494,7 +505,7 @@ export class CommitPlanDetail extends LitElement {
 
             for await (const { event, data } of controller.callStreamAPI(
                 'execute_commit_plan',
-                { plan_id: this.planId, model: this._selectedModel, review_mode: this._selectedReviewMode },
+                { plan_id: this.planId, backend: this._selectedBackend, model: this._selectedModel, review_mode: this._selectedReviewMode },
                 null,
                 { signal: this._abortController.signal }
             )) {

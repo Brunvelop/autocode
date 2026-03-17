@@ -356,6 +356,29 @@ export const commitPlanDetailStyles = css`
         cursor: not-allowed;
     }
 
+    /* ===== BACKEND SELECT ===== */
+    .backend-select {
+        padding: 4px 6px;
+        border: 1px solid var(--design-border-gray, #e5e7eb);
+        border-radius: var(--design-radius-md, 0.5rem);
+        background: var(--design-bg-white, #ffffff);
+        font-size: 10px;
+        color: var(--design-text-primary, #1f2937);
+        cursor: pointer;
+        outline: none;
+        flex-shrink: 0;
+    }
+
+    .backend-select:focus {
+        border-color: var(--design-primary, #4f46e5);
+        box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.15);
+    }
+
+    .backend-select:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+
     /* ===== REVIEW MODE SELECT ===== */
     .review-mode-select {
         padding: 4px 6px;
