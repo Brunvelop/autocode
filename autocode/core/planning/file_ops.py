@@ -40,11 +40,11 @@ def _resolve_path(path: str) -> Path:
     cwd = Path.cwd()
     resolved = (cwd / path).resolve()
 
-    # Protección contra path traversal: si el path resuelto escapa del CWD,
-    # lo forzamos al CWD (normalizando los ../)
+    # Protección contra path traversal: fail-closed
     if not str(resolved).startswith(str(cwd)):
-        # Normalizar: tomar solo el nombre del archivo y ponerlo en CWD
-        resolved = cwd / Path(path).name
+        raise ValueError(
+            f"Path traversal detected: '{path}' resolves outside project directory"
+        )
 
     return resolved
 

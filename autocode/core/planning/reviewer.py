@@ -335,45 +335,80 @@ def _check_for_suggestion(
     gate_name: str,
 ) -> Optional[str]:
     """Check if metrics are approaching a gate threshold and generate suggestion."""
+    _SUGGESTION_CHECKERS = {
+        "relative_increase": _check_suggestion_relative,
+        "absolute_minimum": _check_suggestion_absolute_min,
+        "absolute_maximum": _check_suggestion_absolute_max,
+    }
+    checker = _SUGGESTION_CHECKERS.get(gate_type)
+    if checker is None:
+        return None
+    return checker(file_metrics, metric_key, threshold, gate_name)
+
+
+def _check_suggestion_relative(
+    file_metrics: List[ReviewFileMetrics],
+    metric_key: str,
+    threshold: float,
+    gate_name: str,
+) -> Optional[str]:
+    """Check relative increase suggestion."""
+    warn_threshold = threshold * _SUGGESTION_FACTOR
     for fm in file_metrics:
         before_val = fm.before.get(metric_key)
         after_val = fm.after.get(metric_key)
+        if not fm.before or before_val is None or before_val == 0:
+            continue
+        if after_val is None:
+            continue
+        increase = (after_val - before_val) / before_val
+        if increase > warn_threshold:
+            pct = round(increase * 100)
+            limit = round(threshold * 100)
+            return (
+                f"⚠️ {gate_name}: {fm.path} — {metric_key} increased {pct}% "
+                f"(approaching {limit}% limit)"
+            )
+    return None
 
-        if gate_type == "relative_increase":
-            if not fm.before or before_val is None or before_val == 0:
-                continue
-            if after_val is None:
-                continue
-            increase = (after_val - before_val) / before_val
-            warn_threshold = threshold * _SUGGESTION_FACTOR
-            if increase > warn_threshold:
-                pct = round(increase * 100)
-                limit = round(threshold * 100)
-                return (
-                    f"⚠️ {gate_name}: {fm.path} — {metric_key} increased {pct}% "
-                    f"(approaching {limit}% limit)"
-                )
 
-        elif gate_type == "absolute_minimum":
-            if not fm.after or after_val is None:
-                continue
-            margin = after_val - threshold
-            total_range = 100 - threshold  # Assume 0-100 scale for MI
-            if total_range > 0 and margin / total_range < _SUGGESTION_FACTOR:
-                return (
-                    f"⚠️ {gate_name}: {fm.path} — {metric_key}={after_val:.1f} "
-                    f"(minimum is {threshold})"
-                )
+def _check_suggestion_absolute_min(
+    file_metrics: List[ReviewFileMetrics],
+    metric_key: str,
+    threshold: float,
+    gate_name: str,
+) -> Optional[str]:
+    """Check absolute minimum suggestion."""
+    for fm in file_metrics:
+        after_val = fm.after.get(metric_key)
+        if not fm.after or after_val is None:
+            continue
+        margin = after_val - threshold
+        total_range = 100 - threshold
+        if total_range > 0 and margin / total_range < _SUGGESTION_FACTOR:
+            return (
+                f"⚠️ {gate_name}: {fm.path} — {metric_key}={after_val:.1f} "
+                f"(minimum is {threshold})"
+            )
+    return None
 
-        elif gate_type == "absolute_maximum":
-            if not fm.after or after_val is None:
-                continue
-            if after_val > threshold * _SUGGESTION_FACTOR:
-                return (
-                    f"⚠️ {gate_name}: {fm.path} — {metric_key}={after_val} "
-                    f"(maximum is {threshold})"
-                )
 
+def _check_suggestion_absolute_max(
+    file_metrics: List[ReviewFileMetrics],
+    metric_key: str,
+    threshold: float,
+    gate_name: str,
+) -> Optional[str]:
+    """Check absolute maximum suggestion."""
+    for fm in file_metrics:
+        after_val = fm.after.get(metric_key)
+        if not fm.after or after_val is None:
+            continue
+        if after_val > threshold * _SUGGESTION_FACTOR:
+            return (
+                f"⚠️ {gate_name}: {fm.path} — {metric_key}={after_val} "
+                f"(maximum is {threshold})"
+            )
     return None
 
 

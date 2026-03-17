@@ -196,9 +196,8 @@ class TestResolvePath:
 
     def test_resolve_rejects_path_traversal(self):
         """Rechaza paths que intentan salir del proyecto (../../etc/passwd)."""
-        resolved = _resolve_path("../../etc/passwd")
-        # No debe resolver fuera del CWD — se normaliza al CWD
-        assert str(resolved).startswith(str(Path.cwd()))
+        with pytest.raises(ValueError, match="Path traversal"):
+            _resolve_path("../../etc/passwd")
 
 
 class TestFileOpsRegistration:
