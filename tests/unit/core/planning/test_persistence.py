@@ -82,16 +82,13 @@ class TestLoadPlan:
 
     def test_load_preserves_all_fields(self, tmp_path):
         """load_plan preserva todos los campos del plan."""
-        from autocode.core.planning.models import PlanTask, PlanContext
-
         plan = CommitPlan(
             id="20260101-000011",
             title="Full Plan",
             description="Test description",
             status="ready",
-            tasks=[PlanTask(type="modify", path="src/main.py", description="Fix")],
-            context=PlanContext(architectural_notes="Use async"),
-            tags=["refactor", "test"],
+            branch="feature/test",
+            parent_commit="abc123",
         )
         (tmp_path / "20260101-000011.json").write_text(
             plan.model_dump_json(), encoding="utf-8"
@@ -100,9 +97,8 @@ class TestLoadPlan:
             result = load_plan("20260101-000011")
         assert result.description == "Test description"
         assert result.status == "ready"
-        assert len(result.tasks) == 1
-        assert result.tags == ["refactor", "test"]
-        assert result.context.architectural_notes == "Use async"
+        assert result.branch == "feature/test"
+        assert result.parent_commit == "abc123"
 
 
 class TestListPlanSummaries:
@@ -154,19 +150,13 @@ class TestListPlanSummaries:
         assert len(all_plans) == 2
 
     def test_summary_contains_correct_fields(self, tmp_path):
-        """CommitPlanSummary contiene id, title, status, tasks_count, created_at, branch."""
-        from autocode.core.planning.models import PlanTask
-
+        """CommitPlanSummary contiene id, title, status, created_at, branch."""
         plan = CommitPlan(
             id="20260101-000040",
             title="Full Summary Test",
             status="draft",
             branch="main",
             created_at="2026-01-01T00:00:00",
-            tasks=[
-                PlanTask(type="modify", path="a.py", description="A"),
-                PlanTask(type="create", path="b.py", description="B"),
-            ],
         )
         (tmp_path / "20260101-000040.json").write_text(
             plan.model_dump_json(), encoding="utf-8"
@@ -177,7 +167,6 @@ class TestListPlanSummaries:
         assert s.id == "20260101-000040"
         assert s.title == "Full Summary Test"
         assert s.status == "draft"
-        assert s.tasks_count == 2
         assert s.branch == "main"
         assert s.created_at == "2026-01-01T00:00:00"
 
