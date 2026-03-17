@@ -305,33 +305,5 @@ def _list_plan_summaries(status_filter: str = "") -> list[CommitPlanSummary]:
     return list_plan_summaries(status_filter, PLANS_DIR)
 
 
-# ==============================================================================
-# BACKWARD-COMPATIBLE RE-EXPORTS (moved to workflow.py)
-# ==============================================================================
-# These must be at the end of the file to avoid circular imports:
-# workflow.py imports _load_plan/_save_plan from this module.
-#
-# Wrappers propagate planner's git_checked into workflow so that
-# existing tests patching "autocode.core.planning.planner.git_checked"
-# continue to work.
-
-import autocode.core.planning.workflow as _workflow  # noqa: E402
-
-
-def approve_plan(plan_id: str, commit_message: str = "") -> CommitPlanOutput:
-    """Backward-compatible wrapper — delegates to workflow.approve_plan."""
-    _workflow.git_checked = git_checked
-    return _workflow.approve_plan(plan_id, commit_message)
-
-
-def revert_plan(plan_id: str) -> CommitPlanOutput:
-    """Backward-compatible wrapper — delegates to workflow.revert_plan."""
-    _workflow.git_checked = git_checked
-    return _workflow.revert_plan(plan_id)
-
-
-def get_plan_review_metrics(plan_id: str) -> GenericOutput:
-    """Backward-compatible wrapper — delegates to workflow.get_plan_review_metrics."""
-    return _workflow.get_plan_review_metrics(plan_id)
 
 
