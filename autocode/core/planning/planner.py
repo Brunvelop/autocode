@@ -9,7 +9,6 @@ persistencia, helpers git y endpoints registrados.
 Los planes se crean vía chat (el agente usa create_commit_plan
 con toda la información recopilada durante la conversación).
 """
-import json
 import logging
 from datetime import datetime
 
@@ -25,18 +24,6 @@ from autocode.core.planning.models import (
     CommitPlanListOutput,
 )
 
-# Temporary stubs — PlanTask/PlanContext removed in model simplification (C2).
-# planner.py CRUD is properly simplified in C4.
-try:
-    from autocode.core.planning.models import PlanTask  # type: ignore[attr-defined]
-except ImportError:
-    PlanTask = None  # type: ignore[assignment,misc]
-
-try:
-    from autocode.core.planning.models import PlanContext  # type: ignore[attr-defined]
-except ImportError:
-    PlanContext = None  # type: ignore[assignment,misc]
-
 logger = logging.getLogger(__name__)
 
 
@@ -49,41 +36,19 @@ logger = logging.getLogger(__name__)
 def create_commit_plan(
     title: str,
     description: str = "",
-    tasks_json: str = "",
-    context_json: str = "",
-    tags: str = "",
 ) -> CommitPlanOutput:
     """
     Crea un nuevo plan de commit.
 
     Auto-rellena parent_commit (HEAD actual), branch, timestamps e ID.
-    tasks_json y context_json son JSON strings opcionales.
 
     Args:
         title: Mensaje de commit futuro
-        description: Por qué este commit es necesario
-        tasks_json: JSON array de tareas [{type: "create|modify|delete|rename|refactor|fix|enhance|test", path: "ruta/archivo", description: "qué hacer", details?: "instrucciones detalladas", acceptance_criteria?: ["criterio1"]}]
-        context_json: JSON object de contexto {relevant_files?, relevant_dccs?, architectural_notes?}
-        tags: Tags separados por coma
+        description: Instrucciones freeform del commit (markdown)
     """
     try:
         now = datetime.now()
         plan_id = now.strftime("%Y%m%d-%H%M%S")
-
-        # Parse tasks
-        tasks = []
-        if tasks_json and tasks_json.strip():
-            raw_tasks = json.loads(tasks_json)
-            tasks = [PlanTask(**t) for t in raw_tasks]
-
-        # Parse context
-        context = PlanContext()
-        if context_json and context_json.strip():
-            raw_context = json.loads(context_json)
-            context = PlanContext(**raw_context)
-
-        # Parse tags
-        tag_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else []
 
         plan = CommitPlan(
             id=plan_id,
@@ -92,11 +57,8 @@ def create_commit_plan(
             parent_commit=git("rev-parse", "HEAD"),
             branch=git("rev-parse", "--abbrev-ref", "HEAD"),
             status="draft",
-            tasks=tasks,
-            context=context,
             created_at=now.isoformat(),
             updated_at=now.isoformat(),
-            tags=tag_list,
         )
 
         save_plan(plan)
@@ -163,9 +125,6 @@ def update_commit_plan(
     title: str = "",
     description: str = "",
     status: str = "",
-    tasks_json: str = "",
-    context_json: str = "",
-    tags: str = "",
 ) -> CommitPlanOutput:
     """
     Actualiza parcialmente un plan de commit.
@@ -177,9 +136,6 @@ def update_commit_plan(
         title: Nuevo título (vacío = no cambiar)
         description: Nueva descripción (vacío = no cambiar)
         status: Nuevo estado: draft, ready, abandoned (vacío = no cambiar)
-        tasks_json: JSON array de tareas [{type: "create|modify|delete|rename|refactor|fix|enhance|test", path: "ruta/archivo", description: "qué hacer", details?: "instrucciones detalladas", acceptance_criteria?: ["criterio1"]}] (vacío = no cambiar)
-        context_json: JSON object de contexto (vacío = no cambiar)
-        tags: Tags separados por coma (vacío = no cambiar)
     """
     # Statuses that can be set manually via update endpoint
     MANUALLY_SETTABLE = {"draft", "ready", "abandoned"}
@@ -220,14 +176,6 @@ def update_commit_plan(
             plan.title = title
         if description:
             plan.description = description
-        if tasks_json and tasks_json.strip():
-            raw_tasks = json.loads(tasks_json)
-            plan.tasks = [PlanTask(**t) for t in raw_tasks]
-        if context_json and context_json.strip():
-            raw_context = json.loads(context_json)
-            plan.context = PlanContext(**raw_context)
-        if tags:
-            plan.tags = [t.strip() for t in tags.split(",") if t.strip()]
 
         plan.updated_at = datetime.now().isoformat()
         save_plan(plan)
@@ -289,9 +237,3 @@ def _try_recover_stuck_plan(plan: CommitPlan, target_status: str) -> bool:
         logger.info(f"Plan '{plan.id}' recovered from stuck executing → draft")
         return True
     return False
-
-
-
-
-
-

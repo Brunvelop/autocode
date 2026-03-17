@@ -79,7 +79,6 @@ class TestStatusTransitionValidation:
                 "id": "20260101-000001",
                 "title": "Completed Plan",
                 "status": "completed",
-                "tasks": [],
                 "created_at": "2026-01-01",
             }
             (tmp_path / "20260101-000001.json").write_text(json.dumps(plan_data))
@@ -104,14 +103,15 @@ class TestRecoveryFromStuckExecuting:
             "id": "20260101-120000",
             "title": "Stuck Plan",
             "status": "executing",
-            "tasks": [{"type": "modify", "path": "src/main.py", "description": "Fix bug"}],
             "created_at": "2026-01-01T12:00:00",
             "updated_at": "2026-01-01T12:00:00",
             "execution": {
                 "started_at": "2026-01-01T12:00:01",
                 "completed_at": completed_at,
                 "model_used": "openrouter/z-ai/glm-5",
-                "task_results": [],
+                "steps": [],
+                "backend": "",
+                "session_id": "",
                 "commit_hash": "",
                 "total_tokens": 0,
                 "total_cost": 0.0,
@@ -144,7 +144,6 @@ class TestRecoveryFromStuckExecuting:
             "id": "20260101-130000",
             "title": "No Execution Plan",
             "status": "executing",
-            "tasks": [],
             "created_at": "2026-01-01T13:00:00",
         }
         (tmp_path / "20260101-130000.json").write_text(json.dumps(plan_data))
@@ -198,10 +197,10 @@ class TestRecoveryFromStuckExecuting:
 
 
 class TestStatusTransitionsUpdated:
-    """Tests that pending_review, pending_commit, and reverted
-    cannot be set manually via update_commit_plan.
+    """Tests that pending_review and reverted cannot be set manually
+    via update_commit_plan.
 
-    These states are managed by the executor (pending_review, pending_commit)
+    These states are managed by the executor (pending_review)
     and approve/revert endpoints (reverted).
     """
 
@@ -215,16 +214,6 @@ class TestStatusTransitionsUpdated:
             result = update_commit_plan(plan_id=plan_id, status="pending_review")
             assert result.success is False
             assert "managed" in result.message.lower() or "executor" in result.message.lower()
-
-    def test_pending_commit_not_manually_settable(self, tmp_path):
-        """update_commit_plan rechaza status='pending_commit'."""
-        with patch("autocode.core.planning.persistence.PLANS_DIR", str(tmp_path)), \
-             patch("autocode.core.planning.planner.git", return_value="abc123"):
-            create_result = create_commit_plan(title="Test Plan")
-            plan_id = create_result.result.id
-
-            result = update_commit_plan(plan_id=plan_id, status="pending_commit")
-            assert result.success is False
 
     def test_reverted_not_manually_settable(self, tmp_path):
         """update_commit_plan rechaza status='reverted'."""
