@@ -1206,3 +1206,414 @@ class TestWithHeartbeat:
         assert heartbeats[0]["data"]["task_index"] == 5
 
 
+# ==============================================================================
+# TESTS: _validate_and_prepare_plan
+# ==============================================================================
+
+
+@pytest.mark.asyncio
+class TestValidateAndPreparePlan:
+    """Tests for _validate_and_prepare_plan async generator."""
+
+    def _execution_patches(self, tmp_path):
+        """Returns a contextmanager stack with common mocks."""
+        from contextlib import ExitStack
+
+        stack = ExitStack()
+        stack.enter_context(
+            patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path))
+        )
+        stack.enter_context(
+            patch(
+                "autocode.core.planning.executor.get_dspy_lm",
+                return_value=MagicMock(),
+            )
+        )
+        stack.enter_context(
+            patch(
+                "autocode.core.planning.executor._get_executor_tools",
+                return_value=[],
+            )
+        )
+        return stack
+
+    async def test_yields_error_if_plan_not_found(self, tmp_path):
+        """Emite error SSE si el plan no existe."""
+        from autocode.core.planning.executor import _validate_and_prepare_plan
+
+        events = []
+        with self._execution_patches(tmp_path):
+            async for item in _validate_and_prepare_plan(
+                "nonexistent", "model", 1000, 0.3
+            ):
+                events.append(item)
+
+        assert len(events) == 1
+        parsed = _parse_sse(events[0])
+        assert parsed["event"] == "error"
+
+    async def test_yields_error_if_status_not_executable(self, tmp_path):
+        """Emite error SSE si el plan no es ejecutable (e.g., completed)."""
+        from autocode.core.planning.executor import _validate_and_prepare_plan
+
+        _create_test_plan(tmp_path, status="completed")
+
+        events = []
+        with self._execution_patches(tmp_path):
+            async for item in _validate_and_prepare_plan(
+                "20260101-000000", "model", 1000, 0.3
+            ):
+                events.append(item)
+
+        assert len(events) == 1
+        parsed = _parse_sse(events[0])
+        assert parsed["event"] == "error"
+
+    async def test_yields_plan_start_and_tuple(self, tmp_path):
+        """Emite plan_start SSE y finalmente yields (plan, lm, tools)."""
+        from autocode.core.planning.executor import _validate_and_prepare_plan
+
+        _create_test_plan(tmp_path, title="Test Plan", num_tasks=2)
+
+        items = []
+        with self._execution_patches(tmp_path):
+            async for item in _validate_and_prepare_plan(
+                "20260101-000000", "model", 1000, 0.3
+            ):
+                items.append(item)
+
+        # Should have SSE event(s) + final tuple
+        assert len(items) >= 2
+
+        # Last item should be a tuple (plan, lm, tools)
+        last = items[-1]
+        assert isinstance(last, tuple)
+        assert len(last) == 3
+        plan, lm, tools = last
+        assert plan.status == "executing"
+        assert plan.execution is not None
+
+        # First item(s) should include plan_start event
+        sse_events = [_parse_sse(i) for i in items[:-1] if isinstance(i, str)]
+        assert any(e["event"] == "plan_start" for e in sse_events)
+
+    async def test_marks_plan_as_executing(self, tmp_path):
+        """El plan se guarda con status='executing' y execution state."""
+        from autocode.core.planning.executor import _validate_and_prepare_plan
+
+        _create_test_plan(tmp_path, num_tasks=1)
+
+        saved_plans = []
+
+        def spy_save(p):
+            saved_plans.append(p.model_copy(deep=True))
+            plans_dir = Path(tmp_path)
+            plans_dir.mkdir(parents=True, exist_ok=True)
+            path = plans_dir / f"{p.id}.json"
+            path.write_text(p.model_dump_json(indent=2), encoding="utf-8")
+
+        with self._execution_patches(tmp_path) as stack:
+            stack.enter_context(
+                patch(
+                    "autocode.core.planning.executor._save_plan",
+                    side_effect=spy_save,
+                )
+            )
+            async for _ in _validate_and_prepare_plan(
+                "20260101-000000", "model", 1000, 0.3
+            ):
+                pass
+
+        assert any(p.status == "executing" for p in saved_plans)
+
+
+# ==============================================================================
+# TESTS: _execute_task_loop
+# ==============================================================================
+
+
+@pytest.mark.asyncio
+class TestExecuteTaskLoop:
+    """Tests for _execute_task_loop async generator."""
+
+    async def test_yields_task_start_and_complete_for_each_task(self):
+        """Emite task_start y task_complete para cada tarea."""
+        from autocode.core.planning.executor import _execute_task_loop
+
+        plan = CommitPlan(
+            id="test",
+            title="test",
+            status="executing",
+            tasks=[
+                PlanTask(type="modify", path="a.py", description="Task A"),
+                PlanTask(type="modify", path="b.py", description="Task B"),
+            ],
+            execution=PlanExecutionState(started_at="2026-01-01T00:00:00"),
+        )
+        lm = MagicMock()
+        tools = []
+
+        events = []
+        with patch(
+            "autocode.core.planning.executor._execute_single_task"
+        ) as mock_exec:
+            mock_exec.side_effect = (
+                lambda task, plan, lm, tools, idx: _mock_task_generator(
+                    TaskExecutionResult(
+                        task_index=idx, status="completed", llm_summary="Done"
+                    )
+                )
+            )
+            async for item in _execute_task_loop(plan, lm, tools):
+                events.append(item)
+
+        sse_events = [_parse_sse(e) for e in events if isinstance(e, str)]
+        assert sum(1 for e in sse_events if e["event"] == "task_start") == 2
+        assert sum(1 for e in sse_events if e["event"] == "task_complete") == 2
+
+    async def test_yields_metrics_summary_as_last_item(self):
+        """El último item es un dict con métricas acumuladas."""
+        from autocode.core.planning.executor import _execute_task_loop
+
+        plan = CommitPlan(
+            id="test",
+            title="test",
+            status="executing",
+            tasks=[PlanTask(type="modify", path="a.py", description="Task A")],
+            execution=PlanExecutionState(started_at="2026-01-01T00:00:00"),
+        )
+        lm = MagicMock()
+        tools = []
+
+        items = []
+        with patch(
+            "autocode.core.planning.executor._execute_single_task"
+        ) as mock_exec:
+            mock_exec.return_value = _mock_task_generator(
+                TaskExecutionResult(
+                    task_index=0,
+                    status="completed",
+                    total_tokens=500,
+                    total_cost=0.001,
+                    files_changed=["a.py"],
+                )
+            )
+            async for item in _execute_task_loop(plan, lm, tools):
+                items.append(item)
+
+        last = items[-1]
+        assert isinstance(last, dict)
+        assert last["tasks_completed"] == 1
+        assert last["tasks_failed"] == 0
+        assert "a.py" in last["all_files_changed"]
+        assert last["plan_total_tokens"] == 500
+
+    async def test_accumulates_metrics_across_tasks(self):
+        """Acumula tokens y costes de todas las tareas."""
+        from autocode.core.planning.executor import _execute_task_loop
+
+        plan = CommitPlan(
+            id="test",
+            title="test",
+            status="executing",
+            tasks=[
+                PlanTask(type="modify", path="a.py", description="A"),
+                PlanTask(type="modify", path="b.py", description="B"),
+            ],
+            execution=PlanExecutionState(started_at="2026-01-01T00:00:00"),
+        )
+        lm = MagicMock()
+        tools = []
+
+        items = []
+        with patch(
+            "autocode.core.planning.executor._execute_single_task"
+        ) as mock_exec:
+            mock_exec.side_effect = (
+                lambda task, plan, lm, tools, idx: _mock_task_generator(
+                    TaskExecutionResult(
+                        task_index=idx,
+                        status="completed",
+                        total_tokens=300,
+                        total_cost=0.001,
+                        files_changed=[f"file{idx}.py"],
+                    )
+                )
+            )
+            async for item in _execute_task_loop(plan, lm, tools):
+                items.append(item)
+
+        last = items[-1]
+        assert last["plan_total_tokens"] == 600
+        assert abs(last["plan_total_cost"] - 0.002) < 1e-9
+        assert last["tasks_completed"] == 2
+
+    async def test_handles_task_failure(self):
+        """Si una tarea falla, la cuenta como failed y continúa."""
+        from autocode.core.planning.executor import _execute_task_loop
+
+        plan = CommitPlan(
+            id="test",
+            title="test",
+            status="executing",
+            tasks=[PlanTask(type="modify", path="a.py", description="A")],
+            execution=PlanExecutionState(started_at="2026-01-01T00:00:00"),
+        )
+        lm = MagicMock()
+        tools = []
+
+        items = []
+        with patch(
+            "autocode.core.planning.executor._execute_single_task"
+        ) as mock_exec:
+            mock_exec.return_value = _mock_task_generator(
+                TaskExecutionResult(
+                    task_index=0, status="failed", error="LLM error"
+                )
+            )
+            async for item in _execute_task_loop(plan, lm, tools):
+                items.append(item)
+
+        last = items[-1]
+        assert last["tasks_failed"] == 1
+        assert last["tasks_completed"] == 0
+
+
+# ==============================================================================
+# TESTS: _run_review_flow
+# ==============================================================================
+
+
+@pytest.mark.asyncio
+class TestRunReviewFlow:
+    """Tests for _run_review_flow async generator."""
+
+    async def test_human_mode_sets_pending_review(self):
+        """review_mode='human' siempre termina en pending_review."""
+        from autocode.core.planning.executor import _run_review_flow
+
+        plan = CommitPlan(
+            id="test",
+            title="test",
+            status="executing",
+            execution=PlanExecutionState(
+                started_at="2026-01-01T00:00:00",
+                total_tokens=500,
+                total_cost=0.001,
+            ),
+        )
+
+        items = []
+        with patch(
+            "autocode.core.planning.executor.compute_review_metrics",
+            return_value=[],
+        ), patch("autocode.core.planning.executor._save_plan"):
+            async for item in _run_review_flow(plan, "human", ["a.py"]):
+                items.append(item)
+
+        assert plan.status == "pending_review"
+        sse_events = [_parse_sse(e) for e in items if isinstance(e, str)]
+        assert any(e["event"] == "review_start" for e in sse_events)
+        assert any(e["event"] == "review_complete" for e in sse_events)
+
+    async def test_auto_approved_commits_and_completes(self):
+        """review_mode='auto' con quality gates OK → commit + completed."""
+        from autocode.core.planning.executor import _run_review_flow
+
+        plan = CommitPlan(
+            id="test",
+            title="Test Commit",
+            status="executing",
+            execution=PlanExecutionState(
+                started_at="2026-01-01T00:00:00",
+                total_tokens=500,
+                total_cost=0.001,
+            ),
+        )
+
+        approved_review = ReviewResult(
+            mode="auto",
+            verdict="approved",
+            summary="OK",
+            quality_gates={},
+            reviewed_by="auto",
+        )
+
+        items = []
+        with patch(
+            "autocode.core.planning.executor.auto_review",
+            return_value=approved_review,
+        ), patch(
+            "autocode.core.planning.executor.git_add_and_commit",
+            return_value="abc123",
+        ), patch("autocode.core.planning.executor._save_plan"):
+            async for item in _run_review_flow(plan, "auto", ["a.py"]):
+                items.append(item)
+
+        assert plan.status == "completed"
+        last = items[-1]
+        assert isinstance(last, dict)
+        assert last["commit_hash"] == "abc123"
+
+    async def test_auto_rejected_sets_pending_review(self):
+        """review_mode='auto' con quality gates fallidos → pending_review."""
+        from autocode.core.planning.executor import _run_review_flow
+
+        plan = CommitPlan(
+            id="test",
+            title="test",
+            status="executing",
+            execution=PlanExecutionState(
+                started_at="2026-01-01T00:00:00",
+                total_tokens=500,
+                total_cost=0.001,
+            ),
+        )
+
+        rejected_review = ReviewResult(
+            mode="auto",
+            verdict="rejected",
+            summary="Failed",
+            quality_gates={"mi_minimum": False},
+            reviewed_by="auto",
+        )
+
+        items = []
+        with patch(
+            "autocode.core.planning.executor.auto_review",
+            return_value=rejected_review,
+        ), patch("autocode.core.planning.executor._save_plan"):
+            async for item in _run_review_flow(plan, "auto", ["a.py"]):
+                items.append(item)
+
+        assert plan.status == "pending_review"
+
+    async def test_emits_review_start_and_complete(self):
+        """Emite SSE events review_start y review_complete."""
+        from autocode.core.planning.executor import _run_review_flow
+
+        plan = CommitPlan(
+            id="test",
+            title="test",
+            status="executing",
+            execution=PlanExecutionState(
+                started_at="2026-01-01T00:00:00",
+                total_tokens=500,
+                total_cost=0.001,
+            ),
+        )
+
+        items = []
+        with patch(
+            "autocode.core.planning.executor.compute_review_metrics",
+            return_value=[],
+        ), patch("autocode.core.planning.executor._save_plan"):
+            async for item in _run_review_flow(plan, "human", ["a.py"]):
+                items.append(item)
+
+        sse_events = [_parse_sse(e) for e in items if isinstance(e, str)]
+        event_types = [e["event"] for e in sse_events]
+        assert "review_start" in event_types
+        assert "review_complete" in event_types
+
+
