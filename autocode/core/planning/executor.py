@@ -45,6 +45,7 @@ from autocode.core.planning.models import (
 from autocode.core.planning.backends.base import ExecutionResult
 from autocode.core.planning.backends.opencode import OpenCodeBackend
 from autocode.core.planning.backends.cline import ClineBackend
+from autocode.core.planning.backends.dspy_react import DspyReactBackend
 from autocode.core.vcs.git import git_add_and_commit
 from autocode.core.planning.persistence import save_plan, load_plan
 from autocode.core.planning.transitions import can_execute
@@ -60,6 +61,7 @@ logger = logging.getLogger(__name__)
 _BACKENDS = {
     "opencode": OpenCodeBackend,
     "cline": ClineBackend,
+    "dspy": DspyReactBackend,
 }
 
 
