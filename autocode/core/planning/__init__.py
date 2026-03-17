@@ -41,6 +41,10 @@ from .transitions import (
     can_review,
     InvalidTransitionError,
 )
+from .backends import (
+    ExecutorBackend,
+    ExecutionResult,
+)
 
 __all__ = [
     # Models
@@ -72,4 +76,7 @@ __all__ = [
     "can_execute",
     "can_review",
     "InvalidTransitionError",
+    # Backends
+    "ExecutorBackend",
+    "ExecutionResult",
 ]

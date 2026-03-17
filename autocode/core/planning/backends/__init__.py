@@ -6,6 +6,14 @@ seleccionado al momento de ejecutar un plan.
 """
 
 from .base import ExecutorBackend, ExecutionResult
+from .opencode import OpenCodeBackend
+from .cline import ClineBackend
 from .dspy_react import DspyReactBackend
 
-__all__ = ["ExecutorBackend", "ExecutionResult", "DspyReactBackend"]
+__all__ = [
+    "ExecutorBackend",
+    "ExecutionResult",
+    "OpenCodeBackend",
+    "ClineBackend",
+    "DspyReactBackend",
+]
