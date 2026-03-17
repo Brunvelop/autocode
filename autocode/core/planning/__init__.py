@@ -23,6 +23,11 @@ from .planner import (
     update_commit_plan,
     delete_commit_plan,
 )
+from .workflow import (
+    approve_plan,
+    revert_plan,
+    get_plan_review_metrics,
+)
 from .executor import (
     execute_commit_plan,
     stream_execute_plan,
@@ -44,6 +49,10 @@ __all__ = [
     "get_commit_plan",
     "update_commit_plan",
     "delete_commit_plan",
+    # Functions — Workflow (approve/revert/review)
+    "approve_plan",
+    "revert_plan",
+    "get_plan_review_metrics",
     # Functions — Executor
     "execute_commit_plan",
     "stream_execute_plan",
