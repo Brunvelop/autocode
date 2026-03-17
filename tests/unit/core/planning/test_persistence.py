@@ -14,6 +14,7 @@ from autocode.core.planning.persistence import (
     save_plan,
     load_plan,
     list_plan_summaries,
+    delete_plan,
 )
 from autocode.core.planning.models import CommitPlan, CommitPlanSummary
 
@@ -192,3 +193,33 @@ class TestListPlanSummaries:
         # Newest first
         assert result[0].id == "20260103-000050"
         assert result[-1].id == "20260101-000050"
+
+
+class TestDeletePlan:
+    """Tests for delete_plan() — delete plan by ID."""
+
+    def test_delete_existing_plan_returns_true(self, tmp_path):
+        """delete_plan retorna True cuando el plan existe y se elimina."""
+        plan = CommitPlan(id="20260101-000060", title="To Delete")
+        (tmp_path / "20260101-000060.json").write_text(
+            plan.model_dump_json(), encoding="utf-8"
+        )
+        with patch("autocode.core.planning.persistence.PLANS_DIR", str(tmp_path)):
+            result = delete_plan("20260101-000060")
+        assert result is True
+
+    def test_delete_nonexistent_plan_returns_false(self, tmp_path):
+        """delete_plan retorna False cuando el plan no existe."""
+        with patch("autocode.core.planning.persistence.PLANS_DIR", str(tmp_path)):
+            result = delete_plan("nonexistent-plan")
+        assert result is False
+
+    def test_delete_removes_file_from_disk(self, tmp_path):
+        """delete_plan elimina el archivo del disco."""
+        plan = CommitPlan(id="20260101-000061", title="Remove Me")
+        plan_file = tmp_path / "20260101-000061.json"
+        plan_file.write_text(plan.model_dump_json(), encoding="utf-8")
+        assert plan_file.exists()
+        with patch("autocode.core.planning.persistence.PLANS_DIR", str(tmp_path)):
+            delete_plan("20260101-000061")
+        assert not plan_file.exists()

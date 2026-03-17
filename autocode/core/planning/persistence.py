@@ -68,3 +68,14 @@ def list_plan_summaries(status_filter: str = "", plans_dir: Optional[str] = None
             continue
 
     return summaries
+
+
+def delete_plan(plan_id: str, plans_dir: Optional[str] = None) -> bool:
+    """Delete a plan by ID. Returns True if deleted, False if not found."""
+    dir_path = Path(plans_dir if plans_dir is not None else PLANS_DIR)
+    plan_file = dir_path / f"{plan_id}.json"
+    if not plan_file.exists():
+        return False
+    plan_file.unlink()
+    logger.debug(f"Plan deleted: {plan_file}")
+    return True
