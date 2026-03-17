@@ -12,9 +12,9 @@ con toda la información recopilada durante la conversación).
 import json
 import logging
 from datetime import datetime
-from pathlib import Path
-from typing import Optional
 
+from autocode.core.planning.persistence import save_plan, load_plan, list_plan_summaries, delete_plan
+from autocode.core.planning.transitions import validate_transition, InvalidTransitionError
 from autocode.core.registry import register_function
 from autocode.core.vcs.git import git, git_checked
 from autocode.core.models import GenericOutput
@@ -28,9 +28,6 @@ from autocode.core.planning.models import (
 )
 
 logger = logging.getLogger(__name__)
-
-# Directorio de planes (relativo al CWD del proyecto host)
-PLANS_DIR = ".autocode/plans"
 
 
 # ==============================================================================
@@ -92,7 +89,7 @@ def create_commit_plan(
             tags=tag_list,
         )
 
-        _save_plan(plan)
+        save_plan(plan)
 
         return CommitPlanOutput(
             success=True,
@@ -116,7 +113,7 @@ def list_commit_plans(status: str = "") -> CommitPlanListOutput:
         status: Filtrar por estado (vacío = todos)
     """
     try:
-        summaries = _list_plan_summaries(status)
+        summaries = list_plan_summaries(status)
         return CommitPlanListOutput(
             success=True,
             result=summaries,
@@ -136,7 +133,7 @@ def get_commit_plan(plan_id: str) -> CommitPlanOutput:
         plan_id: ID del plan (formato YYYYMMDD-HHMMSS)
     """
     try:
-        plan = _load_plan(plan_id)
+        plan = load_plan(plan_id)
         if plan is None:
             return CommitPlanOutput(success=False, message=f"Plan '{plan_id}' no encontrado")
 
@@ -174,48 +171,45 @@ def update_commit_plan(
         context_json: JSON object de contexto (vacío = no cambiar)
         tags: Tags separados por coma (vacío = no cambiar)
     """
-    # Estados gestionados por el executor/approve/revert — no editables manualmente
-    EXECUTOR_MANAGED_STATUSES = {
-        "executing", "completed", "failed",
-        "pending_review", "pending_commit", "reverted",
-    }
+    # Statuses that can be set manually via update endpoint
+    MANUALLY_SETTABLE = {"draft", "ready", "abandoned"}
 
     try:
-        plan = _load_plan(plan_id)
+        plan = load_plan(plan_id)
         if plan is None:
             return CommitPlanOutput(success=False, message=f"Plan '{plan_id}' no encontrado")
 
-        # Recovery: plan stuck en "executing" sin completed_at → permitir reset a draft
-        # Esto ocurre cuando la ejecución murió (crash, timeout, refresh del navegador)
-        if (
-            status == "draft"
-            and plan.status == "executing"
-            and (plan.execution is None or not plan.execution.completed_at)
-        ):
-            plan.status = "draft"
-            plan.execution = None  # Limpiar para fresh start
-            plan.updated_at = datetime.now().isoformat()
-            _save_plan(plan)
-            logger.info(f"Plan '{plan_id}' recovered from stuck executing → draft")
-            return CommitPlanOutput(
-                success=True,
-                result=plan,
-                message=f"Plan '{plan_id}' recovered from stuck executing state",
-            )
+        # Handle status change
+        if status:
+            # Recovery: plan stuck in "executing" without completed_at → allow reset to draft
+            if _try_recover_stuck_plan(plan, status):
+                save_plan(plan)
+                return CommitPlanOutput(
+                    success=True,
+                    result=plan,
+                    message=f"Plan '{plan_id}' recovered from stuck executing state",
+                )
 
-        if status and status in EXECUTOR_MANAGED_STATUSES:
-            return CommitPlanOutput(
-                success=False,
-                message=f"Status '{status}' is managed by the executor and cannot be set manually",
-            )
+            # Only allow manually settable statuses through this endpoint
+            if status not in MANUALLY_SETTABLE:
+                return CommitPlanOutput(
+                    success=False,
+                    message=f"Status '{status}' is managed by the executor and cannot be set manually",
+                )
 
-        # Actualización parcial
+            # Validate the transition is allowed by the state machine
+            try:
+                validate_transition(plan.status, status)
+            except InvalidTransitionError as e:
+                return CommitPlanOutput(success=False, message=str(e))
+
+            plan.status = status
+
+        # Partial update of other fields
         if title:
             plan.title = title
         if description:
             plan.description = description
-        if status and status in ("draft", "ready", "abandoned"):
-            plan.status = status
         if tasks_json and tasks_json.strip():
             raw_tasks = json.loads(tasks_json)
             plan.tasks = [PlanTask(**t) for t in raw_tasks]
@@ -226,7 +220,7 @@ def update_commit_plan(
             plan.tags = [t.strip() for t in tags.split(",") if t.strip()]
 
         plan.updated_at = datetime.now().isoformat()
-        _save_plan(plan)
+        save_plan(plan)
 
         return CommitPlanOutput(
             success=True,
@@ -247,13 +241,9 @@ def delete_commit_plan(plan_id: str) -> GenericOutput:
         plan_id: ID del plan a eliminar
     """
     try:
-        plans_dir = Path(PLANS_DIR)
-        plan_file = plans_dir / f"{plan_id}.json"
-
-        if not plan_file.exists():
+        deleted = delete_plan(plan_id)
+        if not deleted:
             return GenericOutput(success=False, result=None, message=f"Plan '{plan_id}' no encontrado")
-
-        plan_file.unlink()
 
         return GenericOutput(
             success=True,
@@ -266,256 +256,32 @@ def delete_commit_plan(plan_id: str) -> GenericOutput:
 
 
 # ==============================================================================
-# REGISTERED ENDPOINTS — APPROVE / REVERT
+# PRIVATE HELPERS
 # ==============================================================================
 
-# Statuses from which a plan can be approved or reverted
-_REVIEWABLE_STATUSES = {"pending_review", "pending_commit"}
 
+def _try_recover_stuck_plan(plan: CommitPlan, target_status: str) -> bool:
+    """Try to recover a plan stuck in 'executing' state.
 
-@register_function(http_methods=["POST"], interfaces=["api", "mcp"])
-def approve_plan(plan_id: str, commit_message: str = "") -> CommitPlanOutput:
-    """Aprueba un plan en pending_review: git add + commit → completed.
+    A plan gets stuck when execution dies (crash, timeout, browser refresh).
+    If the plan is in 'executing' with no completed_at, allow reset to draft.
 
-    Ejecuta git add para cada archivo cambiado, luego git commit
-    con el título del plan (o un mensaje personalizado).
-    Almacena el commit hash resultante en execution.commit_hash.
-
-    Args:
-        plan_id: ID del plan a aprobar
-        commit_message: Mensaje de commit personalizado (vacío = usar plan.title)
+    Returns True if recovery was performed, False otherwise.
     """
-    try:
-        plan = _load_plan(plan_id)
-        if plan is None:
-            return CommitPlanOutput(
-                success=False,
-                message=f"Plan '{plan_id}' no encontrado",
-            )
-
-        if plan.status not in _REVIEWABLE_STATUSES:
-            return CommitPlanOutput(
-                success=False,
-                message=(
-                    f"Cannot approve plan in status '{plan.status}'. "
-                    f"Must be in: {', '.join(sorted(_REVIEWABLE_STATUSES))}"
-                ),
-            )
-
-        # Get files to commit from execution state
-        files = (
-            plan.execution.files_changed
-            if plan.execution and plan.execution.files_changed
-            else []
-        )
-
-        # git add + commit (use _git_checked to detect failures)
-        message = commit_message or plan.title
-        for f in files:
-            git_checked("add", f)
-        git_checked("commit", "-m", message)
-        commit_hash = git_checked("rev-parse", "HEAD")
-
-        # Update plan state
-        if plan.execution:
-            plan.execution.commit_hash = commit_hash
-        plan.status = "completed"
+    if (
+        target_status == "draft"
+        and plan.status == "executing"
+        and (plan.execution is None or not plan.execution.completed_at)
+    ):
+        plan.status = "draft"
+        plan.execution = None
         plan.updated_at = datetime.now().isoformat()
-        _save_plan(plan)
-
-        logger.info(f"Plan '{plan_id}' approved and committed: {commit_hash}")
-        return CommitPlanOutput(
-            success=True,
-            result=plan,
-            message=f"Plan '{plan_id}' approved. Commit: {commit_hash}",
-        )
-    except Exception as e:
-        logger.error(f"Error approving plan {plan_id}: {e}")
-        return CommitPlanOutput(success=False, message=str(e))
+        logger.info(f"Plan '{plan.id}' recovered from stuck executing → draft")
+        return True
+    return False
 
 
-@register_function(http_methods=["POST"], interfaces=["api", "mcp"])
-def revert_plan(plan_id: str) -> CommitPlanOutput:
-    """Revierte cambios de un plan: git checkout -- files → reverted.
-
-    Restaura cada archivo modificado al estado del parent_commit
-    del plan usando git checkout. Marca el plan como 'reverted'.
-
-    Args:
-        plan_id: ID del plan a revertir
-    """
-    try:
-        plan = _load_plan(plan_id)
-        if plan is None:
-            return CommitPlanOutput(
-                success=False,
-                message=f"Plan '{plan_id}' no encontrado",
-            )
-
-        if plan.status not in _REVIEWABLE_STATUSES:
-            return CommitPlanOutput(
-                success=False,
-                message=(
-                    f"Cannot revert plan in status '{plan.status}'. "
-                    f"Must be in: {', '.join(sorted(_REVIEWABLE_STATUSES))}"
-                ),
-            )
-
-        # Get files to revert from execution state
-        files = (
-            plan.execution.files_changed
-            if plan.execution and plan.execution.files_changed
-            else []
-        )
-
-        if not files:
-            return CommitPlanOutput(
-                success=False,
-                message=f"Plan '{plan_id}' has no files to revert (files_changed is empty)",
-            )
-
-        # git checkout {parent_commit} -- file1 file2 ... (use _git_checked to detect failures)
-        ref = plan.parent_commit or "HEAD"
-        for f in files:
-            git_checked("checkout", ref, "--", f)
-
-        # Update plan state
-        plan.status = "reverted"
-        plan.updated_at = datetime.now().isoformat()
-        _save_plan(plan)
-
-        logger.info(
-            f"Plan '{plan_id}' reverted: {len(files)} files restored to {ref}"
-        )
-        return CommitPlanOutput(
-            success=True,
-            result=plan,
-            message=f"Plan '{plan_id}' reverted. {len(files)} files restored.",
-        )
-    except Exception as e:
-        logger.error(f"Error reverting plan {plan_id}: {e}")
-        return CommitPlanOutput(success=False, message=str(e))
 
 
-# ==============================================================================
-# REGISTERED ENDPOINTS — REVIEW METRICS
-# ==============================================================================
-
-
-@register_function(http_methods=["GET"], interfaces=["api"])
-def get_plan_review_metrics(plan_id: str) -> GenericOutput:
-    """Retorna métricas de review de un plan para la UI.
-
-    Extrae file_metrics, quality_gates y summary del ReviewResult
-    almacenado en plan.execution.review. Formato compatible con
-    la tabla combinada de commit-detail.js.
-
-    Args:
-        plan_id: ID del plan
-    """
-    try:
-        plan = _load_plan(plan_id)
-        if plan is None:
-            return GenericOutput(
-                success=False, result=None,
-                message=f"Plan '{plan_id}' no encontrado",
-            )
-
-        review = plan.execution.review if plan.execution else None
-        if review is None:
-            return GenericOutput(
-                success=True,
-                result={"files": [], "summary": {}, "quality_gates": {}},
-                message="No review data available",
-            )
-
-        # Transform file_metrics to flat format compatible with commit-detail table
-        files = []
-        for fm in review.file_metrics:
-            files.append({
-                "path": fm.path,
-                "before": fm.before,
-                "after": fm.after,
-                **fm.deltas,
-            })
-
-        return GenericOutput(
-            success=True,
-            result={
-                "files": files,
-                "summary": {
-                    "verdict": review.verdict,
-                    "summary": review.summary,
-                    "mode": review.mode,
-                    "reviewed_at": review.reviewed_at,
-                    "reviewed_by": review.reviewed_by,
-                    "issues": review.issues,
-                    "suggestions": review.suggestions,
-                },
-                "quality_gates": review.quality_gates,
-            },
-            message=f"Review metrics for plan '{plan_id}'",
-        )
-    except Exception as e:
-        logger.error(f"Error getting review metrics for {plan_id}: {e}")
-        return GenericOutput(success=False, result=None, message=str(e))
-
-
-# ==============================================================================
-# PLAN PERSISTENCE
-# ==============================================================================
-
-
-def _save_plan(plan: CommitPlan) -> None:
-    """Save plan as JSON in .autocode/plans/."""
-    plans_dir = Path(PLANS_DIR)
-    plans_dir.mkdir(parents=True, exist_ok=True)
-    path = plans_dir / f"{plan.id}.json"
-    path.write_text(plan.model_dump_json(indent=2), encoding="utf-8")
-    logger.debug(f"Plan saved: {path}")
-
-
-def _load_plan(plan_id: str) -> Optional[CommitPlan]:
-    """Load a plan by ID."""
-    plans_dir = Path(PLANS_DIR)
-    plan_file = plans_dir / f"{plan_id}.json"
-    if not plan_file.exists():
-        return None
-    try:
-        data = json.loads(plan_file.read_text(encoding="utf-8"))
-        return CommitPlan(**data)
-    except Exception as e:
-        logger.error(f"Error loading plan {plan_id}: {e}")
-        return None
-
-
-def _list_plan_summaries(status_filter: str = "") -> list[CommitPlanSummary]:
-    """List all plans as summaries, optionally filtered by status."""
-    plans_dir = Path(PLANS_DIR)
-    if not plans_dir.exists():
-        return []
-
-    summaries = []
-    for f in sorted(plans_dir.glob("*.json"), reverse=True):
-        try:
-            data = json.loads(f.read_text(encoding="utf-8"))
-            plan_status = data.get("status", "draft")
-
-            if status_filter and plan_status != status_filter:
-                continue
-
-            summaries.append(CommitPlanSummary(
-                id=data.get("id", f.stem),
-                title=data.get("title", ""),
-                status=plan_status,
-                tasks_count=len(data.get("tasks", [])),
-                created_at=data.get("created_at", ""),
-                branch=data.get("branch", ""),
-            ))
-        except Exception as e:
-            logger.debug(f"Skip plan {f.name}: {e}")
-            continue
-
-    return summaries
 
 

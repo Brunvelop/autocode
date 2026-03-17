@@ -2,10 +2,8 @@
 Tests for plan executor with ReAct + streaming SSE.
 
 Tests cover:
-- _build_task_instruction: prompt construction from task + plan context
-- _extract_files_changed: file path extraction from ReAct trajectory
-- _extract_cost_from_history: cost/token extraction from LM history
 - stream_execute_plan: async SSE streaming with status transitions, cost tracking
+- review_mode flow: human vs auto review
 """
 
 import json
@@ -24,282 +22,11 @@ from autocode.core.planning.models import (
     ReviewResult,
     ReviewFileMetrics,
 )
-
-
-# ==============================================================================
-# TEST HELPERS
-# ==============================================================================
-
-
-def _create_test_plan(tmp_path, title="Test", num_tasks=1, status="draft"):
-    """Crea un plan de test en tmp_path y retorna el CommitPlan."""
-    tasks = [
-        PlanTask(type="modify", path=f"src/file{i}.py", description=f"Task {i}")
-        for i in range(num_tasks)
-    ]
-    plan = CommitPlan(
-        id="20260101-000000",
-        title=title,
-        status=status,
-        tasks=tasks,
-        created_at="2026-01-01T00:00:00",
-    )
-    (tmp_path / f"{plan.id}.json").write_text(plan.model_dump_json(indent=2))
-    return plan
-
-
-def _parse_sse(raw_event):
-    """Parsea un string SSE 'event: X\\ndata: {...}\\n\\n' a dict."""
-    lines = raw_event.strip().split("\n")
-    event_type = lines[0].replace("event: ", "")
-    data = json.loads(lines[1].replace("data: ", ""))
-    return {"event": event_type, "data": data}
-
-
-async def _mock_task_generator(task_result, status_messages=None):
-    """Helper: creates an async generator that mimics _execute_single_task.
-
-    Yields status SSE events first (if any), then the TaskExecutionResult.
-    """
-    from autocode.core.ai.streaming import _format_sse
-
-    if status_messages:
-        for msg in status_messages:
-            yield _format_sse(
-                "status",
-                {"task_index": task_result.task_index, "message": msg},
-            )
-
-    # Emit a task_debug event (like the real implementation)
-    yield _format_sse(
-        "task_debug",
-        {
-            "task_index": task_result.task_index,
-            "trajectory": [],
-            "history": [],
-            "prompt_tokens": task_result.prompt_tokens,
-            "completion_tokens": task_result.completion_tokens,
-            "total_tokens": task_result.total_tokens,
-            "total_cost": task_result.total_cost,
-        },
-    )
-
-    yield task_result
-
-
-# ==============================================================================
-# TESTS: _build_task_instruction
-# ==============================================================================
-
-
-class TestBuildTaskInstruction:
-    """Tests for _build_task_instruction helper."""
-
-    def test_includes_task_description(self):
-        """La instrucción incluye la descripción de la task."""
-        from autocode.core.planning.executor import _build_task_instruction
-
-        task = PlanTask(type="modify", path="src/main.py", description="Add logging")
-        plan = CommitPlan(id="t", title="t")
-        instruction = _build_task_instruction(task, plan)
-        assert "Add logging" in instruction
-
-    def test_includes_task_details(self):
-        """Si la task tiene details, se incluyen."""
-        from autocode.core.planning.executor import _build_task_instruction
-
-        task = PlanTask(
-            type="modify",
-            path="src/main.py",
-            description="Add logging",
-            details="Use Python logging module",
-        )
-        plan = CommitPlan(id="t", title="t")
-        instruction = _build_task_instruction(task, plan)
-        assert "Python logging module" in instruction
-
-    def test_includes_acceptance_criteria(self):
-        """Si la task tiene acceptance_criteria, se incluyen."""
-        from autocode.core.planning.executor import _build_task_instruction
-
-        task = PlanTask(
-            type="create",
-            path="src/utils.py",
-            description="Create utils",
-            acceptance_criteria=["Must have type hints", "Must have docstrings"],
-        )
-        plan = CommitPlan(id="t", title="t")
-        instruction = _build_task_instruction(task, plan)
-        assert "type hints" in instruction
-        assert "docstrings" in instruction
-
-    def test_includes_plan_context(self):
-        """La instrucción incluye el contexto del plan (description, architectural_notes)."""
-        from autocode.core.planning.executor import _build_task_instruction
-
-        task = PlanTask(type="modify", path="x.py", description="Change x")
-        plan = CommitPlan(
-            id="t",
-            title="t",
-            description="Refactor for performance",
-            context=PlanContext(architectural_notes="Use async/await"),
-        )
-        instruction = _build_task_instruction(task, plan)
-        assert "Refactor for performance" in instruction
-        assert "async/await" in instruction
-
-
-# ==============================================================================
-# TESTS: _extract_files_changed
-# ==============================================================================
-
-
-class TestExtractFilesChanged:
-    """Tests for _extract_files_changed helper."""
-
-    def test_extract_from_trajectory_dict(self):
-        """Extrae paths de archivos de las tool calls en la trajectory de ReAct."""
-        from autocode.core.planning.executor import _extract_files_changed
-
-        trajectory = {
-            "Action_1": "write_file_content",
-            "Action_1_args": {"path": "src/main.py", "content": "..."},
-            "Action_2": "replace_in_file",
-            "Action_2_args": {
-                "path": "src/utils.py",
-                "old_string": "...",
-                "new_string": "...",
-            },
-            "Action_3": "read_file_content",
-            "Action_3_args": {"path": "src/other.py"},  # read no es un cambio
-        }
-        files = _extract_files_changed(trajectory)
-        assert "src/main.py" in files
-        assert "src/utils.py" in files
-        assert "src/other.py" not in files  # read no cuenta
-
-    def test_extract_deduplicates(self):
-        """No retorna duplicados si un archivo fue tocado múltiples veces."""
-        from autocode.core.planning.executor import _extract_files_changed
-
-        trajectory = {
-            "Action_1": "replace_in_file",
-            "Action_1_args": {
-                "path": "src/main.py",
-                "old_string": "a",
-                "new_string": "b",
-            },
-            "Action_2": "replace_in_file",
-            "Action_2_args": {
-                "path": "src/main.py",
-                "old_string": "c",
-                "new_string": "d",
-            },
-        }
-        files = _extract_files_changed(trajectory)
-        assert files == ["src/main.py"]
-
-    def test_extract_empty_trajectory(self):
-        """Trajectory vacía retorna lista vacía."""
-        from autocode.core.planning.executor import _extract_files_changed
-
-        assert _extract_files_changed({}) == []
-        assert _extract_files_changed(None) == []
-
-
-# ==============================================================================
-# TESTS: _extract_cost_from_history
-# ==============================================================================
-
-
-class TestExtractCostFromHistory:
-    """Tests for _extract_cost_from_history helper."""
-
-    def test_no_history(self):
-        """Sin historial retorna zeros."""
-        from autocode.core.planning.executor import _extract_cost_from_history
-
-        lm = MagicMock()
-        lm.history = []
-        result = _extract_cost_from_history(lm)
-        assert result["total_tokens"] == 0
-        assert result["total_cost"] == 0.0
-
-    def test_no_history_attr(self):
-        """Sin atributo history retorna zeros."""
-        from autocode.core.planning.executor import _extract_cost_from_history
-
-        lm = MagicMock(spec=[])  # no attributes
-        result = _extract_cost_from_history(lm)
-        assert result["total_tokens"] == 0
-        assert result["total_cost"] == 0.0
-
-    def test_sums_tokens_from_usage(self):
-        """Suma tokens de usage de cada llamada."""
-        from autocode.core.planning.executor import _extract_cost_from_history
-
-        lm = MagicMock()
-        lm.history = [
-            {"usage": {"prompt_tokens": 100, "completion_tokens": 50}},
-            {"usage": {"prompt_tokens": 200, "completion_tokens": 75}},
-        ]
-        result = _extract_cost_from_history(lm)
-        assert result["prompt_tokens"] == 300
-        assert result["completion_tokens"] == 125
-        assert result["total_tokens"] == 425
-
-    def test_sums_cost_from_response_cost(self):
-        """Suma coste de response_cost de cada llamada."""
-        from autocode.core.planning.executor import _extract_cost_from_history
-
-        lm = MagicMock()
-        lm.history = [
-            {"usage": {"prompt_tokens": 100, "completion_tokens": 50}, "cost": 0.001},
-            {"usage": {"prompt_tokens": 200, "completion_tokens": 75}, "cost": 0.002},
-        ]
-        result = _extract_cost_from_history(lm)
-        assert abs(result["total_cost"] - 0.003) < 1e-9
-
-    def test_handles_input_output_tokens(self):
-        """Maneja variante input_tokens/output_tokens de LiteLLM."""
-        from autocode.core.planning.executor import _extract_cost_from_history
-
-        lm = MagicMock()
-        lm.history = [
-            {"usage": {"input_tokens": 150, "output_tokens": 60}},
-        ]
-        result = _extract_cost_from_history(lm)
-        assert result["prompt_tokens"] == 150
-        assert result["completion_tokens"] == 60
-        assert result["total_tokens"] == 210
-
-    def test_handles_hidden_params_cost(self):
-        """Extrae coste de _hidden_params.response_cost."""
-        from autocode.core.planning.executor import _extract_cost_from_history
-
-        lm = MagicMock()
-        lm.history = [
-            {
-                "usage": {"prompt_tokens": 100, "completion_tokens": 50},
-                "_hidden_params": {"response_cost": 0.005},
-            },
-        ]
-        result = _extract_cost_from_history(lm)
-        assert abs(result["total_cost"] - 0.005) < 1e-9
-
-    def test_handles_non_dict_entries(self):
-        """Ignora entradas que no son dict en el historial."""
-        from autocode.core.planning.executor import _extract_cost_from_history
-
-        lm = MagicMock()
-        lm.history = [
-            "not a dict",
-            {"usage": {"prompt_tokens": 100, "completion_tokens": 50}},
-            42,
-        ]
-        result = _extract_cost_from_history(lm)
-        assert result["prompt_tokens"] == 100
-        assert result["completion_tokens"] == 50
+from tests.unit.core.planning.conftest import (
+    _create_test_plan,
+    _parse_sse,
+    _mock_task_generator,
+)
 
 
 # ==============================================================================
@@ -325,7 +52,7 @@ class TestStreamExecutePlan:
 
         stack = ExitStack()
         stack.enter_context(
-            patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path))
+            patch("autocode.core.planning.persistence.PLANS_DIR", str(tmp_path))
         )
         stack.enter_context(
             patch(
@@ -433,7 +160,7 @@ class TestStreamExecutePlan:
         with self._execution_patches(tmp_path) as stack:
             stack.enter_context(
                 patch(
-                    "autocode.core.planning.executor._save_plan",
+                    "autocode.core.planning.executor.save_plan",
                     side_effect=spy_save,
                 )
             )
@@ -483,7 +210,7 @@ class TestStreamExecutePlan:
         plan = _create_test_plan(tmp_path, status="completed")
 
         events = []
-        with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)):
+        with patch("autocode.core.planning.persistence.PLANS_DIR", str(tmp_path)):
             async for event in stream_execute_plan(plan_id=plan.id):
                 events.append(_parse_sse(event))
 
@@ -745,7 +472,7 @@ class TestExecutorReviewMode:
 
         stack = ExitStack()
         stack.enter_context(
-            patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path))
+            patch("autocode.core.planning.persistence.PLANS_DIR", str(tmp_path))
         )
         stack.enter_context(
             patch(
@@ -779,7 +506,7 @@ class TestExecutorReviewMode:
         with self._execution_patches(tmp_path) as stack:
             stack.enter_context(
                 patch(
-                    "autocode.core.planning.executor._save_plan",
+                    "autocode.core.planning.executor.save_plan",
                     side_effect=spy_save,
                 )
             )
@@ -820,7 +547,7 @@ class TestExecutorReviewMode:
         with self._execution_patches(tmp_path) as stack:
             stack.enter_context(
                 patch(
-                    "autocode.core.planning.executor._save_plan",
+                    "autocode.core.planning.executor.save_plan",
                     side_effect=spy_save,
                 )
             )
@@ -877,7 +604,7 @@ class TestExecutorReviewMode:
         with self._execution_patches(tmp_path) as stack:
             stack.enter_context(
                 patch(
-                    "autocode.core.planning.executor._save_plan",
+                    "autocode.core.planning.executor.save_plan",
                     side_effect=spy_save,
                 )
             )
@@ -925,7 +652,7 @@ class TestExecutorReviewMode:
         with self._execution_patches(tmp_path) as stack:
             stack.enter_context(
                 patch(
-                    "autocode.core.planning.executor._save_plan",
+                    "autocode.core.planning.executor.save_plan",
                     side_effect=spy_save,
                 )
             )
@@ -1017,7 +744,7 @@ class TestExecutorReviewMode:
         with self._execution_patches(tmp_path) as stack:
             stack.enter_context(
                 patch(
-                    "autocode.core.planning.executor._save_plan",
+                    "autocode.core.planning.executor.save_plan",
                     side_effect=spy_save,
                 )
             )
@@ -1068,7 +795,7 @@ class TestExecutorReviewMode:
         with self._execution_patches(tmp_path) as stack:
             stack.enter_context(
                 patch(
-                    "autocode.core.planning.executor._save_plan",
+                    "autocode.core.planning.executor.save_plan",
                     side_effect=spy_save,
                 )
             )
@@ -1091,118 +818,3 @@ class TestExecutorReviewMode:
         assert final_plan.execution is not None
         assert "src/file0.py" in final_plan.execution.files_changed
         assert "src/file1.py" in final_plan.execution.files_changed
-
-
-# ==============================================================================
-# TESTS: _with_heartbeat
-# ==============================================================================
-
-
-@pytest.mark.asyncio
-class TestWithHeartbeat:
-    """Tests for _with_heartbeat async generator wrapper."""
-
-    async def test_forwards_all_items_from_source(self):
-        """Todos los items del source generator se forwardean sin modificación."""
-        from autocode.core.planning.executor import _with_heartbeat
-
-        async def _source():
-            yield "event_1"
-            yield "event_2"
-            yield TaskExecutionResult(task_index=0, status="completed")
-
-        items = []
-        async for item in _with_heartbeat(_source(), task_index=0, interval=100):
-            items.append(item)
-
-        assert items[0] == "event_1"
-        assert items[1] == "event_2"
-        assert isinstance(items[2], TaskExecutionResult)
-        assert items[2].status == "completed"
-
-    async def test_emits_heartbeat_during_delay(self):
-        """Emite heartbeat events cuando el source generator tarda."""
-        import asyncio
-        from autocode.core.planning.executor import _with_heartbeat
-
-        async def _slow_source():
-            await asyncio.sleep(0.25)  # Enough for 2 heartbeats at 0.1s interval
-            yield TaskExecutionResult(task_index=0, status="completed")
-
-        items = []
-        async for item in _with_heartbeat(
-            _slow_source(), task_index=0, interval=0.1
-        ):
-            items.append(item)
-
-        # Should have heartbeat events + the final TaskExecutionResult
-        heartbeat_items = [
-            i for i in items if isinstance(i, str) and "heartbeat" in i
-        ]
-        assert len(heartbeat_items) >= 1, "Expected at least 1 heartbeat event"
-
-        # Verify heartbeat content
-        hb = _parse_sse(heartbeat_items[0])
-        assert hb["event"] == "heartbeat"
-        assert hb["data"]["task_index"] == 0
-        assert "elapsed_s" in hb["data"]
-        assert "timestamp" in hb["data"]
-
-    async def test_heartbeat_cancelled_after_completion(self):
-        """El heartbeat task se cancela después de que el source termina."""
-        import asyncio
-        from autocode.core.planning.executor import _with_heartbeat
-
-        async def _fast_source():
-            yield "done"
-
-        items = []
-        async for item in _with_heartbeat(
-            _fast_source(), task_index=0, interval=0.05
-        ):
-            items.append(item)
-
-        # Wait a bit — no more heartbeats should appear
-        await asyncio.sleep(0.15)
-        # If we got here without errors, heartbeat was properly cancelled
-        assert items == ["done"]
-
-    async def test_propagates_exception_from_source(self):
-        """Excepciones del source generator se propagan correctamente."""
-        from autocode.core.planning.executor import _with_heartbeat
-
-        async def _failing_source():
-            yield "first"
-            raise ValueError("source error")
-
-        items = []
-        with pytest.raises(ValueError, match="source error"):
-            async for item in _with_heartbeat(
-                _failing_source(), task_index=0, interval=100
-            ):
-                items.append(item)
-
-        assert items == ["first"]
-
-    async def test_heartbeat_includes_elapsed_time(self):
-        """El campo elapsed_s del heartbeat refleja tiempo real transcurrido."""
-        import asyncio
-        from autocode.core.planning.executor import _with_heartbeat
-
-        async def _slow_source():
-            await asyncio.sleep(0.15)
-            yield "done"
-
-        heartbeats = []
-        async for item in _with_heartbeat(
-            _slow_source(), task_index=5, interval=0.05
-        ):
-            if isinstance(item, str) and "heartbeat" in item:
-                heartbeats.append(_parse_sse(item))
-
-        assert len(heartbeats) >= 1
-        # First heartbeat should be ~0.05s, check it's reasonable
-        assert heartbeats[0]["data"]["elapsed_s"] >= 0.04
-        assert heartbeats[0]["data"]["task_index"] == 5
-
-

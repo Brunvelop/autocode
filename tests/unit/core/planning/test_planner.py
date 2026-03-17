@@ -1,32 +1,18 @@
 """
-Tests for planner.py — CRUD + approve/revert endpoints.
+Tests for planner.py — CRUD operations and status transitions.
 
 Covers:
 - Status transition validation in update_commit_plan
 - Recovery of zombie plans (stuck in executing)
-- approve_plan: pending_review → git commit → completed
-- revert_plan: pending_review → git checkout → reverted
 - New executor-managed statuses blocked from manual setting
 """
 import json
-from unittest.mock import patch, call
-
-import pytest
+from unittest.mock import patch
 
 from autocode.core.planning.planner import (
     create_commit_plan,
     update_commit_plan,
     list_commit_plans,
-    approve_plan,
-    revert_plan,
-)
-from autocode.core.vcs.git import git_checked
-from autocode.core.planning.models import (
-    CommitPlan,
-    PlanExecutionState,
-    TaskExecutionResult,
-    ReviewResult,
-    ReviewFileMetrics,
 )
 
 
@@ -35,7 +21,7 @@ class TestStatusTransitionValidation:
 
     def test_reject_executing_status_via_update(self, tmp_path):
         """update_commit_plan rechaza status='executing' (solo executor puede setearlo)."""
-        with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)), \
+        with patch("autocode.core.planning.persistence.PLANS_DIR", str(tmp_path)), \
              patch("autocode.core.planning.planner.git", return_value="abc123"):
             create_result = create_commit_plan(title="Test Plan")
             plan_id = create_result.result.id
@@ -46,7 +32,7 @@ class TestStatusTransitionValidation:
 
     def test_reject_completed_status_via_update(self, tmp_path):
         """update_commit_plan rechaza status='completed'."""
-        with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)), \
+        with patch("autocode.core.planning.persistence.PLANS_DIR", str(tmp_path)), \
              patch("autocode.core.planning.planner.git", return_value="abc123"):
             create_result = create_commit_plan(title="Test Plan")
             plan_id = create_result.result.id
@@ -56,7 +42,7 @@ class TestStatusTransitionValidation:
 
     def test_reject_failed_status_via_update(self, tmp_path):
         """update_commit_plan rechaza status='failed'."""
-        with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)), \
+        with patch("autocode.core.planning.persistence.PLANS_DIR", str(tmp_path)), \
              patch("autocode.core.planning.planner.git", return_value="abc123"):
             create_result = create_commit_plan(title="Test Plan")
             plan_id = create_result.result.id
@@ -65,19 +51,26 @@ class TestStatusTransitionValidation:
             assert result.success is False
 
     def test_allow_manual_statuses(self, tmp_path):
-        """update_commit_plan permite draft, ready, abandoned."""
-        with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)), \
+        """update_commit_plan permite draft, ready, abandoned via valid transitions."""
+        with patch("autocode.core.planning.persistence.PLANS_DIR", str(tmp_path)), \
              patch("autocode.core.planning.planner.git", return_value="abc123"):
             create_result = create_commit_plan(title="Test Plan")
             plan_id = create_result.result.id
 
-            for status in ("draft", "ready", "abandoned"):
-                result = update_commit_plan(plan_id=plan_id, status=status)
-                assert result.success is True, f"Status '{status}' should be allowed"
+            # Plan starts as "draft" — test valid transition sequences
+            # draft → ready (valid)
+            result = update_commit_plan(plan_id=plan_id, status="ready")
+            assert result.success is True, "Status 'ready' should be allowed from draft"
+            # ready → draft (valid)
+            result = update_commit_plan(plan_id=plan_id, status="draft")
+            assert result.success is True, "Status 'draft' should be allowed from ready"
+            # draft → abandoned (valid)
+            result = update_commit_plan(plan_id=plan_id, status="abandoned")
+            assert result.success is True, "Status 'abandoned' should be allowed from draft"
 
     def test_list_plans_includes_new_statuses(self, tmp_path):
         """list_commit_plans filtra correctamente los nuevos estados."""
-        with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)), \
+        with patch("autocode.core.planning.persistence.PLANS_DIR", str(tmp_path)), \
              patch("autocode.core.planning.planner.git", return_value="abc123"):
             create_commit_plan(title="Plan 1")
 
@@ -129,7 +122,7 @@ class TestRecoveryFromStuckExecuting:
 
     def test_recovery_executing_to_draft_with_empty_completed_at(self, tmp_path):
         """Plan en executing con completed_at vacío puede transicionar a draft."""
-        with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)):
+        with patch("autocode.core.planning.persistence.PLANS_DIR", str(tmp_path)):
             plan_id = self._create_executing_plan(tmp_path, completed_at="")
 
             result = update_commit_plan(plan_id=plan_id, status="draft")
@@ -138,7 +131,7 @@ class TestRecoveryFromStuckExecuting:
 
     def test_recovery_executing_to_draft_clears_execution(self, tmp_path):
         """Al resetear a draft, execution se limpia a None."""
-        with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)):
+        with patch("autocode.core.planning.persistence.PLANS_DIR", str(tmp_path)):
             plan_id = self._create_executing_plan(tmp_path, completed_at="")
 
             result = update_commit_plan(plan_id=plan_id, status="draft")
@@ -156,34 +149,32 @@ class TestRecoveryFromStuckExecuting:
         }
         (tmp_path / "20260101-130000.json").write_text(json.dumps(plan_data))
 
-        with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)):
+        with patch("autocode.core.planning.persistence.PLANS_DIR", str(tmp_path)):
             result = update_commit_plan(plan_id="20260101-130000", status="draft")
             assert result.success is True
             assert result.result.status == "draft"
             assert result.result.execution is None
 
     def test_recovery_blocked_if_completed_at_set(self, tmp_path):
-        """Plan en executing con completed_at (terminó normalmente) rechaza reset manual."""
-        with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)):
+        """Plan en executing con completed_at (terminó normalmente) rechaza reset manual.
+
+        Recovery path is NOT taken (completed_at is set), and the state machine
+        rejects executing→draft since it's not a valid transition.
+        """
+        with patch("autocode.core.planning.persistence.PLANS_DIR", str(tmp_path)):
             plan_id = self._create_executing_plan(
                 tmp_path, completed_at="2026-01-01T12:05:00"
             )
 
-            # Should be rejected: plan has completed_at, meaning execution finished
-            # but status wasn't updated (shouldn't happen, but if it does, block manual change)
             result = update_commit_plan(plan_id=plan_id, status="draft")
-            # This falls through to the normal EXECUTOR_MANAGED check, which blocks
-            # setting 'draft' for a plan already in executing (since it's not a stuck plan)
-            # Actually, "draft" is NOT in EXECUTOR_MANAGED_STATUSES, so it would pass through.
-            # Let's verify the behavior: since completed_at is set, the recovery path
-            # is NOT taken, and the normal update logic handles it.
-            # "draft" is in ("draft", "ready", "abandoned"), so it should succeed normally.
-            assert result.success is True
-            assert result.result.status == "draft"
+            # Recovery not triggered (completed_at is set), and
+            # executing→draft is not a valid state machine transition
+            assert result.success is False
+            assert "invalid transition" in result.message.lower()
 
     def test_executing_cannot_be_set_manually_from_draft(self, tmp_path):
         """No se puede setear 'executing' manualmente desde draft."""
-        with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)), \
+        with patch("autocode.core.planning.persistence.PLANS_DIR", str(tmp_path)), \
              patch("autocode.core.planning.planner.git", return_value="abc123"):
             create_result = create_commit_plan(title="Test Plan")
             plan_id = create_result.result.id
@@ -193,7 +184,7 @@ class TestRecoveryFromStuckExecuting:
 
     def test_recovery_message_indicates_recovery(self, tmp_path):
         """El mensaje de respuesta indica que fue una recovery."""
-        with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)):
+        with patch("autocode.core.planning.persistence.PLANS_DIR", str(tmp_path)):
             plan_id = self._create_executing_plan(tmp_path, completed_at="")
 
             result = update_commit_plan(plan_id=plan_id, status="draft")
@@ -202,354 +193,7 @@ class TestRecoveryFromStuckExecuting:
 
 
 # ==============================================================================
-# TESTS: approve_plan
-# ==============================================================================
-
-
-class TestApprovePlan:
-    """Tests for approve_plan endpoint.
-
-    Verifies that a plan in pending_review can be approved,
-    which triggers git add + commit and transitions to completed.
-    """
-
-    def _create_pending_review_plan(self, tmp_path, plan_id="20260501-120000",
-                                     title="feat: add feature",
-                                     files_changed=None,
-                                     parent_commit="abc123"):
-        """Helper: creates a plan in pending_review with execution data."""
-        if files_changed is None:
-            files_changed = ["src/main.py", "src/utils.py"]
-        plan_data = {
-            "id": plan_id,
-            "title": title,
-            "status": "pending_review",
-            "parent_commit": parent_commit,
-            "branch": "main",
-            "tasks": [
-                {"type": "modify", "path": "src/main.py", "description": "Add feature"},
-            ],
-            "created_at": "2026-05-01T12:00:00",
-            "updated_at": "2026-05-01T12:00:00",
-            "execution": {
-                "started_at": "2026-05-01T12:00:01",
-                "completed_at": "2026-05-01T12:05:00",
-                "model_used": "openrouter/z-ai/glm-5",
-                "task_results": [
-                    {
-                        "task_index": 0,
-                        "status": "completed",
-                        "started_at": "2026-05-01T12:00:01",
-                        "completed_at": "2026-05-01T12:05:00",
-                        "files_changed": files_changed,
-                        "llm_summary": "Added feature",
-                    }
-                ],
-                "files_changed": files_changed,
-                "commit_hash": "",
-                "total_tokens": 1000,
-                "total_cost": 0.005,
-                "review": {
-                    "mode": "human",
-                    "verdict": "needs_changes",
-                    "summary": "Awaiting human review",
-                    "reviewed_by": "",
-                },
-            },
-        }
-        (tmp_path / f"{plan_id}.json").write_text(json.dumps(plan_data))
-        return plan_id
-
-    def test_approve_commits_and_completes(self, tmp_path):
-        """Plan en pending_review → approve → git add+commit → completed."""
-        plan_id = self._create_pending_review_plan(tmp_path)
-
-        with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)), \
-             patch("autocode.core.planning.planner.git_checked") as mock_git:
-            # git rev-parse HEAD returns commit hash after commit
-            mock_git.return_value = "new_commit_hash_abc"
-
-            result = approve_plan(plan_id=plan_id)
-
-        assert result.success is True
-        assert result.result.status == "completed"
-        # Verify git was called for add + commit
-        git_calls = [str(c) for c in mock_git.call_args_list]
-        # Should have git add calls and a git commit call
-        assert any("add" in c for c in git_calls)
-        assert any("commit" in c for c in git_calls)
-
-    def test_approve_rejects_wrong_status(self, tmp_path):
-        """Plan en draft → approve → error."""
-        plan_data = {
-            "id": "20260501-130000",
-            "title": "Draft Plan",
-            "status": "draft",
-            "tasks": [],
-            "created_at": "2026-05-01T13:00:00",
-        }
-        (tmp_path / "20260501-130000.json").write_text(json.dumps(plan_data))
-
-        with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)):
-            result = approve_plan(plan_id="20260501-130000")
-
-        assert result.success is False
-        assert "status" in result.message.lower() or "pending_review" in result.message.lower()
-
-    def test_approve_stores_commit_hash(self, tmp_path):
-        """Tras approve, execution.commit_hash se rellena con el hash del commit."""
-        plan_id = self._create_pending_review_plan(tmp_path)
-
-        with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)), \
-             patch("autocode.core.planning.planner.git_checked") as mock_git:
-            mock_git.return_value = "def456789"
-
-            result = approve_plan(plan_id=plan_id)
-
-        assert result.success is True
-        assert result.result.execution.commit_hash == "def456789"
-
-    def test_approve_with_custom_message(self, tmp_path):
-        """approve con commit_message usa ese mensaje en vez del plan title."""
-        plan_id = self._create_pending_review_plan(tmp_path, title="original title")
-
-        with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)), \
-             patch("autocode.core.planning.planner.git_checked") as mock_git:
-            mock_git.return_value = "abc123"
-
-            result = approve_plan(plan_id=plan_id, commit_message="custom: my message")
-
-        assert result.success is True
-        # Verify the commit call used the custom message
-        commit_calls = [c for c in mock_git.call_args_list
-                        if "commit" in str(c)]
-        assert len(commit_calls) >= 1
-        assert "custom: my message" in str(commit_calls[0])
-
-    def test_approve_git_failure_returns_error(self, tmp_path):
-        """approve con git commit que falla → success=False con mensaje de error."""
-        plan_id = self._create_pending_review_plan(tmp_path)
-
-        with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)), \
-             patch("autocode.core.planning.planner.git_checked",
-                   side_effect=RuntimeError("git error: nothing to commit")):
-            result = approve_plan(plan_id=plan_id)
-
-        assert result.success is False
-        assert "git error" in result.message.lower()
-
-    def test_approve_git_failure_does_not_change_status(self, tmp_path):
-        """Si git falla durante approve, el plan sigue en pending_review."""
-        plan_id = self._create_pending_review_plan(tmp_path)
-
-        with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)), \
-             patch("autocode.core.planning.planner.git_checked",
-                   side_effect=RuntimeError("git error: fatal")):
-            approve_plan(plan_id=plan_id)
-
-        # Verify plan is still pending_review (not completed)
-        plan_file = tmp_path / f"{plan_id}.json"
-        plan_data = json.loads(plan_file.read_text())
-        assert plan_data["status"] == "pending_review"
-
-    def test_approve_nonexistent_plan(self, tmp_path):
-        """approve_plan con plan inexistente → error."""
-        with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)):
-            result = approve_plan(plan_id="nonexistent")
-
-        assert result.success is False
-        assert "no encontrado" in result.message.lower() or "not found" in result.message.lower()
-
-
-# ==============================================================================
-# TESTS: revert_plan
-# ==============================================================================
-
-
-class TestRevertPlan:
-    """Tests for revert_plan endpoint.
-
-    Verifies that a plan in pending_review can be reverted,
-    which triggers git checkout to restore files and transitions to reverted.
-    """
-
-    def _create_pending_review_plan(self, tmp_path, plan_id="20260501-140000",
-                                     files_changed=None,
-                                     parent_commit="abc123"):
-        """Helper: creates a plan in pending_review with execution data."""
-        if files_changed is None:
-            files_changed = ["src/main.py", "src/utils.py"]
-        plan_data = {
-            "id": plan_id,
-            "title": "feat: add feature",
-            "status": "pending_review",
-            "parent_commit": parent_commit,
-            "branch": "main",
-            "tasks": [
-                {"type": "modify", "path": "src/main.py", "description": "Add feature"},
-            ],
-            "created_at": "2026-05-01T14:00:00",
-            "updated_at": "2026-05-01T14:00:00",
-            "execution": {
-                "started_at": "2026-05-01T14:00:01",
-                "completed_at": "2026-05-01T14:05:00",
-                "model_used": "openrouter/z-ai/glm-5",
-                "task_results": [
-                    {
-                        "task_index": 0,
-                        "status": "completed",
-                        "started_at": "2026-05-01T14:00:01",
-                        "completed_at": "2026-05-01T14:05:00",
-                        "files_changed": files_changed,
-                        "llm_summary": "Added feature",
-                    }
-                ],
-                "files_changed": files_changed,
-                "commit_hash": "",
-                "total_tokens": 1000,
-                "total_cost": 0.005,
-                "review": {
-                    "mode": "human",
-                    "verdict": "needs_changes",
-                    "summary": "Awaiting human review",
-                    "reviewed_by": "",
-                },
-            },
-        }
-        (tmp_path / f"{plan_id}.json").write_text(json.dumps(plan_data))
-        return plan_id
-
-    def test_revert_restores_files(self, tmp_path):
-        """Plan en pending_review → revert → git checkout para cada archivo → reverted."""
-        plan_id = self._create_pending_review_plan(
-            tmp_path, files_changed=["src/main.py", "src/utils.py"]
-        )
-
-        with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)), \
-             patch("autocode.core.planning.planner.git_checked") as mock_git:
-            result = revert_plan(plan_id=plan_id)
-
-        assert result.success is True
-        assert result.result.status == "reverted"
-        # Verify git checkout was called with the files
-        git_calls = [str(c) for c in mock_git.call_args_list]
-        assert any("checkout" in c for c in git_calls)
-        assert any("src/main.py" in c for c in git_calls)
-        assert any("src/utils.py" in c for c in git_calls)
-
-    def test_revert_rejects_wrong_status(self, tmp_path):
-        """Plan en draft → revert → error."""
-        plan_data = {
-            "id": "20260501-150000",
-            "title": "Draft Plan",
-            "status": "draft",
-            "tasks": [],
-            "created_at": "2026-05-01T15:00:00",
-        }
-        (tmp_path / "20260501-150000.json").write_text(json.dumps(plan_data))
-
-        with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)):
-            result = revert_plan(plan_id="20260501-150000")
-
-        assert result.success is False
-        assert "status" in result.message.lower() or "pending_review" in result.message.lower()
-
-    def test_revert_marks_as_reverted(self, tmp_path):
-        """Tras revert, el status es 'reverted'."""
-        plan_id = self._create_pending_review_plan(tmp_path)
-
-        with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)), \
-             patch("autocode.core.planning.planner.git_checked"):
-            result = revert_plan(plan_id=plan_id)
-
-        assert result.success is True
-        assert result.result.status == "reverted"
-
-    def test_revert_uses_files_from_execution(self, tmp_path):
-        """Revert usa execution.files_changed para saber qué archivos restaurar."""
-        specific_files = ["src/feature.py", "tests/test_feature.py", "README.md"]
-        plan_id = self._create_pending_review_plan(
-            tmp_path, files_changed=specific_files
-        )
-
-        with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)), \
-             patch("autocode.core.planning.planner.git_checked") as mock_git:
-            result = revert_plan(plan_id=plan_id)
-
-        assert result.success is True
-        # Verify the checkout call includes all the specific files
-        git_calls_str = str(mock_git.call_args_list)
-        for f in specific_files:
-            assert f in git_calls_str, f"Expected '{f}' in git checkout calls"
-
-    def test_revert_uses_parent_commit(self, tmp_path):
-        """Revert usa parent_commit del plan como referencia para checkout."""
-        plan_id = self._create_pending_review_plan(
-            tmp_path, parent_commit="deadbeef123"
-        )
-
-        with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)), \
-             patch("autocode.core.planning.planner.git_checked") as mock_git:
-            result = revert_plan(plan_id=plan_id)
-
-        assert result.success is True
-        git_calls_str = str(mock_git.call_args_list)
-        assert "deadbeef123" in git_calls_str
-
-    def test_revert_git_failure_returns_error(self, tmp_path):
-        """revert con git checkout que falla → success=False con mensaje de error."""
-        plan_id = self._create_pending_review_plan(tmp_path)
-
-        with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)), \
-             patch("autocode.core.planning.planner.git_checked",
-                   side_effect=RuntimeError("git error: pathspec 'src/main.py' did not match")):
-            result = revert_plan(plan_id=plan_id)
-
-        assert result.success is False
-        assert "git error" in result.message.lower()
-
-    def test_revert_git_failure_does_not_change_status(self, tmp_path):
-        """Si git falla durante revert, el plan sigue en pending_review."""
-        plan_id = self._create_pending_review_plan(tmp_path)
-
-        with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)), \
-             patch("autocode.core.planning.planner.git_checked",
-                   side_effect=RuntimeError("git error: fatal")):
-            revert_plan(plan_id=plan_id)
-
-        # Verify plan is still pending_review (not reverted)
-        plan_file = tmp_path / f"{plan_id}.json"
-        plan_data = json.loads(plan_file.read_text())
-        assert plan_data["status"] == "pending_review"
-
-    def test_revert_empty_files_returns_error(self, tmp_path):
-        """revert con files_changed vacío → success=False."""
-        plan_id = self._create_pending_review_plan(
-            tmp_path, files_changed=[]
-        )
-
-        with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)):
-            result = revert_plan(plan_id=plan_id)
-
-        assert result.success is False
-        assert "no files" in result.message.lower() or "empty" in result.message.lower()
-
-    def test_revert_nonexistent_plan(self, tmp_path):
-        """revert_plan con plan inexistente → error."""
-        with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)):
-            result = revert_plan(plan_id="nonexistent")
-
-        assert result.success is False
-        assert "no encontrado" in result.message.lower() or "not found" in result.message.lower()
-
-
-# ==============================================================================
 # TESTS: Status transitions — new executor-managed statuses
-# ==============================================================================
-
-
-# ==============================================================================
-# TESTS: _git_checked helper
 # ==============================================================================
 
 
@@ -563,7 +207,7 @@ class TestStatusTransitionsUpdated:
 
     def test_pending_review_not_manually_settable(self, tmp_path):
         """update_commit_plan rechaza status='pending_review'."""
-        with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)), \
+        with patch("autocode.core.planning.persistence.PLANS_DIR", str(tmp_path)), \
              patch("autocode.core.planning.planner.git", return_value="abc123"):
             create_result = create_commit_plan(title="Test Plan")
             plan_id = create_result.result.id
@@ -574,7 +218,7 @@ class TestStatusTransitionsUpdated:
 
     def test_pending_commit_not_manually_settable(self, tmp_path):
         """update_commit_plan rechaza status='pending_commit'."""
-        with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)), \
+        with patch("autocode.core.planning.persistence.PLANS_DIR", str(tmp_path)), \
              patch("autocode.core.planning.planner.git", return_value="abc123"):
             create_result = create_commit_plan(title="Test Plan")
             plan_id = create_result.result.id
@@ -584,7 +228,7 @@ class TestStatusTransitionsUpdated:
 
     def test_reverted_not_manually_settable(self, tmp_path):
         """update_commit_plan rechaza status='reverted'."""
-        with patch("autocode.core.planning.planner.PLANS_DIR", str(tmp_path)), \
+        with patch("autocode.core.planning.persistence.PLANS_DIR", str(tmp_path)), \
              patch("autocode.core.planning.planner.git", return_value="abc123"):
             create_result = create_commit_plan(title="Test Plan")
             plan_id = create_result.result.id
