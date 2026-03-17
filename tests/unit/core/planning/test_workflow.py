@@ -20,7 +20,6 @@ from autocode.core.planning.workflow import (
 from autocode.core.planning.models import (
     CommitPlan,
     PlanExecutionState,
-    TaskExecutionResult,
     ReviewResult,
     ReviewFileMetrics,
 )
@@ -51,25 +50,15 @@ class TestApprovePlanWorkflow:
             "status": "pending_review",
             "parent_commit": parent_commit,
             "branch": "main",
-            "tasks": [
-                {"type": "modify", "path": "src/main.py", "description": "Add feature"},
-            ],
             "created_at": "2026-05-01T12:00:00",
             "updated_at": "2026-05-01T12:00:00",
             "execution": {
                 "started_at": "2026-05-01T12:00:01",
                 "completed_at": "2026-05-01T12:05:00",
                 "model_used": "openrouter/z-ai/glm-5",
-                "task_results": [
-                    {
-                        "task_index": 0,
-                        "status": "completed",
-                        "started_at": "2026-05-01T12:00:01",
-                        "completed_at": "2026-05-01T12:05:00",
-                        "files_changed": files_changed,
-                        "llm_summary": "Added feature",
-                    }
-                ],
+                "steps": [],
+                "backend": "",
+                "session_id": "",
                 "files_changed": files_changed,
                 "commit_hash": "",
                 "total_tokens": 1000,
@@ -108,7 +97,6 @@ class TestApprovePlanWorkflow:
             "id": "20260501-130000",
             "title": "Draft Plan",
             "status": "draft",
-            "tasks": [],
             "created_at": "2026-05-01T13:00:00",
         }
         (tmp_path / "20260501-130000.json").write_text(json.dumps(plan_data))
@@ -182,25 +170,15 @@ class TestRevertPlanWorkflow:
             "status": "pending_review",
             "parent_commit": parent_commit,
             "branch": "main",
-            "tasks": [
-                {"type": "modify", "path": "src/main.py", "description": "Add feature"},
-            ],
             "created_at": "2026-05-01T14:00:00",
             "updated_at": "2026-05-01T14:00:00",
             "execution": {
                 "started_at": "2026-05-01T14:00:01",
                 "completed_at": "2026-05-01T14:05:00",
                 "model_used": "openrouter/z-ai/glm-5",
-                "task_results": [
-                    {
-                        "task_index": 0,
-                        "status": "completed",
-                        "started_at": "2026-05-01T14:00:01",
-                        "completed_at": "2026-05-01T14:05:00",
-                        "files_changed": files_changed,
-                        "llm_summary": "Added feature",
-                    }
-                ],
+                "steps": [],
+                "backend": "",
+                "session_id": "",
                 "files_changed": files_changed,
                 "commit_hash": "",
                 "total_tokens": 1000,
@@ -240,7 +218,6 @@ class TestRevertPlanWorkflow:
             "id": "20260501-150000",
             "title": "Draft Plan",
             "status": "draft",
-            "tasks": [],
             "created_at": "2026-05-01T15:00:00",
         }
         (tmp_path / "20260501-150000.json").write_text(json.dumps(plan_data))
@@ -346,7 +323,9 @@ class TestGetPlanReviewMetricsWorkflow:
             "started_at": "2026-05-01T16:00:01",
             "completed_at": "2026-05-01T16:05:00",
             "model_used": "openrouter/z-ai/glm-5",
-            "task_results": [],
+            "steps": [],
+            "backend": "",
+            "session_id": "",
             "files_changed": ["src/main.py", "src/utils.py"],
             "commit_hash": "",
             "total_tokens": 1000,
@@ -361,7 +340,6 @@ class TestGetPlanReviewMetricsWorkflow:
             "status": "pending_review",
             "parent_commit": "abc123",
             "branch": "main",
-            "tasks": [],
             "created_at": "2026-05-01T16:00:00",
             "updated_at": "2026-05-01T16:00:00",
             "execution": execution_data,
