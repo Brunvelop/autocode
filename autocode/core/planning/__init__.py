@@ -32,6 +32,17 @@ from .executor import (
     execute_commit_plan,
     stream_execute_plan,
 )
+from .persistence import (
+    save_plan,
+    load_plan,
+    list_plan_summaries,
+)
+from .transitions import (
+    validate_transition,
+    can_execute,
+    can_review,
+    InvalidTransitionError,
+)
 
 __all__ = [
     # Models
@@ -56,4 +67,13 @@ __all__ = [
     # Functions — Executor
     "execute_commit_plan",
     "stream_execute_plan",
+    # Persistence
+    "save_plan",
+    "load_plan",
+    "list_plan_summaries",
+    # Transitions
+    "validate_transition",
+    "can_execute",
+    "can_review",
+    "InvalidTransitionError",
 ]
