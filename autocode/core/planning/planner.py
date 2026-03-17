@@ -15,6 +15,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
+from autocode.core.planning.persistence import save_plan, load_plan, list_plan_summaries, PLANS_DIR
 from autocode.core.registry import register_function
 from autocode.core.vcs.git import git, git_checked
 from autocode.core.models import GenericOutput
@@ -28,9 +29,6 @@ from autocode.core.planning.models import (
 )
 
 logger = logging.getLogger(__name__)
-
-# Directorio de planes (relativo al CWD del proyecto host)
-PLANS_DIR = ".autocode/plans"
 
 
 # ==============================================================================
@@ -462,60 +460,20 @@ def get_plan_review_metrics(plan_id: str) -> GenericOutput:
 
 
 # ==============================================================================
-# PLAN PERSISTENCE
+# PLAN PERSISTENCE (delegated to persistence module)
 # ==============================================================================
 
-
+# Backward-compatible wrappers that forward planner's PLANS_DIR so that
+# patching autocode.core.planning.planner.PLANS_DIR in tests continues to work.
 def _save_plan(plan: CommitPlan) -> None:
-    """Save plan as JSON in .autocode/plans/."""
-    plans_dir = Path(PLANS_DIR)
-    plans_dir.mkdir(parents=True, exist_ok=True)
-    path = plans_dir / f"{plan.id}.json"
-    path.write_text(plan.model_dump_json(indent=2), encoding="utf-8")
-    logger.debug(f"Plan saved: {path}")
+    save_plan(plan, PLANS_DIR)
 
 
 def _load_plan(plan_id: str) -> Optional[CommitPlan]:
-    """Load a plan by ID."""
-    plans_dir = Path(PLANS_DIR)
-    plan_file = plans_dir / f"{plan_id}.json"
-    if not plan_file.exists():
-        return None
-    try:
-        data = json.loads(plan_file.read_text(encoding="utf-8"))
-        return CommitPlan(**data)
-    except Exception as e:
-        logger.error(f"Error loading plan {plan_id}: {e}")
-        return None
+    return load_plan(plan_id, PLANS_DIR)
 
 
 def _list_plan_summaries(status_filter: str = "") -> list[CommitPlanSummary]:
-    """List all plans as summaries, optionally filtered by status."""
-    plans_dir = Path(PLANS_DIR)
-    if not plans_dir.exists():
-        return []
-
-    summaries = []
-    for f in sorted(plans_dir.glob("*.json"), reverse=True):
-        try:
-            data = json.loads(f.read_text(encoding="utf-8"))
-            plan_status = data.get("status", "draft")
-
-            if status_filter and plan_status != status_filter:
-                continue
-
-            summaries.append(CommitPlanSummary(
-                id=data.get("id", f.stem),
-                title=data.get("title", ""),
-                status=plan_status,
-                tasks_count=len(data.get("tasks", [])),
-                created_at=data.get("created_at", ""),
-                branch=data.get("branch", ""),
-            ))
-        except Exception as e:
-            logger.debug(f"Skip plan {f.name}: {e}")
-            continue
-
-    return summaries
+    return list_plan_summaries(status_filter, PLANS_DIR)
 
 
