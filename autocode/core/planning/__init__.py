@@ -7,13 +7,11 @@ estructurados en .autocode/plans/ y visualizarlos como ghost nodes en git-dashbo
 """
 
 from .models import (
-    PlanTask,
-    PlanContext,
+    ExecutionStep,
     CommitPlan,
     CommitPlanSummary,
     CommitPlanOutput,
     CommitPlanListOutput,
-    TaskExecutionResult,
     PlanExecutionState,
 )
 from .planner import (
@@ -46,13 +44,11 @@ from .transitions import (
 
 __all__ = [
     # Models
-    "PlanTask",
-    "PlanContext",
+    "ExecutionStep",
     "CommitPlan",
     "CommitPlanSummary",
     "CommitPlanOutput",
     "CommitPlanListOutput",
-    "TaskExecutionResult",
     "PlanExecutionState",
     # Functions — CRUD
     "create_commit_plan",

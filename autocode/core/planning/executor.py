@@ -28,10 +28,16 @@ from autocode.core.ai.dspy_utils import get_dspy_lm
 from autocode.core.ai.streaming import _format_sse
 from autocode.core.planning.models import (
     CommitPlan,
-    TaskExecutionResult,
     PlanExecutionState,
     ReviewResult,
 )
+
+# Temporary stub — TaskExecutionResult removed in model simplification (C2).
+# Executor is fully rewritten in Phase 2 (C10-C11).
+try:
+    from autocode.core.planning.models import TaskExecutionResult  # type: ignore[attr-defined]
+except ImportError:
+    TaskExecutionResult = None  # type: ignore[assignment,misc]
 from autocode.core.vcs.git import git_add_and_commit
 from autocode.core.planning.persistence import save_plan, load_plan
 from autocode.core.planning.transitions import can_execute

@@ -59,7 +59,6 @@ def list_plan_summaries(status_filter: str = "", plans_dir: Optional[str] = None
                 id=data.get("id", f.stem),
                 title=data.get("title", ""),
                 status=plan_status,
-                tasks_count=len(data.get("tasks", [])),
                 created_at=data.get("created_at", ""),
                 branch=data.get("branch", ""),
             ))

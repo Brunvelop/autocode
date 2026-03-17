@@ -25,9 +25,8 @@ class InvalidTransitionError(ValueError):
 VALID_TRANSITIONS: dict[str, set[str]] = {
     "draft": {"ready", "executing", "abandoned"},
     "ready": {"draft", "executing", "abandoned"},
-    "executing": {"pending_review", "pending_commit", "failed", "completed"},
-    "pending_review": {"completed", "reverted", "pending_commit"},
-    "pending_commit": {"completed", "reverted"},
+    "executing": {"pending_review", "failed", "completed"},
+    "pending_review": {"completed", "reverted"},
     "failed": {"draft", "executing"},
     "completed": set(),  # terminal state
     "reverted": {"draft"},
@@ -38,7 +37,7 @@ VALID_TRANSITIONS: dict[str, set[str]] = {
 EXECUTABLE_STATUSES = {"draft", "ready", "failed", "executing"}
 
 # Statuses from which a plan can be reviewed (approve/revert)
-REVIEWABLE_STATUSES = {"pending_review", "pending_commit"}
+REVIEWABLE_STATUSES = {"pending_review"}
 
 
 def validate_transition(from_status: str, to_status: str) -> None:
@@ -74,6 +73,6 @@ def can_execute(plan: CommitPlan) -> bool:
 def can_review(plan: CommitPlan) -> bool:
     """Check if a plan can be reviewed (approved/reverted) based on its current status.
 
-    Returns True if plan.status is in {pending_review, pending_commit}.
+    Returns True if plan.status is in {pending_review}.
     """
     return plan.status in REVIEWABLE_STATUSES

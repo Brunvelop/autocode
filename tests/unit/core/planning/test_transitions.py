@@ -1,7 +1,5 @@
 """
 Tests for transitions.py — state transition validation for commit plans.
-RED phase: autocode.core.planning.transitions does not exist yet.
-Tests define the public API that will be implemented in the next commit.
 """
 
 import pytest
@@ -19,9 +17,8 @@ from autocode.core.planning.models import CommitPlan
 VALID_TRANSITIONS = {
     "draft": {"ready", "executing", "abandoned"},
     "ready": {"draft", "executing", "abandoned"},
-    "executing": {"pending_review", "pending_commit", "failed", "completed"},
-    "pending_review": {"completed", "reverted", "pending_commit"},
-    "pending_commit": {"completed", "reverted"},
+    "executing": {"pending_review", "failed", "completed"},
+    "pending_review": {"completed", "reverted"},
     "failed": {"draft", "executing"},
     "completed": set(),
     "reverted": {"draft"},
@@ -153,10 +150,6 @@ class TestCanReview:
     def test_can_review_pending_review(self):
         """Un plan en pending_review puede revisarse."""
         assert can_review(self._make_plan("pending_review")) is True
-
-    def test_can_review_pending_commit(self):
-        """Un plan en pending_commit puede revisarse."""
-        assert can_review(self._make_plan("pending_commit")) is True
 
     def test_cannot_review_draft(self):
         """Un plan en draft no puede revisarse."""

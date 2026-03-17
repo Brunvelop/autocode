@@ -24,11 +24,19 @@ from autocode.core.ai.dspy_utils import prepare_chat_tools
 from autocode.core.ai.streaming import AutocodeStatusProvider, _format_sse
 from autocode.core.ai.signatures import TaskExecutionSignature
 from autocode.core.ai.models import DspyOutput
-from autocode.core.planning.models import (
-    CommitPlan,
-    PlanTask,
-    TaskExecutionResult,
-)
+from autocode.core.planning.models import CommitPlan
+
+# Temporary stubs — PlanTask/TaskExecutionResult removed in model simplification (C2).
+# executor_helpers.py is fully rewritten in Phase 2 (C11).
+try:
+    from autocode.core.planning.models import PlanTask  # type: ignore[attr-defined]
+except ImportError:
+    PlanTask = None  # type: ignore[assignment,misc]
+
+try:
+    from autocode.core.planning.models import TaskExecutionResult  # type: ignore[attr-defined]
+except ImportError:
+    TaskExecutionResult = None  # type: ignore[assignment,misc]
 
 logger = logging.getLogger(__name__)
 

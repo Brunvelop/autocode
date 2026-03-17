@@ -19,13 +19,23 @@ from autocode.core.registry import register_function
 from autocode.core.vcs.git import git, git_checked
 from autocode.core.models import GenericOutput
 from autocode.core.planning.models import (
-    PlanTask,
-    PlanContext,
     CommitPlan,
     CommitPlanSummary,
     CommitPlanOutput,
     CommitPlanListOutput,
 )
+
+# Temporary stubs — PlanTask/PlanContext removed in model simplification (C2).
+# planner.py CRUD is properly simplified in C4.
+try:
+    from autocode.core.planning.models import PlanTask  # type: ignore[attr-defined]
+except ImportError:
+    PlanTask = None  # type: ignore[assignment,misc]
+
+try:
+    from autocode.core.planning.models import PlanContext  # type: ignore[attr-defined]
+except ImportError:
+    PlanContext = None  # type: ignore[assignment,misc]
 
 logger = logging.getLogger(__name__)
 
