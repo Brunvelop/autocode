@@ -33,7 +33,7 @@ from autocode.core.planning.models import (
     ReviewResult,
 )
 from autocode.core.vcs.git import git_add_and_commit
-from autocode.core.planning.planner import _save_plan, _load_plan
+from autocode.core.planning.persistence import save_plan, load_plan
 from autocode.core.planning.transitions import can_execute
 from autocode.core.planning.reviewer import auto_review, compute_review_metrics
 from autocode.core.planning.executor_helpers import (
@@ -118,7 +118,7 @@ async def stream_execute_plan(
             plan.execution.total_tokens = plan_total_tokens
             plan.execution.total_cost = plan_total_cost
             plan.status = "failed"
-            _save_plan(plan)
+            save_plan(plan)
         else:
             plan.execution.total_tokens = plan_total_tokens
             plan.execution.total_cost = plan_total_cost
@@ -249,7 +249,7 @@ async def _validate_and_prepare_plan(
         tuple: (plan, lm, tools) as the final item on success
     """
     # 1. Load plan
-    plan = _load_plan(plan_id)
+    plan = load_plan(plan_id)
     if not plan:
         yield _format_sse(
             "error",
@@ -274,7 +274,7 @@ async def _validate_and_prepare_plan(
         started_at=datetime.now().isoformat(),
         model_used=model,
     )
-    _save_plan(plan)
+    save_plan(plan)
 
     # 4. Log execution start
     logger.info(
@@ -522,7 +522,7 @@ async def _run_review_flow(
 
     # 8. Finalize plan
     plan.execution.completed_at = datetime.now().isoformat()
-    _save_plan(plan)
+    save_plan(plan)
 
     # 9. Yield final dict
     yield {"commit_hash": commit_hash}

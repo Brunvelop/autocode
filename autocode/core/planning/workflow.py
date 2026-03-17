@@ -10,7 +10,7 @@ import logging
 from datetime import datetime
 
 from autocode.core.vcs.git import git_checked
-from autocode.core.planning.planner import _load_plan, _save_plan
+from autocode.core.planning.persistence import load_plan, save_plan
 from autocode.core.planning.transitions import REVIEWABLE_STATUSES
 from autocode.core.registry import register_function
 from autocode.core.models import GenericOutput
@@ -37,7 +37,7 @@ def approve_plan(plan_id: str, commit_message: str = "") -> CommitPlanOutput:
         commit_message: Mensaje de commit personalizado (vacío = usar plan.title)
     """
     try:
-        plan = _load_plan(plan_id)
+        plan = load_plan(plan_id)
         if plan is None:
             return CommitPlanOutput(
                 success=False,
@@ -72,7 +72,7 @@ def approve_plan(plan_id: str, commit_message: str = "") -> CommitPlanOutput:
             plan.execution.commit_hash = commit_hash
         plan.status = "completed"
         plan.updated_at = datetime.now().isoformat()
-        _save_plan(plan)
+        save_plan(plan)
 
         logger.info(f"Plan '{plan_id}' approved and committed: {commit_hash}")
         return CommitPlanOutput(
@@ -96,7 +96,7 @@ def revert_plan(plan_id: str) -> CommitPlanOutput:
         plan_id: ID del plan a revertir
     """
     try:
-        plan = _load_plan(plan_id)
+        plan = load_plan(plan_id)
         if plan is None:
             return CommitPlanOutput(
                 success=False,
@@ -133,7 +133,7 @@ def revert_plan(plan_id: str) -> CommitPlanOutput:
         # Update plan state
         plan.status = "reverted"
         plan.updated_at = datetime.now().isoformat()
-        _save_plan(plan)
+        save_plan(plan)
 
         logger.info(
             f"Plan '{plan_id}' reverted: {len(files)} files restored to {ref}"
@@ -165,7 +165,7 @@ def get_plan_review_metrics(plan_id: str) -> GenericOutput:
         plan_id: ID del plan
     """
     try:
-        plan = _load_plan(plan_id)
+        plan = load_plan(plan_id)
         if plan is None:
             return GenericOutput(
                 success=False, result=None,

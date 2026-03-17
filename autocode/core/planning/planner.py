@@ -12,10 +12,8 @@ con toda la información recopilada durante la conversación).
 import json
 import logging
 from datetime import datetime
-from pathlib import Path
-from typing import Optional
 
-from autocode.core.planning.persistence import save_plan, load_plan, list_plan_summaries, PLANS_DIR
+from autocode.core.planning.persistence import save_plan, load_plan, list_plan_summaries, delete_plan
 from autocode.core.planning.transitions import validate_transition, InvalidTransitionError
 from autocode.core.registry import register_function
 from autocode.core.vcs.git import git, git_checked
@@ -91,7 +89,7 @@ def create_commit_plan(
             tags=tag_list,
         )
 
-        _save_plan(plan)
+        save_plan(plan)
 
         return CommitPlanOutput(
             success=True,
@@ -115,7 +113,7 @@ def list_commit_plans(status: str = "") -> CommitPlanListOutput:
         status: Filtrar por estado (vacío = todos)
     """
     try:
-        summaries = _list_plan_summaries(status)
+        summaries = list_plan_summaries(status)
         return CommitPlanListOutput(
             success=True,
             result=summaries,
@@ -135,7 +133,7 @@ def get_commit_plan(plan_id: str) -> CommitPlanOutput:
         plan_id: ID del plan (formato YYYYMMDD-HHMMSS)
     """
     try:
-        plan = _load_plan(plan_id)
+        plan = load_plan(plan_id)
         if plan is None:
             return CommitPlanOutput(success=False, message=f"Plan '{plan_id}' no encontrado")
 
@@ -177,7 +175,7 @@ def update_commit_plan(
     MANUALLY_SETTABLE = {"draft", "ready", "abandoned"}
 
     try:
-        plan = _load_plan(plan_id)
+        plan = load_plan(plan_id)
         if plan is None:
             return CommitPlanOutput(success=False, message=f"Plan '{plan_id}' no encontrado")
 
@@ -185,7 +183,7 @@ def update_commit_plan(
         if status:
             # Recovery: plan stuck in "executing" without completed_at → allow reset to draft
             if _try_recover_stuck_plan(plan, status):
-                _save_plan(plan)
+                save_plan(plan)
                 return CommitPlanOutput(
                     success=True,
                     result=plan,
@@ -222,7 +220,7 @@ def update_commit_plan(
             plan.tags = [t.strip() for t in tags.split(",") if t.strip()]
 
         plan.updated_at = datetime.now().isoformat()
-        _save_plan(plan)
+        save_plan(plan)
 
         return CommitPlanOutput(
             success=True,
@@ -243,13 +241,9 @@ def delete_commit_plan(plan_id: str) -> GenericOutput:
         plan_id: ID del plan a eliminar
     """
     try:
-        plans_dir = Path(PLANS_DIR)
-        plan_file = plans_dir / f"{plan_id}.json"
-
-        if not plan_file.exists():
+        deleted = delete_plan(plan_id)
+        if not deleted:
             return GenericOutput(success=False, result=None, message=f"Plan '{plan_id}' no encontrado")
-
-        plan_file.unlink()
 
         return GenericOutput(
             success=True,
@@ -287,22 +281,6 @@ def _try_recover_stuck_plan(plan: CommitPlan, target_status: str) -> bool:
     return False
 
 
-# ==============================================================================
-# PLAN PERSISTENCE (delegated to persistence module)
-# ==============================================================================
-
-# Backward-compatible wrappers that forward planner's PLANS_DIR so that
-# patching autocode.core.planning.planner.PLANS_DIR in tests continues to work.
-def _save_plan(plan: CommitPlan) -> None:
-    save_plan(plan, PLANS_DIR)
-
-
-def _load_plan(plan_id: str) -> Optional[CommitPlan]:
-    return load_plan(plan_id, PLANS_DIR)
-
-
-def _list_plan_summaries(status_filter: str = "") -> list[CommitPlanSummary]:
-    return list_plan_summaries(status_filter, PLANS_DIR)
 
 
 
