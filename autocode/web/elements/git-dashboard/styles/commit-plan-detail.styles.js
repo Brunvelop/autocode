@@ -125,6 +125,12 @@ export const commitPlanDetailStyles = css`
 
     /* ===== DESCRIPTION ===== */
     .description-section {
+        display: flex;
+        flex-direction: column;
+        gap: var(--design-spacing-xs, 0.25rem);
+    }
+
+    .description-content {
         padding: var(--design-spacing-sm, 0.5rem);
         background: var(--design-bg-white, #ffffff);
         border: 1px solid var(--design-border-gray, #e5e7eb);
@@ -132,9 +138,11 @@ export const commitPlanDetailStyles = css`
         font-size: var(--design-font-size-sm, 0.75rem);
         color: var(--design-text-primary, #1f2937);
         line-height: var(--design-line-height-relaxed, 1.6);
+        white-space: pre-wrap;
+        word-break: break-word;
     }
 
-    /* ===== TASKS ===== */
+    /* ===== SECTION HEADER (shared) ===== */
     .section-header {
         font-size: 12px;
         font-weight: var(--design-font-weight-semibold, 600);
@@ -144,148 +152,96 @@ export const commitPlanDetailStyles = css`
         padding-bottom: var(--design-spacing-xs, 0.25rem);
     }
 
-    .tasks-section {
+    /* ===== STEPS TIMELINE ===== */
+    .steps-section {
         display: flex;
         flex-direction: column;
         gap: var(--design-spacing-xs, 0.25rem);
     }
 
-    .task-card {
-        background: var(--design-bg-white, #ffffff);
-        border: 1px solid var(--design-border-gray, #e5e7eb);
-        border-radius: var(--design-radius-md, 0.5rem);
-        overflow: hidden;
-    }
-
-    .task-card-header {
-        display: flex;
-        align-items: center;
-        gap: var(--design-spacing-xs, 0.25rem);
-        padding: var(--design-spacing-xs, 0.25rem) var(--design-spacing-sm, 0.5rem);
-        background: var(--design-bg-gray-50, #f9fafb);
-        border-bottom: 1px solid var(--design-border-gray, #e5e7eb);
-    }
-
-    .task-type-badge {
-        font-size: 9px;
-        text-transform: uppercase;
-        letter-spacing: 0.04em;
-        padding: 1px 5px;
-        border-radius: var(--design-radius-sm, 0.25rem);
-        font-weight: var(--design-font-weight-semibold, 600);
-    }
-
-    .task-type-create {
-        background: #dcfce7;
-        color: #166534;
-    }
-
-    .task-type-modify {
-        background: #dbeafe;
-        color: #1e40af;
-    }
-
-    .task-type-delete {
-        background: #fef2f2;
-        color: #991b1b;
-    }
-
-    .task-type-rename {
-        background: #fef3c7;
-        color: #92400e;
-    }
-
-    .task-path {
-        flex: 1;
-        font-size: 11px;
-        font-family: var(--design-font-mono, monospace);
-        color: var(--design-text-primary, #1f2937);
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-        font-weight: var(--design-font-weight-medium, 500);
-    }
-
-    .task-body {
-        padding: var(--design-spacing-xs, 0.25rem) var(--design-spacing-sm, 0.5rem);
-        font-size: 11px;
-        color: var(--design-text-primary, #1f2937);
-    }
-
-    .task-description {
-        font-weight: var(--design-font-weight-medium, 500);
-        margin-bottom: 2px;
-    }
-
-    .task-details {
-        color: var(--design-text-secondary, #6b7280);
-        font-size: 10px;
-        line-height: 1.4;
-    }
-
-    .task-criteria {
-        margin-top: 4px;
-        padding-left: 12px;
-    }
-
-    .task-criteria li {
-        font-size: 10px;
-        color: var(--design-text-secondary, #6b7280);
-        line-height: 1.5;
-    }
-
-    /* ===== CONTEXT ===== */
-    .context-section {
-        display: flex;
-        flex-direction: column;
-        gap: var(--design-spacing-xs, 0.25rem);
-    }
-
-    .context-card {
+    .steps-timeline {
+        max-height: 300px;
+        overflow-y: auto;
         padding: var(--design-spacing-sm, 0.5rem);
         background: var(--design-bg-white, #ffffff);
         border: 1px solid var(--design-border-gray, #e5e7eb);
         border-radius: var(--design-radius-md, 0.5rem);
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+    }
+
+    .step-item {
+        display: flex;
+        gap: 8px;
+        padding: 3px 0;
         font-size: 11px;
+        border-bottom: 1px solid var(--design-bg-gray-50, #f9fafb);
     }
 
-    .context-label {
-        font-size: 10px;
+    .step-item:last-child {
+        border-bottom: none;
+    }
+
+    .step-icon {
+        flex-shrink: 0;
+        width: 18px;
+        text-align: center;
+        font-size: 12px;
+    }
+
+    .step-body {
+        flex: 1;
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 1px;
+    }
+
+    .step-header-row {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    .step-label {
         font-weight: var(--design-font-weight-semibold, 600);
-        color: var(--design-text-tertiary, #9ca3af);
+        color: var(--design-text-secondary, #6b7280);
+        font-size: 10px;
         text-transform: uppercase;
-        letter-spacing: 0.04em;
-        margin-bottom: 3px;
+        letter-spacing: 0.03em;
+        flex-shrink: 0;
     }
 
-    .context-file {
+    .step-path {
         font-family: var(--design-font-mono, monospace);
         font-size: 10px;
         color: var(--design-primary, #4f46e5);
-        padding: 1px 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
     }
 
-    .context-notes {
-        font-size: 11px;
+    .step-content {
+        font-family: var(--design-font-mono, monospace);
+        font-size: 10px;
         color: var(--design-text-primary, #1f2937);
-        line-height: 1.5;
-        white-space: pre-wrap;
+        line-height: 1.4;
+        word-break: break-word;
+        opacity: 0.85;
     }
 
-    /* ===== TAGS ===== */
-    .tags-section {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 4px;
+    /* Step type variants */
+    .step-item.thinking {
+        background: #fefce8;
     }
 
-    .tag-item {
-        font-size: 9px;
-        padding: 1px 6px;
-        border-radius: var(--design-radius-full, 9999px);
-        background: var(--design-indigo-50, #eef2ff);
-        color: var(--design-primary, #4f46e5);
-        font-weight: var(--design-font-weight-medium, 500);
+    .step-item.error {
+        background: #fef2f2;
+    }
+
+    .step-item.error .step-content {
+        color: #991b1b;
     }
 
     /* ===== FOOTER / ACTIONS ===== */
@@ -450,99 +406,6 @@ export const commitPlanDetailStyles = css`
         cursor: not-allowed;
     }
 
-    /* ===== TASK EXECUTION STATES ===== */
-    .task-card.running {
-        border-left: 3px solid #f59e0b;
-    }
-
-    .task-card.completed {
-        border-left: 3px solid #10b981;
-    }
-
-    .task-card.failed {
-        border-left: 3px solid #ef4444;
-    }
-
-    .task-status-icon {
-        margin-left: auto;
-        font-size: 14px;
-        flex-shrink: 0;
-    }
-
-    /* Task log (status messages from ReAct) */
-    .task-log {
-        max-height: 120px;
-        overflow-y: auto;
-        padding: 4px 8px;
-        background: #1f2937;
-        border-radius: var(--design-radius-sm, 0.25rem);
-        margin-top: 4px;
-    }
-
-    .task-log .log-line {
-        font-family: var(--design-font-mono, monospace);
-        font-size: 10px;
-        color: #d1d5db;
-        line-height: 1.5;
-    }
-
-    /* Task error */
-    .task-error {
-        padding: 4px 8px;
-        background: #fef2f2;
-        border: 1px solid #fca5a5;
-        border-radius: var(--design-radius-sm, 0.25rem);
-        color: #991b1b;
-        font-size: 10px;
-        margin-top: 4px;
-    }
-
-    /* Task summary */
-    .task-summary {
-        padding: 4px 8px;
-        background: #f0fdf4;
-        border: 1px solid #86efac;
-        border-radius: var(--design-radius-sm, 0.25rem);
-        color: #166534;
-        font-size: 10px;
-        margin-top: 4px;
-        line-height: 1.4;
-    }
-
-    /* Task cost badge (inline in header) */
-    .task-cost-badge {
-        display: inline-flex;
-        align-items: center;
-        padding: 1px 6px;
-        border-radius: var(--design-radius-full, 9999px);
-        background: var(--design-indigo-50, #eef2ff);
-        color: var(--design-primary, #4f46e5);
-        font-size: 9px;
-        font-family: var(--design-font-mono, monospace);
-        font-weight: var(--design-font-weight-medium, 500);
-        white-space: nowrap;
-        flex-shrink: 0;
-    }
-
-    /* Task files changed */
-    .task-files {
-        padding: 4px 8px;
-        margin-top: 4px;
-        font-size: 10px;
-    }
-
-    .task-files-label {
-        font-weight: var(--design-font-weight-semibold, 600);
-        color: var(--design-text-tertiary, #9ca3af);
-        margin-bottom: 2px;
-    }
-
-    .task-file-item {
-        font-family: var(--design-font-mono, monospace);
-        color: var(--design-primary, #4f46e5);
-        font-size: 10px;
-    }
-
     /* ===== EXECUTION SUMMARY BANNER ===== */
     .execution-summary {
         padding: 8px 12px;
@@ -577,6 +440,20 @@ export const commitPlanDetailStyles = css`
         opacity: 0.85;
     }
 
+    .execution-summary .summary-files {
+        margin-top: 4px;
+        padding-top: 4px;
+        border-top: 1px solid rgba(0, 0, 0, 0.1);
+    }
+
+    .summary-file-item {
+        font-family: var(--design-font-mono, monospace);
+        font-size: 10px;
+        color: inherit;
+        opacity: 0.8;
+        padding: 1px 0;
+    }
+
     .commit-hash {
         font-family: var(--design-font-mono, monospace);
         font-weight: var(--design-font-weight-bold, 700);
@@ -605,11 +482,6 @@ export const commitPlanDetailStyles = css`
         animation: pulse 1.5s infinite;
     }
 
-    .status-badge.pending_commit {
-        background: #dbeafe;
-        color: #1e40af;
-    }
-
     .status-badge.reverted {
         background: #fef2f2;
         color: #991b1b;
@@ -618,16 +490,6 @@ export const commitPlanDetailStyles = css`
     @keyframes pulse {
         0%, 100% { opacity: 1; }
         50% { opacity: 0.5; }
-    }
-
-    /* Task debug wrapper (chat-debug-info component) */
-    .task-debug-wrapper {
-        margin-top: 4px;
-        padding: 0 4px;
-    }
-
-    .task-debug-wrapper chat-debug-info {
-        --debug-font-size: 10px;
     }
 
     /* Cost / token badges in execution summary */
