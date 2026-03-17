@@ -672,3 +672,353 @@ class TestClineBackend:
             assert len(result.steps) == 1
             assert result.steps[0].type == "error"
             assert "rate limit" in result.steps[0].content
+
+
+# ===========================================================================
+# Tests for _accumulate_api_cost (stream-based token/cost accumulation)
+# ===========================================================================
+
+
+class TestAccumulateApiCost:
+    """Tests for ClineBackend._accumulate_api_cost."""
+
+    def setup_method(self):
+        self.backend = ClineBackend()
+
+    def test_extracts_tokens_in_and_out(self):
+        """Accumulates tokensIn + tokensOut into tokens key."""
+        event = {
+            "ts": 1773780174146,
+            "type": "say",
+            "say": "api_req_finished",
+            "text": json.dumps({"tokensIn": 1000, "tokensOut": 200, "cost": 0.025}),
+        }
+        accum = {"tokens": 0, "cost": 0.0}
+        self.backend._accumulate_api_cost(event, accum)
+
+        assert accum["tokens"] == 1200
+        assert accum["cost"] == pytest.approx(0.025)
+
+    def test_accumulates_across_multiple_calls(self):
+        """Multiple api_req_finished events are summed correctly."""
+        accum = {"tokens": 0, "cost": 0.0}
+        for _ in range(3):
+            event = {
+                "ts": 1000,
+                "type": "say",
+                "say": "api_req_finished",
+                "text": json.dumps({"tokensIn": 500, "tokensOut": 100, "cost": 0.01}),
+            }
+            self.backend._accumulate_api_cost(event, accum)
+
+        assert accum["tokens"] == 1800
+        assert accum["cost"] == pytest.approx(0.03)
+
+    def test_handles_missing_tokensIn(self):
+        """Missing tokensIn defaults to 0."""
+        event = {
+            "ts": 1000,
+            "type": "say",
+            "say": "api_req_finished",
+            "text": json.dumps({"tokensOut": 300, "cost": 0.005}),
+        }
+        accum = {"tokens": 0, "cost": 0.0}
+        self.backend._accumulate_api_cost(event, accum)
+
+        assert accum["tokens"] == 300
+        assert accum["cost"] == pytest.approx(0.005)
+
+    def test_handles_missing_cost(self):
+        """Missing cost defaults to 0.0."""
+        event = {
+            "ts": 1000,
+            "type": "say",
+            "say": "api_req_finished",
+            "text": json.dumps({"tokensIn": 400, "tokensOut": 100}),
+        }
+        accum = {"tokens": 0, "cost": 0.0}
+        self.backend._accumulate_api_cost(event, accum)
+
+        assert accum["tokens"] == 500
+        assert accum["cost"] == 0.0
+
+    def test_handles_all_fields_missing(self):
+        """Empty JSON dict doesn't change the accumulator."""
+        event = {
+            "ts": 1000,
+            "type": "say",
+            "say": "api_req_finished",
+            "text": json.dumps({}),
+        }
+        accum = {"tokens": 0, "cost": 0.0}
+        self.backend._accumulate_api_cost(event, accum)
+
+        assert accum["tokens"] == 0
+        assert accum["cost"] == 0.0
+
+    def test_handles_invalid_json_text(self):
+        """Non-JSON text doesn't crash; accumulator stays unchanged."""
+        event = {
+            "ts": 1000,
+            "type": "say",
+            "say": "api_req_finished",
+            "text": "not valid json at all",
+        }
+        accum = {"tokens": 100, "cost": 0.01}
+        self.backend._accumulate_api_cost(event, accum)
+
+        assert accum["tokens"] == 100
+        assert accum["cost"] == pytest.approx(0.01)
+
+    def test_handles_missing_text_field(self):
+        """Event without 'text' field doesn't crash."""
+        event = {"ts": 1000, "type": "say", "say": "api_req_finished"}
+        accum = {"tokens": 0, "cost": 0.0}
+        self.backend._accumulate_api_cost(event, accum)
+
+        assert accum["tokens"] == 0
+
+    @pytest.mark.asyncio
+    async def test_execute_accumulates_from_api_req_finished_events(self, backend, on_step):
+        """execute() sums tokens/cost from api_req_finished stream events."""
+        events = [
+            _cl_task_started(),
+            _cl_say_reasoning("Thinking...", ts=1773780174000),
+            {
+                "ts": 1773780175000,
+                "type": "say",
+                "say": "api_req_finished",
+                "text": json.dumps({"tokensIn": 800, "tokensOut": 150, "cost": 0.018}),
+            },
+            _cl_say_tool(tool="readFile", path="x.py", content="code"),
+            {
+                "ts": 1773780180000,
+                "type": "say",
+                "say": "api_req_finished",
+                "text": json.dumps({"tokensIn": 900, "tokensOut": 200, "cost": 0.022}),
+            },
+            _cl_say_completion("Done."),
+        ]
+        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec, \
+             patch.object(backend, "_git_diff_name_only", return_value=[]), \
+             patch.object(backend, "_fetch_task_history", return_value={}):
+            mock_exec.return_value = _make_process(stdout_lines=events, returncode=0)
+            result = await backend.execute("do stuff", "/tmp", "", on_step)
+
+            # 800+150 + 900+200 = 2050 tokens, 0.018 + 0.022 = 0.04 cost
+            assert result.total_tokens == 2050
+            assert result.total_cost == pytest.approx(0.04)
+
+    @pytest.mark.asyncio
+    async def test_api_req_finished_not_emitted_as_step(self, backend, on_step):
+        """api_req_finished events are NOT forwarded to on_step."""
+        events = [
+            _cl_task_started(),
+            {
+                "ts": 1773780175000,
+                "type": "say",
+                "say": "api_req_finished",
+                "text": json.dumps({"tokensIn": 500, "tokensOut": 100, "cost": 0.01}),
+            },
+            _cl_say_completion("Done."),
+        ]
+        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec, \
+             patch.object(backend, "_git_diff_name_only", return_value=[]), \
+             patch.object(backend, "_fetch_task_history", return_value={}):
+            mock_exec.return_value = _make_process(stdout_lines=events, returncode=0)
+            await backend.execute("do stuff", "/tmp", "", on_step)
+
+            # Only completion → 1 step, not the api_req_finished
+            assert on_step.call_count == 1
+
+
+# ===========================================================================
+# Tests for post-execution metadata extraction via `cline history`
+# ===========================================================================
+
+
+class TestFetchTaskHistory:
+    """Tests for ClineBackend._fetch_task_history."""
+
+    @pytest.mark.asyncio
+    async def test_calls_cline_history(self, backend):
+        """Verifies `cline history` is called."""
+        history = [{"id": "12345", "totalTokensUsed": 5000, "totalCost": 0.05}]
+        mock_proc = AsyncMock()
+        mock_proc.returncode = 0
+        mock_proc.communicate = AsyncMock(return_value=(json.dumps(history).encode(), b""))
+
+        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec:
+            mock_exec.return_value = mock_proc
+            await backend._fetch_task_history("12345", "/tmp/cwd")
+
+            args = mock_exec.call_args[0]
+            assert args[0] == "cline"
+            assert "history" in args
+
+    @pytest.mark.asyncio
+    async def test_returns_matching_task_entry(self, backend):
+        """Returns the history entry whose 'id' matches task_id."""
+        history = [
+            {"id": "11111", "totalTokensUsed": 100, "totalCost": 0.01},
+            {"id": "12345", "totalTokensUsed": 5000, "totalCost": 0.05},
+            {"id": "99999", "totalTokensUsed": 200, "totalCost": 0.02},
+        ]
+        mock_proc = AsyncMock()
+        mock_proc.returncode = 0
+        mock_proc.communicate = AsyncMock(return_value=(json.dumps(history).encode(), b""))
+
+        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec:
+            mock_exec.return_value = mock_proc
+            result = await backend._fetch_task_history("12345", "/tmp")
+
+            assert result["id"] == "12345"
+            assert result["totalTokensUsed"] == 5000
+            assert result["totalCost"] == pytest.approx(0.05)
+
+    @pytest.mark.asyncio
+    async def test_returns_empty_dict_when_task_not_found(self, backend):
+        """Returns empty dict when no history entry matches task_id."""
+        history = [{"id": "11111", "totalTokensUsed": 100, "totalCost": 0.01}]
+        mock_proc = AsyncMock()
+        mock_proc.returncode = 0
+        mock_proc.communicate = AsyncMock(return_value=(json.dumps(history).encode(), b""))
+
+        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec:
+            mock_exec.return_value = mock_proc
+            result = await backend._fetch_task_history("99999", "/tmp")
+
+            assert result == {}
+
+    @pytest.mark.asyncio
+    async def test_matches_task_id_as_string(self, backend):
+        """Matches task_id even when history stores id as an integer."""
+        history = [{"id": 12345, "totalTokensUsed": 3000, "totalCost": 0.03}]
+        mock_proc = AsyncMock()
+        mock_proc.returncode = 0
+        mock_proc.communicate = AsyncMock(return_value=(json.dumps(history).encode(), b""))
+
+        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec:
+            mock_exec.return_value = mock_proc
+            result = await backend._fetch_task_history("12345", "/tmp")
+
+            assert result["totalTokensUsed"] == 3000
+
+    @pytest.mark.asyncio
+    async def test_returns_empty_dict_when_task_id_empty(self, backend):
+        """No subprocess is launched when task_id is an empty string."""
+        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec:
+            result = await backend._fetch_task_history("", "/tmp")
+
+            assert result == {}
+            mock_exec.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_returns_empty_dict_on_nonzero_returncode(self, backend):
+        """Returns empty dict when cline history exits with non-zero code."""
+        mock_proc = AsyncMock()
+        mock_proc.returncode = 1
+        mock_proc.communicate = AsyncMock(return_value=(b"", b"error"))
+
+        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec:
+            mock_exec.return_value = mock_proc
+            result = await backend._fetch_task_history("12345", "/tmp")
+
+            assert result == {}
+
+    @pytest.mark.asyncio
+    async def test_returns_empty_dict_on_process_not_found(self, backend):
+        """Returns empty dict when the cline binary is not installed."""
+        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec:
+            mock_exec.side_effect = FileNotFoundError("cline not found")
+            result = await backend._fetch_task_history("12345", "/tmp")
+
+            assert result == {}
+
+    @pytest.mark.asyncio
+    async def test_returns_empty_dict_on_os_error(self, backend):
+        """Returns empty dict on any OSError."""
+        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec:
+            mock_exec.side_effect = OSError("permission denied")
+            result = await backend._fetch_task_history("12345", "/tmp")
+
+            assert result == {}
+
+    @pytest.mark.asyncio
+    async def test_returns_empty_dict_on_invalid_json(self, backend):
+        """Returns empty dict when cline history output is not valid JSON."""
+        mock_proc = AsyncMock()
+        mock_proc.returncode = 0
+        mock_proc.communicate = AsyncMock(return_value=(b"not valid json", b""))
+
+        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec:
+            mock_exec.return_value = mock_proc
+            result = await backend._fetch_task_history("12345", "/tmp")
+
+            assert result == {}
+
+    @pytest.mark.asyncio
+    async def test_returns_empty_dict_when_history_not_a_list(self, backend):
+        """Returns empty dict when history JSON is not a list."""
+        mock_proc = AsyncMock()
+        mock_proc.returncode = 0
+        mock_proc.communicate = AsyncMock(return_value=(b'{"error": "not a list"}', b""))
+
+        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec:
+            mock_exec.return_value = mock_proc
+            result = await backend._fetch_task_history("12345", "/tmp")
+
+            assert result == {}
+
+    @pytest.mark.asyncio
+    async def test_execute_enriches_tokens_from_history(self, backend, on_step):
+        """execute() uses history totalTokensUsed to override streamed accumulation."""
+        events = [
+            _cl_task_started(task_id="12345"),
+            _cl_say_reasoning("Thinking"),
+        ]
+        history_data = {"id": "12345", "totalTokensUsed": 8000, "totalCost": 0.08}
+
+        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec, \
+             patch.object(backend, "_git_diff_name_only", return_value=[]), \
+             patch.object(backend, "_fetch_task_history", return_value=history_data):
+            mock_exec.return_value = _make_process(stdout_lines=events, returncode=0)
+            result = await backend.execute("do stuff", "/tmp", "", on_step)
+
+            assert result.total_tokens == 8000
+            assert result.total_cost == pytest.approx(0.08)
+
+    @pytest.mark.asyncio
+    async def test_execute_falls_back_to_stream_when_history_empty(self, backend, on_step):
+        """execute() keeps streamed values when _fetch_task_history returns empty."""
+        events = [
+            _cl_task_started(task_id="12345"),
+            {
+                "ts": 1773780175000,
+                "type": "say",
+                "say": "api_req_finished",
+                "text": json.dumps({"tokensIn": 1000, "tokensOut": 200, "cost": 0.025}),
+            },
+            _cl_say_reasoning("Thinking"),
+        ]
+        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec, \
+             patch.object(backend, "_git_diff_name_only", return_value=[]), \
+             patch.object(backend, "_fetch_task_history", return_value={}):
+            mock_exec.return_value = _make_process(stdout_lines=events, returncode=0)
+            result = await backend.execute("do stuff", "/tmp", "", on_step)
+
+            assert result.total_tokens == 1200  # 1000 + 200 from api_req_finished
+            assert result.total_cost == pytest.approx(0.025)
+
+    @pytest.mark.asyncio
+    async def test_execute_calls_fetch_history_with_session_id_and_cwd(self, backend, on_step):
+        """execute() passes the extracted session_id and cwd to _fetch_task_history."""
+        events = [_cl_task_started(task_id="42000")]
+
+        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec, \
+             patch.object(backend, "_git_diff_name_only", return_value=[]), \
+             patch.object(backend, "_fetch_task_history", return_value={}) as mock_history:
+            mock_exec.return_value = _make_process(stdout_lines=events, returncode=0)
+            await backend.execute("do stuff", "/my/project", "", on_step)
+
+            mock_history.assert_called_once_with("42000", "/my/project")

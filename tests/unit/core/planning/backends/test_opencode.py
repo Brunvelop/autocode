@@ -585,7 +585,8 @@ class TestOpenCodeBackend:
     async def test_empty_session_produces_empty_result(self, backend, on_step):
         """Verifies an empty stdout produces a valid empty result."""
         with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec, \
-             patch.object(backend, "_git_diff_name_only", return_value=[]):
+             patch.object(backend, "_git_diff_name_only", return_value=[]), \
+             patch.object(backend, "_fetch_session_export", return_value={}):
             mock_exec.return_value = _make_process(stdout_lines=[], returncode=0)
             result = await backend.execute("do stuff", "/tmp", "", on_step)
 
@@ -594,3 +595,170 @@ class TestOpenCodeBackend:
             assert result.total_tokens == 0
             assert result.total_cost == 0.0
             assert result.session_id == ""
+
+
+# ===========================================================================
+# Tests for post-execution metadata extraction via `opencode export`
+# ===========================================================================
+
+
+class TestFetchSessionExport:
+    """Tests for OpenCodeBackend._fetch_session_export."""
+
+    @pytest.mark.asyncio
+    async def test_calls_opencode_export_with_session_id(self, backend):
+        """Verifies `opencode export {session_id}` is called with the correct args."""
+        export_data = {"cost": 0.1, "tokens": {"total": 5000}}
+        mock_proc = AsyncMock()
+        mock_proc.returncode = 0
+        mock_proc.communicate = AsyncMock(return_value=(json.dumps(export_data).encode(), b""))
+
+        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec:
+            mock_exec.return_value = mock_proc
+            await backend._fetch_session_export("ses_abc123", "/tmp/cwd")
+
+            args = mock_exec.call_args[0]
+            assert args[0] == "opencode"
+            assert "export" in args
+            assert "ses_abc123" in args
+
+    @pytest.mark.asyncio
+    async def test_returns_parsed_json_on_success(self, backend):
+        """Verifies parsed JSON dict is returned when export succeeds."""
+        export_data = {"cost": 0.1, "tokens": {"total": 5000, "input": 1000, "output": 200}}
+        mock_proc = AsyncMock()
+        mock_proc.returncode = 0
+        mock_proc.communicate = AsyncMock(return_value=(json.dumps(export_data).encode(), b""))
+
+        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec:
+            mock_exec.return_value = mock_proc
+            result = await backend._fetch_session_export("ses_abc123", "/tmp")
+
+            assert result["cost"] == pytest.approx(0.1)
+            assert result["tokens"]["total"] == 5000
+
+    @pytest.mark.asyncio
+    async def test_returns_empty_dict_on_nonzero_returncode(self, backend):
+        """Returns empty dict when opencode export exits with non-zero code."""
+        mock_proc = AsyncMock()
+        mock_proc.returncode = 1
+        mock_proc.communicate = AsyncMock(return_value=(b"", b"session not found"))
+
+        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec:
+            mock_exec.return_value = mock_proc
+            result = await backend._fetch_session_export("ses_abc123", "/tmp")
+
+            assert result == {}
+
+    @pytest.mark.asyncio
+    async def test_returns_empty_dict_when_session_id_empty(self, backend):
+        """No subprocess is launched when session_id is an empty string."""
+        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec:
+            result = await backend._fetch_session_export("", "/tmp")
+
+            assert result == {}
+            mock_exec.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_returns_empty_dict_on_process_not_found(self, backend):
+        """Returns empty dict when the opencode binary is not installed."""
+        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec:
+            mock_exec.side_effect = FileNotFoundError("opencode not found")
+            result = await backend._fetch_session_export("ses_abc123", "/tmp")
+
+            assert result == {}
+
+    @pytest.mark.asyncio
+    async def test_returns_empty_dict_on_os_error(self, backend):
+        """Returns empty dict on any OSError (e.g. permission denied)."""
+        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec:
+            mock_exec.side_effect = OSError("permission denied")
+            result = await backend._fetch_session_export("ses_abc123", "/tmp")
+
+            assert result == {}
+
+    @pytest.mark.asyncio
+    async def test_returns_empty_dict_on_invalid_json(self, backend):
+        """Returns empty dict when the export output is not valid JSON."""
+        mock_proc = AsyncMock()
+        mock_proc.returncode = 0
+        mock_proc.communicate = AsyncMock(return_value=(b"not valid json output", b""))
+
+        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec:
+            mock_exec.return_value = mock_proc
+            result = await backend._fetch_session_export("ses_abc123", "/tmp")
+
+            assert result == {}
+
+    @pytest.mark.asyncio
+    async def test_execute_enriches_cost_and_tokens_from_export(self, backend, on_step):
+        """execute() uses export data to override streamed accumulation."""
+        events = [
+            _oc_step_start(),
+            _oc_text("Hello"),
+            _oc_step_finish(cost=0.01, total_tokens=100),  # streamed: 0.01 / 100
+        ]
+        export_data = {"cost": 0.05, "tokens": {"total": 500}}  # export: more accurate
+
+        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec, \
+             patch.object(backend, "_git_diff_name_only", return_value=[]), \
+             patch.object(backend, "_fetch_session_export", return_value=export_data):
+            mock_exec.return_value = _make_process(stdout_lines=events, returncode=0)
+            result = await backend.execute("do stuff", "/tmp", "", on_step)
+
+            assert result.total_cost == pytest.approx(0.05)
+            assert result.total_tokens == 500
+
+    @pytest.mark.asyncio
+    async def test_execute_falls_back_to_stream_data_when_export_fails(self, backend, on_step):
+        """execute() keeps streamed values when export returns empty dict."""
+        events = [
+            _oc_step_start(),
+            _oc_text("Hello"),
+            _oc_step_finish(cost=0.01, total_tokens=100),
+        ]
+
+        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec, \
+             patch.object(backend, "_git_diff_name_only", return_value=[]), \
+             patch.object(backend, "_fetch_session_export", return_value={}):
+            mock_exec.return_value = _make_process(stdout_lines=events, returncode=0)
+            result = await backend.execute("do stuff", "/tmp", "", on_step)
+
+            assert result.total_cost == pytest.approx(0.01)
+            assert result.total_tokens == 100
+
+    @pytest.mark.asyncio
+    async def test_execute_export_partial_data_preserves_stream_fallback(self, backend, on_step):
+        """If export has no 'tokens' key, streamed token count is preserved."""
+        events = [
+            _oc_step_start(),
+            _oc_text("Hello"),
+            _oc_step_finish(cost=0.01, total_tokens=100),
+        ]
+        export_data = {"cost": 0.05}  # has cost but no tokens key
+
+        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec, \
+             patch.object(backend, "_git_diff_name_only", return_value=[]), \
+             patch.object(backend, "_fetch_session_export", return_value=export_data):
+            mock_exec.return_value = _make_process(stdout_lines=events, returncode=0)
+            result = await backend.execute("do stuff", "/tmp", "", on_step)
+
+            # cost overridden by export, tokens kept from stream (no tokens key in export)
+            assert result.total_cost == pytest.approx(0.05)
+            assert result.total_tokens == 100
+
+    @pytest.mark.asyncio
+    async def test_execute_calls_fetch_session_export_with_session_id(self, backend, on_step):
+        """execute() passes the extracted session_id to _fetch_session_export."""
+        events = [
+            _oc_step_start(),
+            _oc_step_finish(),
+        ]
+
+        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec, \
+             patch.object(backend, "_git_diff_name_only", return_value=[]), \
+             patch.object(backend, "_fetch_session_export", return_value={}) as mock_export:
+            mock_exec.return_value = _make_process(stdout_lines=events, returncode=0)
+            await backend.execute("do stuff", "/tmp/proj", "", on_step)
+
+            mock_export.assert_called_once_with(SESSION_ID, "/tmp/proj")

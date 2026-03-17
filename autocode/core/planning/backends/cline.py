@@ -131,8 +131,7 @@ class ClineBackend:
 
         steps: List[ExecutionStep] = []
         session_id = ""
-        total_tokens = 0
-        total_cost = 0.0
+        api_cost_accum: dict = {"tokens": 0, "cost": 0.0}
 
         async for line in proc.stdout:
             text = line.decode("utf-8", errors="replace").strip()
@@ -148,10 +147,10 @@ class ClineBackend:
                 session_id = event.get("taskId", "")
                 continue
 
-            # Extraer tokens/cost de api_req_finished si existe
+            # Acumular tokens/cost de api_req_finished durante el stream
             if event.get("type") == "say" and event.get("say") == "api_req_finished":
-                self._accumulate_api_cost(event, _accum={"tokens": 0, "cost": 0.0})
-                # (tokens/cost se extraen a futuro cuando Cline emita estos datos)
+                self._accumulate_api_cost(event, api_cost_accum)
+                continue
 
             # Parsear evento a ExecutionStep
             step = self._parse_event(event)
@@ -163,6 +162,16 @@ class ClineBackend:
         await proc.wait()
 
         files = await self._git_diff_name_only(cwd)
+
+        # Start with streamed accumulation as baseline
+        total_tokens = api_cost_accum["tokens"]
+        total_cost = api_cost_accum["cost"]
+
+        # Post-execution: enrich tokens/cost from `cline history` (more accurate)
+        history_data = await self._fetch_task_history(session_id, cwd)
+        if history_data:
+            total_tokens = history_data.get("totalTokensUsed", total_tokens)
+            total_cost = history_data.get("totalCost", total_cost)
 
         return ExecutionResult(
             success=proc.returncode == 0,
@@ -241,12 +250,49 @@ class ClineBackend:
 
     def _accumulate_api_cost(self, event: dict, _accum: dict) -> None:
         """
-        Extrae tokens/cost de un evento api_req_finished (placeholder).
+        Extrae tokens/cost de un evento api_req_finished.
 
-        Cline no emite datos de coste estructurados en el JSON stream
-        actualmente; este método existe para extensibilidad futura.
+        El campo ``text`` es un JSON embebido con los campos:
+        ``tokensIn``, ``tokensOut``, ``cost`` (y posiblemente ``cacheWrites``,
+        ``cacheReads``).  Los valores se acumulan en el dict ``_accum``.
         """
-        pass
+        text = event.get("text", "")
+        try:
+            data = json.loads(text)
+            _accum["tokens"] += data.get("tokensIn", 0) + data.get("tokensOut", 0)
+            _accum["cost"] += data.get("cost", 0.0)
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+    async def _fetch_task_history(self, task_id: str, cwd: str) -> dict:
+        """
+        Post-execution: calls `cline history` to get accurate task metadata
+        (totalTokensUsed, totalCost) not available during streaming.
+
+        Returns the history entry dict matching ``task_id`` on success, or an
+        empty dict on any failure (binary not found, non-zero exit, invalid
+        JSON, empty task_id, task not found in history).
+        """
+        if not task_id:
+            return {}
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "cline", "history",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                cwd=cwd,
+            )
+            stdout, _ = await proc.communicate()
+            if proc.returncode != 0:
+                return {}
+            history = json.loads(stdout.decode("utf-8", errors="replace"))
+            if isinstance(history, list):
+                for entry in history:
+                    if str(entry.get("id", "")) == str(task_id):
+                        return entry
+            return {}
+        except (FileNotFoundError, OSError, json.JSONDecodeError, ValueError):
+            return {}
 
     async def _git_diff_name_only(self, cwd: str) -> List[str]:
         """Obtiene archivos cambiados via git diff --name-only."""

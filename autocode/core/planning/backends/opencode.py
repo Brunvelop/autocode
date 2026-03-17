@@ -145,6 +145,14 @@ class OpenCodeBackend:
 
         files = await self._git_diff_name_only(cwd)
 
+        # Post-execution: enrich tokens/cost from `opencode export` (more accurate than stream)
+        export_data = await self._fetch_session_export(session_id, cwd)
+        if export_data:
+            total_cost = export_data.get("cost", total_cost)
+            tokens_data = export_data.get("tokens", {})
+            if tokens_data:
+                total_tokens = tokens_data.get("total", total_tokens)
+
         return ExecutionResult(
             success=proc.returncode == 0,
             files_changed=files,
@@ -195,6 +203,30 @@ class OpenCodeBackend:
         # step_start y step_finish no generan pasos visibles
         # (step_finish se procesa en execute() para acumular metadata)
         return None
+
+    async def _fetch_session_export(self, session_id: str, cwd: str) -> dict:
+        """
+        Post-execution: calls `opencode export {session_id}` to get accurate
+        session metadata (tokens, cost) not available during streaming.
+
+        Returns the parsed JSON dict on success, or an empty dict on any failure
+        (binary not found, non-zero exit, invalid JSON, empty session_id).
+        """
+        if not session_id:
+            return {}
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "opencode", "export", session_id,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                cwd=cwd,
+            )
+            stdout, _ = await proc.communicate()
+            if proc.returncode != 0:
+                return {}
+            return json.loads(stdout.decode("utf-8", errors="replace"))
+        except (FileNotFoundError, OSError, json.JSONDecodeError, ValueError):
+            return {}
 
     async def _git_diff_name_only(self, cwd: str) -> List[str]:
         """Obtiene archivos cambiados via git diff --name-only."""
