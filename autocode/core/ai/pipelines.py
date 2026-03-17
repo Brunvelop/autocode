@@ -11,9 +11,9 @@ from autocode.core.registry import register_function, get_functions_for_interfac
 from autocode.core.models import GenericOutput
 from autocode.core.ai.models import DspyOutput
 from autocode.core.utils.openrouter import fetch_models_info
+from autocode.core.ai.providers import ModelType
 from autocode.core.ai.dspy_utils import (
     generate_with_dspy, 
-    ModelType, 
     ModuleType,
     get_all_module_kwargs_schemas,
     get_available_tools_info,

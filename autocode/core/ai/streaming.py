@@ -12,8 +12,9 @@ from typing import AsyncGenerator, Dict, Any, Optional, List
 import dspy
 from dspy.streaming import StreamResponse, StatusMessage
 
+from autocode.core.ai.providers import ModelType
 from autocode.core.ai.dspy_utils import (
-    get_dspy_lm, MODULE_MAP, ModelType, ModuleType,
+    get_dspy_lm, MODULE_MAP, ModuleType,
     prepare_chat_tools
 )
 from autocode.core.ai.models import DspyOutput

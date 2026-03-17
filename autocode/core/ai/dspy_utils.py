@@ -12,6 +12,7 @@ from typing import Any, Dict, List, Literal, Optional, Type, Union
 
 import dspy
 from autocode.core.ai.models import DspyOutput
+from autocode.core.ai.providers import ModelType
 
 
 # Configure logging
@@ -21,20 +22,6 @@ logger = logging.getLogger(__name__)
 # ============================================================================
 # CONSTANTS AND TYPE DEFINITIONS
 # ============================================================================
-
-# Available models for inference
-ModelType = Literal[
-    'openrouter/nvidia/nemotron-3-nano-30b-a3b:free',
-    'openrouter/openai/gpt-4o',
-    'openrouter/x-ai/grok-4',
-    'openrouter/x-ai/grok-code-fast-1',
-    'openrouter/x-ai/grok-4-fast',
-    'openrouter/anthropic/claude-sonnet-4.5',
-    'openrouter/openai/gpt-oss-20b',
-    'openrouter/openai/gpt-5',
-    'openrouter/openai/gpt-5-codex',
-    'openrouter/z-ai/glm-5',
-]
 
 
 # Available DSPy modules

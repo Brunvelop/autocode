@@ -26,9 +26,9 @@ from dspy.streaming import StatusMessage
 
 from autocode.core.registry import register_function
 from autocode.core.models import GenericOutput
+from autocode.core.ai.providers import ModelType
 from autocode.core.ai.dspy_utils import (
     get_dspy_lm,
-    ModelType,
     prepare_chat_tools,
 )
 from autocode.core.ai.streaming import AutocodeStatusProvider, _format_sse
