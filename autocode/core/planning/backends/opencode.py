@@ -145,9 +145,9 @@ class OpenCodeBackend:
                 steps.append(step)
                 await on_step(step)
 
-        stderr_data = await proc.stderr.read()
-
         # Esperar a que el proceso termine (con timeout y fallback a terminate/kill)
+        # IMPORTANTE: proc.stderr.read() se hace DESPUÉS de que el proceso haya muerto.
+        # Si se hiciera antes y el proceso sigue vivo, stderr no llega a EOF y bloquea.
         try:
             await asyncio.wait_for(proc.wait(), timeout=15)
         except asyncio.TimeoutError:
@@ -157,6 +157,9 @@ class OpenCodeBackend:
             except asyncio.TimeoutError:
                 proc.kill()
             await proc.wait()
+
+        # Proceso ya muerto: stderr.read() retorna inmediatamente
+        stderr_data = await proc.stderr.read()
 
         files = await self._git_diff_name_only(cwd)
 

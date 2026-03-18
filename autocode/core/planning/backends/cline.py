@@ -166,9 +166,11 @@ class ClineBackend:
             if event.get("type") == "say" and say_type in ("completion_result", "error"):
                 break
 
-        stderr_data = await proc.stderr.read()
-
         # Esperar a que el proceso termine (con timeout y fallback a terminate/kill)
+        # IMPORTANTE: proc.stderr.read() se hace DESPUÉS de que el proceso haya muerto.
+        # Si se hiciera antes, se bloquearía indefinidamente porque Cline sigue vivo
+        # tras emitir completion_result (hace cleanup) y stderr no llega a EOF hasta
+        # que el proceso cierra sus file descriptors.
         try:
             await asyncio.wait_for(proc.wait(), timeout=10)
         except asyncio.TimeoutError:
@@ -178,6 +180,9 @@ class ClineBackend:
             except asyncio.TimeoutError:
                 proc.kill()
             await proc.wait()
+
+        # Proceso ya muerto: stderr.read() retorna inmediatamente
+        stderr_data = await proc.stderr.read()
 
         files = await self._git_diff_name_only(cwd)
 
