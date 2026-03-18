@@ -100,6 +100,7 @@ class ClineBackend:
 
     def __init__(self, timeout: int = 0):
         self.timeout = timeout
+        self._process: Optional[asyncio.subprocess.Process] = None
 
     async def execute(
         self,
@@ -128,6 +129,8 @@ class ClineBackend:
                 success=False,
                 error=f"Failed to start cline: {exc}",
             )
+
+        self._process = proc
 
         steps: List[ExecutionStep] = []
         session_id = ""
@@ -158,8 +161,23 @@ class ClineBackend:
                 steps.append(step)
                 await on_step(step)
 
+            # Detectar finalización: salir del loop sin esperar EOF de stdout
+            say_type = event.get("say", "")
+            if event.get("type") == "say" and say_type in ("completion_result", "error"):
+                break
+
         stderr_data = await proc.stderr.read()
-        await proc.wait()
+
+        # Esperar a que el proceso termine (con timeout y fallback a terminate/kill)
+        try:
+            await asyncio.wait_for(proc.wait(), timeout=10)
+        except asyncio.TimeoutError:
+            proc.terminate()
+            try:
+                await asyncio.wait_for(proc.wait(), timeout=5)
+            except asyncio.TimeoutError:
+                proc.kill()
+            await proc.wait()
 
         files = await self._git_diff_name_only(cwd)
 

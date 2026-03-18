@@ -762,3 +762,42 @@ class TestFetchSessionExport:
             await backend.execute("do stuff", "/tmp/proj", "", on_step)
 
             mock_export.assert_called_once_with(SESSION_ID, "/tmp/proj")
+
+
+# ===========================================================================
+# Tests for process management (Bug 2 fix)
+# ===========================================================================
+
+
+class TestProcessManagement:
+    """Tests for process reference storage and timeout handling in OpenCodeBackend."""
+
+    @pytest.mark.asyncio
+    async def test_stores_process_reference(self, backend, on_step):
+        """execute() stores the subprocess handle in self._process."""
+        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec, \
+             patch.object(backend, "_git_diff_name_only", return_value=[]), \
+             patch.object(backend, "_fetch_session_export", return_value={}):
+            mock_proc = _make_process(returncode=0)
+            mock_exec.return_value = mock_proc
+            await backend.execute("do stuff", "/tmp", "", on_step)
+
+        assert backend._process is mock_proc
+
+    @pytest.mark.asyncio
+    async def test_process_timeout_terminates(self, backend, on_step):
+        """When process does not terminate in time, terminate() then kill() are called."""
+        events = [_oc_text("Done")]
+        mock_proc = _make_process(stdout_lines=events, returncode=0)
+        mock_proc.terminate = MagicMock()
+        mock_proc.kill = MagicMock()
+
+        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec, \
+             patch.object(backend, "_git_diff_name_only", return_value=[]), \
+             patch.object(backend, "_fetch_session_export", return_value={}), \
+             patch("asyncio.wait_for", side_effect=asyncio.TimeoutError):
+            mock_exec.return_value = mock_proc
+            await backend.execute("do stuff", "/tmp", "", on_step)
+
+        mock_proc.terminate.assert_called_once()
+        mock_proc.kill.assert_called_once()

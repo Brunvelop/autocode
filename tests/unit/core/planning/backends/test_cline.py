@@ -1022,3 +1022,82 @@ class TestFetchTaskHistory:
             await backend.execute("do stuff", "/my/project", "", on_step)
 
             mock_history.assert_called_once_with("42000", "/my/project")
+
+
+# ===========================================================================
+# Tests for completion detection and process management (Bug 2 fix)
+# ===========================================================================
+
+
+class TestCompletionDetection:
+    """Tests for completion detection, process timeout, and process reference storage."""
+
+    @pytest.mark.asyncio
+    async def test_breaks_on_completion_result(self, backend, on_step):
+        """Events after completion_result are NOT processed — loop breaks early."""
+        events = [
+            _cl_task_started(),
+            _cl_say_reasoning("Thinking..."),
+            _cl_say_completion("Done!"),
+            _cl_say_reasoning("This should NOT appear"),  # after completion → skipped
+        ]
+        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec, \
+             patch.object(backend, "_git_diff_name_only", return_value=[]), \
+             patch.object(backend, "_fetch_task_history", return_value={}):
+            mock_exec.return_value = _make_process(stdout_lines=events, returncode=0)
+            result = await backend.execute("do stuff", "/tmp", "", on_step)
+
+        # Only: thinking + completion = 2 steps; reasoning after completion is skipped
+        assert len(result.steps) == 2
+        assert result.steps[0].type == "thinking"
+        assert result.steps[1].type == "completion"
+
+    @pytest.mark.asyncio
+    async def test_breaks_on_error_event(self, backend, on_step):
+        """Events after an error say event are NOT processed — loop breaks early."""
+        events = [
+            _cl_task_started(),
+            _cl_say_reasoning("Thinking..."),
+            _cl_say_error("Something went wrong"),
+            _cl_say_reasoning("This should NOT appear"),  # after error → skipped
+        ]
+        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec, \
+             patch.object(backend, "_git_diff_name_only", return_value=[]), \
+             patch.object(backend, "_fetch_task_history", return_value={}):
+            mock_exec.return_value = _make_process(stdout_lines=events, returncode=0)
+            result = await backend.execute("do stuff", "/tmp", "", on_step)
+
+        # Only: thinking + error = 2 steps; reasoning after error is skipped
+        assert len(result.steps) == 2
+        assert result.steps[0].type == "thinking"
+        assert result.steps[1].type == "error"
+
+    @pytest.mark.asyncio
+    async def test_kills_process_on_timeout(self, backend, on_step):
+        """When process does not terminate in time, terminate() then kill() are called."""
+        events = [_cl_say_completion("Done")]
+        mock_proc = _make_process(stdout_lines=events, returncode=0)
+        mock_proc.terminate = MagicMock()
+        mock_proc.kill = MagicMock()
+
+        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec, \
+             patch.object(backend, "_git_diff_name_only", return_value=[]), \
+             patch.object(backend, "_fetch_task_history", return_value={}), \
+             patch("asyncio.wait_for", side_effect=asyncio.TimeoutError):
+            mock_exec.return_value = mock_proc
+            await backend.execute("do stuff", "/tmp", "", on_step)
+
+        mock_proc.terminate.assert_called_once()
+        mock_proc.kill.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_stores_process_reference(self, backend, on_step):
+        """execute() stores the subprocess handle in self._process."""
+        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec, \
+             patch.object(backend, "_git_diff_name_only", return_value=[]), \
+             patch.object(backend, "_fetch_task_history", return_value={}):
+            mock_proc = _make_process(returncode=0)
+            mock_exec.return_value = mock_proc
+            await backend.execute("do stuff", "/tmp", "", on_step)
+
+        assert backend._process is mock_proc

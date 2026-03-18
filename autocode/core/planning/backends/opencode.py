@@ -83,6 +83,9 @@ class OpenCodeBackend:
 
     name = "opencode"
 
+    def __init__(self):
+        self._process: Optional[asyncio.subprocess.Process] = None
+
     async def execute(
         self,
         instruction: str,
@@ -108,6 +111,8 @@ class OpenCodeBackend:
                 success=False,
                 error=f"Failed to start opencode: {exc}",
             )
+
+        self._process = proc
 
         steps: List[ExecutionStep] = []
         total_tokens = 0
@@ -141,7 +146,17 @@ class OpenCodeBackend:
                 await on_step(step)
 
         stderr_data = await proc.stderr.read()
-        await proc.wait()
+
+        # Esperar a que el proceso termine (con timeout y fallback a terminate/kill)
+        try:
+            await asyncio.wait_for(proc.wait(), timeout=15)
+        except asyncio.TimeoutError:
+            proc.terminate()
+            try:
+                await asyncio.wait_for(proc.wait(), timeout=5)
+            except asyncio.TimeoutError:
+                proc.kill()
+            await proc.wait()
 
         files = await self._git_diff_name_only(cwd)
 
