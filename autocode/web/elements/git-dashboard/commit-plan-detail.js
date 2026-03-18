@@ -186,18 +186,7 @@ export class CommitPlanDetail extends LitElement {
                 ${this._canExecute(status) ? html`
                     <div class="execute-section">
                         <div class="execute-row">
-                            ${this._modelChoices.length > 0 ? html`
-                                <select class="model-select"
-                                    .value=${this._selectedModel}
-                                    ?disabled=${this._isExecuting}
-                                    @change=${e => this._selectedModel = e.target.value}>
-                                    ${this._modelChoices.map(m => html`
-                                        <option value="${m}" ?selected=${m === this._selectedModel}>
-                                            ${m.split('/').pop()}
-                                        </option>
-                                    `)}
-                                </select>
-                            ` : ''}
+                            ${this._renderModelSelector()}
                             <select class="backend-select"
                                 .value=${this._selectedBackend}
                                 ?disabled=${this._isExecuting}
@@ -335,26 +324,24 @@ export class CommitPlanDetail extends LitElement {
     }
 
     /**
-     * Load available model choices from the execute_commit_plan function schema.
+     * Load available model choices from get_chat_config (full ModelType catalog).
      */
     async _loadModelChoices() {
         try {
-            const response = await fetch('/functions/details');
-            if (!response.ok) return;
-            const data = await response.json();
-            const funcInfo = data.functions?.execute_commit_plan;
-            if (funcInfo?.parameters) {
-                const modelParam = funcInfo.parameters.find(p => p.name === 'model');
-                if (modelParam?.choices?.length) {
-                    this._modelChoices = modelParam.choices;
-                    // Ensure selected model is valid
-                    if (!this._modelChoices.includes(this._selectedModel)) {
-                        this._selectedModel = modelParam.default || this._modelChoices[0];
-                    }
+            const result = await AutoFunctionController.executeFunction(
+                'get_chat_config',
+                {}
+            );
+            if (result?.models?.length) {
+                this._modelChoices = result.models; // [{id, name, context_length, ...}, ...]
+                // Ensure selected model is valid
+                if (!this._modelChoices.find(m => m.id === this._selectedModel)) {
+                    this._selectedModel = this._modelChoices[0].id;
                 }
             }
         } catch (error) {
-            console.warn('⚠️ Could not load model choices:', error);
+            console.warn('⚠️ Could not load models:', error);
+            // Fallback: allow free text input (modelChoices stays [])
         }
     }
 
@@ -391,6 +378,46 @@ export class CommitPlanDetail extends LitElement {
                 <div class="section-header">📝 Descripción</div>
                 <div class="description-content">${plan.description}</div>
             </div>
+        `;
+    }
+
+    /**
+     * Render the model selector for execution.
+     * If models are loaded from get_chat_config, shows a rich <select> with
+     * name + context length. Falls back to a free-text <input> with datalist.
+     */
+    _renderModelSelector() {
+        if (this._modelChoices.length > 0) {
+            return html`
+                <select class="model-select"
+                    .value=${this._selectedModel}
+                    ?disabled=${this._isExecuting}
+                    @change=${e => this._selectedModel = e.target.value}>
+                    ${this._modelChoices.map(m => html`
+                        <option value="${m.id}" ?selected=${m.id === this._selectedModel}>
+                            ${m.name}${m.context_length
+                                ? ` (${Math.round(m.context_length / 1000)}k ctx)`
+                                : ''}
+                        </option>
+                    `)}
+                </select>
+            `;
+        }
+
+        // Fallback: free-text input with datalist suggestions
+        return html`
+            <input type="text"
+                class="model-input"
+                list="model-suggestions"
+                .value=${this._selectedModel}
+                ?disabled=${this._isExecuting}
+                @change=${e => this._selectedModel = e.target.value}
+                placeholder="modelo (ej: openrouter/anthropic/claude-sonnet-4-5)">
+            <datalist id="model-suggestions">
+                <option value="openrouter/anthropic/claude-sonnet-4-5">
+                <option value="openrouter/openai/gpt-4o">
+                <option value="openrouter/x-ai/grok-3">
+            </datalist>
         `;
     }
 

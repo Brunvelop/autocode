@@ -356,6 +356,30 @@ export const commitPlanDetailStyles = css`
         cursor: not-allowed;
     }
 
+    /* ===== MODEL INPUT (fallback free-text) ===== */
+    .model-input {
+        flex: 1;
+        min-width: 0;
+        padding: 4px 6px;
+        border: 1px solid var(--design-border-gray, #e5e7eb);
+        border-radius: var(--design-radius-md, 0.5rem);
+        background: var(--design-bg-white, #ffffff);
+        font-size: 10px;
+        font-family: var(--design-font-mono, monospace);
+        color: var(--design-text-primary, #1f2937);
+        outline: none;
+    }
+
+    .model-input:focus {
+        border-color: var(--design-primary, #4f46e5);
+        box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.15);
+    }
+
+    .model-input:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+
     /* ===== BACKEND SELECT ===== */
     .backend-select {
         padding: 4px 6px;
