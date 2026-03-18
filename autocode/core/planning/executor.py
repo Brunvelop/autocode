@@ -182,7 +182,7 @@ async def _with_heartbeat(
 
 
 # ============================================================================
-# REVERT HELPER
+# GIT HELPERS
 # ============================================================================
 
 
@@ -198,6 +198,52 @@ async def _revert_changes(cwd: str) -> None:
     try:
         proc = await asyncio.create_subprocess_exec(
             "git", "checkout", "--", ".",
+            cwd=cwd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        await proc.communicate()
+    except Exception:
+        pass  # Best effort
+
+
+async def _git_rev_parse_head(cwd: str) -> str:
+    """Return the current HEAD commit hash, or '' on any error.
+
+    Args:
+        cwd: Directory where the git command should be run.
+
+    Returns:
+        Full commit hash string, or empty string if git unavailable/not a repo.
+    """
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "git", "rev-parse", "HEAD",
+            cwd=cwd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, _ = await proc.communicate()
+        if proc.returncode == 0:
+            return stdout.decode().strip()
+        return ""
+    except Exception:
+        return ""
+
+
+async def _git_reset_mixed(cwd: str, ref: str) -> None:
+    """Undo commits back to ``ref``, keeping changes in the working tree.
+
+    Runs ``git reset --mixed {ref}`` as a best-effort safety net.
+    Silently ignores any errors.
+
+    Args:
+        cwd: Directory where the git command should be run.
+        ref: Commit hash or ref to reset to.
+    """
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "git", "reset", "--mixed", ref,
             cwd=cwd,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
@@ -283,6 +329,10 @@ async def stream_execute_plan(
         # ------------------------------------------------------------------
         instruction = _build_instruction(plan)
         cwd = os.getcwd()
+
+        # Snapshot HEAD before execution so we can detect (and undo) any
+        # commits the agent makes on its own during execution.
+        pre_exec_head = await _git_rev_parse_head(cwd)
 
         logger.info(
             f"▶ Executing plan '{plan.id}': {plan.title} "
@@ -382,6 +432,23 @@ async def stream_execute_plan(
                 success=False,
                 error="No result from backend execution",
             )
+
+        # ------------------------------------------------------------------
+        # Safety net: undo any commits the agent made during execution.
+        # Some backends (e.g. Cline) may run `git commit` on their own,
+        # which would advance HEAD and break the review/approve/revert flow
+        # (files_changed = [], revert has nothing to checkout, etc.).
+        # We use `git reset --mixed` so the committed changes are preserved
+        # in the working tree — the rest of the flow then works normally.
+        # ------------------------------------------------------------------
+        if pre_exec_head:
+            current_head = await _git_rev_parse_head(cwd)
+            if current_head and current_head != pre_exec_head:
+                logger.warning(
+                    f"⚠ Agent committed during execution — "
+                    f"resetting HEAD from {current_head[:7]} back to {pre_exec_head[:7]}"
+                )
+                await _git_reset_mixed(cwd, pre_exec_head)
 
         # ------------------------------------------------------------------
         # 7. Store execution result in plan

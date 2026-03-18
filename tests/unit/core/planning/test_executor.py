@@ -34,6 +34,8 @@ from autocode.core.planning.executor import (
     _get_backend,
     _build_instruction,
     _with_heartbeat,
+    _git_rev_parse_head,
+    _git_reset_mixed,
 )
 from tests.unit.core.planning.conftest import _parse_sse
 
@@ -1212,3 +1214,115 @@ class TestCancelSetsPlanFailed:
         assert last_saved.execution.completed_at is not None, (
             "completed_at should be set when plan is cancelled"
         )
+
+
+# ============================================================================
+# TEST: AGENT COMMIT SAFETY NET
+# ============================================================================
+
+
+class TestAgentCommitSafetyNet:
+    """If the agent commits during execution, the executor resets HEAD back.
+
+    This ensures the review/approve/revert flow always works correctly,
+    regardless of whether the backend decides to run git commit on its own.
+    """
+
+    @pytest.mark.asyncio
+    async def test_agent_commit_triggers_reset(self):
+        """If HEAD changes during execution, _git_reset_mixed is called with pre-exec HEAD."""
+        plan = _make_plan()
+        backend = MockBackend()
+
+        # Simulate: HEAD was "aaa" before, agent committed → now "bbb"
+        head_calls = iter(["aaa1111aaa1111aaa1111aaa1111aaa1111aaa111",
+                           "bbb2222bbb2222bbb2222bbb2222bbb2222bbb222"])
+
+        with (
+            _patch_load_plan(plan),
+            _patch_save_plan(),
+            _patch_backend(backend),
+            _patch_compute_review_metrics(),
+            _patch_getcwd("/fake/project"),
+            patch(
+                "autocode.core.planning.executor._git_rev_parse_head",
+                new_callable=AsyncMock,
+                side_effect=lambda cwd: next(head_calls),
+            ),
+            patch(
+                "autocode.core.planning.executor._git_reset_mixed",
+                new_callable=AsyncMock,
+            ) as mock_reset,
+        ):
+            await _collect_events(
+                stream_execute_plan("20260101-120000", backend="mock", review_mode="human")
+            )
+
+        mock_reset.assert_called_once_with(
+            "/fake/project",
+            "aaa1111aaa1111aaa1111aaa1111aaa1111aaa111",
+        )
+
+    @pytest.mark.asyncio
+    async def test_no_reset_when_head_unchanged(self):
+        """If HEAD is the same before and after execution, _git_reset_mixed is NOT called."""
+        plan = _make_plan()
+        backend = MockBackend()
+        same_head = "aaa1111aaa1111aaa1111aaa1111aaa1111aaa111"
+
+        with (
+            _patch_load_plan(plan),
+            _patch_save_plan(),
+            _patch_backend(backend),
+            _patch_compute_review_metrics(),
+            _patch_getcwd("/fake/project"),
+            patch(
+                "autocode.core.planning.executor._git_rev_parse_head",
+                new_callable=AsyncMock,
+                return_value=same_head,
+            ),
+            patch(
+                "autocode.core.planning.executor._git_reset_mixed",
+                new_callable=AsyncMock,
+            ) as mock_reset,
+        ):
+            events = await _collect_events(
+                stream_execute_plan("20260101-120000", backend="mock", review_mode="human")
+            )
+
+        mock_reset.assert_not_called()
+        # Normal flow still works
+        complete = _find_event(events, "plan_complete")
+        assert complete["data"]["success"] is True
+
+    @pytest.mark.asyncio
+    async def test_no_reset_when_git_unavailable(self):
+        """If git is unavailable (returns ''), the executor continues gracefully without reset."""
+        plan = _make_plan()
+        backend = MockBackend()
+
+        with (
+            _patch_load_plan(plan),
+            _patch_save_plan(),
+            _patch_backend(backend),
+            _patch_compute_review_metrics(),
+            _patch_getcwd("/fake/project"),
+            patch(
+                "autocode.core.planning.executor._git_rev_parse_head",
+                new_callable=AsyncMock,
+                return_value="",  # git unavailable / not a repo
+            ),
+            patch(
+                "autocode.core.planning.executor._git_reset_mixed",
+                new_callable=AsyncMock,
+            ) as mock_reset,
+        ):
+            events = await _collect_events(
+                stream_execute_plan("20260101-120000", backend="mock", review_mode="human")
+            )
+
+        # No crash, no reset attempt
+        mock_reset.assert_not_called()
+        complete = _find_event(events, "plan_complete")
+        assert complete is not None
+        assert complete["data"]["success"] is True
