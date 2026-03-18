@@ -37,3 +37,7 @@ class ExecutorBackend(Protocol):
         model: str,
         on_step: Callable[[ExecutionStep], Awaitable[None]],
     ) -> ExecutionResult: ...
+
+    def abort(self) -> None:
+        """Kill the running process immediately."""
+        ...

@@ -113,6 +113,10 @@ class MockBackend:
         self._result = result or _make_execution_result()
         self.execute_called_with = None
 
+    def abort(self) -> None:
+        """No-op abort for tests."""
+        pass
+
     async def execute(self, instruction, cwd, model, on_step):
         self.execute_called_with = {
             "instruction": instruction,
@@ -1014,3 +1018,197 @@ class TestEventOrder:
         step_indices = [i for i, t in enumerate(event_types) if t == "step"]
         if step_indices and "review_start" in event_types:
             assert max(step_indices) < event_types.index("review_start")
+
+
+# ============================================================================
+# TEST: CANCEL / ABORT SUPPORT
+# ============================================================================
+
+
+def _make_slow_abortable_backend(abort_flag: list, sleep_seconds: float = 10.0):
+    """Create a backend that emits one step then sleeps indefinitely.
+
+    abort_flag is a mutable list so the closure can update it.
+    """
+    class SlowAbortableBackend:
+        name = "mock"
+
+        def abort(self):
+            abort_flag.append(True)
+
+        async def execute(self, instruction, cwd, model, on_step):
+            step = ExecutionStep(type="thinking", content="Working...")
+            await on_step(step)
+            await asyncio.sleep(sleep_seconds)
+            return _make_execution_result()
+
+    return SlowAbortableBackend()
+
+
+async def _consume_until_step_then_close(plan_id: str, backend_instance):
+    """Helper: iterate stream_execute_plan until a step event, then close the generator.
+
+    Returns after gen.aclose() completes, giving the cancel handler time to run.
+    """
+    with _patch_load_plan(_make_plan()), \
+         patch("autocode.core.planning.executor.save_plan"), \
+         _patch_backend(backend_instance), \
+         _patch_getcwd("/fake/project"):
+        gen = stream_execute_plan(plan_id, backend="mock")
+        async for raw in gen:
+            try:
+                if _parse_sse(raw)["event"] == "step":
+                    break
+            except (json.JSONDecodeError, IndexError, KeyError):
+                pass
+        await gen.aclose()
+
+
+class TestCancelKillsBackend:
+    """When the SSE consumer disconnects (generator closed), abort() is called."""
+
+    @pytest.mark.asyncio
+    async def test_cancel_calls_abort_on_backend(self):
+        """Closing the generator mid-execution calls backend.abort()."""
+        abort_flag = []
+        backend = _make_slow_abortable_backend(abort_flag)
+
+        await _consume_until_step_then_close("20260101-120000", backend)
+
+        assert abort_flag, "abort() must be called when the generator is closed mid-execution"
+
+    @pytest.mark.asyncio
+    async def test_abort_called_only_from_cancel_not_normal_flow(self):
+        """abort() is NOT called when execution completes normally."""
+        abort_flag = []
+        backend = _make_slow_abortable_backend(abort_flag, sleep_seconds=0)
+        # Override execute to complete immediately
+        backend_result = _make_execution_result()
+
+        class FastAbortableBackend:
+            name = "mock"
+
+            def abort(self):
+                abort_flag.append(True)
+
+            async def execute(self, instruction, cwd, model, on_step):
+                step = ExecutionStep(type="thinking", content="Done")
+                await on_step(step)
+                return backend_result
+
+        with (
+            _patch_load_plan(_make_plan()),
+            _patch_save_plan(),
+            _patch_backend(FastAbortableBackend()),
+            _patch_compute_review_metrics(),
+            _patch_getcwd(),
+        ):
+            await _collect_events(
+                stream_execute_plan("20260101-120000", backend="mock")
+            )
+
+        assert not abort_flag, "abort() should NOT be called when execution completes normally"
+
+
+class TestCancelRevertsChanges:
+    """When cancelled, _revert_changes(cwd) is called to undo uncommitted work."""
+
+    @pytest.mark.asyncio
+    async def test_cancel_reverts_changes_in_cwd(self):
+        """_revert_changes is called with the correct cwd when generator is closed."""
+        abort_flag = []
+        backend = _make_slow_abortable_backend(abort_flag)
+
+        with (
+            _patch_load_plan(_make_plan()),
+            patch("autocode.core.planning.executor.save_plan"),
+            _patch_backend(backend),
+            _patch_getcwd("/fake/project"),
+            patch(
+                "autocode.core.planning.executor._revert_changes",
+                new_callable=AsyncMock,
+            ) as mock_revert,
+        ):
+            gen = stream_execute_plan("20260101-120000", backend="mock")
+            async for raw in gen:
+                try:
+                    if _parse_sse(raw)["event"] == "step":
+                        break
+                except (json.JSONDecodeError, IndexError, KeyError):
+                    pass
+            await gen.aclose()
+
+        mock_revert.assert_called_once_with("/fake/project")
+
+
+class TestCancelSetsPlanFailed:
+    """When cancelled, the plan is saved with status='failed'."""
+
+    @pytest.mark.asyncio
+    async def test_cancel_sets_plan_status_failed(self):
+        """Cancelling execution marks the plan as failed and persists it."""
+        abort_flag = []
+        backend = _make_slow_abortable_backend(abort_flag)
+        saved_plans = []
+
+        def capture_save(p):
+            saved_plans.append(p.model_copy(deep=True))
+
+        with (
+            _patch_load_plan(_make_plan()),
+            patch("autocode.core.planning.executor.save_plan", side_effect=capture_save),
+            _patch_backend(backend),
+            _patch_getcwd(),
+            patch(
+                "autocode.core.planning.executor._revert_changes",
+                new_callable=AsyncMock,
+            ),
+        ):
+            gen = stream_execute_plan("20260101-120000", backend="mock")
+            async for raw in gen:
+                try:
+                    if _parse_sse(raw)["event"] == "step":
+                        break
+                except (json.JSONDecodeError, IndexError, KeyError):
+                    pass
+            await gen.aclose()
+
+        assert len(saved_plans) >= 2, "Expected at least 'executing' + 'failed' saves"
+        assert saved_plans[-1].status == "failed", (
+            f"Expected plan.status='failed', got '{saved_plans[-1].status}'"
+        )
+
+    @pytest.mark.asyncio
+    async def test_cancel_saves_completed_at_timestamp(self):
+        """Cancelled plan has a completed_at timestamp set."""
+        abort_flag = []
+        backend = _make_slow_abortable_backend(abort_flag)
+        saved_plans = []
+
+        def capture_save(p):
+            saved_plans.append(p.model_copy(deep=True))
+
+        with (
+            _patch_load_plan(_make_plan()),
+            patch("autocode.core.planning.executor.save_plan", side_effect=capture_save),
+            _patch_backend(backend),
+            _patch_getcwd(),
+            patch(
+                "autocode.core.planning.executor._revert_changes",
+                new_callable=AsyncMock,
+            ),
+        ):
+            gen = stream_execute_plan("20260101-120000", backend="mock")
+            async for raw in gen:
+                try:
+                    if _parse_sse(raw)["event"] == "step":
+                        break
+                except (json.JSONDecodeError, IndexError, KeyError):
+                    pass
+            await gen.aclose()
+
+        last_saved = saved_plans[-1]
+        assert last_saved.execution is not None
+        assert last_saved.execution.completed_at is not None, (
+            "completed_at should be set when plan is cancelled"
+        )

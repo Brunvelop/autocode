@@ -219,6 +219,11 @@ class OpenCodeBackend:
         # (step_finish se procesa en execute() para acumular metadata)
         return None
 
+    def abort(self) -> None:
+        """Kill the subprocess if running."""
+        if self._process and self._process.returncode is None:
+            self._process.kill()
+
     async def _fetch_session_export(self, session_id: str, cwd: str) -> dict:
         """
         Post-execution: calls `opencode export {session_id}` to get accurate

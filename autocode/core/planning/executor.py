@@ -182,6 +182,32 @@ async def _with_heartbeat(
 
 
 # ============================================================================
+# REVERT HELPER
+# ============================================================================
+
+
+async def _revert_changes(cwd: str) -> None:
+    """Revert all uncommitted changes in the working directory.
+
+    Runs ``git checkout -- .`` in ``cwd`` as a best-effort cleanup.
+    Silently ignores any errors (e.g. git not available, not a repo).
+
+    Args:
+        cwd: Directory where the git checkout should be run.
+    """
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "git", "checkout", "--", ".",
+            cwd=cwd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        await proc.communicate()
+    except Exception:
+        pass  # Best effort
+
+
+# ============================================================================
 # STREAM GENERATOR (core orchestrator)
 # ============================================================================
 
@@ -325,17 +351,30 @@ async def stream_execute_plan(
                     if isinstance(item, Exception):
                         raise item
                     yield item  # SSE string or ExecutionResult
+            except (asyncio.CancelledError, GeneratorExit):
+                backend_instance.abort()
+                task.cancel()
+                raise
             finally:
                 if not task.done():
                     task.cancel()
 
         execution_result: ExecutionResult | None = None
 
-        async for item in _with_heartbeat(_backend_execution()):
-            if isinstance(item, ExecutionResult):
-                execution_result = item
-            else:
-                yield item
+        try:
+            async for item in _with_heartbeat(_backend_execution()):
+                if isinstance(item, ExecutionResult):
+                    execution_result = item
+                else:
+                    yield item
+        except (asyncio.CancelledError, GeneratorExit):
+            logger.info(f"⏹ Execution cancelled for plan '{plan_id}'")
+            backend_instance.abort()
+            await _revert_changes(cwd)
+            plan.status = "failed"
+            plan.execution.completed_at = datetime.now().isoformat()
+            save_plan(plan)
+            return
 
         # Fallback if backend didn't return a result (shouldn't happen)
         if execution_result is None:

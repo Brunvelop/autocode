@@ -282,6 +282,11 @@ class ClineBackend:
         except (json.JSONDecodeError, TypeError):
             pass
 
+    def abort(self) -> None:
+        """Kill the subprocess if running."""
+        if self._process and self._process.returncode is None:
+            self._process.kill()
+
     async def _fetch_task_history(self, task_id: str, cwd: str) -> dict:
         """
         Post-execution: calls `cline history` to get accurate task metadata

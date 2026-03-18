@@ -57,6 +57,10 @@ class DspyReactBackend:
 
     name = "dspy"
 
+    def abort(self) -> None:
+        """No-op: DSPy ReAct does not use a subprocess."""
+        pass
+
     async def execute(
         self,
         instruction: str,

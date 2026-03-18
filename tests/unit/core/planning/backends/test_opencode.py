@@ -801,3 +801,68 @@ class TestProcessManagement:
 
         mock_proc.terminate.assert_called_once()
         mock_proc.kill.assert_called_once()
+
+
+# ===========================================================================
+# Tests for abort() — cancel support (C3)
+# ===========================================================================
+
+
+class TestAbort:
+    """Tests for OpenCodeBackend.abort()."""
+
+    def test_abort_kills_process_when_running(self, backend):
+        """abort() calls kill() on the subprocess when it is still running."""
+        mock_proc = MagicMock()
+        mock_proc.returncode = None  # Process still running
+        backend._process = mock_proc
+
+        backend.abort()
+
+        mock_proc.kill.assert_called_once()
+
+    def test_abort_noop_when_no_process(self, backend):
+        """abort() does not crash when no process has been started yet."""
+        assert backend._process is None
+
+        backend.abort()  # Should not raise
+
+    def test_abort_noop_when_process_already_done(self, backend):
+        """abort() does not kill a process that has already terminated (returncode set)."""
+        mock_proc = MagicMock()
+        mock_proc.returncode = 0  # Process already finished
+        backend._process = mock_proc
+
+        backend.abort()
+
+        mock_proc.kill.assert_not_called()
+
+    def test_abort_noop_when_process_failed(self, backend):
+        """abort() does not kill a process that has terminated with an error code."""
+        mock_proc = MagicMock()
+        mock_proc.returncode = 1  # Process finished with error
+        backend._process = mock_proc
+
+        backend.abort()
+
+        mock_proc.kill.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_abort_after_execute_kills_process(self, backend, on_step):
+        """After execute() starts a subprocess, abort() can kill it."""
+        mock_proc = _make_process(returncode=0)
+        mock_proc.kill = MagicMock()
+        mock_proc.returncode = None  # Simulate still running at abort time
+
+        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec, \
+             patch.object(backend, "_git_diff_name_only", return_value=[]), \
+             patch.object(backend, "_fetch_session_export", return_value={}):
+            mock_exec.return_value = mock_proc
+            # Start execute but we only care that _process is set
+            await backend.execute("do stuff", "/tmp", "", on_step)
+
+        # Simulate the process still running when abort is called
+        mock_proc.returncode = None
+        backend.abort()
+
+        mock_proc.kill.assert_called_once()
