@@ -277,27 +277,17 @@ async def stream_execute_plan(
         )
 
         # ------------------------------------------------------------------
-        # 6. Execute via backend — emit steps
+        # 6. Execute via backend — emit steps in real-time via Queue bridge
         # ------------------------------------------------------------------
         collected_steps: list[ExecutionStep] = []
+        step_queue: asyncio.Queue = asyncio.Queue()
+        _DONE = object()
 
         async def _on_step(step: ExecutionStep) -> None:
-            """Callback invoked by the backend for each execution step."""
+            """Callback: emit immediately to queue as SSE (real-time streaming)."""
             collected_steps.append(step)
-
-        # We use an inner async generator that wraps the backend call
-        # so _with_heartbeat can wrap it.
-        async def _backend_execution():
-            """Inner generator: runs backend and yields SSE step events."""
-            result = await backend_instance.execute(
-                instruction=instruction,
-                cwd=cwd,
-                model=model,
-                on_step=_on_step,
-            )
-            # Yield each collected step as an SSE event
-            for step in collected_steps:
-                yield _format_sse(
+            await step_queue.put(
+                _format_sse(
                     "step",
                     {
                         "type": step.type,
@@ -307,8 +297,37 @@ async def stream_execute_plan(
                         "timestamp": step.timestamp,
                     },
                 )
-            # Yield the result as the last item (not an SSE string)
-            yield result
+            )
+
+        async def _run_backend():
+            """Task: execute backend and put result (or exception) into queue."""
+            try:
+                result = await backend_instance.execute(
+                    instruction=instruction,
+                    cwd=cwd,
+                    model=model,
+                    on_step=_on_step,
+                )
+                await step_queue.put(result)
+            except Exception as exc:
+                await step_queue.put(exc)
+            finally:
+                await step_queue.put(_DONE)
+
+        async def _backend_execution():
+            """Generator: consumes from queue, yielding SSE events in real-time."""
+            task = asyncio.create_task(_run_backend())
+            try:
+                while True:
+                    item = await step_queue.get()
+                    if item is _DONE:
+                        break
+                    if isinstance(item, Exception):
+                        raise item
+                    yield item  # SSE string or ExecutionResult
+            finally:
+                if not task.done():
+                    task.cancel()
 
         execution_result: ExecutionResult | None = None
 

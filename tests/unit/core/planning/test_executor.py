@@ -15,6 +15,7 @@ All backend interactions are mocked — tests validate the orchestrator logic:
 import asyncio
 import json
 import os
+import time
 from datetime import datetime
 from typing import List
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -239,6 +240,121 @@ class TestStepEventsForwardedFromBackend:
         assert step_events[1]["data"]["tool"] == "read_file"
         assert step_events[1]["data"]["path"] == "src/api.py"
         assert step_events[2]["data"]["tool"] == "write_file"
+
+
+class TestStepEventsStreamedInRealTime:
+    """Steps are emitted via SSE as they happen, not in batch after backend completes."""
+
+    @pytest.mark.asyncio
+    async def test_steps_arrive_incrementally_not_in_batch(self):
+        """Each step SSE event should arrive before the next sleep completes.
+
+        With Queue-based streaming: step1 SSE arrives immediately when on_step()
+        is called, BEFORE the backend sleeps and calls on_step() for step2.
+        With the old batch approach, both would arrive simultaneously at the end.
+        """
+        plan = _make_plan()
+        step_delay = 0.1  # 100ms between steps
+
+        step1 = ExecutionStep(type="thinking", content="Step 1")
+        step2 = ExecutionStep(type="tool_use", tool="write_file", path="a.py", content="Step 2")
+        result = _make_execution_result(steps=[step1, step2])
+
+        class TimedMockBackend:
+            name = "mock"
+
+            async def execute(self, instruction, cwd, model, on_step):
+                await on_step(step1)
+                await asyncio.sleep(step_delay)
+                await on_step(step2)
+                return result
+
+        event_arrival_times = []
+
+        async def _collect_with_timing():
+            async for raw in stream_execute_plan("20260101-120000", backend="mock"):
+                try:
+                    event = _parse_sse(raw)
+                    if event["event"] == "step":
+                        event_arrival_times.append(time.monotonic())
+                except (json.JSONDecodeError, IndexError):
+                    pass
+
+        with (
+            _patch_load_plan(plan),
+            _patch_save_plan(),
+            _patch_backend(TimedMockBackend()),
+            _patch_compute_review_metrics(),
+            _patch_getcwd(),
+        ):
+            await _collect_with_timing()
+
+        assert len(event_arrival_times) == 2, (
+            f"Expected 2 step events, got {len(event_arrival_times)}"
+        )
+        # With Queue-based streaming, the gap between step1 and step2 arrival
+        # should reflect the sleep delay (≥ 50% of step_delay).
+        # With the old batch approach, both arrive nearly simultaneously (gap ≈ 0ms).
+        gap = event_arrival_times[1] - event_arrival_times[0]
+        assert gap >= step_delay * 0.5, (
+            f"Steps should arrive incrementally (gap={gap*1000:.1f}ms), "
+            f"not in batch (expected ≥{step_delay * 0.5 * 1000:.0f}ms). "
+            f"This indicates steps are being batched instead of streamed in real-time."
+        )
+
+    @pytest.mark.asyncio
+    async def test_step_sse_emitted_before_backend_returns(self):
+        """Step SSE events are available to consumers before execute() returns.
+
+        Verifies that the Queue bridge allows consumers to receive steps
+        WHILE the backend is still running (not after it completes).
+        """
+        plan = _make_plan()
+        backend_completed = asyncio.Event()
+        step1_received_before_backend_done = False
+
+        step1 = ExecutionStep(type="thinking", content="Early step")
+        result = _make_execution_result(steps=[step1])
+
+        class SlowMockBackend:
+            name = "mock"
+
+            async def execute(self, instruction, cwd, model, on_step):
+                await on_step(step1)
+                # Simulate a long-running backend
+                await asyncio.sleep(0.1)
+                backend_completed.set()
+                return result
+
+        received_steps = []
+
+        async def _collect_checking_timing():
+            nonlocal step1_received_before_backend_done
+            async for raw in stream_execute_plan("20260101-120000", backend="mock"):
+                try:
+                    event = _parse_sse(raw)
+                    if event["event"] == "step":
+                        received_steps.append(event)
+                        # Check if we received this step before backend finished
+                        if not backend_completed.is_set():
+                            step1_received_before_backend_done = True
+                except (json.JSONDecodeError, IndexError):
+                    pass
+
+        with (
+            _patch_load_plan(plan),
+            _patch_save_plan(),
+            _patch_backend(SlowMockBackend()),
+            _patch_compute_review_metrics(),
+            _patch_getcwd(),
+        ):
+            await _collect_checking_timing()
+
+        assert len(received_steps) == 1
+        assert step1_received_before_backend_done, (
+            "Step SSE event should be received by consumer BEFORE backend.execute() returns. "
+            "This indicates real-time streaming is not working."
+        )
 
 
 class TestPlanCompleteWithSuccess:
