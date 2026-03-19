@@ -184,17 +184,19 @@ class ClineBackend:
         # Proceso ya muerto: stderr.read() retorna inmediatamente
         stderr_data = await proc.stderr.read()
 
-        files = await self._git_diff_name_only(cwd)
-
-        # Tokens/cost are accumulated during streaming from api_req_finished events.
-        # NOTE: `cline history` is an interactive TUI (not JSON-capable) — calling it
-        # programmatically hangs indefinitely waiting for TTY input. Do not use it.
+        # Post-execution: try to get more accurate cost/token data from history.
         total_tokens = api_cost_accum["tokens"]
         total_cost = api_cost_accum["cost"]
 
+        history = await self._fetch_task_history(session_id, cwd)
+        if "totalTokensUsed" in history:
+            total_tokens = history["totalTokensUsed"]
+        if "totalCost" in history:
+            total_cost = history["totalCost"]
+
         return ExecutionResult(
             success=proc.returncode == 0,
-            files_changed=files,
+            files_changed=[],
             steps=steps,
             total_tokens=total_tokens,
             total_cost=total_cost,
@@ -283,23 +285,38 @@ class ClineBackend:
         except (json.JSONDecodeError, TypeError):
             pass
 
-    def abort(self) -> None:
-        """Kill the subprocess if running."""
-        if self._process and self._process.returncode is None:
-            self._process.kill()
+    async def _fetch_task_history(self, task_id: str, cwd: str) -> dict:
+        """
+        Llama a `cline history --json` para obtener datos precisos de
+        coste y tokens de la tarea.
 
-    async def _git_diff_name_only(self, cwd: str) -> List[str]:
-        """Obtiene archivos cambiados via git diff --name-only."""
+        Retorna la entrada del historial que coincide con task_id, o {} en
+        caso de error o si no se encuentra la tarea.
+        """
+        if not task_id:
+            return {}
         try:
             proc = await asyncio.create_subprocess_exec(
-                "git", "diff", "--name-only", "HEAD",
+                "cline", "history", "--json",
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 cwd=cwd,
             )
             stdout, _ = await proc.communicate()
-            if proc.returncode == 0:
-                return [f for f in stdout.decode().strip().split("\n") if f]
-            return []
-        except (FileNotFoundError, OSError):
-            return []
+            if proc.returncode != 0:
+                return {}
+            history = json.loads(stdout.decode("utf-8", errors="replace"))
+            if not isinstance(history, list):
+                return {}
+            for entry in history:
+                if str(entry.get("id", "")) == str(task_id):
+                    return entry
+            return {}
+        except (FileNotFoundError, OSError, json.JSONDecodeError, ValueError, TypeError):
+            return {}
+
+    def abort(self) -> None:
+        """Kill the subprocess if running."""
+        if self._process and self._process.returncode is None:
+            self._process.kill()
+

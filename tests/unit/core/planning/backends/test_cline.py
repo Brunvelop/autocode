@@ -389,8 +389,7 @@ class TestClineBackend:
     @pytest.mark.asyncio
     async def test_builds_correct_command(self, backend, on_step):
         """Verifies that cline task --json --yolo --act is called."""
-        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec, \
-             patch.object(backend, "_git_diff_name_only", return_value=[]):
+        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec:
             mock_exec.return_value = _make_process(returncode=0)
             await backend.execute("do stuff", "/tmp/cwd", "", on_step)
 
@@ -405,8 +404,7 @@ class TestClineBackend:
     @pytest.mark.asyncio
     async def test_passes_model_flag(self, backend, on_step):
         """Verifies -m model is passed when model is set."""
-        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec, \
-             patch.object(backend, "_git_diff_name_only", return_value=[]):
+        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec:
             mock_exec.return_value = _make_process(returncode=0)
             await backend.execute("do stuff", "/tmp/cwd", "anthropic/claude-3.5-sonnet", on_step)
 
@@ -418,8 +416,7 @@ class TestClineBackend:
     @pytest.mark.asyncio
     async def test_passes_cwd(self, backend, on_step):
         """Verifies --cwd is passed."""
-        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec, \
-             patch.object(backend, "_git_diff_name_only", return_value=[]):
+        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec:
             mock_exec.return_value = _make_process(returncode=0)
             await backend.execute("do stuff", "/my/project", "", on_step)
 
@@ -446,8 +443,7 @@ class TestClineBackend:
             _cl_say_reasoning("Both tasks are complete.", ts=1773780187535, idx=4),
             _cl_say_completion("I read README.md and created hello.txt."),
         ]
-        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec, \
-             patch.object(backend, "_git_diff_name_only", return_value=[]):
+        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec:
             mock_exec.return_value = _make_process(stdout_lines=events, returncode=0)
             result = await backend.execute("do stuff", "/tmp", "", on_step)
 
@@ -477,8 +473,7 @@ class TestClineBackend:
             _cl_say_task_progress("- [x] Done"),
             _cl_say_completion("All done."),
         ]
-        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec, \
-             patch.object(backend, "_git_diff_name_only", return_value=[]):
+        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec:
             mock_exec.return_value = _make_process(stdout_lines=events, returncode=0)
             await backend.execute("do stuff", "/tmp", "", on_step)
 
@@ -492,22 +487,20 @@ class TestClineBackend:
             _cl_task_started(task_id="12345"),
             _cl_say_reasoning("Hello"),
         ]
-        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec, \
-             patch.object(backend, "_git_diff_name_only", return_value=[]):
+        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec:
             mock_exec.return_value = _make_process(stdout_lines=events, returncode=0)
             result = await backend.execute("do stuff", "/tmp", "", on_step)
 
             assert result.session_id == "12345"
 
     @pytest.mark.asyncio
-    async def test_detects_files_changed_via_git_diff(self, backend, on_step):
-        """Verifies post-execution git diff --name-only is used."""
-        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec, \
-             patch.object(backend, "_git_diff_name_only", return_value=["src/api.py", "src/models.py"]):
+    async def test_files_changed_always_empty(self, backend, on_step):
+        """Verifies backend does NOT detect files — files_changed is always []."""
+        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec:
             mock_exec.return_value = _make_process(returncode=0)
             result = await backend.execute("do stuff", "/tmp", "", on_step)
 
-            assert result.files_changed == ["src/api.py", "src/models.py"]
+            assert result.files_changed == []
 
     @pytest.mark.asyncio
     async def test_returns_execution_result(self, backend, on_step):
@@ -517,8 +510,7 @@ class TestClineBackend:
             _cl_say_reasoning("Done"),
             _cl_say_completion("Task complete."),
         ]
-        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec, \
-             patch.object(backend, "_git_diff_name_only", return_value=["a.py"]):
+        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec:
             mock_exec.return_value = _make_process(stdout_lines=events, returncode=0)
             result = await backend.execute("do stuff", "/tmp", "", on_step)
 
@@ -526,14 +518,13 @@ class TestClineBackend:
             assert result.success is True
             assert result.error == ""
             assert len(result.steps) == 2  # reasoning + completion
-            assert result.files_changed == ["a.py"]
+            assert result.files_changed == []
             assert result.session_id == TASK_ID
 
     @pytest.mark.asyncio
     async def test_handles_subprocess_error(self, backend, on_step):
         """Verifies ExecutionResult(success=False) on subprocess error."""
-        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec, \
-             patch.object(backend, "_git_diff_name_only", return_value=[]):
+        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec:
             mock_exec.return_value = _make_process(
                 stderr=b"cline: task execution failed", returncode=1
             )
@@ -560,8 +551,7 @@ class TestClineBackend:
             _cl_say_reasoning("valid event"),
             "another bad line",
         ]
-        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec, \
-             patch.object(backend, "_git_diff_name_only", return_value=[]):
+        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec:
             proc = AsyncMock()
             proc.returncode = 0
             encoded = []
@@ -591,8 +581,7 @@ class TestClineBackend:
     async def test_passes_timeout_flag(self, backend, on_step):
         """Verifies --timeout is passed when timeout is set."""
         backend_with_timeout = ClineBackend(timeout=300)
-        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec, \
-             patch.object(backend_with_timeout, "_git_diff_name_only", return_value=[]):
+        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec:
             mock_exec.return_value = _make_process(returncode=0)
             await backend_with_timeout.execute("do stuff", "/tmp/cwd", "", on_step)
 
@@ -604,8 +593,7 @@ class TestClineBackend:
     @pytest.mark.asyncio
     async def test_no_timeout_flag_by_default(self, backend, on_step):
         """Verifies --timeout is NOT passed when timeout is 0 (default)."""
-        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec, \
-             patch.object(backend, "_git_diff_name_only", return_value=[]):
+        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec:
             mock_exec.return_value = _make_process(returncode=0)
             await backend.execute("do stuff", "/tmp/cwd", "", on_step)
 
@@ -615,8 +603,7 @@ class TestClineBackend:
     @pytest.mark.asyncio
     async def test_no_model_flag_when_empty(self, backend, on_step):
         """Verifies -m is NOT passed when model is empty string."""
-        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec, \
-             patch.object(backend, "_git_diff_name_only", return_value=[]):
+        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec:
             mock_exec.return_value = _make_process(returncode=0)
             await backend.execute("do stuff", "/tmp/cwd", "", on_step)
 
@@ -634,8 +621,7 @@ class TestClineBackend:
             _cl_say_tool(tool="listFiles", path="src/"),
             _cl_say_tool(tool="searchFiles", path="*.py"),
         ]
-        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec, \
-             patch.object(backend, "_git_diff_name_only", return_value=[]):
+        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec:
             mock_exec.return_value = _make_process(stdout_lines=events, returncode=0)
             result = await backend.execute("do stuff", "/tmp", "", on_step)
 
@@ -648,8 +634,7 @@ class TestClineBackend:
     @pytest.mark.asyncio
     async def test_empty_session_produces_empty_result(self, backend, on_step):
         """Verifies an empty stdout produces a valid empty result."""
-        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec, \
-             patch.object(backend, "_git_diff_name_only", return_value=[]):
+        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec:
             mock_exec.return_value = _make_process(stdout_lines=[], returncode=0)
             result = await backend.execute("do stuff", "/tmp", "", on_step)
 
@@ -664,8 +649,7 @@ class TestClineBackend:
             _cl_task_started(),
             _cl_say_error("API rate limit exceeded"),
         ]
-        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec, \
-             patch.object(backend, "_git_diff_name_only", return_value=[]):
+        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec:
             mock_exec.return_value = _make_process(stdout_lines=events, returncode=0)
             result = await backend.execute("do stuff", "/tmp", "", on_step)
 
@@ -800,7 +784,6 @@ class TestAccumulateApiCost:
             _cl_say_completion("Done."),
         ]
         with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec, \
-             patch.object(backend, "_git_diff_name_only", return_value=[]), \
              patch.object(backend, "_fetch_task_history", return_value={}):
             mock_exec.return_value = _make_process(stdout_lines=events, returncode=0)
             result = await backend.execute("do stuff", "/tmp", "", on_step)
@@ -823,7 +806,6 @@ class TestAccumulateApiCost:
             _cl_say_completion("Done."),
         ]
         with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec, \
-             patch.object(backend, "_git_diff_name_only", return_value=[]), \
              patch.object(backend, "_fetch_task_history", return_value={}):
             mock_exec.return_value = _make_process(stdout_lines=events, returncode=0)
             await backend.execute("do stuff", "/tmp", "", on_step)
@@ -980,7 +962,6 @@ class TestFetchTaskHistory:
         history_data = {"id": "12345", "totalTokensUsed": 8000, "totalCost": 0.08}
 
         with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec, \
-             patch.object(backend, "_git_diff_name_only", return_value=[]), \
              patch.object(backend, "_fetch_task_history", return_value=history_data):
             mock_exec.return_value = _make_process(stdout_lines=events, returncode=0)
             result = await backend.execute("do stuff", "/tmp", "", on_step)
@@ -1002,7 +983,6 @@ class TestFetchTaskHistory:
             _cl_say_reasoning("Thinking"),
         ]
         with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec, \
-             patch.object(backend, "_git_diff_name_only", return_value=[]), \
              patch.object(backend, "_fetch_task_history", return_value={}):
             mock_exec.return_value = _make_process(stdout_lines=events, returncode=0)
             result = await backend.execute("do stuff", "/tmp", "", on_step)
@@ -1016,7 +996,6 @@ class TestFetchTaskHistory:
         events = [_cl_task_started(task_id="42000")]
 
         with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec, \
-             patch.object(backend, "_git_diff_name_only", return_value=[]), \
              patch.object(backend, "_fetch_task_history", return_value={}) as mock_history:
             mock_exec.return_value = _make_process(stdout_lines=events, returncode=0)
             await backend.execute("do stuff", "/my/project", "", on_step)
@@ -1042,7 +1021,6 @@ class TestCompletionDetection:
             _cl_say_reasoning("This should NOT appear"),  # after completion → skipped
         ]
         with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec, \
-             patch.object(backend, "_git_diff_name_only", return_value=[]), \
              patch.object(backend, "_fetch_task_history", return_value={}):
             mock_exec.return_value = _make_process(stdout_lines=events, returncode=0)
             result = await backend.execute("do stuff", "/tmp", "", on_step)
@@ -1062,7 +1040,6 @@ class TestCompletionDetection:
             _cl_say_reasoning("This should NOT appear"),  # after error → skipped
         ]
         with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec, \
-             patch.object(backend, "_git_diff_name_only", return_value=[]), \
              patch.object(backend, "_fetch_task_history", return_value={}):
             mock_exec.return_value = _make_process(stdout_lines=events, returncode=0)
             result = await backend.execute("do stuff", "/tmp", "", on_step)
@@ -1081,7 +1058,6 @@ class TestCompletionDetection:
         mock_proc.kill = MagicMock()
 
         with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec, \
-             patch.object(backend, "_git_diff_name_only", return_value=[]), \
              patch.object(backend, "_fetch_task_history", return_value={}), \
              patch("asyncio.wait_for", side_effect=asyncio.TimeoutError):
             mock_exec.return_value = mock_proc
@@ -1094,7 +1070,6 @@ class TestCompletionDetection:
     async def test_stores_process_reference(self, backend, on_step):
         """execute() stores the subprocess handle in self._process."""
         with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec, \
-             patch.object(backend, "_git_diff_name_only", return_value=[]), \
              patch.object(backend, "_fetch_task_history", return_value={}):
             mock_proc = _make_process(returncode=0)
             mock_exec.return_value = mock_proc
@@ -1155,7 +1130,6 @@ class TestAbort:
         mock_proc.returncode = None  # Simulate still running at abort time
 
         with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec, \
-             patch.object(backend, "_git_diff_name_only", return_value=[]), \
              patch.object(backend, "_fetch_task_history", return_value={}):
             mock_exec.return_value = mock_proc
             # Start execute but we only care that _process is set

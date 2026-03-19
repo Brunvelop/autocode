@@ -335,8 +335,7 @@ class TestOpenCodeBackend:
     @pytest.mark.asyncio
     async def test_builds_correct_command(self, backend, on_step):
         """Verifies that opencode run --format json is called."""
-        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec, \
-             patch.object(backend, "_git_diff_name_only", return_value=[]):
+        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec:
             mock_exec.return_value = _make_process(returncode=0)
             await backend.execute("do stuff", "/tmp/cwd", "", on_step)
 
@@ -350,8 +349,7 @@ class TestOpenCodeBackend:
     @pytest.mark.asyncio
     async def test_passes_model_flag(self, backend, on_step):
         """Verifies -m model is passed when model is set."""
-        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec, \
-             patch.object(backend, "_git_diff_name_only", return_value=[]):
+        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec:
             mock_exec.return_value = _make_process(returncode=0)
             await backend.execute("do stuff", "/tmp/cwd", "anthropic/claude-3.5-sonnet", on_step)
 
@@ -363,8 +361,7 @@ class TestOpenCodeBackend:
     @pytest.mark.asyncio
     async def test_passes_cwd(self, backend, on_step):
         """Verifies --dir cwd is passed."""
-        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec, \
-             patch.object(backend, "_git_diff_name_only", return_value=[]):
+        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec:
             mock_exec.return_value = _make_process(returncode=0)
             await backend.execute("do stuff", "/my/project", "", on_step)
 
@@ -399,8 +396,7 @@ class TestOpenCodeBackend:
             _oc_text("Done. I've read README.md and created hello.txt.", ts=1773780160472),
             _oc_step_finish(cost=0.008, total_tokens=12193, reason="stop"),
         ]
-        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec, \
-             patch.object(backend, "_git_diff_name_only", return_value=[]):
+        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec:
             mock_exec.return_value = _make_process(stdout_lines=events, returncode=0)
             result = await backend.execute("do stuff", "/tmp", "", on_step)
 
@@ -426,8 +422,7 @@ class TestOpenCodeBackend:
             _oc_tool_use(tool="read", file_path="/tmp/x.py", output="content", title="x.py"),
             _oc_step_finish(cost=0.01, total_tokens=100),
         ]
-        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec, \
-             patch.object(backend, "_git_diff_name_only", return_value=[]):
+        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec:
             mock_exec.return_value = _make_process(stdout_lines=events, returncode=0)
             await backend.execute("do stuff", "/tmp", "", on_step)
 
@@ -445,8 +440,7 @@ class TestOpenCodeBackend:
             _oc_text("World"),
             _oc_step_finish(cost=0.02, total_tokens=2000),
         ]
-        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec, \
-             patch.object(backend, "_git_diff_name_only", return_value=[]):
+        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec:
             mock_exec.return_value = _make_process(stdout_lines=events, returncode=0)
             result = await backend.execute("do stuff", "/tmp", "", on_step)
 
@@ -461,22 +455,20 @@ class TestOpenCodeBackend:
             _oc_text("Hello"),
             _oc_step_finish(),
         ]
-        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec, \
-             patch.object(backend, "_git_diff_name_only", return_value=[]):
+        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec:
             mock_exec.return_value = _make_process(stdout_lines=events, returncode=0)
             result = await backend.execute("do stuff", "/tmp", "", on_step)
 
             assert result.session_id == SESSION_ID
 
     @pytest.mark.asyncio
-    async def test_detects_files_changed_via_git_diff(self, backend, on_step):
-        """Verifies post-execution git diff --name-only is used."""
-        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec, \
-             patch.object(backend, "_git_diff_name_only", return_value=["src/api.py", "src/models.py"]):
+    async def test_files_changed_always_empty(self, backend, on_step):
+        """Verifies backend does NOT detect files — files_changed is always []."""
+        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec:
             mock_exec.return_value = _make_process(returncode=0)
             result = await backend.execute("do stuff", "/tmp", "", on_step)
 
-            assert result.files_changed == ["src/api.py", "src/models.py"]
+            assert result.files_changed == []
 
     @pytest.mark.asyncio
     async def test_returns_execution_result(self, backend, on_step):
@@ -486,8 +478,7 @@ class TestOpenCodeBackend:
             _oc_text("Done"),
             _oc_step_finish(cost=0.05, total_tokens=500),
         ]
-        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec, \
-             patch.object(backend, "_git_diff_name_only", return_value=["a.py"]):
+        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec:
             mock_exec.return_value = _make_process(stdout_lines=events, returncode=0)
             result = await backend.execute("do stuff", "/tmp", "", on_step)
 
@@ -495,7 +486,7 @@ class TestOpenCodeBackend:
             assert result.success is True
             assert result.error == ""
             assert len(result.steps) == 1
-            assert result.files_changed == ["a.py"]
+            assert result.files_changed == []
             assert result.total_tokens == 500
             assert result.total_cost == pytest.approx(0.05)
             assert result.session_id == SESSION_ID
@@ -503,8 +494,7 @@ class TestOpenCodeBackend:
     @pytest.mark.asyncio
     async def test_handles_subprocess_error(self, backend, on_step):
         """Verifies ExecutionResult(success=False) on subprocess error."""
-        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec, \
-             patch.object(backend, "_git_diff_name_only", return_value=[]):
+        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec:
             mock_exec.return_value = _make_process(
                 stderr=b"opencode: command failed", returncode=1
             )
@@ -531,8 +521,7 @@ class TestOpenCodeBackend:
             _oc_text("valid event"),
             "another bad line",
         ]
-        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec, \
-             patch.object(backend, "_git_diff_name_only", return_value=[]):
+        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec:
             proc = AsyncMock()
             proc.returncode = 0
             encoded = []
@@ -573,8 +562,7 @@ class TestOpenCodeBackend:
         events[3]["part"]["state"]["input"] = {"pattern": "*.py"}
         events[4]["part"]["state"]["input"] = {"pattern": "TODO"}
 
-        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec, \
-             patch.object(backend, "_git_diff_name_only", return_value=[]):
+        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec:
             mock_exec.return_value = _make_process(stdout_lines=events, returncode=0)
             result = await backend.execute("do stuff", "/tmp", "", on_step)
 
@@ -585,7 +573,6 @@ class TestOpenCodeBackend:
     async def test_empty_session_produces_empty_result(self, backend, on_step):
         """Verifies an empty stdout produces a valid empty result."""
         with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec, \
-             patch.object(backend, "_git_diff_name_only", return_value=[]), \
              patch.object(backend, "_fetch_session_export", return_value={}):
             mock_exec.return_value = _make_process(stdout_lines=[], returncode=0)
             result = await backend.execute("do stuff", "/tmp", "", on_step)
@@ -701,7 +688,6 @@ class TestFetchSessionExport:
         export_data = {"cost": 0.05, "tokens": {"total": 500}}  # export: more accurate
 
         with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec, \
-             patch.object(backend, "_git_diff_name_only", return_value=[]), \
              patch.object(backend, "_fetch_session_export", return_value=export_data):
             mock_exec.return_value = _make_process(stdout_lines=events, returncode=0)
             result = await backend.execute("do stuff", "/tmp", "", on_step)
@@ -719,7 +705,6 @@ class TestFetchSessionExport:
         ]
 
         with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec, \
-             patch.object(backend, "_git_diff_name_only", return_value=[]), \
              patch.object(backend, "_fetch_session_export", return_value={}):
             mock_exec.return_value = _make_process(stdout_lines=events, returncode=0)
             result = await backend.execute("do stuff", "/tmp", "", on_step)
@@ -738,7 +723,6 @@ class TestFetchSessionExport:
         export_data = {"cost": 0.05}  # has cost but no tokens key
 
         with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec, \
-             patch.object(backend, "_git_diff_name_only", return_value=[]), \
              patch.object(backend, "_fetch_session_export", return_value=export_data):
             mock_exec.return_value = _make_process(stdout_lines=events, returncode=0)
             result = await backend.execute("do stuff", "/tmp", "", on_step)
@@ -756,7 +740,6 @@ class TestFetchSessionExport:
         ]
 
         with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec, \
-             patch.object(backend, "_git_diff_name_only", return_value=[]), \
              patch.object(backend, "_fetch_session_export", return_value={}) as mock_export:
             mock_exec.return_value = _make_process(stdout_lines=events, returncode=0)
             await backend.execute("do stuff", "/tmp/proj", "", on_step)
@@ -776,7 +759,6 @@ class TestProcessManagement:
     async def test_stores_process_reference(self, backend, on_step):
         """execute() stores the subprocess handle in self._process."""
         with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec, \
-             patch.object(backend, "_git_diff_name_only", return_value=[]), \
              patch.object(backend, "_fetch_session_export", return_value={}):
             mock_proc = _make_process(returncode=0)
             mock_exec.return_value = mock_proc
@@ -793,7 +775,6 @@ class TestProcessManagement:
         mock_proc.kill = MagicMock()
 
         with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec, \
-             patch.object(backend, "_git_diff_name_only", return_value=[]), \
              patch.object(backend, "_fetch_session_export", return_value={}), \
              patch("asyncio.wait_for", side_effect=asyncio.TimeoutError):
             mock_exec.return_value = mock_proc
@@ -855,7 +836,6 @@ class TestAbort:
         mock_proc.returncode = None  # Simulate still running at abort time
 
         with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec, \
-             patch.object(backend, "_git_diff_name_only", return_value=[]), \
              patch.object(backend, "_fetch_session_export", return_value={}):
             mock_exec.return_value = mock_proc
             # Start execute but we only care that _process is set

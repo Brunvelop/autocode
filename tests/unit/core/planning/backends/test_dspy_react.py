@@ -352,7 +352,7 @@ class TestDspyReactBackendExecute:
 
         assert isinstance(result, ExecutionResult)
         assert result.success is True
-        assert result.files_changed == ["src/api.py"]
+        assert result.files_changed == []
         assert result.total_tokens == 700
         assert result.total_cost == 0.003
 

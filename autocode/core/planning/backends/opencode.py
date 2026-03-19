@@ -161,14 +161,16 @@ class OpenCodeBackend:
         # Proceso ya muerto: stderr.read() retorna inmediatamente
         stderr_data = await proc.stderr.read()
 
-        files = await self._git_diff_name_only(cwd)
+        # Post-execution: try to get more accurate cost/token data from export.
+        export = await self._fetch_session_export(session_id, cwd)
+        if "cost" in export:
+            total_cost = export["cost"]
+        if "tokens" in export:
+            total_tokens = export["tokens"].get("total", total_tokens)
 
-        # Tokens/cost are accumulated during streaming from step_finish events.
-        # Each step_finish already reports its cost and token count, so the
-        # running totals are complete without any post-execution command.
         return ExecutionResult(
             success=proc.returncode == 0,
-            files_changed=files,
+            files_changed=[],
             steps=steps,
             total_tokens=total_tokens,
             total_cost=total_cost,
@@ -217,23 +219,31 @@ class OpenCodeBackend:
         # (step_finish se procesa en execute() para acumular metadata)
         return None
 
-    def abort(self) -> None:
-        """Kill the subprocess if running."""
-        if self._process and self._process.returncode is None:
-            self._process.kill()
+    async def _fetch_session_export(self, session_id: str, cwd: str) -> dict:
+        """
+        Llama a `opencode export {session_id}` para obtener datos precisos de
+        coste y tokens de la sesión.
 
-    async def _git_diff_name_only(self, cwd: str) -> List[str]:
-        """Obtiene archivos cambiados via git diff --name-only."""
+        Retorna el dict parseado del JSON, o {} en caso de error.
+        """
+        if not session_id:
+            return {}
         try:
             proc = await asyncio.create_subprocess_exec(
-                "git", "diff", "--name-only", "HEAD",
+                "opencode", "export", session_id,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 cwd=cwd,
             )
             stdout, _ = await proc.communicate()
-            if proc.returncode == 0:
-                return [f for f in stdout.decode().strip().split("\n") if f]
-            return []
-        except (FileNotFoundError, OSError):
-            return []
+            if proc.returncode != 0:
+                return {}
+            return json.loads(stdout.decode("utf-8", errors="replace"))
+        except (FileNotFoundError, OSError, json.JSONDecodeError, ValueError, TypeError):
+            return {}
+
+    def abort(self) -> None:
+        """Kill the subprocess if running."""
+        if self._process and self._process.returncode is None:
+            self._process.kill()
+

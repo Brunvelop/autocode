@@ -117,11 +117,8 @@ class DspyReactBackend:
             # Extract cost from LM history
             cost_info = extract_cost_from_history(lm)
 
-            # Extract files changed from trajectory
-            trajectory_raw = (
-                getattr(prediction, "trajectory", {}) if prediction else {}
-            )
-            files_changed = extract_files_changed(trajectory_raw)
+            # files_changed is now computed by ExecutionSandbox in the executor
+            files_changed = []
 
             # Clear LM history to avoid accumulating between calls
             if hasattr(lm, "history"):
