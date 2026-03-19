@@ -82,6 +82,22 @@
 
 ---
 
+### 🐛 P8: Tokens y coste no se calculan correctamente con Cline (Kleene)
+
+**Síntoma**: Al ejecutar un plan con el backend Cline (Kleene), los tokens consumidos y el coste asociado se muestran incorrectos o como cero. Con OpenCode el cálculo sí parece funcionar correctamente.
+
+**Causa (hipótesis)**: El mecanismo de acumulación de tokens en el backend de Cline depende de parsear eventos `api_req_finished` del stream NDJSON. Es posible que:
+- El formato del evento haya cambiado entre versiones de Kleene y los campos de tokens/coste no se extraigan correctamente.
+- Los campos del evento (`tokensIn`, `tokensOut`, `cost` u otros) tengan nombres distintos a los esperados.
+- Algunos eventos `api_req_finished` lleguen malformados o incompletos y se descarten silenciosamente.
+- El acumulador se inicialice o resetee en un momento incorrecto del ciclo de vida del plan.
+
+OpenCode usa un mecanismo diferente (eventos `step_finish`) que sí funciona, lo que sugiere que el problema es específico del parsing de eventos de Cline.
+
+**Alcance**: Cline (Kleene).
+
+---
+
 ### Resumen
 
 | # | Problema | Backends afectados | Categoría |
@@ -93,6 +109,7 @@
 | P5 | `revert_plan` falla sin files | Todos (consecuencia) | Workflow robustness |
 | P6 | Duplicación de git helpers | Todos | Arquitectura |
 | P7 | Fragilidad subprocess general | OpenCode, Cline | Arquitectura / ACP |
+| P8 | Tokens/coste incorrectos | Cline (Kleene) | Token accounting |
 
 **Solución unificada para P3+P4+P5+P6**: Mover `files_changed` detection a `executor.py`, post-safety-net, con `git diff --name-only {pre_exec_head}`. Si el agent committeó, primero `git reset --mixed pre_exec_head` (ya existe), luego diff. Una sola implementación para todos los backends.
 
