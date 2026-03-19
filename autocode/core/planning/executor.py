@@ -107,6 +107,17 @@ async def _with_heartbeat(
             await queue.put(exc)
         finally:
             await queue.put(_SENTINEL)
+            # Explicitly close source when producer exits (normal completion OR
+            # cancellation). This ensures deterministic resource release for any
+            # async iterator/generator that holds resources (DB cursors, file
+            # handles, connections). Python's async for does NOT call aclose() on
+            # plain async iterators — and CPython's reference counting only helps
+            # for true async generators on a specific Python implementation.
+            if hasattr(async_gen, "aclose"):
+                try:
+                    await async_gen.aclose()
+                except Exception:
+                    pass
 
     async def _heartbeat():
         while True:
@@ -146,6 +157,14 @@ async def _with_heartbeat(
             try:
                 await producer_task
             except asyncio.CancelledError:
+                pass
+        # Explicitly close source to release resources (DB cursors, file handles, etc.).
+        # async for does NOT call aclose() on plain async iterators on early exit,
+        # and CPython's reference counting only helps for true async generators.
+        if hasattr(async_gen, "aclose"):
+            try:
+                await async_gen.aclose()
+            except Exception:
                 pass
 
 
