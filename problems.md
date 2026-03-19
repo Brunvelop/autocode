@@ -13,7 +13,7 @@
 
 ---
 
-### 🐛 P2: Cancelar ejecución no revierte los cambios
+### ✅ P2: Cancelar ejecución no revierte los cambios — RESUELTO
 
 **Síntoma**: Al pulsar "Cancelar", aparece el error pero los archivos siguen modificados en disco.
 
@@ -25,9 +25,11 @@
 
 **Alcance**: Todos los backends.
 
+**Fix aplicado**: `ExecutionSandbox.revert()` hace `git reset --hard pre_exec_head`. El executor llama `await sandbox.revert()` en el handler de cancelación. Los helpers ad-hoc `_revert_changes()`, `_git_rev_parse_head()`, `_git_reset_mixed()` fueron eliminados de `executor.py`.
+
 ---
 
-### 🐛 P3: `files_changed` vacío en review humana (DSPy)
+### ✅ P3: `files_changed` vacío en review humana (DSPy) — RESUELTO
 
 **Síntoma**: DSPy ejecuta correctamente (steps muestran `replace_in_file` ejecutado 3 veces), pero `files_changed: []`. La UI de review no muestra archivos, no permite aprobar ni revertir.
 
@@ -35,9 +37,11 @@
 
 **Alcance**: DSPy.
 
+**Fix aplicado**: `files_changed` se computa en `executor.py` post-ejecución vía `ExecutionSandbox.collect_changes()` (git diff real). Los backends retornan `files_changed=[]` y el executor sobreescribe ese valor.
+
 ---
 
-### 🐛 P4: `files_changed` vacío en review humana (OpenCode/Cline)
+### ✅ P4: `files_changed` vacío en review humana (OpenCode/Cline) — RESUELTO
 
 **Síntoma**: OpenCode y Cline ejecutan correctamente, pero `files_changed: []` en review humana. No se puede aprobar ni revertir.
 
@@ -45,9 +49,11 @@
 
 **Alcance**: OpenCode, Cline.
 
+**Fix aplicado**: `_git_diff_name_only()` eliminado de Cline y OpenCode. Los backends retornan `files_changed=[]`. `ExecutionSandbox.collect_changes()` en el executor aplica `reset --mixed` si HEAD avanzó y luego diff contra `pre_exec_head`, garantizando la detección correcta en todos los casos.
+
 ---
 
-### 🐛 P5: `revert_plan` falla cuando `files_changed` vacío
+### ✅ P5: `revert_plan` falla cuando `files_changed` vacío — RESUELTO
 
 **Síntoma**: Al pulsar "Revertir cambios" en review, error: "Plan has no files to revert (files_changed is empty)".
 
@@ -55,15 +61,19 @@
 
 **Alcance**: Todos los backends (consecuencia de P3/P4).
 
+**Fix aplicado**: `workflow.revert_plan()` ahora tiene fallback: si `files_changed` está vacío pero existe `parent_commit`, recomputa la lista vía `git diff --name-only parent_commit`. Error solo si ambos están vacíos.
+
 ---
 
-### 🐛 P6: Cada backend reimplementa detección de archivos y helpers git
+### ✅ P6: Cada backend reimplementa detección de archivos y helpers git — RESUELTO
 
 **Síntoma**: Código duplicado, cada backend tiene su propia `_git_diff_name_only` async. `executor.py` tiene `_revert_changes`, `_git_rev_parse_head`, `_git_reset_mixed` ad-hoc. Mientras `vcs/git.py` tiene helpers centralizados que nadie usa aquí.
 
 **Causa**: Los backends se desarrollaron independientemente. No hay una capa unificada post-ejecución que maneje git state.
 
 **Consecuencia**: La lógica de `files_changed` se computa diferente en cada backend (DSPy: trajectory parsing, OpenCode/Cline: `git diff HEAD`), todos con bugs diferentes. Debería ser UNA sola implementación en `executor.py`, post-safety-net, usando `git diff --name-only {pre_exec_head}`.
+
+**Fix aplicado**: `autocode/core/vcs/execution.py` centraliza todas las primitivas async (`async_rev_parse_head`, `async_diff_name_only`, `async_reset_mixed`, `async_reset_hard`) y la clase `ExecutionSandbox`. Los backends ya no contienen lógica git propia. Exportado desde `autocode/core/vcs/__init__.py`.
 
 ---
 
@@ -103,11 +113,11 @@ OpenCode usa un mecanismo diferente (eventos `step_finish`) que sí funciona, lo
 | # | Problema | Backends afectados | Categoría |
 |---|---------|-------------------|-----------|
 | ~~P1~~ | ~~Stream SSE nunca cierra (post-execution hang)~~ | ~~Cline, OpenCode~~ | ✅ Resuelto |
-| P2 | Cancel no revierte cambios | Todos | Git state management |
-| P3 | `files_changed = []` (trajectory parsing) | DSPy | files_changed detection |
-| P4 | `files_changed = []` (git diff timing) | OpenCode, Cline | files_changed detection |
-| P5 | `revert_plan` falla sin files | Todos (consecuencia) | Workflow robustness |
-| P6 | Duplicación de git helpers | Todos | Arquitectura |
+| ~~P2~~ | ~~Cancel no revierte cambios~~ | ~~Todos~~ | ✅ Resuelto |
+| ~~P3~~ | ~~`files_changed = []` (trajectory parsing)~~ | ~~DSPy~~ | ✅ Resuelto |
+| ~~P4~~ | ~~`files_changed = []` (git diff timing)~~ | ~~OpenCode, Cline~~ | ✅ Resuelto |
+| ~~P5~~ | ~~`revert_plan` falla sin files~~ | ~~Todos (consecuencia)~~ | ✅ Resuelto |
+| ~~P6~~ | ~~Duplicación de git helpers~~ | ~~Todos~~ | ✅ Resuelto |
 | P7 | Fragilidad subprocess general | OpenCode, Cline | Arquitectura / ACP |
 | P8 | Tokens/coste incorrectos | Cline (Kleene) | Token accounting |
 

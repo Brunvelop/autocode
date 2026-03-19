@@ -10,6 +10,8 @@ Este módulo proporciona:
 - Función get_git_log() para obtener el historial de commits como grafo (API only)
 - Función get_git_log_summary() para resumen compacto del log (MCP/LLM)
 - Función get_commit_detail() para obtener detalle de un commit
+- ExecutionSandbox: Lifecycle manager para snapshot/collect/revert de cambios del agente
+- async_rev_parse_head, async_diff_name_only, async_reset_mixed, async_reset_hard: primitivas async de git
 """
 
 from autocode.core.vcs.operations import GitOperations
@@ -37,6 +39,13 @@ from autocode.core.vcs.status import (
 )
 from autocode.core.vcs.log import get_git_log, get_git_log_summary, get_commit_detail
 from autocode.core.vcs.git import git, git_checked, git_show, git_add_and_commit, get_tracked_files, get_tracked_files_at_commit
+from autocode.core.vcs.execution import (
+    ExecutionSandbox,
+    async_rev_parse_head,
+    async_diff_name_only,
+    async_reset_mixed,
+    async_reset_hard,
+)
 
 __all__ = [
     # Operations
@@ -72,4 +81,10 @@ __all__ = [
     "git_add_and_commit",
     "get_tracked_files",
     "get_tracked_files_at_commit",
+    # Execution sandbox & async git primitives
+    "ExecutionSandbox",
+    "async_rev_parse_head",
+    "async_diff_name_only",
+    "async_reset_mixed",
+    "async_reset_hard",
 ]
