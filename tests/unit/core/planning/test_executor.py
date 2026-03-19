@@ -1491,6 +1491,62 @@ class TestFilesChangedComputedByExecutor:
 
 
 # ============================================================================
+# TEST: REVIEW FLOW YIELDS ONLY STRINGS — NO MIXED TYPES (Commit 2)
+# ============================================================================
+
+
+class TestReviewFlowNoMixedTypes:
+    """_run_review_flow should only yield SSE strings, not dicts."""
+
+    @pytest.mark.asyncio
+    async def test_review_flow_only_yields_strings(self):
+        """Every item yielded by _run_review_flow must be a string (SSE event)."""
+        from autocode.core.planning.executor import _run_review_flow
+
+        plan = _make_plan()
+        plan.execution = PlanExecutionState(started_at="2026-01-01T12:00:00")
+
+        with (
+            _patch_compute_review_metrics(),
+            _patch_auto_review(verdict="approved"),
+            _patch_git_add_and_commit("abc"),
+            _patch_save_plan(),
+        ):
+            items = []
+            async for item in _run_review_flow(plan, "auto", ["a.py"]):
+                items.append(item)
+
+        for item in items:
+            assert isinstance(item, str), (
+                f"_run_review_flow should only yield strings (SSE events), "
+                f"got {type(item)}: {item!r}"
+            )
+
+    @pytest.mark.asyncio
+    async def test_commit_hash_read_from_plan_after_review(self):
+        """After review flow, commit_hash is available via plan.execution.commit_hash."""
+        plan = _make_plan()
+        backend = MockBackend()
+
+        with (
+            _patch_load_plan(plan),
+            _patch_save_plan(),
+            _patch_backend(backend),
+            _patch_auto_review(verdict="approved"),
+            _patch_git_add_and_commit("commit-from-plan"),
+            _patch_getcwd(),
+            _patch_sandbox(["src/api.py"]),
+        ):
+            events = await _collect_events(
+                stream_execute_plan("20260101-120000", backend="mock", review_mode="auto")
+            )
+
+        complete = _find_event(events, "plan_complete")
+        assert complete is not None
+        assert complete["data"]["commit_hash"] == "commit-from-plan"
+
+
+# ============================================================================
 # TEST: UNEXPECTED EXCEPTION PERSISTS FAILED STATUS (Commit 1)
 # ============================================================================
 

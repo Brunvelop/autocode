@@ -360,14 +360,13 @@ async def stream_execute_plan(
             plan.status = "failed"
             save_plan(plan)
         else:
-            # Run review flow
-            async for item in _run_review_flow(
+            # Run review flow — yields only SSE strings; commit_hash is read
+            # directly from plan.execution after the flow completes.
+            async for sse_event in _run_review_flow(
                 plan, review_mode, files_changed
             ):
-                if isinstance(item, dict):
-                    commit_hash = item.get("commit_hash", "")
-                else:
-                    yield item
+                yield sse_event
+            commit_hash = plan.execution.commit_hash if plan.execution else ""
 
         # ------------------------------------------------------------------
         # 9. Emit plan_complete
@@ -420,16 +419,19 @@ async def _run_review_flow(
 ) -> AsyncGenerator:
     """Post-execution review flow: auto or human mode.
 
-    As the LAST item, yields a dict with ``{"commit_hash": ...}``.
+    After this coroutine completes, ``plan.execution.commit_hash`` contains
+    the hash of the auto-commit (auto mode + approved) or ``""`` otherwise.
+    Callers read the commit hash directly from the plan rather than from a
+    yielded value, keeping the protocol uniform: every item yielded is an
+    SSE-formatted string.
 
     Args:
-        plan: The executed plan.
+        plan: The executed plan (mutated in-place: status, execution fields).
         review_mode: "auto" or "human".
         files_changed: List of file paths changed during execution.
 
     Yields:
-        str: SSE event strings (review_start, review_complete).
-        dict: ``{"commit_hash": str}`` as the last item.
+        str: SSE event strings (``review_start``, ``review_complete``).
     """
     # 1. Emit review_start
     yield _format_sse(
@@ -507,9 +509,6 @@ async def _run_review_flow(
     # 6. Finalize
     plan.execution.completed_at = datetime.now().isoformat()
     save_plan(plan)
-
-    # 7. Return commit_hash
-    yield {"commit_hash": commit_hash}
 
 
 # ============================================================================
