@@ -22,7 +22,7 @@ from autocode.core.planning.backends.dspy_react import (
     WRITE_TOOLS,
     EXECUTOR_TOOLS,
 )
-from autocode.core.planning.backends.base import ExecutionResult
+from autocode.core.planning.backends.base import ExecutorBackend, ExecutionResult
 from autocode.core.planning.models import ExecutionStep
 
 
@@ -272,6 +272,17 @@ class TestExtractCostFromHistory:
 # ============================================================================
 # TEST: DspyReactBackend
 # ============================================================================
+
+
+class TestDspyReactBackendContract:
+    """DspyReactBackend satisfies the ExecutorBackend ABC contract."""
+
+    def test_is_instance_of_executor_backend(self):
+        assert isinstance(DspyReactBackend(), ExecutorBackend)
+
+    def test_abort_is_noop_inherited(self):
+        backend = DspyReactBackend()
+        backend.abort()  # No debe lanzar excepción
 
 
 class TestDspyReactBackendName:

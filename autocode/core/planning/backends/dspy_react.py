@@ -21,7 +21,7 @@ from autocode.core.ai.dspy_utils import get_dspy_lm, prepare_chat_tools
 from autocode.core.ai.streaming import AutocodeStatusProvider
 from autocode.core.ai.signatures import TaskExecutionSignature
 from autocode.core.planning.models import ExecutionStep
-from autocode.core.planning.backends.base import ExecutionResult
+from autocode.core.planning.backends.base import ExecutorBackend, ExecutionResult
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +48,7 @@ EXECUTOR_TOOLS = [
 # ============================================================================
 
 
-class DspyReactBackend:
+class DspyReactBackend(ExecutorBackend):
     """Legacy backend que ejecuta planes usando DSPy ReAct.
 
     Utiliza dspy.ReAct con TaskExecutionSignature y streamify para
@@ -56,10 +56,6 @@ class DspyReactBackend:
     """
 
     name = "dspy"
-
-    def abort(self) -> None:
-        """No-op: DSPy ReAct does not use a subprocess."""
-        pass
 
     async def execute(
         self,
