@@ -28,10 +28,10 @@ from autocode.core.planning.models import (
     PlanExecutionState,
     ReviewResult,
 )
+from autocode.core.planning.backends import get_backend
 from autocode.core.planning.backends.base import ExecutionResult
 from autocode.core.planning.executor import (
     stream_execute_plan,
-    _get_backend,
     _build_instruction,
     _with_heartbeat,
 )
@@ -144,8 +144,8 @@ def _patch_save_plan():
 
 
 def _patch_backend(backend):
-    """Patch _get_backend to return the given backend instance."""
-    return patch("autocode.core.planning.executor._get_backend", return_value=backend)
+    """Patch get_backend to return the given backend instance."""
+    return patch("autocode.core.planning.executor.get_backend", return_value=backend)
 
 
 def _patch_auto_review(verdict="approved", summary="All good"):
@@ -647,25 +647,25 @@ class TestReviewModeAutoRejected:
 
 
 class TestBackendSelection:
-    """_get_backend resolves backend name to instance."""
+    """get_backend resolves backend name to instance."""
 
     def test_backend_selection_opencode(self):
         from autocode.core.planning.backends.opencode import OpenCodeBackend
 
-        backend = _get_backend("opencode")
+        backend = get_backend("opencode")
         assert isinstance(backend, OpenCodeBackend)
         assert backend.name == "opencode"
 
     def test_backend_selection_cline(self):
         from autocode.core.planning.backends.cline import ClineBackend
 
-        backend = _get_backend("cline")
+        backend = get_backend("cline")
         assert isinstance(backend, ClineBackend)
         assert backend.name == "cline"
 
     def test_backend_unknown_raises(self):
         with pytest.raises(ValueError, match="Unknown backend"):
-            _get_backend("nonexistent")
+            get_backend("nonexistent")
 
 
 # ============================================================================

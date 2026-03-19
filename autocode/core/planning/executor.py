@@ -42,10 +42,8 @@ from autocode.core.planning.models import (
     PlanExecutionState,
     ReviewResult,
 )
+from autocode.core.planning.backends import get_backend
 from autocode.core.planning.backends.base import ExecutionResult
-from autocode.core.planning.backends.opencode import OpenCodeBackend
-from autocode.core.planning.backends.cline import ClineBackend
-from autocode.core.planning.backends.dspy_react import DspyReactBackend
 from autocode.core.vcs.git import git_add_and_commit
 from autocode.core.vcs.execution import ExecutionSandbox
 from autocode.core.planning.persistence import save_plan, load_plan
@@ -53,37 +51,6 @@ from autocode.core.planning.transitions import can_execute
 from autocode.core.planning.reviewer import auto_review, compute_review_metrics
 
 logger = logging.getLogger(__name__)
-
-
-# ============================================================================
-# BACKEND REGISTRY
-# ============================================================================
-
-_BACKENDS = {
-    "opencode": OpenCodeBackend,
-    "cline": ClineBackend,
-    "dspy": DspyReactBackend,
-}
-
-
-def _get_backend(name: str):
-    """Resolve backend name to an instance.
-
-    Args:
-        name: Backend identifier ("opencode", "cline").
-
-    Returns:
-        An ExecutorBackend instance.
-
-    Raises:
-        ValueError: If the backend name is unknown.
-    """
-    cls = _BACKENDS.get(name)
-    if cls is None:
-        raise ValueError(
-            f"Unknown backend '{name}'. Available: {', '.join(sorted(_BACKENDS))}"
-        )
-    return cls()
 
 
 # ============================================================================
@@ -251,7 +218,7 @@ async def stream_execute_plan(
         # ------------------------------------------------------------------
         # 3. Resolve backend
         # ------------------------------------------------------------------
-        backend_instance = _get_backend(backend)
+        backend_instance = get_backend(backend)
 
         # ------------------------------------------------------------------
         # 4. Build instruction

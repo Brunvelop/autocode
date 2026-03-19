@@ -11,6 +11,28 @@ from .opencode import OpenCodeBackend
 from .cline import ClineBackend
 from .dspy_react import DspyReactBackend
 
+
+def get_backend(name: str) -> ExecutorBackend:
+    """Resolve backend name to an instance.
+
+    Args:
+        name: Backend identifier ("opencode", "cline", "dspy").
+
+    Returns:
+        An ExecutorBackend instance.
+
+    Raises:
+        ValueError: If the backend name is unknown.
+    """
+    if name == "opencode":
+        return OpenCodeBackend()
+    if name == "cline":
+        return ClineBackend()
+    if name == "dspy":
+        return DspyReactBackend()
+    raise ValueError(f"Unknown backend '{name}'. Available: cline, dspy, opencode")
+
+
 __all__ = [
     "ExecutorBackend",
     "ExecutionResult",
@@ -18,4 +40,5 @@ __all__ = [
     "OpenCodeBackend",
     "ClineBackend",
     "DspyReactBackend",
+    "get_backend",
 ]
