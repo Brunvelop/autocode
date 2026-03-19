@@ -976,6 +976,84 @@ class TestExecuteCommitPlanEndpoint:
 
 
 # ============================================================================
+# TEST: SYNC WRAPPER READS FROM PLAN, NOT FROM SSE PARSING (Commit 3)
+# ============================================================================
+
+
+class TestExecuteCommitPlanSync:
+    """execute_commit_plan (sync wrapper) returns correct result without parsing SSE."""
+
+    def test_sync_wrapper_returns_success_from_plan(self):
+        """Sync wrapper reads final state from plan.execution, not from SSE parsing.
+
+        The old implementation parsed SSE strings with split("data: ") — fragile
+        and coupled to SSE format. The new implementation drains the generator
+        (discarding SSE bytes) and then calls load_plan() to read the authoritative
+        final state from persistence.
+
+        Key assertion: result.result contains 'started_at', a field present in
+        plan.execution.model_dump() but NOT in the plan_complete SSE event data.
+        """
+        plan = _make_plan()
+        final_plan = plan.model_copy(deep=True)
+        final_plan.status = "pending_review"
+        final_plan.execution = PlanExecutionState(
+            started_at="2026-01-01T12:00:00",
+            completed_at="2026-01-01T12:01:00",
+            total_tokens=1500,
+            total_cost=0.003,
+            backend="mock",
+            files_changed=["a.py"],
+        )
+
+        with (
+            # side_effect list: 1st call (inside stream_execute_plan) → plan,
+            # 2nd call (execute_commit_plan reads final state) → final_plan
+            patch("autocode.core.planning.executor.load_plan", side_effect=[plan, final_plan]),
+            _patch_save_plan(),
+            _patch_backend(MockBackend()),
+            _patch_compute_review_metrics(),
+            _patch_getcwd(),
+        ):
+            from autocode.core.planning.executor import execute_commit_plan
+            result = execute_commit_plan("20260101-120000", backend="mock")
+
+        assert result.success is True
+        assert isinstance(result.result, dict)
+        # result must come from plan.execution.model_dump(), not from SSE parsing.
+        # plan.execution has 'started_at'; the SSE plan_complete event does NOT.
+        assert "started_at" in result.result, (
+            "result.result should come from plan.execution.model_dump() (contains "
+            "'started_at'), not from SSE event data (which does not have 'started_at'). "
+            "This indicates the sync wrapper is still parsing SSE instead of reading "
+            "the final plan state from persistence."
+        )
+        assert result.message == "Plan pending_review", (
+            f"Expected message='Plan pending_review', got {result.message!r}. "
+            "The sync wrapper should set message based on the loaded plan's status."
+        )
+
+    def test_sync_wrapper_returns_failure_when_plan_not_found(self):
+        """Sync wrapper returns failure with explicit message when plan doesn't exist.
+
+        After draining (stream_execute_plan emits an error SSE and returns),
+        execute_commit_plan calls load_plan() which returns None → early return
+        with a clear, structured error message (not the raw SSE string repr).
+        """
+        with _patch_load_plan(None):
+            from autocode.core.planning.executor import execute_commit_plan
+            result = execute_commit_plan("nonexistent", backend="mock")
+
+        assert result.success is False
+        assert result.message == "Plan not found or not executed", (
+            f"Expected message='Plan not found or not executed', got {result.message!r}. "
+            "The old implementation returned str(SSE data dict) as the message, "
+            "which is an unstructured string. The new implementation should return "
+            "a clear error message."
+        )
+
+
+# ============================================================================
 # TEST: REVIEW EVENT INCLUDES FILES_CHANGED
 # ============================================================================
 

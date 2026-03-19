@@ -533,6 +533,9 @@ def execute_commit_plan(
     El backend (opencode, cline) ejecuta la instrucción del plan y reporta
     pasos en tiempo real. Post-ejecución, se aplica review según review_mode.
 
+    Reads the final result from persisted plan state (not from SSE parsing),
+    which is more robust and decoupled from the SSE wire format.
+
     Args:
         plan_id: ID del plan a ejecutar
         backend: Backend de ejecución (opencode, cline)
@@ -541,28 +544,28 @@ def execute_commit_plan(
     """
     import asyncio
 
-    final_result = None
+    async def _drain():
+        """Consume all SSE events from stream_execute_plan, discarding them.
 
-    async def _collect():
-        nonlocal final_result
-        async for event in stream_execute_plan(
-            plan_id, backend, model, review_mode
-        ):
-            if "plan_complete" in event or "error" in event:
-                final_result = event
+        The side-effects (plan persistence) happen inside stream_execute_plan;
+        we only need to drive the generator to completion.
+        """
+        async for _ in stream_execute_plan(plan_id, backend, model, review_mode):
+            pass
 
-    asyncio.run(_collect())
+    asyncio.run(_drain())
 
-    if final_result:
-        try:
-            data = json.loads(final_result.split("data: ")[1].split("\n")[0])
-        except (IndexError, json.JSONDecodeError):
-            data = {}
-    else:
-        data = {}
+    # Read authoritative final state from persistence — no SSE string parsing needed.
+    plan = load_plan(plan_id)
+    if not plan or not plan.execution:
+        return GenericOutput(
+            success=False,
+            result={},
+            message="Plan not found or not executed",
+        )
 
     return GenericOutput(
-        success=data.get("success", False),
-        result=data,
-        message=str(data),
+        success=plan.status in ("completed", "pending_review"),
+        result=plan.execution.model_dump() if plan.execution else {},
+        message=f"Plan {plan.status}",
     )
