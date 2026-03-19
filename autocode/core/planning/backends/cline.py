@@ -186,15 +186,11 @@ class ClineBackend:
 
         files = await self._git_diff_name_only(cwd)
 
-        # Start with streamed accumulation as baseline
+        # Tokens/cost are accumulated during streaming from api_req_finished events.
+        # NOTE: `cline history` is an interactive TUI (not JSON-capable) — calling it
+        # programmatically hangs indefinitely waiting for TTY input. Do not use it.
         total_tokens = api_cost_accum["tokens"]
         total_cost = api_cost_accum["cost"]
-
-        # Post-execution: enrich tokens/cost from `cline history` (more accurate)
-        history_data = await self._fetch_task_history(session_id, cwd)
-        if history_data:
-            total_tokens = history_data.get("totalTokensUsed", total_tokens)
-            total_cost = history_data.get("totalCost", total_cost)
 
         return ExecutionResult(
             success=proc.returncode == 0,
@@ -291,36 +287,6 @@ class ClineBackend:
         """Kill the subprocess if running."""
         if self._process and self._process.returncode is None:
             self._process.kill()
-
-    async def _fetch_task_history(self, task_id: str, cwd: str) -> dict:
-        """
-        Post-execution: calls `cline history` to get accurate task metadata
-        (totalTokensUsed, totalCost) not available during streaming.
-
-        Returns the history entry dict matching ``task_id`` on success, or an
-        empty dict on any failure (binary not found, non-zero exit, invalid
-        JSON, empty task_id, task not found in history).
-        """
-        if not task_id:
-            return {}
-        try:
-            proc = await asyncio.create_subprocess_exec(
-                "cline", "history",
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-                cwd=cwd,
-            )
-            stdout, _ = await proc.communicate()
-            if proc.returncode != 0:
-                return {}
-            history = json.loads(stdout.decode("utf-8", errors="replace"))
-            if isinstance(history, list):
-                for entry in history:
-                    if str(entry.get("id", "")) == str(task_id):
-                        return entry
-            return {}
-        except (FileNotFoundError, OSError, json.JSONDecodeError, ValueError):
-            return {}
 
     async def _git_diff_name_only(self, cwd: str) -> List[str]:
         """Obtiene archivos cambiados via git diff --name-only."""
