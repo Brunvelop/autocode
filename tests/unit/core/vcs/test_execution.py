@@ -289,3 +289,206 @@ class TestAsyncResetHard:
 
         _, kwargs = mock_exec.call_args
         assert kwargs.get("cwd") == "/my/project"
+
+
+# ==============================================================================
+# TestExecutionSandboxSnapshot
+# ==============================================================================
+
+
+class TestExecutionSandboxSnapshot:
+    """Tests for ExecutionSandbox.snapshot()."""
+
+    async def test_captures_head_hash_into_pre_exec_head(self):
+        """snapshot() stores the HEAD hash in pre_exec_head."""
+        from autocode.core.vcs.execution import ExecutionSandbox
+
+        sandbox = ExecutionSandbox("/repo")
+        with patch(
+            "autocode.core.vcs.execution.async_rev_parse_head",
+            new=AsyncMock(return_value="abc123"),
+        ):
+            await sandbox.snapshot()
+
+        assert sandbox.pre_exec_head == "abc123"
+
+    async def test_returns_the_captured_hash(self):
+        """snapshot() returns the same hash stored in pre_exec_head."""
+        from autocode.core.vcs.execution import ExecutionSandbox
+
+        sandbox = ExecutionSandbox("/repo")
+        with patch(
+            "autocode.core.vcs.execution.async_rev_parse_head",
+            new=AsyncMock(return_value="deadbeef"),
+        ):
+            result = await sandbox.snapshot()
+
+        assert result == "deadbeef"
+
+    async def test_stores_empty_string_when_git_unavailable(self):
+        """snapshot() stores '' in pre_exec_head when git returns ''."""
+        from autocode.core.vcs.execution import ExecutionSandbox
+
+        sandbox = ExecutionSandbox("/no-git")
+        with patch(
+            "autocode.core.vcs.execution.async_rev_parse_head",
+            new=AsyncMock(return_value=""),
+        ):
+            result = await sandbox.snapshot()
+
+        assert sandbox.pre_exec_head == ""
+        assert result == ""
+
+
+# ==============================================================================
+# TestExecutionSandboxCollectChanges
+# ==============================================================================
+
+
+class TestExecutionSandboxCollectChanges:
+    """Tests for ExecutionSandbox.collect_changes()."""
+
+    async def test_returns_changed_files_when_head_unchanged(self):
+        """Returns diff files when agent did NOT commit (HEAD same as snapshot)."""
+        from autocode.core.vcs.execution import ExecutionSandbox
+
+        sandbox = ExecutionSandbox("/repo")
+        sandbox.pre_exec_head = "abc123"
+
+        with patch(
+            "autocode.core.vcs.execution.async_rev_parse_head",
+            new=AsyncMock(return_value="abc123"),  # HEAD unchanged
+        ), patch(
+            "autocode.core.vcs.execution.async_reset_mixed",
+            new=AsyncMock(),
+        ) as mock_reset_mixed, patch(
+            "autocode.core.vcs.execution.async_diff_name_only",
+            new=AsyncMock(return_value=["file_a.py", "file_b.py"]),
+        ):
+            result = await sandbox.collect_changes()
+
+        assert result == ["file_a.py", "file_b.py"]
+        mock_reset_mixed.assert_not_awaited()
+
+    async def test_returns_changed_files_when_agent_did_commit(self):
+        """Returns diff files when agent DID commit (HEAD moved), calls reset_mixed first."""
+        from autocode.core.vcs.execution import ExecutionSandbox
+
+        sandbox = ExecutionSandbox("/repo")
+        sandbox.pre_exec_head = "abc123"
+
+        with patch(
+            "autocode.core.vcs.execution.async_rev_parse_head",
+            new=AsyncMock(return_value="newhead99"),  # HEAD moved
+        ), patch(
+            "autocode.core.vcs.execution.async_reset_mixed",
+            new=AsyncMock(),
+        ) as mock_reset_mixed, patch(
+            "autocode.core.vcs.execution.async_diff_name_only",
+            new=AsyncMock(return_value=["committed.py"]),
+        ):
+            result = await sandbox.collect_changes()
+
+        assert result == ["committed.py"]
+        mock_reset_mixed.assert_awaited_once_with("/repo", "abc123")
+
+    async def test_returns_empty_list_when_no_pre_exec_head(self):
+        """Returns [] immediately when pre_exec_head is empty (git unavailable)."""
+        from autocode.core.vcs.execution import ExecutionSandbox
+
+        sandbox = ExecutionSandbox("/no-git")
+        # pre_exec_head left as default ""
+
+        with patch(
+            "autocode.core.vcs.execution.async_rev_parse_head",
+            new=AsyncMock(return_value=""),
+        ) as mock_rev, patch(
+            "autocode.core.vcs.execution.async_diff_name_only",
+            new=AsyncMock(return_value=[]),
+        ) as mock_diff:
+            result = await sandbox.collect_changes()
+
+        assert result == []
+        mock_rev.assert_not_awaited()
+        mock_diff.assert_not_awaited()
+
+    async def test_does_not_call_reset_mixed_when_head_unchanged(self):
+        """reset_mixed is NOT called when HEAD is the same as pre_exec_head."""
+        from autocode.core.vcs.execution import ExecutionSandbox
+
+        sandbox = ExecutionSandbox("/repo")
+        sandbox.pre_exec_head = "sameref"
+
+        with patch(
+            "autocode.core.vcs.execution.async_rev_parse_head",
+            new=AsyncMock(return_value="sameref"),
+        ), patch(
+            "autocode.core.vcs.execution.async_reset_mixed",
+            new=AsyncMock(),
+        ) as mock_reset_mixed, patch(
+            "autocode.core.vcs.execution.async_diff_name_only",
+            new=AsyncMock(return_value=[]),
+        ):
+            await sandbox.collect_changes()
+
+        mock_reset_mixed.assert_not_awaited()
+
+    async def test_calls_reset_mixed_when_head_changed(self):
+        """reset_mixed IS called when HEAD moved (agent committed)."""
+        from autocode.core.vcs.execution import ExecutionSandbox
+
+        sandbox = ExecutionSandbox("/repo")
+        sandbox.pre_exec_head = "old"
+
+        with patch(
+            "autocode.core.vcs.execution.async_rev_parse_head",
+            new=AsyncMock(return_value="new"),
+        ), patch(
+            "autocode.core.vcs.execution.async_reset_mixed",
+            new=AsyncMock(),
+        ) as mock_reset_mixed, patch(
+            "autocode.core.vcs.execution.async_diff_name_only",
+            new=AsyncMock(return_value=[]),
+        ):
+            await sandbox.collect_changes()
+
+        mock_reset_mixed.assert_awaited_once_with("/repo", "old")
+
+
+# ==============================================================================
+# TestExecutionSandboxRevert
+# ==============================================================================
+
+
+class TestExecutionSandboxRevert:
+    """Tests for ExecutionSandbox.revert()."""
+
+    async def test_calls_reset_hard_with_pre_exec_head(self):
+        """revert() calls async_reset_hard with cwd and pre_exec_head."""
+        from autocode.core.vcs.execution import ExecutionSandbox
+
+        sandbox = ExecutionSandbox("/repo")
+        sandbox.pre_exec_head = "abc123"
+
+        with patch(
+            "autocode.core.vcs.execution.async_reset_hard",
+            new=AsyncMock(),
+        ) as mock_reset_hard:
+            await sandbox.revert()
+
+        mock_reset_hard.assert_awaited_once_with("/repo", "abc123")
+
+    async def test_does_nothing_when_pre_exec_head_is_empty(self):
+        """revert() is a no-op when pre_exec_head is '' (git unavailable)."""
+        from autocode.core.vcs.execution import ExecutionSandbox
+
+        sandbox = ExecutionSandbox("/no-git")
+        # pre_exec_head left as default ""
+
+        with patch(
+            "autocode.core.vcs.execution.async_reset_hard",
+            new=AsyncMock(),
+        ) as mock_reset_hard:
+            await sandbox.revert()
+
+        mock_reset_hard.assert_not_awaited()
