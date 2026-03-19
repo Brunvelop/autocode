@@ -47,6 +47,7 @@ from autocode.core.planning.backends.opencode import OpenCodeBackend
 from autocode.core.planning.backends.cline import ClineBackend
 from autocode.core.planning.backends.dspy_react import DspyReactBackend
 from autocode.core.vcs.git import git_add_and_commit
+from autocode.core.vcs.execution import ExecutionSandbox
 from autocode.core.planning.persistence import save_plan, load_plan
 from autocode.core.planning.transitions import can_execute
 from autocode.core.planning.reviewer import auto_review, compute_review_metrics
@@ -182,78 +183,6 @@ async def _with_heartbeat(
 
 
 # ============================================================================
-# GIT HELPERS
-# ============================================================================
-
-
-async def _revert_changes(cwd: str) -> None:
-    """Revert all uncommitted changes in the working directory.
-
-    Runs ``git checkout -- .`` in ``cwd`` as a best-effort cleanup.
-    Silently ignores any errors (e.g. git not available, not a repo).
-
-    Args:
-        cwd: Directory where the git checkout should be run.
-    """
-    try:
-        proc = await asyncio.create_subprocess_exec(
-            "git", "checkout", "--", ".",
-            cwd=cwd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        await proc.communicate()
-    except Exception:
-        pass  # Best effort
-
-
-async def _git_rev_parse_head(cwd: str) -> str:
-    """Return the current HEAD commit hash, or '' on any error.
-
-    Args:
-        cwd: Directory where the git command should be run.
-
-    Returns:
-        Full commit hash string, or empty string if git unavailable/not a repo.
-    """
-    try:
-        proc = await asyncio.create_subprocess_exec(
-            "git", "rev-parse", "HEAD",
-            cwd=cwd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        stdout, _ = await proc.communicate()
-        if proc.returncode == 0:
-            return stdout.decode().strip()
-        return ""
-    except Exception:
-        return ""
-
-
-async def _git_reset_mixed(cwd: str, ref: str) -> None:
-    """Undo commits back to ``ref``, keeping changes in the working tree.
-
-    Runs ``git reset --mixed {ref}`` as a best-effort safety net.
-    Silently ignores any errors.
-
-    Args:
-        cwd: Directory where the git command should be run.
-        ref: Commit hash or ref to reset to.
-    """
-    try:
-        proc = await asyncio.create_subprocess_exec(
-            "git", "reset", "--mixed", ref,
-            cwd=cwd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        await proc.communicate()
-    except Exception:
-        pass  # Best effort
-
-
-# ============================================================================
 # STREAM GENERATOR (core orchestrator)
 # ============================================================================
 
@@ -332,7 +261,8 @@ async def stream_execute_plan(
 
         # Snapshot HEAD before execution so we can detect (and undo) any
         # commits the agent makes on its own during execution.
-        pre_exec_head = await _git_rev_parse_head(cwd)
+        sandbox = ExecutionSandbox(cwd)
+        await sandbox.snapshot()
 
         logger.info(
             f"▶ Executing plan '{plan.id}': {plan.title} "
@@ -420,7 +350,7 @@ async def stream_execute_plan(
         except (asyncio.CancelledError, GeneratorExit):
             logger.info(f"⏹ Execution cancelled for plan '{plan_id}'")
             backend_instance.abort()
-            await _revert_changes(cwd)
+            await sandbox.revert()
             plan.status = "failed"
             plan.execution.completed_at = datetime.now().isoformat()
             save_plan(plan)
@@ -434,27 +364,19 @@ async def stream_execute_plan(
             )
 
         # ------------------------------------------------------------------
-        # Safety net: undo any commits the agent made during execution.
-        # Some backends (e.g. Cline) may run `git commit` on their own,
-        # which would advance HEAD and break the review/approve/revert flow
-        # (files_changed = [], revert has nothing to checkout, etc.).
-        # We use `git reset --mixed` so the committed changes are preserved
-        # in the working tree — the rest of the flow then works normally.
+        # Collect changed files via sandbox.
+        # collect_changes() handles the safety net automatically: if the
+        # agent committed during execution (HEAD moved), it first runs
+        # git reset --mixed to bring those commits back to the working tree,
+        # then diffs against the pre-execution HEAD.
         # ------------------------------------------------------------------
-        if pre_exec_head:
-            current_head = await _git_rev_parse_head(cwd)
-            if current_head and current_head != pre_exec_head:
-                logger.warning(
-                    f"⚠ Agent committed during execution — "
-                    f"resetting HEAD from {current_head[:7]} back to {pre_exec_head[:7]}"
-                )
-                await _git_reset_mixed(cwd, pre_exec_head)
+        files_changed = await sandbox.collect_changes()
 
         # ------------------------------------------------------------------
         # 7. Store execution result in plan
         # ------------------------------------------------------------------
         plan.execution.steps = collected_steps
-        plan.execution.files_changed = execution_result.files_changed
+        plan.execution.files_changed = files_changed
         plan.execution.total_tokens = execution_result.total_tokens
         plan.execution.total_cost = execution_result.total_cost
         plan.execution.backend = backend_instance.name
@@ -472,7 +394,7 @@ async def stream_execute_plan(
         else:
             # Run review flow
             async for item in _run_review_flow(
-                plan, review_mode, execution_result.files_changed
+                plan, review_mode, files_changed
             ):
                 if isinstance(item, dict):
                     commit_hash = item.get("commit_hash", "")
@@ -495,7 +417,7 @@ async def stream_execute_plan(
             "plan_complete",
             {
                 "success": success,
-                "files_changed": execution_result.files_changed,
+                "files_changed": files_changed,
                 "commit_hash": commit_hash,
                 "total_tokens": execution_result.total_tokens,
                 "total_cost": execution_result.total_cost,

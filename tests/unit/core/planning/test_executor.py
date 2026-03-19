@@ -34,8 +34,6 @@ from autocode.core.planning.executor import (
     _get_backend,
     _build_instruction,
     _with_heartbeat,
-    _git_rev_parse_head,
-    _git_reset_mixed,
 )
 from tests.unit.core.planning.conftest import _parse_sse
 
@@ -180,6 +178,26 @@ def _patch_git_add_and_commit(commit_hash="def456"):
 def _patch_getcwd(cwd="/fake/project"):
     """Patch os.getcwd."""
     return patch("autocode.core.planning.executor.os.getcwd", return_value=cwd)
+
+
+def _patch_sandbox(files=None, head="abc123"):
+    """Patch ExecutionSandbox to return controlled files_changed and a no-op revert.
+
+    Args:
+        files: List of file paths collect_changes() should return. Defaults to [].
+        head: SHA hash snapshot() should return.
+    """
+    if files is None:
+        files = []
+    mock_instance = AsyncMock()
+    mock_instance.snapshot = AsyncMock(return_value=head)
+    mock_instance.collect_changes = AsyncMock(return_value=files)
+    mock_instance.revert = AsyncMock()
+    mock_instance.pre_exec_head = head
+    return patch(
+        "autocode.core.planning.executor.ExecutionSandbox",
+        return_value=mock_instance,
+    )
 
 
 # ============================================================================
@@ -383,6 +401,7 @@ class TestPlanCompleteWithSuccess:
             _patch_backend(backend),
             _patch_compute_review_metrics(),
             _patch_getcwd(),
+            _patch_sandbox(["a.py", "b.py"]),
         ):
             events = await _collect_events(
                 stream_execute_plan("20260101-120000", backend="mock", review_mode="human")
@@ -581,6 +600,7 @@ class TestReviewModeAutoApproved:
             _patch_auto_review(verdict="approved", summary="All gates passed"),
             _patch_git_add_and_commit("commit-hash-123"),
             _patch_getcwd(),
+            _patch_sandbox(["src/api.py"]),
         ):
             events = await _collect_events(
                 stream_execute_plan("20260101-120000", backend="mock", review_mode="auto")
@@ -741,6 +761,7 @@ class TestStoresExecutionStepsInPlan:
             _patch_backend(backend),
             _patch_compute_review_metrics(),
             _patch_getcwd(),
+            _patch_sandbox(),
         ):
             await _collect_events(
                 stream_execute_plan("20260101-120000", backend="mock", review_mode="human")
@@ -772,6 +793,7 @@ class TestStoresFilesChangedInPlan:
             _patch_backend(backend),
             _patch_compute_review_metrics(),
             _patch_getcwd(),
+            _patch_sandbox(["x.py", "y.py", "z.py"]),
         ):
             await _collect_events(
                 stream_execute_plan("20260101-120000", backend="mock", review_mode="human")
@@ -973,6 +995,7 @@ class TestReviewStartIncludesFiles:
             _patch_backend(backend),
             _patch_compute_review_metrics(),
             _patch_getcwd(),
+            _patch_sandbox(["a.py", "b.py"]),
         ):
             events = await _collect_events(
                 stream_execute_plan("20260101-120000", backend="mock", review_mode="human")
@@ -1113,13 +1136,18 @@ class TestCancelKillsBackend:
 
 
 class TestCancelRevertsChanges:
-    """When cancelled, _revert_changes(cwd) is called to undo uncommitted work."""
+    """When cancelled, sandbox.revert() is called to undo uncommitted work (git reset --hard)."""
 
     @pytest.mark.asyncio
-    async def test_cancel_reverts_changes_in_cwd(self):
-        """_revert_changes is called with the correct cwd when generator is closed."""
+    async def test_cancel_calls_sandbox_revert(self):
+        """sandbox.revert() is called when the generator is closed mid-execution."""
         abort_flag = []
         backend = _make_slow_abortable_backend(abort_flag)
+
+        mock_sandbox = AsyncMock()
+        mock_sandbox.snapshot = AsyncMock(return_value="abc123")
+        mock_sandbox.collect_changes = AsyncMock(return_value=[])
+        mock_sandbox.revert = AsyncMock()
 
         with (
             _patch_load_plan(_make_plan()),
@@ -1127,9 +1155,9 @@ class TestCancelRevertsChanges:
             _patch_backend(backend),
             _patch_getcwd("/fake/project"),
             patch(
-                "autocode.core.planning.executor._revert_changes",
-                new_callable=AsyncMock,
-            ) as mock_revert,
+                "autocode.core.planning.executor.ExecutionSandbox",
+                return_value=mock_sandbox,
+            ),
         ):
             gen = stream_execute_plan("20260101-120000", backend="mock")
             async for raw in gen:
@@ -1140,7 +1168,7 @@ class TestCancelRevertsChanges:
                     pass
             await gen.aclose()
 
-        mock_revert.assert_called_once_with("/fake/project")
+        mock_sandbox.revert.assert_called_once()
 
 
 class TestCancelSetsPlanFailed:
@@ -1156,14 +1184,19 @@ class TestCancelSetsPlanFailed:
         def capture_save(p):
             saved_plans.append(p.model_copy(deep=True))
 
+        mock_sandbox = AsyncMock()
+        mock_sandbox.snapshot = AsyncMock(return_value="abc123")
+        mock_sandbox.collect_changes = AsyncMock(return_value=[])
+        mock_sandbox.revert = AsyncMock()
+
         with (
             _patch_load_plan(_make_plan()),
             patch("autocode.core.planning.executor.save_plan", side_effect=capture_save),
             _patch_backend(backend),
             _patch_getcwd(),
             patch(
-                "autocode.core.planning.executor._revert_changes",
-                new_callable=AsyncMock,
+                "autocode.core.planning.executor.ExecutionSandbox",
+                return_value=mock_sandbox,
             ),
         ):
             gen = stream_execute_plan("20260101-120000", backend="mock")
@@ -1190,14 +1223,19 @@ class TestCancelSetsPlanFailed:
         def capture_save(p):
             saved_plans.append(p.model_copy(deep=True))
 
+        mock_sandbox = AsyncMock()
+        mock_sandbox.snapshot = AsyncMock(return_value="abc123")
+        mock_sandbox.collect_changes = AsyncMock(return_value=[])
+        mock_sandbox.revert = AsyncMock()
+
         with (
             _patch_load_plan(_make_plan()),
             patch("autocode.core.planning.executor.save_plan", side_effect=capture_save),
             _patch_backend(backend),
             _patch_getcwd(),
             patch(
-                "autocode.core.planning.executor._revert_changes",
-                new_callable=AsyncMock,
+                "autocode.core.planning.executor.ExecutionSandbox",
+                return_value=mock_sandbox,
             ),
         ):
             gen = stream_execute_plan("20260101-120000", backend="mock")
@@ -1222,21 +1260,27 @@ class TestCancelSetsPlanFailed:
 
 
 class TestAgentCommitSafetyNet:
-    """If the agent commits during execution, the executor resets HEAD back.
+    """Safety net (undo agent commits) is now handled inside sandbox.collect_changes().
 
-    This ensures the review/approve/revert flow always works correctly,
-    regardless of whether the backend decides to run git commit on its own.
+    The executor delegates to ExecutionSandbox which encapsulates:
+    - snapshot: record HEAD before execution
+    - collect_changes: if agent committed (HEAD moved), reset --mixed first, then diff
+    - revert: reset --hard back to pre-exec HEAD
+
+    These tests verify that collect_changes() is always called after execution.
+    The actual safety net logic is tested in test_execution.py.
     """
 
     @pytest.mark.asyncio
-    async def test_agent_commit_triggers_reset(self):
-        """If HEAD changes during execution, _git_reset_mixed is called with pre-exec HEAD."""
+    async def test_collect_changes_called_after_execution(self):
+        """sandbox.collect_changes() is always called after backend execution completes."""
         plan = _make_plan()
         backend = MockBackend()
 
-        # Simulate: HEAD was "aaa" before, agent committed → now "bbb"
-        head_calls = iter(["aaa1111aaa1111aaa1111aaa1111aaa1111aaa111",
-                           "bbb2222bbb2222bbb2222bbb2222bbb2222bbb222"])
+        mock_sandbox = AsyncMock()
+        mock_sandbox.snapshot = AsyncMock(return_value="abc123")
+        mock_sandbox.collect_changes = AsyncMock(return_value=["a.py"])
+        mock_sandbox.revert = AsyncMock()
 
         with (
             _patch_load_plan(plan),
@@ -1245,30 +1289,72 @@ class TestAgentCommitSafetyNet:
             _patch_compute_review_metrics(),
             _patch_getcwd("/fake/project"),
             patch(
-                "autocode.core.planning.executor._git_rev_parse_head",
-                new_callable=AsyncMock,
-                side_effect=lambda cwd: next(head_calls),
+                "autocode.core.planning.executor.ExecutionSandbox",
+                return_value=mock_sandbox,
             ),
-            patch(
-                "autocode.core.planning.executor._git_reset_mixed",
-                new_callable=AsyncMock,
-            ) as mock_reset,
         ):
             await _collect_events(
                 stream_execute_plan("20260101-120000", backend="mock", review_mode="human")
             )
 
-        mock_reset.assert_called_once_with(
-            "/fake/project",
-            "aaa1111aaa1111aaa1111aaa1111aaa1111aaa111",
+        mock_sandbox.collect_changes.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_snapshot_called_before_execution(self):
+        """sandbox.snapshot() is called before the backend executes."""
+        plan = _make_plan()
+        call_order = []
+
+        class OrderTrackingBackend:
+            name = "mock"
+
+            def abort(self):
+                pass
+
+            async def execute(self, instruction, cwd, model, on_step):
+                call_order.append("execute")
+                return _make_execution_result()
+
+        mock_sandbox = AsyncMock()
+
+        async def _snapshot():
+            call_order.append("snapshot")
+            return "abc123"
+
+        mock_sandbox.snapshot = _snapshot
+        mock_sandbox.collect_changes = AsyncMock(return_value=[])
+        mock_sandbox.revert = AsyncMock()
+
+        with (
+            _patch_load_plan(plan),
+            _patch_save_plan(),
+            _patch_backend(OrderTrackingBackend()),
+            _patch_compute_review_metrics(),
+            _patch_getcwd("/fake/project"),
+            patch(
+                "autocode.core.planning.executor.ExecutionSandbox",
+                return_value=mock_sandbox,
+            ),
+        ):
+            await _collect_events(
+                stream_execute_plan("20260101-120000", backend="mock", review_mode="human")
+            )
+
+        assert call_order.index("snapshot") < call_order.index("execute"), (
+            "snapshot() must be called before backend.execute()"
         )
 
     @pytest.mark.asyncio
-    async def test_no_reset_when_head_unchanged(self):
-        """If HEAD is the same before and after execution, _git_reset_mixed is NOT called."""
+    async def test_graceful_when_git_unavailable(self):
+        """Executor continues normally when git is unavailable (sandbox returns empty)."""
         plan = _make_plan()
         backend = MockBackend()
-        same_head = "aaa1111aaa1111aaa1111aaa1111aaa1111aaa111"
+
+        # Sandbox degrades gracefully: no pre_exec_head → collect returns []
+        mock_sandbox = AsyncMock()
+        mock_sandbox.snapshot = AsyncMock(return_value="")  # git unavailable
+        mock_sandbox.collect_changes = AsyncMock(return_value=[])
+        mock_sandbox.revert = AsyncMock()
 
         with (
             _patch_load_plan(plan),
@@ -1277,52 +1363,128 @@ class TestAgentCommitSafetyNet:
             _patch_compute_review_metrics(),
             _patch_getcwd("/fake/project"),
             patch(
-                "autocode.core.planning.executor._git_rev_parse_head",
-                new_callable=AsyncMock,
-                return_value=same_head,
+                "autocode.core.planning.executor.ExecutionSandbox",
+                return_value=mock_sandbox,
             ),
-            patch(
-                "autocode.core.planning.executor._git_reset_mixed",
-                new_callable=AsyncMock,
-            ) as mock_reset,
         ):
             events = await _collect_events(
                 stream_execute_plan("20260101-120000", backend="mock", review_mode="human")
             )
 
-        mock_reset.assert_not_called()
-        # Normal flow still works
-        complete = _find_event(events, "plan_complete")
-        assert complete["data"]["success"] is True
-
-    @pytest.mark.asyncio
-    async def test_no_reset_when_git_unavailable(self):
-        """If git is unavailable (returns ''), the executor continues gracefully without reset."""
-        plan = _make_plan()
-        backend = MockBackend()
-
-        with (
-            _patch_load_plan(plan),
-            _patch_save_plan(),
-            _patch_backend(backend),
-            _patch_compute_review_metrics(),
-            _patch_getcwd("/fake/project"),
-            patch(
-                "autocode.core.planning.executor._git_rev_parse_head",
-                new_callable=AsyncMock,
-                return_value="",  # git unavailable / not a repo
-            ),
-            patch(
-                "autocode.core.planning.executor._git_reset_mixed",
-                new_callable=AsyncMock,
-            ) as mock_reset,
-        ):
-            events = await _collect_events(
-                stream_execute_plan("20260101-120000", backend="mock", review_mode="human")
-            )
-
-        # No crash, no reset attempt
-        mock_reset.assert_not_called()
         complete = _find_event(events, "plan_complete")
         assert complete is not None
         assert complete["data"]["success"] is True
+        assert complete["data"]["files_changed"] == []
+
+
+# ============================================================================
+# TEST: FILES CHANGED COMPUTED BY EXECUTOR
+# ============================================================================
+
+
+class TestFilesChangedComputedByExecutor:
+    """files_changed comes from sandbox.collect_changes(), not from the backend result.
+
+    This decouples the executor from backend-specific file detection logic.
+    Backends always return files_changed=[] (see Commit 4); the executor
+    computes the actual list via git diff through ExecutionSandbox.
+    """
+
+    @pytest.mark.asyncio
+    async def test_files_changed_from_sandbox_ignores_backend_value(self):
+        """Executor uses sandbox.collect_changes() for files_changed, ignoring backend's value."""
+        plan = _make_plan()
+        # Backend reports one set of files...
+        result = _make_execution_result(files_changed=["backend_file.py"])
+        backend = MockBackend(result)
+        # ...but sandbox reports a different set (the real git diff)
+        sandbox_files = ["sandbox_file_a.py", "sandbox_file_b.py"]
+
+        mock_sandbox = AsyncMock()
+        mock_sandbox.snapshot = AsyncMock(return_value="abc123")
+        mock_sandbox.collect_changes = AsyncMock(return_value=sandbox_files)
+        mock_sandbox.revert = AsyncMock()
+
+        with (
+            _patch_load_plan(plan),
+            _patch_save_plan(),
+            _patch_backend(backend),
+            _patch_compute_review_metrics(),
+            _patch_getcwd("/fake/project"),
+            patch(
+                "autocode.core.planning.executor.ExecutionSandbox",
+                return_value=mock_sandbox,
+            ),
+        ):
+            events = await _collect_events(
+                stream_execute_plan("20260101-120000", backend="mock", review_mode="human")
+            )
+
+        complete = _find_event(events, "plan_complete")
+        assert complete["data"]["files_changed"] == sandbox_files
+        # Sandbox files, NOT backend files
+        assert "backend_file.py" not in complete["data"]["files_changed"]
+
+    @pytest.mark.asyncio
+    async def test_files_changed_from_sandbox_stored_in_plan(self):
+        """files_changed from sandbox is stored in plan.execution.files_changed."""
+        plan = _make_plan()
+        sandbox_files = ["src/module.py", "tests/test_module.py"]
+
+        mock_sandbox = AsyncMock()
+        mock_sandbox.snapshot = AsyncMock(return_value="abc123")
+        mock_sandbox.collect_changes = AsyncMock(return_value=sandbox_files)
+        mock_sandbox.revert = AsyncMock()
+
+        saved_plans = []
+
+        def capture_save(p):
+            saved_plans.append(p.model_copy(deep=True))
+
+        with (
+            _patch_load_plan(plan),
+            patch("autocode.core.planning.executor.save_plan", side_effect=capture_save),
+            _patch_backend(MockBackend()),
+            _patch_compute_review_metrics(),
+            _patch_getcwd("/fake/project"),
+            patch(
+                "autocode.core.planning.executor.ExecutionSandbox",
+                return_value=mock_sandbox,
+            ),
+        ):
+            await _collect_events(
+                stream_execute_plan("20260101-120000", backend="mock", review_mode="human")
+            )
+
+        final = saved_plans[-1]
+        assert final.execution.files_changed == sandbox_files
+
+    @pytest.mark.asyncio
+    async def test_files_changed_from_sandbox_passed_to_review_flow(self):
+        """files_changed from sandbox is passed to the review flow (review_start event)."""
+        plan = _make_plan()
+        sandbox_files = ["changed_by_agent.py"]
+
+        mock_sandbox = AsyncMock()
+        mock_sandbox.snapshot = AsyncMock(return_value="abc123")
+        mock_sandbox.collect_changes = AsyncMock(return_value=sandbox_files)
+        mock_sandbox.revert = AsyncMock()
+
+        with (
+            _patch_load_plan(plan),
+            _patch_save_plan(),
+            _patch_backend(MockBackend()),
+            _patch_compute_review_metrics(),
+            _patch_getcwd("/fake/project"),
+            patch(
+                "autocode.core.planning.executor.ExecutionSandbox",
+                return_value=mock_sandbox,
+            ),
+        ):
+            events = await _collect_events(
+                stream_execute_plan("20260101-120000", backend="mock", review_mode="human")
+            )
+
+        review_start = _find_event(events, "review_start")
+        assert review_start is not None
+        assert review_start["data"]["files_changed"] == sandbox_files
