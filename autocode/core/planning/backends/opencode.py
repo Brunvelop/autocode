@@ -31,11 +31,10 @@ Formato real de eventos JSON (NDJSON, un objeto por línea):
 
 import asyncio
 import json
-from datetime import datetime, timezone
-from typing import Callable, Awaitable, List, Optional
+from typing import Optional
 
 from autocode.core.planning.models import ExecutionStep
-from autocode.core.planning.backends.base import ExecutionResult
+from autocode.core.planning.backends.subprocess_base import SubprocessBackend
 
 
 # Mapeo de nombres de herramienta de OpenCode → nombres normalizados
@@ -50,15 +49,6 @@ _TOOL_NAME_MAP = {
     "todoread": "todo_read",
     "todowrite": "todo_write",
 }
-
-
-def _epoch_ms_to_iso(epoch_ms: int) -> str:
-    """Convierte un timestamp en milisegundos epoch a ISO 8601."""
-    try:
-        dt = datetime.fromtimestamp(epoch_ms / 1000, tz=timezone.utc)
-        return dt.isoformat()
-    except (TypeError, ValueError, OSError):
-        return ""
 
 
 def _extract_tool_path(state: dict) -> str:
@@ -78,115 +68,43 @@ def _extract_tool_path(state: dict) -> str:
     return path
 
 
-class OpenCodeBackend:
+class OpenCodeBackend(SubprocessBackend):
     """Backend que ejecuta planes usando OpenCode CLI."""
 
     name = "opencode"
 
-    def __init__(self):
-        self._process: Optional[asyncio.subprocess.Process] = None
-
-    async def execute(
-        self,
-        instruction: str,
-        cwd: str,
-        model: str,
-        on_step: Callable[[ExecutionStep], Awaitable[None]],
-    ) -> ExecutionResult:
-        """Ejecuta una instrucción via opencode run --format json."""
+    def build_command(self, instruction: str, cwd: str, model: str) -> list:
+        """Construye los args CLI para lanzar opencode run."""
         cmd = ["opencode", "run", "--format", "json"]
         if model:
             cmd.extend(["-m", model])
         cmd.extend(["--dir", cwd, instruction])
+        return cmd
 
-        try:
-            proc = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-                cwd=cwd,
-            )
-        except (FileNotFoundError, OSError) as exc:
-            return ExecutionResult(
-                success=False,
-                error=f"Failed to start opencode: {exc}",
-            )
-
-        self._process = proc
-
-        steps: List[ExecutionStep] = []
-        total_tokens = 0
-        total_cost = 0.0
-        session_id = ""
-
-        async for line in proc.stdout:
-            text = line.decode("utf-8", errors="replace").strip()
-            if not text:
-                continue
-            try:
-                event = json.loads(text)
-            except json.JSONDecodeError:
-                continue
-
-            # Extraer session_id del primer evento que lo tenga
-            if not session_id:
-                session_id = event.get("sessionID", "")
-
-            # Acumular tokens y costes de step_finish durante el stream
-            if event.get("type") == "step_finish":
-                part = event.get("part", {})
-                total_cost += part.get("cost", 0.0)
-                tokens = part.get("tokens", {})
-                total_tokens += tokens.get("total", 0)
-
-            # Parsear evento a ExecutionStep (puede ser None si se debe omitir)
-            step = self._parse_event(event)
-            if step is not None:
-                steps.append(step)
-                await on_step(step)
-
-        # Esperar a que el proceso termine (con timeout y fallback a terminate/kill)
-        # IMPORTANTE: proc.stderr.read() se hace DESPUÉS de que el proceso haya muerto.
-        # Si se hiciera antes y el proceso sigue vivo, stderr no llega a EOF y bloquea.
-        try:
-            await asyncio.wait_for(proc.wait(), timeout=15)
-        except asyncio.TimeoutError:
-            proc.terminate()
-            try:
-                await asyncio.wait_for(proc.wait(), timeout=5)
-            except asyncio.TimeoutError:
-                proc.kill()
-            await proc.wait()
-
-        # Proceso ya muerto: stderr.read() retorna inmediatamente
-        stderr_data = await proc.stderr.read()
-
-        # Post-execution: try to get more accurate cost/token data from export.
-        export = await self._fetch_session_export(session_id, cwd)
-        if "cost" in export:
-            total_cost = export["cost"]
-        if "tokens" in export:
-            total_tokens = export["tokens"].get("total", total_tokens)
-
-        return ExecutionResult(
-            success=proc.returncode == 0,
-            files_changed=[],
-            steps=steps,
-            total_tokens=total_tokens,
-            total_cost=total_cost,
-            session_id=session_id,
-            error="" if proc.returncode == 0 else stderr_data.decode("utf-8", errors="replace"),
-        )
-
-    def _parse_event(self, event: dict) -> Optional[ExecutionStep]:
+    def parse_event(self, event: dict) -> Optional[ExecutionStep]:
         """
         Convierte un evento JSON de opencode a ExecutionStep.
+
+        Como side-effect, actualiza self._session_id, self._tokens y
+        self._cost cuando el evento contenga esa información.
 
         Retorna None para eventos que no generan un paso visible
         (step_start, step_finish).
         """
+        # Side-effects: extraer session_id del primer evento que lo tenga
+        if not self._session_id:
+            self._session_id = event.get("sessionID", "")
+
+        # Acumular tokens y costes de step_finish durante el stream
+        if event.get("type") == "step_finish":
+            part = event.get("part", {})
+            self._cost += part.get("cost", 0.0)
+            tokens = part.get("tokens", {})
+            self._tokens += tokens.get("total", 0)
+
+        # Parsear evento a ExecutionStep
         event_type = event.get("type", "")
-        timestamp = _epoch_ms_to_iso(event.get("timestamp", 0))
+        timestamp = self._epoch_ms_to_iso(event.get("timestamp", 0))
         part = event.get("part", {})
 
         if event_type == "text":
@@ -216,8 +134,19 @@ class OpenCodeBackend:
             )
 
         # step_start y step_finish no generan pasos visibles
-        # (step_finish se procesa en execute() para acumular metadata)
         return None
+
+    async def fetch_post_metadata(self, session_id: str, cwd: str) -> tuple:
+        """
+        Obtiene metadatos precisos de tokens/coste de `opencode export`.
+
+        Retorna (total_tokens, total_cost). Si falla, retorna (0, 0.0)
+        y execute() usará los valores acumulados del stream.
+        """
+        export = await self._fetch_session_export(session_id, cwd)
+        tokens = export.get("tokens", {}).get("total", 0)
+        cost = export.get("cost", 0.0)
+        return (tokens, cost)
 
     async def _fetch_session_export(self, session_id: str, cwd: str) -> dict:
         """
@@ -241,9 +170,3 @@ class OpenCodeBackend:
             return json.loads(stdout.decode("utf-8", errors="replace"))
         except (FileNotFoundError, OSError, json.JSONDecodeError, ValueError, TypeError):
             return {}
-
-    def abort(self) -> None:
-        """Kill the subprocess if running."""
-        if self._process and self._process.returncode is None:
-            self._process.kill()
-

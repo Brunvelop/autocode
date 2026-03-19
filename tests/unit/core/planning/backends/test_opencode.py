@@ -12,11 +12,13 @@ from unittest.mock import AsyncMock, patch, MagicMock
 
 from autocode.core.planning.backends.opencode import (
     OpenCodeBackend,
-    _epoch_ms_to_iso,
     _extract_tool_path,
     _TOOL_NAME_MAP,
 )
+from autocode.core.planning.backends.subprocess_base import SubprocessBackend
 from autocode.core.planning.backends.base import ExecutionResult
+
+_epoch_ms_to_iso = SubprocessBackend._epoch_ms_to_iso
 from autocode.core.planning.models import ExecutionStep
 
 
@@ -242,7 +244,7 @@ class TestParseEvent:
 
     def test_text_event_parsed(self):
         event = _oc_text("HELLO")
-        step = self.backend._parse_event(event)
+        step = self.backend.parse_event(event)
         assert step is not None
         assert step.type == "text"
         assert step.content == "HELLO"
@@ -255,7 +257,7 @@ class TestParseEvent:
             output="1: # test\n",
             title="README.md",
         )
-        step = self.backend._parse_event(event)
+        step = self.backend.parse_event(event)
         assert step is not None
         assert step.type == "tool_use"
         assert step.tool == "read_file"
@@ -269,7 +271,7 @@ class TestParseEvent:
             output="Wrote file successfully.",
             title="hello.txt",
         )
-        step = self.backend._parse_event(event)
+        step = self.backend.parse_event(event)
         assert step is not None
         assert step.type == "tool_use"
         assert step.tool == "write_file"
@@ -280,35 +282,35 @@ class TestParseEvent:
         event = _oc_tool_use(tool="bash", title="bash")
         event["part"]["state"]["input"] = {"command": "ls -la"}
         event["part"]["state"]["output"] = "total 8\n..."
-        step = self.backend._parse_event(event)
+        step = self.backend.parse_event(event)
         assert step is not None
         assert step.tool == "execute_command"
         assert step.path == "ls -la"
 
     def test_tool_use_unknown_tool_passes_through(self):
         event = _oc_tool_use(tool="some_new_tool", title="new")
-        step = self.backend._parse_event(event)
+        step = self.backend.parse_event(event)
         assert step is not None
         assert step.tool == "some_new_tool"
 
     def test_step_start_returns_none(self):
         event = _oc_step_start()
-        step = self.backend._parse_event(event)
+        step = self.backend.parse_event(event)
         assert step is None
 
     def test_step_finish_returns_none(self):
         event = _oc_step_finish()
-        step = self.backend._parse_event(event)
+        step = self.backend.parse_event(event)
         assert step is None
 
     def test_unknown_event_type_returns_none(self):
         event = {"type": "unknown_thing", "timestamp": 1234567890000}
-        step = self.backend._parse_event(event)
+        step = self.backend.parse_event(event)
         assert step is None
 
     def test_timestamp_converted_to_iso(self):
         event = _oc_text("hi", ts=1773780143463)
-        step = self.backend._parse_event(event)
+        step = self.backend.parse_event(event)
         assert "2026" in step.timestamp
         assert "T" in step.timestamp
 
@@ -317,7 +319,7 @@ class TestParseEvent:
         event = _oc_tool_use(tool="read", file_path="/tmp/x.py", title="x.py")
         event["part"]["state"]["status"] = "pending"
         event["part"]["state"]["output"] = ""
-        step = self.backend._parse_event(event)
+        step = self.backend.parse_event(event)
         assert step.content == "x.py"
 
 
