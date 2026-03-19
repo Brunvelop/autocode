@@ -83,6 +83,7 @@ class PlanExecutionState(BaseModel):
     total_tokens: int = Field(0, description="Total tokens consumidos")
     total_cost: float = Field(0.0, description="Coste total en USD de toda la ejecución")
     files_changed: List[str] = Field(default_factory=list, description="Archivos modificados durante ejecución (para revert)")
+    error: str = Field("", description="Mensaje de error si la ejecución falló inesperadamente")
     review: Optional[ReviewResult] = Field(None, description="Resultado de la revisión post-ejecución")
 
 

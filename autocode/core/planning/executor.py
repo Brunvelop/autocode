@@ -182,6 +182,7 @@ async def stream_execute_plan(
         SSE-formatted strings.
     """
     plan_start_time = time.monotonic()
+    plan = None  # Safety net: track plan so outer except can persist 'failed' status
 
     try:
         # ------------------------------------------------------------------
@@ -395,6 +396,15 @@ async def stream_execute_plan(
 
     except Exception as e:
         logger.error(f"Executor error: {e}", exc_info=True)
+        # Safety net: ensure plan doesn't stay stuck in 'executing' forever.
+        # Without this, any unexpected exception after marking 'executing' would
+        # create a zombie plan that can never be re-executed.
+        if plan is not None and plan.status == "executing":
+            plan.status = "failed"
+            if plan.execution:
+                plan.execution.completed_at = datetime.now().isoformat()
+                plan.execution.error = str(e)
+            save_plan(plan)
         yield _format_sse("error", {"message": str(e), "success": False})
 
 

@@ -1488,3 +1488,90 @@ class TestFilesChangedComputedByExecutor:
         review_start = _find_event(events, "review_start")
         assert review_start is not None
         assert review_start["data"]["files_changed"] == sandbox_files
+
+
+# ============================================================================
+# TEST: UNEXPECTED EXCEPTION PERSISTS FAILED STATUS (Commit 1)
+# ============================================================================
+
+
+class TestUnexpectedExceptionPersistsFailedStatus:
+    """When an unexpected exception occurs mid-execution, plan must be saved as 'failed'."""
+
+    @pytest.mark.asyncio
+    async def test_unexpected_exception_sets_plan_failed(self):
+        """If an exception occurs after marking 'executing', plan is saved as 'failed'."""
+        plan = _make_plan()
+        saved_plans = []
+
+        def capture_save(p):
+            saved_plans.append(p.model_copy(deep=True))
+
+        # Backend that raises an unexpected exception during execute()
+        class ExplodingBackend:
+            name = "exploding"
+
+            def abort(self):
+                pass
+
+            async def execute(self, instruction, cwd, model, on_step):
+                raise RuntimeError("Unexpected DB error")
+
+        with (
+            _patch_load_plan(plan),
+            patch("autocode.core.planning.executor.save_plan", side_effect=capture_save),
+            _patch_backend(ExplodingBackend()),
+            _patch_getcwd(),
+        ):
+            events = await _collect_events(
+                stream_execute_plan("20260101-120000", backend="exploding")
+            )
+
+        error = _find_event(events, "error")
+        assert error is not None
+        assert "Unexpected DB error" in error["data"]["message"]
+
+        # THE KEY ASSERTION: plan must NOT stay stuck in 'executing'
+        assert saved_plans[-1].status == "failed", (
+            f"Plan should be saved as 'failed', got '{saved_plans[-1].status}'. "
+            "A zombie plan stuck in 'executing' can never be re-executed."
+        )
+        assert saved_plans[-1].execution is not None
+        assert saved_plans[-1].execution.completed_at != "", (
+            "completed_at should be set when plan fails with unexpected exception"
+        )
+        assert saved_plans[-1].execution.error == "Unexpected DB error", (
+            "The error message should be stored in plan.execution.error"
+        )
+
+    @pytest.mark.asyncio
+    async def test_unexpected_exception_before_sandbox_still_fails_plan(self):
+        """Exception before sandbox setup still marks plan as failed."""
+        plan = _make_plan()
+        saved_plans = []
+
+        def capture_save(p):
+            saved_plans.append(p.model_copy(deep=True))
+
+        with (
+            _patch_load_plan(plan),
+            patch("autocode.core.planning.executor.save_plan", side_effect=capture_save),
+            _patch_backend(MockBackend()),
+            patch(
+                "autocode.core.planning.executor.ExecutionSandbox",
+                side_effect=RuntimeError("Git not found"),
+            ),
+            _patch_getcwd(),
+        ):
+            events = await _collect_events(
+                stream_execute_plan("20260101-120000", backend="mock")
+            )
+
+        error = _find_event(events, "error")
+        assert error is not None
+
+        # Plan should be saved as failed, not left in 'executing'
+        assert saved_plans[-1].status == "failed", (
+            f"Plan should be saved as 'failed', got '{saved_plans[-1].status}'. "
+            "Exception before sandbox still must not leave plan stuck in 'executing'."
+        )
