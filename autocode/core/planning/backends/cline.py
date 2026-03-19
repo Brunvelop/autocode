@@ -37,11 +37,11 @@ Formato real de eventos JSON (NDJSON, un objeto por línea):
 
 import asyncio
 import json
-from datetime import datetime, timezone
-from typing import Callable, Awaitable, List, Optional
+from typing import Optional
 
 from autocode.core.planning.models import ExecutionStep
 from autocode.core.planning.backends.base import ExecutionResult
+from autocode.core.planning.backends.subprocess_base import SubprocessBackend
 
 
 # Mapeo de nombres de herramienta de Cline → nombres normalizados
@@ -76,15 +76,6 @@ _VISIBLE_SAY_TYPES = {"reasoning", "tool", "completion_result", "text", "error"}
 _SKIP_SAY_TYPES = {"task", "api_req_started", "api_req_finished", "task_progress"}
 
 
-def _epoch_ms_to_iso(epoch_ms: int) -> str:
-    """Convierte un timestamp en milisegundos epoch a ISO 8601."""
-    try:
-        dt = datetime.fromtimestamp(epoch_ms / 1000, tz=timezone.utc)
-        return dt.isoformat()
-    except (TypeError, ValueError, OSError):
-        return ""
-
-
 def _parse_tool_text(text: str) -> dict:
     """Parsea el campo text de un evento say:tool (es JSON embebido)."""
     try:
@@ -93,118 +84,70 @@ def _parse_tool_text(text: str) -> dict:
         return {}
 
 
-class ClineBackend:
+class ClineBackend(SubprocessBackend):
     """Backend que ejecuta planes usando Cline CLI."""
 
     name = "cline"
 
     def __init__(self, timeout: int = 0):
         self.timeout = timeout
-        self._process: Optional[asyncio.subprocess.Process] = None
 
-    async def execute(
-        self,
-        instruction: str,
-        cwd: str,
-        model: str,
-        on_step: Callable[[ExecutionStep], Awaitable[None]],
-    ) -> ExecutionResult:
-        """Ejecuta una instrucción via cline task --json --yolo --act."""
+    # ------------------------------------------------------------------
+    # SubprocessBackend interface
+    # ------------------------------------------------------------------
+
+    def build_command(self, instruction: str, cwd: str, model: str) -> list:
+        """Construye los args CLI para lanzar cline task --json --yolo --act."""
         cmd = ["cline", "task", "--json", "--yolo", "--act"]
         if model:
             cmd.extend(["-m", model])
         if self.timeout:
             cmd.extend(["--timeout", str(self.timeout)])
         cmd.extend(["--cwd", cwd, instruction])
+        return cmd
 
-        try:
-            proc = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-                cwd=cwd,
-            )
-        except (FileNotFoundError, OSError) as exc:
-            return ExecutionResult(
-                success=False,
-                error=f"Failed to start cline: {exc}",
-            )
+    def parse_event(self, event: dict) -> Optional[ExecutionStep]:
+        """
+        Parsea un evento JSON del stream a ExecutionStep.
 
-        self._process = proc
+        Como side-effect actualiza self._session_id, self._tokens y
+        self._cost cuando el evento contiene esa información.
+        """
+        # Extraer task_id como session_id
+        if event.get("type") == "task_started":
+            self._session_id = event.get("taskId", "")
+            return None
 
-        steps: List[ExecutionStep] = []
-        session_id = ""
-        api_cost_accum: dict = {"tokens": 0, "cost": 0.0}
+        # Acumular tokens/cost de api_req_finished durante el stream
+        if event.get("type") == "say" and event.get("say") == "api_req_finished":
+            self._accumulate_api_cost(event)
+            return None
 
-        async for line in proc.stdout:
-            text = line.decode("utf-8", errors="replace").strip()
-            if not text:
-                continue
-            try:
-                event = json.loads(text)
-            except json.JSONDecodeError:
-                continue
+        return self._parse_say_event(event)
 
-            # Extraer task_id como session_id
-            if event.get("type") == "task_started":
-                session_id = event.get("taskId", "")
-                continue
+    def is_final_event(self, event: dict) -> bool:
+        """Retorna True en completion_result o error para salir del loop sin esperar EOF."""
+        if event.get("type") == "say":
+            return event.get("say") in ("completion_result", "error")
+        return False
 
-            # Acumular tokens/cost de api_req_finished durante el stream
-            if event.get("type") == "say" and event.get("say") == "api_req_finished":
-                self._accumulate_api_cost(event, api_cost_accum)
-                continue
+    async def fetch_post_metadata(self, session_id: str, cwd: str) -> tuple:
+        """
+        Obtiene datos precisos de tokens/coste desde `cline history`.
 
-            # Parsear evento a ExecutionStep
-            step = self._parse_event(event)
-            if step is not None:
-                steps.append(step)
-                await on_step(step)
-
-            # Detectar finalización: salir del loop sin esperar EOF de stdout
-            say_type = event.get("say", "")
-            if event.get("type") == "say" and say_type in ("completion_result", "error"):
-                break
-
-        # Esperar a que el proceso termine (con timeout y fallback a terminate/kill)
-        # IMPORTANTE: proc.stderr.read() se hace DESPUÉS de que el proceso haya muerto.
-        # Si se hiciera antes, se bloquearía indefinidamente porque Cline sigue vivo
-        # tras emitir completion_result (hace cleanup) y stderr no llega a EOF hasta
-        # que el proceso cierra sus file descriptors.
-        try:
-            await asyncio.wait_for(proc.wait(), timeout=10)
-        except asyncio.TimeoutError:
-            proc.terminate()
-            try:
-                await asyncio.wait_for(proc.wait(), timeout=5)
-            except asyncio.TimeoutError:
-                proc.kill()
-            await proc.wait()
-
-        # Proceso ya muerto: stderr.read() retorna inmediatamente
-        stderr_data = await proc.stderr.read()
-
-        # Post-execution: try to get more accurate cost/token data from history.
-        total_tokens = api_cost_accum["tokens"]
-        total_cost = api_cost_accum["cost"]
-
+        Retorna (total_tokens, total_cost). Si falla, retorna (0, 0.0)
+        y execute() usará los valores acumulados del stream.
+        """
         history = await self._fetch_task_history(session_id, cwd)
-        if "totalTokensUsed" in history:
-            total_tokens = history["totalTokensUsed"]
-        if "totalCost" in history:
-            total_cost = history["totalCost"]
+        tokens = history.get("totalTokensUsed", 0)
+        cost = history.get("totalCost", 0.0)
+        return (tokens, cost)
 
-        return ExecutionResult(
-            success=proc.returncode == 0,
-            files_changed=[],
-            steps=steps,
-            total_tokens=total_tokens,
-            total_cost=total_cost,
-            session_id=session_id,
-            error="" if proc.returncode == 0 else stderr_data.decode("utf-8", errors="replace"),
-        )
+    # ------------------------------------------------------------------
+    # Private helpers
+    # ------------------------------------------------------------------
 
-    def _parse_event(self, event: dict) -> Optional[ExecutionStep]:
+    def _parse_say_event(self, event: dict) -> Optional[ExecutionStep]:
         """
         Convierte un evento JSON de Cline a ExecutionStep.
 
@@ -212,7 +155,7 @@ class ClineBackend:
         (task_started, api_req_started, task_progress, task).
         """
         event_type = event.get("type", "")
-        timestamp = _epoch_ms_to_iso(event.get("ts", 0))
+        timestamp = self._epoch_ms_to_iso(event.get("ts", 0))
 
         # Solo procesamos eventos de tipo "say"
         if event_type != "say":
@@ -269,19 +212,20 @@ class ClineBackend:
         # Cualquier otro say_type desconocido: omitir
         return None
 
-    def _accumulate_api_cost(self, event: dict, _accum: dict) -> None:
+    def _accumulate_api_cost(self, event: dict) -> None:
         """
-        Extrae tokens/cost de un evento api_req_finished.
+        Extrae tokens/cost de un evento api_req_finished y los acumula
+        en self._tokens y self._cost.
 
         El campo ``text`` es un JSON embebido con los campos:
         ``tokensIn``, ``tokensOut``, ``cost`` (y posiblemente ``cacheWrites``,
-        ``cacheReads``).  Los valores se acumulan en el dict ``_accum``.
+        ``cacheReads``).
         """
         text = event.get("text", "")
         try:
             data = json.loads(text)
-            _accum["tokens"] += data.get("tokensIn", 0) + data.get("tokensOut", 0)
-            _accum["cost"] += data.get("cost", 0.0)
+            self._tokens += data.get("tokensIn", 0) + data.get("tokensOut", 0)
+            self._cost += data.get("cost", 0.0)
         except (json.JSONDecodeError, TypeError):
             pass
 
@@ -314,9 +258,3 @@ class ClineBackend:
             return {}
         except (FileNotFoundError, OSError, json.JSONDecodeError, ValueError, TypeError):
             return {}
-
-    def abort(self) -> None:
-        """Kill the subprocess if running."""
-        if self._process and self._process.returncode is None:
-            self._process.kill()
-

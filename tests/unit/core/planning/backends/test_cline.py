@@ -12,11 +12,11 @@ from unittest.mock import AsyncMock, patch, MagicMock
 
 from autocode.core.planning.backends.cline import (
     ClineBackend,
-    _epoch_ms_to_iso,
     _parse_tool_text,
     _TOOL_NAME_MAP,
 )
 from autocode.core.planning.backends.base import ExecutionResult
+from autocode.core.planning.backends.subprocess_base import SubprocessBackend
 from autocode.core.planning.models import ExecutionStep
 
 
@@ -242,10 +242,10 @@ class TestClineToolNameMap:
 
 
 class TestClineEpochMsToIso:
-    """Tests for _epoch_ms_to_iso (shared helper)."""
+    """Tests for _epoch_ms_to_iso (shared helper, now on SubprocessBackend)."""
 
     def test_converts_valid_cline_timestamp(self):
-        result = _epoch_ms_to_iso(1773780171439)
+        result = SubprocessBackend._epoch_ms_to_iso(1773780171439)
         assert "2026" in result
         assert "T" in result
 
@@ -264,30 +264,30 @@ class TestParseEvent:
     def test_task_started_returns_none(self):
         """task_started es metadata, no genera step."""
         event = _cl_task_started()
-        step = self.backend._parse_event(event)
+        step = self.backend.parse_event(event)
         assert step is None
 
     def test_say_task_returns_none(self):
         """say:task es echo del prompt, no genera step."""
         event = _cl_say_task("Do something")
-        step = self.backend._parse_event(event)
+        step = self.backend.parse_event(event)
         assert step is None
 
     def test_say_api_req_returns_none(self):
         """say:api_req_started es metadata interna, no genera step."""
         event = _cl_say_api_req()
-        step = self.backend._parse_event(event)
+        step = self.backend.parse_event(event)
         assert step is None
 
     def test_say_task_progress_returns_none(self):
         """say:task_progress es metadata interna, no genera step."""
         event = _cl_say_task_progress("- [x] Step 1\n- [ ] Step 2")
-        step = self.backend._parse_event(event)
+        step = self.backend.parse_event(event)
         assert step is None
 
     def test_reasoning_parsed_as_thinking(self):
         event = _cl_say_reasoning("Let me analyze the code...")
-        step = self.backend._parse_event(event)
+        step = self.backend.parse_event(event)
         assert step is not None
         assert step.type == "thinking"
         assert step.content == "Let me analyze the code..."
@@ -295,7 +295,7 @@ class TestParseEvent:
 
     def test_tool_readFile_parsed(self):
         event = _cl_say_tool(tool="readFile", path="README.md", content="/tmp/README.md")
-        step = self.backend._parse_event(event)
+        step = self.backend.parse_event(event)
         assert step is not None
         assert step.type == "tool_use"
         assert step.tool == "read_file"
@@ -303,7 +303,7 @@ class TestParseEvent:
 
     def test_tool_newFileCreated_parsed(self):
         event = _cl_say_tool(tool="newFileCreated", path="hello.txt", content="Hello World")
-        step = self.backend._parse_event(event)
+        step = self.backend.parse_event(event)
         assert step is not None
         assert step.type == "tool_use"
         assert step.tool == "write_file"
@@ -312,33 +312,33 @@ class TestParseEvent:
 
     def test_tool_executeCommand_parsed(self):
         event = _cl_say_tool(tool="executeCommand", path="", content="npm test")
-        step = self.backend._parse_event(event)
+        step = self.backend.parse_event(event)
         assert step is not None
         assert step.tool == "execute_command"
 
     def test_tool_unknown_passes_through(self):
         event = _cl_say_tool(tool="someNewTool", path="x.py")
-        step = self.backend._parse_event(event)
+        step = self.backend.parse_event(event)
         assert step is not None
         assert step.tool == "someNewTool"
 
     def test_completion_result_parsed(self):
         event = _cl_say_completion("I completed the task successfully.")
-        step = self.backend._parse_event(event)
+        step = self.backend.parse_event(event)
         assert step is not None
         assert step.type == "completion"
         assert "completed" in step.content
 
     def test_say_text_parsed(self):
         event = _cl_say_text("Some informational text")
-        step = self.backend._parse_event(event)
+        step = self.backend.parse_event(event)
         assert step is not None
         assert step.type == "text"
         assert step.content == "Some informational text"
 
     def test_say_error_parsed(self):
         event = _cl_say_error("Something went wrong")
-        step = self.backend._parse_event(event)
+        step = self.backend.parse_event(event)
         assert step is not None
         assert step.type == "error"
         assert "went wrong" in step.content
@@ -350,12 +350,12 @@ class TestParseEvent:
             "say": "some_future_type",
             "text": "...",
         }
-        step = self.backend._parse_event(event)
+        step = self.backend.parse_event(event)
         assert step is None
 
     def test_timestamp_converted_to_iso(self):
         event = _cl_say_reasoning("thinking...", ts=1773780174146)
-        step = self.backend._parse_event(event)
+        step = self.backend.parse_event(event)
         assert "2026" in step.timestamp
         assert "T" in step.timestamp
 
@@ -368,7 +368,7 @@ class TestParseEvent:
             "text": "not valid json",
             "partial": False,
         }
-        step = self.backend._parse_event(event)
+        step = self.backend.parse_event(event)
         assert step is not None
         assert step.type == "tool_use"
         assert step.tool == ""
@@ -670,22 +670,20 @@ class TestAccumulateApiCost:
         self.backend = ClineBackend()
 
     def test_extracts_tokens_in_and_out(self):
-        """Accumulates tokensIn + tokensOut into tokens key."""
+        """Accumulates tokensIn + tokensOut into self._tokens."""
         event = {
             "ts": 1773780174146,
             "type": "say",
             "say": "api_req_finished",
             "text": json.dumps({"tokensIn": 1000, "tokensOut": 200, "cost": 0.025}),
         }
-        accum = {"tokens": 0, "cost": 0.0}
-        self.backend._accumulate_api_cost(event, accum)
+        self.backend._accumulate_api_cost(event)
 
-        assert accum["tokens"] == 1200
-        assert accum["cost"] == pytest.approx(0.025)
+        assert self.backend._tokens == 1200
+        assert self.backend._cost == pytest.approx(0.025)
 
     def test_accumulates_across_multiple_calls(self):
         """Multiple api_req_finished events are summed correctly."""
-        accum = {"tokens": 0, "cost": 0.0}
         for _ in range(3):
             event = {
                 "ts": 1000,
@@ -693,10 +691,10 @@ class TestAccumulateApiCost:
                 "say": "api_req_finished",
                 "text": json.dumps({"tokensIn": 500, "tokensOut": 100, "cost": 0.01}),
             }
-            self.backend._accumulate_api_cost(event, accum)
+            self.backend._accumulate_api_cost(event)
 
-        assert accum["tokens"] == 1800
-        assert accum["cost"] == pytest.approx(0.03)
+        assert self.backend._tokens == 1800
+        assert self.backend._cost == pytest.approx(0.03)
 
     def test_handles_missing_tokensIn(self):
         """Missing tokensIn defaults to 0."""
@@ -706,11 +704,10 @@ class TestAccumulateApiCost:
             "say": "api_req_finished",
             "text": json.dumps({"tokensOut": 300, "cost": 0.005}),
         }
-        accum = {"tokens": 0, "cost": 0.0}
-        self.backend._accumulate_api_cost(event, accum)
+        self.backend._accumulate_api_cost(event)
 
-        assert accum["tokens"] == 300
-        assert accum["cost"] == pytest.approx(0.005)
+        assert self.backend._tokens == 300
+        assert self.backend._cost == pytest.approx(0.005)
 
     def test_handles_missing_cost(self):
         """Missing cost defaults to 0.0."""
@@ -720,11 +717,10 @@ class TestAccumulateApiCost:
             "say": "api_req_finished",
             "text": json.dumps({"tokensIn": 400, "tokensOut": 100}),
         }
-        accum = {"tokens": 0, "cost": 0.0}
-        self.backend._accumulate_api_cost(event, accum)
+        self.backend._accumulate_api_cost(event)
 
-        assert accum["tokens"] == 500
-        assert accum["cost"] == 0.0
+        assert self.backend._tokens == 500
+        assert self.backend._cost == 0.0
 
     def test_handles_all_fields_missing(self):
         """Empty JSON dict doesn't change the accumulator."""
@@ -734,11 +730,10 @@ class TestAccumulateApiCost:
             "say": "api_req_finished",
             "text": json.dumps({}),
         }
-        accum = {"tokens": 0, "cost": 0.0}
-        self.backend._accumulate_api_cost(event, accum)
+        self.backend._accumulate_api_cost(event)
 
-        assert accum["tokens"] == 0
-        assert accum["cost"] == 0.0
+        assert self.backend._tokens == 0
+        assert self.backend._cost == 0.0
 
     def test_handles_invalid_json_text(self):
         """Non-JSON text doesn't crash; accumulator stays unchanged."""
@@ -748,19 +743,19 @@ class TestAccumulateApiCost:
             "say": "api_req_finished",
             "text": "not valid json at all",
         }
-        accum = {"tokens": 100, "cost": 0.01}
-        self.backend._accumulate_api_cost(event, accum)
+        self.backend._tokens = 100
+        self.backend._cost = 0.01
+        self.backend._accumulate_api_cost(event)
 
-        assert accum["tokens"] == 100
-        assert accum["cost"] == pytest.approx(0.01)
+        assert self.backend._tokens == 100
+        assert self.backend._cost == pytest.approx(0.01)
 
     def test_handles_missing_text_field(self):
         """Event without 'text' field doesn't crash."""
         event = {"ts": 1000, "type": "say", "say": "api_req_finished"}
-        accum = {"tokens": 0, "cost": 0.0}
-        self.backend._accumulate_api_cost(event, accum)
+        self.backend._accumulate_api_cost(event)
 
-        assert accum["tokens"] == 0
+        assert self.backend._tokens == 0
 
     @pytest.mark.asyncio
     async def test_execute_accumulates_from_api_req_finished_events(self, backend, on_step):
