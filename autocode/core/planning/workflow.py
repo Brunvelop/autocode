@@ -119,6 +119,15 @@ def revert_plan(plan_id: str) -> CommitPlanOutput:
             else []
         )
 
+        if not files and plan.parent_commit:
+            # Fallback: recompute from parent_commit diff
+            logger.info(
+                f"Plan '{plan_id}' has empty files_changed, "
+                f"recomputing from parent_commit via git diff"
+            )
+            diff_output = git_checked("diff", "--name-only", plan.parent_commit)
+            files = [f for f in diff_output.split("\n") if f]
+
         if not files:
             return CommitPlanOutput(
                 success=False,

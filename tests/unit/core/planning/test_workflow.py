@@ -254,16 +254,27 @@ class TestRevertPlanWorkflow:
         assert "deadbeef123" in git_calls_str
 
     def test_revert_empty_files_returns_error(self, tmp_path):
-        """revert con files_changed vacío → success=False."""
+        """revert con files_changed vacío pero con parent_commit → fallback → success=True.
+        
+        After the fallback logic, when files_changed is empty but parent_commit
+        is available, git diff is used to recompute the files. So the result
+        is SUCCESS (not error) when parent_commit exists.
+        """
         plan_id = self._create_pending_review_plan(
-            tmp_path, files_changed=[]
+            tmp_path, files_changed=[], parent_commit="abc123"
         )
 
-        with patch("autocode.core.planning.persistence.PLANS_DIR", str(tmp_path)):
+        def git_side_effect(*args, **kwargs):
+            if "diff" in args:
+                return "src/main.py\nsrc/utils.py"
+            return ""
+
+        with patch("autocode.core.planning.persistence.PLANS_DIR", str(tmp_path)), \
+             patch("autocode.core.planning.workflow.git_checked", side_effect=git_side_effect):
             result = revert_plan(plan_id=plan_id)
 
-        assert result.success is False
-        assert "no files" in result.message.lower() or "empty" in result.message.lower()
+        assert result.success is True
+        assert result.result.status == "reverted"
 
     def test_revert_nonexistent_plan(self, tmp_path):
         """revert_plan con plan inexistente → error."""
@@ -272,6 +283,106 @@ class TestRevertPlanWorkflow:
 
         assert result.success is False
         assert "no encontrado" in result.message.lower() or "not found" in result.message.lower()
+
+
+# ==============================================================================
+# TESTS: revert_plan fallback (workflow)
+# ==============================================================================
+
+
+class TestRevertPlanFallback:
+    """Tests for the fallback logic in revert_plan.
+
+    When files_changed is empty, revert_plan should try to recompute
+    the changed files from parent_commit via git diff --name-only.
+    """
+
+    def _create_plan(self, tmp_path, plan_id="20260501-170000",
+                     files_changed=None, parent_commit="abc123"):
+        """Helper: creates a plan JSON in tmp_path with status=pending_review."""
+        plan_data = {
+            "id": plan_id,
+            "title": "feat: fallback test",
+            "status": "pending_review",
+            "parent_commit": parent_commit,
+            "branch": "main",
+            "created_at": "2026-05-01T17:00:00",
+            "updated_at": "2026-05-01T17:00:00",
+            "execution": {
+                "started_at": "2026-05-01T17:00:01",
+                "completed_at": "2026-05-01T17:05:00",
+                "model_used": "openrouter/z-ai/glm-5",
+                "steps": [],
+                "backend": "",
+                "session_id": "",
+                "files_changed": files_changed if files_changed is not None else [],
+                "commit_hash": "",
+                "total_tokens": 1000,
+                "total_cost": 0.005,
+                "review": {
+                    "mode": "human",
+                    "verdict": "needs_changes",
+                    "summary": "Awaiting human review",
+                    "reviewed_by": "",
+                },
+            },
+        }
+        (tmp_path / f"{plan_id}.json").write_text(json.dumps(plan_data))
+        return plan_id
+
+    def test_revert_empty_files_recomputes_from_parent_commit_via_git_diff(self, tmp_path):
+        """Empty files_changed + parent_commit → git diff used to recompute → success."""
+        plan_id = self._create_plan(tmp_path, files_changed=[], parent_commit="deadbeef")
+
+        def git_side_effect(*args, **kwargs):
+            if "diff" in args and "--name-only" in args:
+                return "src/alpha.py\nsrc/beta.py"
+            return ""
+
+        with patch("autocode.core.planning.persistence.PLANS_DIR", str(tmp_path)), \
+             patch("autocode.core.planning.workflow.git_checked", side_effect=git_side_effect) as mock_git:
+            result = revert_plan(plan_id=plan_id)
+
+        assert result.success is True
+        assert result.result.status == "reverted"
+        # Verify git diff --name-only was called with parent_commit
+        diff_calls = [c for c in mock_git.call_args_list if "diff" in str(c)]
+        assert len(diff_calls) >= 1
+        assert "deadbeef" in str(diff_calls[0])
+
+    def test_revert_empty_files_no_parent_commit_returns_error(self, tmp_path):
+        """Empty files_changed AND no parent_commit → error (no way to know what to revert)."""
+        plan_id = self._create_plan(tmp_path, files_changed=[], parent_commit="")
+
+        with patch("autocode.core.planning.persistence.PLANS_DIR", str(tmp_path)), \
+             patch("autocode.core.planning.workflow.git_checked") as mock_git:
+            result = revert_plan(plan_id=plan_id)
+
+        assert result.success is False
+        assert "no files" in result.message.lower() or "empty" in result.message.lower()
+        # git diff should NOT be called since there's no parent_commit
+        diff_calls = [c for c in mock_git.call_args_list if "diff" in str(c)]
+        assert len(diff_calls) == 0
+
+    def test_recomputed_files_are_used_for_git_checkout(self, tmp_path):
+        """Files recomputed from git diff are then passed to git checkout."""
+        plan_id = self._create_plan(tmp_path, files_changed=[], parent_commit="cafe1234")
+
+        def git_side_effect(*args, **kwargs):
+            if "diff" in args and "--name-only" in args:
+                return "src/module_a.py\nsrc/module_b.py\n"
+            return ""
+
+        with patch("autocode.core.planning.persistence.PLANS_DIR", str(tmp_path)), \
+             patch("autocode.core.planning.workflow.git_checked", side_effect=git_side_effect) as mock_git:
+            result = revert_plan(plan_id=plan_id)
+
+        assert result.success is True
+        git_calls_str = str(mock_git.call_args_list)
+        # Both recomputed files should be checked out
+        assert "src/module_a.py" in git_calls_str
+        assert "src/module_b.py" in git_calls_str
+        assert "checkout" in git_calls_str
 
 
 # ==============================================================================
