@@ -26,7 +26,7 @@ const REVIEW_STATUSES = new Set(['pending_review']);
 
 // Statuses where manual status change / execute are NOT available
 const NON_EDITABLE_STATUSES = new Set([
-    'pending_review', 'reverted', 'completed',
+    'reverted', 'completed',
 ]);
 
 // Default model for execution
@@ -237,6 +237,9 @@ export class CommitPlanDetail extends LitElement {
                             .value=${status}
                             ?disabled=${this._isExecuting}
                             @change=${this._updateStatus}>
+                            ${status === 'pending_review' ? html`
+                                <option value="pending_review" selected>Pending Review</option>
+                            ` : ''}
                             <option value="draft" ?selected=${status === 'draft'}>Draft</option>
                             <option value="ready" ?selected=${status === 'ready'}>Ready</option>
                             <option value="abandoned" ?selected=${status === 'abandoned'}>Abandoned</option>
