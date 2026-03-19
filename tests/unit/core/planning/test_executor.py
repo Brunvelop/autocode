@@ -1569,6 +1569,55 @@ class TestFilesChangedComputedByExecutor:
 
 
 # ============================================================================
+# TEST: CWD ASSUMPTION — DOCUMENTS MONO-REPO CONTRACT (Commit 4)
+# ============================================================================
+
+
+class TestCwdAssumption:
+    """Document and test the CWD assumption.
+
+    os.getcwd() is used as cwd for both the backend and ExecutionSandbox.
+    This is correct for CLI usage (single repo). This test acts as a contract
+    to prevent regressions if the cwd is ever accidentally hardcoded or
+    sourced from somewhere other than os.getcwd().
+    """
+
+    @pytest.mark.asyncio
+    async def test_cwd_passed_to_backend_and_sandbox(self):
+        """os.getcwd() is used as cwd for both backend and sandbox.
+
+        If the server runs from /my/mono/repo, both ExecutionSandbox and
+        backend.execute() receive that exact path — no hardcoded paths,
+        no separate sources.
+        """
+        plan = _make_plan()
+        backend = MockBackend()
+        mock_sandbox_cls = MagicMock()
+        mock_instance = AsyncMock()
+        mock_instance.snapshot = AsyncMock(return_value="abc")
+        mock_instance.collect_changes = AsyncMock(return_value=[])
+        mock_instance.revert = AsyncMock()
+        mock_sandbox_cls.return_value = mock_instance
+
+        with (
+            _patch_load_plan(plan),
+            _patch_save_plan(),
+            _patch_backend(backend),
+            _patch_compute_review_metrics(),
+            patch("autocode.core.planning.executor.os.getcwd", return_value="/my/mono/repo"),
+            patch("autocode.core.planning.executor.ExecutionSandbox", mock_sandbox_cls),
+        ):
+            await _collect_events(
+                stream_execute_plan("20260101-120000", backend="mock")
+            )
+
+        # Verify sandbox receives cwd from os.getcwd()
+        mock_sandbox_cls.assert_called_once_with("/my/mono/repo")
+        # Verify backend receives the same cwd from os.getcwd()
+        assert backend.execute_called_with["cwd"] == "/my/mono/repo"
+
+
+# ============================================================================
 # TEST: REVIEW FLOW YIELDS ONLY STRINGS — NO MIXED TYPES (Commit 2)
 # ============================================================================
 

@@ -225,6 +225,9 @@ async def stream_execute_plan(
         # 4. Build instruction
         # ------------------------------------------------------------------
         instruction = _build_instruction(plan)
+        # NOTE: os.getcwd() assumes the server process runs from the target repo root.
+        # This is correct for CLI usage (single repo). If this evolves to a multi-repo
+        # service, cwd should be a parameter of stream_execute_plan or a field of CommitPlan.
         cwd = os.getcwd()
 
         # Snapshot HEAD before execution so we can detect (and undo) any
