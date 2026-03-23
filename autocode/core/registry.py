@@ -538,8 +538,8 @@ class Refract:
         Returns:
             A configured ``FastAPI`` application.
         """
-        from autocode.interfaces.api import create_api_app_for_refract
-        return create_api_app_for_refract(self)
+        mod = importlib.import_module("autocode.interfaces.api")
+        return mod.create_api_app_for_refract(self)
 
     def router(self):
         """Create and return an ``APIRouter`` with only the dynamic endpoints.
@@ -565,8 +565,8 @@ class Refract:
         Returns:
             A ``fastapi.routing.APIRouter`` instance.
         """
-        from autocode.interfaces.api import create_router_for_refract
-        return create_router_for_refract(self)
+        mod = importlib.import_module("autocode.interfaces.api")
+        return mod.create_router_for_refract(self)
 
     # ------------------------------------------------------------------
     # Dunder helpers
