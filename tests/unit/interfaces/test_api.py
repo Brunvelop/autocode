@@ -10,14 +10,16 @@ import os
 import tempfile
 from typing import Dict, Any, List
 from unittest.mock import Mock, patch, MagicMock
-from fastapi import HTTPException
+from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 from pydantic import BaseModel
 
 from autocode.interfaces.api import (
     _format_response, _create_dynamic_model, _extract_params,
     _execute_function, create_handler, _register_dynamic_endpoints,
-    _register_static_files, create_api_app
+    _register_static_files, create_api_app,
+    create_router_for_refract, create_api_app_for_refract,
+    _add_function_endpoints,
 )
 
 # Aliases for backward compatibility with tests
@@ -1110,3 +1112,310 @@ class TestStaticFilesAndRootEndpoint:
         data = response.json()
         assert data["status"] == "healthy"
         assert "functions" in data
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _make_refract_stub(functions=None, stream_registry=None):
+    """Build a minimal Refract-like stub for use in router/api tests."""
+    from autocode.core.registry import Refract
+
+    stub = Refract("test-stub")
+    if functions:
+        stub._registry.extend(functions)
+    if stream_registry:
+        stub._stream_registry.update(stream_registry)
+    return stub
+
+
+def _make_api_func_info(name="api_func", http_methods=None):
+    """Create a simple FunctionInfo with 'api' interface."""
+    def _fn(x: int, y: int = 1) -> GenericOutput:
+        return GenericOutput(result=x + y, success=True)
+
+    _fn.__name__ = name
+    return FunctionInfo(
+        name=name,
+        func=_fn,
+        description=f"Test function {name}",
+        params=[
+            ParamSchema(name="x", type=int, required=True, description="x"),
+            ParamSchema(name="y", type=int, default=1, required=False, description="y"),
+        ],
+        http_methods=http_methods or ["GET", "POST"],
+        interfaces=["api"],
+        return_type=GenericOutput,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Tests: create_router_for_refract
+# ---------------------------------------------------------------------------
+
+class TestCreateRouterForRefract:
+    """Tests for create_router_for_refract — the router / bring-your-own-app mode."""
+
+    def test_router_returns_apirouter(self):
+        """create_router_for_refract returns a FastAPI APIRouter instance."""
+        from fastapi.routing import APIRouter
+
+        stub = _make_refract_stub()
+        router = create_router_for_refract(stub)
+
+        assert isinstance(router, APIRouter)
+
+    def test_router_registers_dynamic_endpoints(self):
+        """Router has routes for registered functions."""
+        func = _make_api_func_info("add_nums")
+        stub = _make_refract_stub(functions=[func])
+        router = create_router_for_refract(stub)
+
+        route_paths = [r.path for r in router.routes if hasattr(r, "path")]
+        assert "/add_nums" in route_paths
+
+    def test_router_has_functions_details_endpoint(self):
+        """Router includes the /functions/details endpoint."""
+        stub = _make_refract_stub()
+        router = create_router_for_refract(stub)
+
+        route_paths = [r.path for r in router.routes if hasattr(r, "path")]
+        assert "/functions/details" in route_paths
+
+    def test_router_has_health_endpoint(self):
+        """Router includes the /health endpoint."""
+        stub = _make_refract_stub()
+        router = create_router_for_refract(stub)
+
+        route_paths = [r.path for r in router.routes if hasattr(r, "path")]
+        assert "/health" in route_paths
+
+    def test_router_excludes_root_html_pages(self):
+        """Router does NOT include HTML page routes like / , /functions, /demo, /tests."""
+        stub = _make_refract_stub()
+        router = create_router_for_refract(stub)
+
+        route_paths = {r.path for r in router.routes if hasattr(r, "path")}
+        for html_path in ["/", "/functions", "/demo", "/tests"]:
+            assert html_path not in route_paths, f"HTML route {html_path!r} must not be in router"
+
+    def test_router_mountable_on_custom_fastapi_app(self):
+        """Router can be mounted on a user's own FastAPI app."""
+        from fastapi import FastAPI
+
+        func = _make_api_func_info("my_fn")
+        stub = _make_refract_stub(functions=[func])
+        router = create_router_for_refract(stub)
+
+        custom_app = FastAPI()
+        custom_app.include_router(router)
+        client = TestClient(custom_app)
+
+        # Dynamic endpoint should be reachable
+        response = client.get("/my_fn?x=3&y=4")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["result"] == 7
+
+    def test_router_health_endpoint_returns_correct_count(self):
+        """Router /health reflects the instance function count."""
+        from fastapi import FastAPI
+
+        f1 = _make_api_func_info("fn1")
+        f2 = _make_api_func_info("fn2")
+        stub = _make_refract_stub(functions=[f1, f2])
+        router = create_router_for_refract(stub)
+
+        custom_app = FastAPI()
+        custom_app.include_router(router)
+        client = TestClient(custom_app)
+
+        response = client.get("/health")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "healthy"
+        assert data["functions"] == 2
+
+    def test_router_functions_details_returns_instance_schemas(self):
+        """Router /functions/details uses the Refract instance's schemas (not global)."""
+        from fastapi import FastAPI
+
+        func = _make_api_func_info("unique_router_fn")
+        stub = _make_refract_stub(functions=[func])
+        router = create_router_for_refract(stub)
+
+        custom_app = FastAPI()
+        custom_app.include_router(router)
+        client = TestClient(custom_app)
+
+        response = client.get("/functions/details")
+        assert response.status_code == 200
+        data = response.json()
+        assert "functions" in data
+        assert "unique_router_fn" in data["functions"]
+
+    def test_router_empty_registry_no_dynamic_routes(self):
+        """Router created from empty Refract has no dynamic function routes."""
+        stub = _make_refract_stub()
+        router = create_router_for_refract(stub)
+
+        route_paths = {r.path for r in router.routes if hasattr(r, "path")}
+        # Should only have the two standard endpoints
+        assert "/functions/details" in route_paths
+        assert "/health" in route_paths
+        # But no function-specific routes
+        assert "/add_nums" not in route_paths
+
+
+# ---------------------------------------------------------------------------
+# Tests: create_api_app_for_refract
+# ---------------------------------------------------------------------------
+
+class TestCreateApiAppForRefract:
+    """Tests for create_api_app_for_refract — the full-app mode."""
+
+    def test_api_app_returns_fastapi_instance(self):
+        """create_api_app_for_refract returns a FastAPI application."""
+        stub = _make_refract_stub()
+        app = create_api_app_for_refract(stub)
+
+        assert isinstance(app, FastAPI)
+
+    def test_api_app_title_uses_refract_name(self):
+        """The returned app title reflects the Refract instance name."""
+        from autocode.core.registry import Refract
+
+        refract = Refract("my-service")
+        app = create_api_app_for_refract(refract)
+
+        assert "my-service" in app.title
+
+    def test_api_app_has_dynamic_endpoints(self):
+        """create_api_app_for_refract registers dynamic function endpoints."""
+        func = _make_api_func_info("greet")
+        stub = _make_refract_stub(functions=[func])
+        app = create_api_app_for_refract(stub)
+        client = TestClient(app)
+
+        response = client.get("/greet?x=10")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["result"] == 11  # x=10, y=1 (default)
+
+    def test_api_app_has_health_endpoint(self):
+        """App created by create_api_app_for_refract has a /health endpoint."""
+        stub = _make_refract_stub()
+        app = create_api_app_for_refract(stub)
+        client = TestClient(app)
+
+        response = client.get("/health")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "healthy"
+
+    def test_api_app_health_reflects_instance_count(self):
+        """App /health function count matches the Refract instance, not global registry."""
+        f1 = _make_api_func_info("fn_a")
+        f2 = _make_api_func_info("fn_b")
+        stub = _make_refract_stub(functions=[f1, f2])
+        app = create_api_app_for_refract(stub)
+        client = TestClient(app)
+
+        response = client.get("/health")
+        assert response.json()["functions"] == 2
+
+    def test_api_app_has_functions_details_endpoint(self):
+        """App has /functions/details with instance's schemas."""
+        func = _make_api_func_info("my_detail_fn")
+        stub = _make_refract_stub(functions=[func])
+        app = create_api_app_for_refract(stub)
+        client = TestClient(app)
+
+        response = client.get("/functions/details")
+        assert response.status_code == 200
+        data = response.json()
+        assert "my_detail_fn" in data["functions"]
+
+    def test_api_app_has_root_endpoint(self):
+        """App has a root '/' endpoint."""
+        stub = _make_refract_stub()
+        app = create_api_app_for_refract(stub)
+
+        root_routes = [r for r in app.routes if hasattr(r, "path") and r.path == "/"]
+        assert len(root_routes) == 1
+
+    def test_api_app_isolated_from_global_registry(self):
+        """Refract.api() uses instance registry, not the global registry."""
+        from autocode.core.registry import Refract, _registry as global_reg
+
+        # Register a function in global registry only
+        from autocode.core.registry import register_function
+
+        @register_function()
+        def global_only_fn(z: int) -> GenericOutput:
+            """Global only."""
+            return GenericOutput(result=z)
+
+        # Build a Refract instance with a DIFFERENT function
+        instance_func = _make_api_func_info("instance_only_fn")
+        refract = Refract("isolated")
+        refract._registry.append(instance_func)
+
+        app = create_api_app_for_refract(refract)
+        client = TestClient(app)
+
+        # Instance function should be reachable
+        resp = client.get("/instance_only_fn?x=5")
+        assert resp.status_code == 200
+
+        # Global-only function should NOT be reachable via this app
+        resp = client.get("/global_only_fn?z=1")
+        assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Tests: _add_function_endpoints (parameterized core)
+# ---------------------------------------------------------------------------
+
+class TestAddFunctionEndpoints:
+    """Tests for _add_function_endpoints — the parameterized endpoint registration helper."""
+
+    def test_add_function_endpoints_registers_get_and_post(self):
+        """_add_function_endpoints registers both GET and POST routes."""
+        func = _make_api_func_info("param_fn", http_methods=["GET", "POST"])
+        mock_target = Mock()
+        mock_target.add_api_route = Mock()
+
+        _add_function_endpoints(mock_target, [func], lambda name: None)
+
+        assert mock_target.add_api_route.call_count == 2
+        methods = [c[1]["methods"][0] for c in mock_target.add_api_route.call_args_list]
+        assert "GET" in methods
+        assert "POST" in methods
+
+    def test_add_function_endpoints_skips_non_api_interface(self):
+        """Functions without 'api' in interfaces are skipped."""
+        mcp_only = FunctionInfo(
+            name="mcp_only",
+            func=lambda: None,
+            description="MCP only",
+            params=[],
+            interfaces=["mcp"],  # no "api"
+            return_type=GenericOutput,
+        )
+        mock_target = Mock()
+        mock_target.add_api_route = Mock()
+
+        _add_function_endpoints(mock_target, [mcp_only], lambda name: None)
+
+        mock_target.add_api_route.assert_not_called()
+
+    def test_add_function_endpoints_empty_list(self):
+        """Empty function list results in no routes being added."""
+        mock_target = Mock()
+        mock_target.add_api_route = Mock()
+
+        _add_function_endpoints(mock_target, [], lambda name: None)
+
+        mock_target.add_api_route.assert_not_called()

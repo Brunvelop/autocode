@@ -52,6 +52,147 @@ def create_api_app() -> FastAPI:
     return app
 
 
+def create_router_for_refract(refract) -> "APIRouter":
+    """Create an ``APIRouter`` with only the dynamic endpoints from a Refract instance.
+
+    This is the *router mode* — suitable for mounting on a user-supplied
+    ``FastAPI`` app (``my_app.include_router(refract.router())``).
+
+    Includes:
+        - Dynamic function endpoints for all functions with ``"api"`` interface.
+        - ``GET /functions/details`` — schema discovery for the frontend.
+        - ``GET /health`` — basic health check.
+
+    Excludes:
+        - Static file mounts.
+        - Root / demo / tests HTML pages.
+
+    Args:
+        refract: A ``Refract`` instance whose registry will be used.
+
+    Returns:
+        An ``APIRouter`` ready to be included in any FastAPI application.
+    """
+    from fastapi.routing import APIRouter
+
+    router = APIRouter()
+    functions = refract.get_all_functions()
+    _add_function_endpoints(router, functions, refract.get_stream_func)
+
+    # Capture schemas at router-creation time so the closure doesn't hold a
+    # live reference to the Refract instance longer than needed.
+    def _make_details_handler(refract_ref):
+        async def list_functions_details() -> dict:
+            schemas = refract_ref.get_all_schemas()
+            return {"functions": {s.name: s for s in schemas}}
+        return list_functions_details
+
+    def _make_health_handler(refract_ref):
+        async def health_check() -> dict:
+            return {"status": "healthy", "functions": refract_ref.function_count()}
+        return health_check
+
+    router.add_api_route(
+        "/functions/details",
+        _make_details_handler(refract),
+        methods=["GET"],
+        operation_id="refract_list_functions_details",
+        summary="List all registered function schemas",
+    )
+    router.add_api_route(
+        "/health",
+        _make_health_handler(refract),
+        methods=["GET"],
+        operation_id="refract_health_check",
+        summary="Health check",
+    )
+
+    return router
+
+
+def create_api_app_for_refract(refract) -> FastAPI:
+    """Create a complete ``FastAPI`` application for a ``Refract`` instance.
+
+    Equivalent to ``create_api_app()`` but uses the *instance* registry
+    instead of the global registry.  Suitable for the *app mode*:
+
+        app = Refract("my-project", discover=["my_project.core"])
+        fastapi_app = app.api()  # Ready to serve
+
+    Includes everything ``create_router_for_refract`` produces, plus:
+        - Standard HTML pages (root, ``/functions``, ``/demo``, ``/tests``).
+        - Static file mounts (``/elements``, ``/tests``, ``/static``).
+
+    Args:
+        refract: A ``Refract`` instance whose registry will be used.
+
+    Returns:
+        A configured ``FastAPI`` application.
+    """
+    try:
+        from importlib.metadata import version as pkg_version
+        _version = pkg_version("autocode")
+    except Exception:
+        _version = "unknown"
+
+    app = FastAPI(
+        title=f"{refract._name} API",
+        description=f"API for {refract._name}",
+        version=_version,
+    )
+
+    functions = refract.get_all_functions()
+    _add_function_endpoints(app, functions, refract.get_stream_func)
+    _register_standard_endpoints_for_refract(app, refract)
+    _register_static_files(app)
+
+    return app
+
+
+def _register_standard_endpoints_for_refract(app: FastAPI, refract) -> None:
+    """Register standard endpoints bound to a Refract instance's registry.
+
+    Parameterized version of ``_register_standard_endpoints`` — reads schemas
+    and function counts from *refract* rather than the global registry.
+
+    Args:
+        app: FastAPI application to register endpoints on.
+        refract: Refract instance whose registry is used for data endpoints.
+    """
+    current_dir = os.path.dirname(__file__)
+    views_dir = os.path.join(current_dir, "..", "web", "views")
+    tests_dir = os.path.join(current_dir, "..", "web", "tests")
+
+    @app.get("/")
+    async def root():
+        return FileResponse(os.path.join(views_dir, "index.html"))
+
+    @app.get("/functions")
+    async def functions_ui():
+        return FileResponse(os.path.join(views_dir, "functions.html"))
+
+    @app.get("/demo")
+    async def demo_ui():
+        return FileResponse(os.path.join(views_dir, "demo.html"))
+
+    @app.get("/tests")
+    async def tests_dashboard():
+        return FileResponse(os.path.join(tests_dir, "index.html"))
+
+    @app.get("/functions/details")
+    async def list_functions_details() -> dict[str, dict[str, FunctionSchema]]:
+        schemas = refract.get_all_schemas()
+        return {"functions": {s.name: s for s in schemas}}
+
+    @app.get("/health")
+    async def health_check():
+        return {"status": "healthy", "functions": refract.function_count()}
+
+    @app.get("/api/tests/discover")
+    async def discover_tests():
+        return _discover_test_files(tests_dir)
+
+
 def create_handler(func_info: FunctionInfo, method: str):
     """
     Create endpoint handler for registered function.
@@ -91,22 +232,33 @@ def _load_and_validate_functions():
         raise
 
 
-def _register_dynamic_endpoints(app: FastAPI):
-    """Register all API-exposed functions as endpoints.
-    
-    Streaming functions get a dedicated SSE endpoint via _create_stream_handler.
-    Non-streaming functions use the standard handler as before.
+def _add_function_endpoints(
+    app_or_router,
+    functions: list,
+    stream_getter: Callable,
+) -> None:
+    """Register dynamic endpoints from a given list of FunctionInfo objects.
+
+    This is the parameterized core — it does not touch the global registry.
+    Both the global ``_register_dynamic_endpoints`` and the instance-level
+    ``create_router_for_refract`` / ``create_api_app_for_refract`` delegate here.
+
+    Args:
+        app_or_router: A ``FastAPI`` app or ``APIRouter`` to add routes to.
+        functions: List of ``FunctionInfo`` objects whose ``"api"`` interface is set.
+        stream_getter: Callable ``(name: str) -> Callable | None`` that returns the
+            async generator for streaming functions.
     """
-    api_functions = get_functions_for_interface("api")
+    api_functions = [f for f in functions if "api" in f.interfaces]
 
     for func_info in api_functions:
         if func_info.streaming:
-            stream_func = get_stream_func(func_info.name)
+            stream_func = stream_getter(func_info.name)
             if stream_func is None:
                 logger.error(f"Streaming function '{func_info.name}' has no stream_func registered")
                 continue
             handler = _create_stream_handler(func_info, stream_func)
-            app.add_api_route(
+            app_or_router.add_api_route(
                 f"/{func_info.name}",
                 handler,
                 methods=["POST"],
@@ -117,7 +269,7 @@ def _register_dynamic_endpoints(app: FastAPI):
             for method in func_info.http_methods:
                 handler, _ = create_handler(func_info, method)
                 response_model = func_info.return_type or GenericOutput
-                app.add_api_route(
+                app_or_router.add_api_route(
                     f"/{func_info.name}",
                     handler,
                     methods=[method.upper()],
@@ -127,6 +279,20 @@ def _register_dynamic_endpoints(app: FastAPI):
                 )
 
     logger.info(f"Registered {len(api_functions)} dynamic endpoints")
+
+
+def _register_dynamic_endpoints(app: FastAPI):
+    """Register all API-exposed functions as endpoints (reads global registry).
+
+    Delegates to ``_add_function_endpoints`` with global-registry data.
+
+    Streaming functions get a dedicated SSE endpoint via _create_stream_handler.
+    Non-streaming functions use the standard handler as before.
+    """
+    all_functions = get_functions_for_interface("api")
+    # get_functions_for_interface already filters by "api", pass full list
+    # _add_function_endpoints re-filters, which is harmless.
+    _add_function_endpoints(app, all_functions, get_stream_func)
 
 
 def _register_standard_endpoints(app: FastAPI):

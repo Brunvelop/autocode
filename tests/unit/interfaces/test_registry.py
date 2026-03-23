@@ -1062,3 +1062,131 @@ class TestRefractClass:
 
         assert len(_pending_registrations) == 0
         assert len(_pending_stream_funcs) == 0
+
+
+class TestRefractInterfaceFactories:
+    """Tests for Refract.api() and Refract.router() interface factories."""
+
+    def test_refract_router_returns_apirouter(self):
+        """Refract.router() returns a FastAPI APIRouter."""
+        from fastapi.routing import APIRouter
+
+        app = Refract("router-test")
+        router = app.router()
+
+        assert isinstance(router, APIRouter)
+
+    def test_refract_api_returns_fastapi_app(self):
+        """Refract.api() returns a FastAPI application."""
+        from fastapi import FastAPI
+
+        app = Refract("api-test")
+        fastapi_app = app.api()
+
+        assert isinstance(fastapi_app, FastAPI)
+
+    def test_refract_api_title_contains_name(self):
+        """FastAPI app created by Refract.api() uses the instance name in its title."""
+        from fastapi import FastAPI
+
+        app = Refract("my-service")
+        fastapi_app = app.api()
+
+        assert "my-service" in fastapi_app.title
+
+    def test_refract_router_includes_health(self):
+        """Router returned by Refract.router() includes /health endpoint."""
+        app = Refract("router-health-test")
+        router = app.router()
+
+        paths = {r.path for r in router.routes if hasattr(r, "path")}
+        assert "/health" in paths
+
+    def test_refract_router_includes_functions_details(self):
+        """Router returned by Refract.router() includes /functions/details endpoint."""
+        app = Refract("router-details-test")
+        router = app.router()
+
+        paths = {r.path for r in router.routes if hasattr(r, "path")}
+        assert "/functions/details" in paths
+
+    def test_refract_api_has_dynamic_endpoints_for_registered_functions(self):
+        """Functions injected into Refract instance appear as endpoints in api()."""
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+
+        def add(x: int, y: int = 0) -> GenericOutput:
+            return GenericOutput(result=x + y)
+
+        info = FunctionInfo(
+            name="add",
+            func=add,
+            description="Add",
+            params=[
+                ParamSchema(name="x", type=int, required=True, description="x"),
+                ParamSchema(name="y", type=int, default=0, required=False, description="y"),
+            ],
+            http_methods=["GET"],
+            interfaces=["api"],
+            return_type=GenericOutput,
+        )
+        refract = Refract("endpoint-test")
+        refract._registry.append(info)
+
+        fastapi_app = refract.api()
+        client = TestClient(fastapi_app)
+
+        response = client.get("/add?x=3&y=4")
+        assert response.status_code == 200
+        assert response.json()["result"] == 7
+
+    def test_refract_router_dynamic_endpoints_reachable_via_include_router(self):
+        """Functions in Refract registry are reachable when router is mounted."""
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+
+        def multiply(a: int, b: int = 2) -> GenericOutput:
+            return GenericOutput(result=a * b)
+
+        info = FunctionInfo(
+            name="multiply",
+            func=multiply,
+            description="Multiply",
+            params=[
+                ParamSchema(name="a", type=int, required=True, description="a"),
+                ParamSchema(name="b", type=int, default=2, required=False, description="b"),
+            ],
+            http_methods=["GET"],
+            interfaces=["api"],
+            return_type=GenericOutput,
+        )
+        refract = Refract("router-mount-test")
+        refract._registry.append(info)
+
+        my_app = FastAPI()
+        my_app.include_router(refract.router())
+        client = TestClient(my_app)
+
+        response = client.get("/multiply?a=5")
+        assert response.status_code == 200
+        assert response.json()["result"] == 10  # 5 * 2 (default b=2)
+
+    def test_refract_api_does_not_affect_global_registry(self):
+        """Calling Refract.api() does not touch or expose the global registry."""
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+
+        # Register a function in global registry
+        @register_function()
+        def global_sentinel(x: int) -> GenericOutput:
+            """Global sentinel function."""
+            return GenericOutput(result=x)
+
+        # Create an isolated Refract instance (no functions)
+        isolated = Refract("isolated-api")
+        fastapi_app = isolated.api()
+        client = TestClient(fastapi_app)
+
+        # global_sentinel must NOT appear in this app
+        resp = client.get("/global_sentinel?x=1")
+        assert resp.status_code == 404

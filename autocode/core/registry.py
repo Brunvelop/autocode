@@ -515,6 +515,60 @@ class Refract:
         self._stream_registry.clear()
 
     # ------------------------------------------------------------------
+    # Interface factories
+    # ------------------------------------------------------------------
+
+    def api(self):
+        """Create and return a complete FastAPI application for this instance.
+
+        Equivalent to the module-level ``create_api_app()`` but driven by this
+        instance's registry instead of the global one.  Suitable for the
+        *app mode* (prototyping / stand-alone service):
+
+            refract = Refract("my-project", discover=["my_project.core"])
+            fastapi_app = refract.api()   # pass to uvicorn
+
+        The returned app includes:
+        - Dynamic function endpoints (one route per HTTP method per function).
+        - ``GET /functions/details`` — schema discovery for the frontend.
+        - ``GET /health`` — health check.
+        - Standard HTML views (root, ``/functions``, ``/demo``, ``/tests``).
+        - Static file mounts (``/elements``, ``/tests``, ``/static``).
+
+        Returns:
+            A configured ``FastAPI`` application.
+        """
+        from autocode.interfaces.api import create_api_app_for_refract
+        return create_api_app_for_refract(self)
+
+    def router(self):
+        """Create and return an ``APIRouter`` with only the dynamic endpoints.
+
+        Suitable for the *router mode* (production / embedded service) where
+        the caller supplies their own ``FastAPI`` application:
+
+            from fastapi import FastAPI
+            from fastapi.middleware.cors import CORSMiddleware
+
+            my_app = FastAPI()
+            my_app.add_middleware(CORSMiddleware, allow_origins=["*"])
+            my_app.include_router(refract.router())
+
+        The router includes:
+        - Dynamic function endpoints.
+        - ``GET /functions/details``.
+        - ``GET /health``.
+
+        It does **not** include static file mounts or HTML pages — those are
+        the caller's responsibility.
+
+        Returns:
+            A ``fastapi.routing.APIRouter`` instance.
+        """
+        from autocode.interfaces.api import create_router_for_refract
+        return create_router_for_refract(self)
+
+    # ------------------------------------------------------------------
     # Dunder helpers
     # ------------------------------------------------------------------
 
