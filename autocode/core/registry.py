@@ -375,6 +375,7 @@ class Refract:
         self._name = name
         self._registry: list[FunctionInfo] = []
         self._stream_registry: dict[str, Callable] = {}
+        self._custom_commands: list[tuple[str, Callable, dict]] = []
 
         if discover:
             self._discover(discover)
@@ -567,6 +568,100 @@ class Refract:
         """
         mod = importlib.import_module("autocode.interfaces.api")
         return mod.create_router_for_refract(self)
+
+    def cli(self):
+        """Create and return a Click group for this instance.
+
+        Equivalent to the module-level ``app`` Click group but driven by this
+        instance's registry instead of the global one.  Suitable for the
+        *cli mode* (prototyping / stand-alone tool):
+
+            refract = Refract("my-project", discover=["my_project.core"])
+            cli_app = refract.cli()   # Click group — call or pass to entry point
+
+        The returned group includes:
+        - ``list`` — list registered functions.
+        - ``serve-api`` — start the FastAPI server.
+        - ``serve-mcp`` — start the API + MCP server.
+        - ``serve`` — recommended unified server (alias for ``serve-mcp``).
+        - Dynamic function commands for all ``"cli"``-interface functions.
+        - Custom commands registered via ``@self.command()``.
+
+        Returns:
+            A ``click.Group`` ready to serve as a CLI entry point.
+        """
+        mod = importlib.import_module("autocode.interfaces.cli")
+        return mod.create_cli_for_refract(self)
+
+    def command(self, name: str | None = None, **kwargs):
+        """Decorator to register a custom CLI command on this instance.
+
+        Custom commands are added to the Click group returned by ``cli()``
+        alongside the built-in ``serve``, ``list``, and dynamic function commands.
+
+        Usage::
+
+            app = Refract("my-project", discover=["my_project.core"])
+
+            @app.command()
+            def health_check():
+                \"\"\"Run code health quality gates.\"\"\"
+                ...
+
+            @app.command(name="my-cmd", help="A custom command")
+            def custom():
+                ...
+
+        Args:
+            name: Optional command name override.  Defaults to the function
+                name with underscores replaced by hyphens.
+            **kwargs: Additional keyword arguments forwarded to
+                ``click.Group.command()``.
+
+        Returns:
+            A decorator that registers the function as a custom CLI command.
+        """
+        def decorator(func: Callable) -> Callable:
+            cmd_name = name if name is not None else func.__name__.replace('_', '-')
+            self._custom_commands.append((cmd_name, func, kwargs))
+            return func
+        return decorator
+
+    @property
+    def run_cli(self):
+        """Return the Click group for use as a ``pyproject.toml`` entry point.
+
+        Enables zero-boilerplate entry points::
+
+            # pyproject.toml
+            [project.scripts]
+            my-project = "my_project.app:app.run_cli"
+
+        ``app.run_cli`` resolves to the ``click.Group`` returned by
+        ``self.cli()``.  Since Click groups are callable, the entry point
+        system invokes ``cli_group()`` directly.
+
+        Returns:
+            A ``click.Group`` that can be called as the CLI entry point.
+        """
+        return self.cli()
+
+    def mcp(self):
+        """Create and return a FastAPI application with API + MCP integration.
+
+        **Transitional implementation (Commit 6):** delegates to the global
+        ``create_mcp_app()`` which uses the global registry.  This will be
+        replaced in Commit 7 with a proper ``create_mcp_app_for_refract(self)``
+        that reads from this instance's registry.
+
+        Returns:
+            A configured ``FastAPI`` application with MCP support.
+        """
+        mod = importlib.import_module("autocode.interfaces.mcp")
+        # Commit 7 will add create_mcp_app_for_refract; for now, use global.
+        if hasattr(mod, "create_mcp_app_for_refract"):
+            return mod.create_mcp_app_for_refract(self)
+        return mod.create_mcp_app()
 
     # ------------------------------------------------------------------
     # Dunder helpers

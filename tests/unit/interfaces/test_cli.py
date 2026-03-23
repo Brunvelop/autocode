@@ -531,3 +531,335 @@ class TestCLICommandRegistrationEdgeCases:
         assert "String parameter" in result.output
         assert "Optional integer" in result.output
         assert "Boolean flag" in result.output
+
+
+# ============================================================================
+# Refract.cli() — Instance-level CLI
+# ============================================================================
+
+class TestRefractCli:
+    """Tests for Refract.cli(), @refract.command(), and run_cli property."""
+
+    def _make_refract_with_function(self, sample_function_info):
+        """Helper: build a Refract instance with one pre-loaded function."""
+        from autocode.core.registry import Refract
+        r = Refract("test-project")
+        r._registry.append(sample_function_info)
+        return r
+
+    # ------------------------------------------------------------------
+    # Basic structure
+    # ------------------------------------------------------------------
+
+    def test_cli_returns_click_group(self, sample_function_info):
+        """Refract.cli() returns a Click Group."""
+        from autocode.core.registry import Refract
+        r = Refract("test-project")
+        group = r.cli()
+        assert isinstance(group, click.Group)
+
+    def test_cli_has_standard_commands(self, sample_function_info):
+        """Click group includes list, serve, serve-api, serve-mcp."""
+        from autocode.core.registry import Refract
+        r = Refract("test-project")
+        group = r.cli()
+        assert "list" in group.commands
+        assert "serve" in group.commands
+        assert "serve-api" in group.commands
+        assert "serve-mcp" in group.commands
+
+    def test_cli_group_name_in_help(self, sample_function_info):
+        """The CLI group help text includes the instance name."""
+        from autocode.core.registry import Refract
+        r = Refract("my-special-project")
+        group = r.cli()
+        runner = CliRunner()
+        result = runner.invoke(group, ["--help"])
+        assert result.exit_code == 0
+        assert "my-special-project" in result.output
+
+    def test_cli_has_verbose_flag(self):
+        """The Click group exposes --verbose / -v flag."""
+        from autocode.core.registry import Refract
+        r = Refract("test-project")
+        group = r.cli()
+        runner = CliRunner()
+        result = runner.invoke(group, ["--help"])
+        assert result.exit_code == 0
+        assert "--verbose" in result.output or "-v" in result.output
+
+    # ------------------------------------------------------------------
+    # list command
+    # ------------------------------------------------------------------
+
+    def test_cli_list_shows_registered_functions(self, sample_function_info):
+        """list command shows functions from the Refract instance's registry."""
+        from autocode.core.registry import Refract
+        r = self._make_refract_with_function(sample_function_info)
+        group = r.cli()
+        runner = CliRunner()
+        result = runner.invoke(group, ["list"])
+        assert result.exit_code == 0
+        assert "Available functions:" in result.output
+        assert "test_add" in result.output
+        assert "Add two numbers together" in result.output
+
+    def test_cli_list_empty_registry(self):
+        """list command with empty registry shows header but no functions."""
+        from autocode.core.registry import Refract
+        r = Refract("test-project")
+        group = r.cli()
+        runner = CliRunner()
+        result = runner.invoke(group, ["list"])
+        assert result.exit_code == 0
+        assert "Available functions:" in result.output
+
+    def test_cli_list_shows_parameters(self, sample_function_info):
+        """list command shows parameter information for registered functions."""
+        from autocode.core.registry import Refract
+        r = self._make_refract_with_function(sample_function_info)
+        group = r.cli()
+        runner = CliRunner()
+        result = runner.invoke(group, ["list"])
+        assert result.exit_code == 0
+        assert "Parameters:" in result.output
+        assert "x (int)" in result.output
+        assert "y (int)" in result.output
+
+    # ------------------------------------------------------------------
+    # Dynamic function commands
+    # ------------------------------------------------------------------
+
+    def test_cli_dynamic_commands_appear(self, sample_function_info):
+        """Functions in the registry become CLI commands."""
+        from autocode.core.registry import Refract
+        r = self._make_refract_with_function(sample_function_info)
+        group = r.cli()
+        assert "test_add" in group.commands
+
+    def test_cli_dynamic_command_executes(self, sample_function_info):
+        """Dynamic CLI command executes the underlying function."""
+        from autocode.core.registry import Refract
+        r = self._make_refract_with_function(sample_function_info)
+        group = r.cli()
+        runner = CliRunner()
+        result = runner.invoke(group, ["test_add", "--x", "7", "--y", "3"])
+        assert result.exit_code == 0
+        assert "10" in result.output  # 7 + 3 = 10
+
+    def test_cli_dynamic_command_help(self, sample_function_info):
+        """Dynamic command exposes its parameters in --help."""
+        from autocode.core.registry import Refract
+        r = self._make_refract_with_function(sample_function_info)
+        group = r.cli()
+        runner = CliRunner()
+        result = runner.invoke(group, ["test_add", "--help"])
+        assert result.exit_code == 0
+        assert "--x" in result.output
+        assert "--y" in result.output
+        assert "Add two numbers together" in result.output
+
+    def test_cli_only_includes_cli_interface_functions(self, sample_function_info):
+        """Functions without 'cli' interface are not added as commands."""
+        from autocode.core.registry import Refract
+        api_only_func = FunctionInfo(
+            name="api_only",
+            func=lambda x: x,
+            description="API only function",
+            params=[],
+            interfaces=["api"],
+            return_type=GenericOutput
+        )
+        r = Refract("test-project")
+        r._registry.append(sample_function_info)   # has 'cli' interface
+        r._registry.append(api_only_func)          # no 'cli' interface
+        group = r.cli()
+        assert "test_add" in group.commands
+        assert "api_only" not in group.commands
+
+    # ------------------------------------------------------------------
+    # @refract.command() — custom commands
+    # ------------------------------------------------------------------
+
+    def test_command_decorator_registers_custom_command(self):
+        """@refract.command() stores the command in _custom_commands."""
+        from autocode.core.registry import Refract
+        r = Refract("test-project")
+
+        @r.command()
+        def my_task():
+            """A custom task."""
+            pass
+
+        assert len(r._custom_commands) == 1
+        cmd_name, cmd_func, cmd_kwargs = r._custom_commands[0]
+        assert cmd_name == "my-task"
+        assert cmd_func is my_task
+
+    def test_command_decorator_default_name_uses_hyphens(self):
+        """Function name underscores become hyphens in command name."""
+        from autocode.core.registry import Refract
+        r = Refract("test-project")
+
+        @r.command()
+        def health_check():
+            pass
+
+        cmd_name, _, _ = r._custom_commands[0]
+        assert cmd_name == "health-check"
+
+    def test_command_decorator_explicit_name(self):
+        """Explicit name= overrides the function name."""
+        from autocode.core.registry import Refract
+        r = Refract("test-project")
+
+        @r.command(name="custom-name")
+        def whatever():
+            pass
+
+        cmd_name, _, _ = r._custom_commands[0]
+        assert cmd_name == "custom-name"
+
+    def test_command_decorator_preserves_original_function(self):
+        """@refract.command() returns the original function unchanged."""
+        from autocode.core.registry import Refract
+        r = Refract("test-project")
+
+        @r.command()
+        def my_func():
+            return "hello"
+
+        assert my_func() == "hello"
+
+    def test_custom_commands_appear_in_cli_group(self):
+        """Custom commands added via @refract.command() appear in cli()."""
+        from autocode.core.registry import Refract
+        r = Refract("test-project")
+
+        @r.command()
+        def health_check():
+            """Run health check."""
+            click.echo("all good")
+
+        group = r.cli()
+        assert "health-check" in group.commands
+
+    def test_custom_command_executes_in_cli_group(self):
+        """Custom commands added via @refract.command() are executable."""
+        from autocode.core.registry import Refract
+        r = Refract("test-project")
+
+        @r.command()
+        def say_hello():
+            """Greet."""
+            click.echo("hello from custom command")
+
+        group = r.cli()
+        runner = CliRunner()
+        result = runner.invoke(group, ["say-hello"])
+        assert result.exit_code == 0
+        assert "hello from custom command" in result.output
+
+    def test_multiple_custom_commands(self):
+        """Multiple @refract.command() decorators all appear in the group."""
+        from autocode.core.registry import Refract
+        r = Refract("test-project")
+
+        @r.command()
+        def cmd_one():
+            pass
+
+        @r.command()
+        def cmd_two():
+            pass
+
+        @r.command(name="cmd-three")
+        def cmd_three_func():
+            pass
+
+        group = r.cli()
+        assert "cmd-one" in group.commands
+        assert "cmd-two" in group.commands
+        assert "cmd-three" in group.commands
+
+    # ------------------------------------------------------------------
+    # run_cli property
+    # ------------------------------------------------------------------
+
+    def test_run_cli_returns_click_group(self):
+        """run_cli property returns a Click Group."""
+        from autocode.core.registry import Refract
+        r = Refract("test-project")
+        assert isinstance(r.run_cli, click.Group)
+
+    def test_run_cli_is_callable(self):
+        """run_cli returns a callable (required for pyproject.toml entry points)."""
+        from autocode.core.registry import Refract
+        r = Refract("test-project")
+        assert callable(r.run_cli)
+
+    def test_run_cli_includes_standard_commands(self):
+        """run_cli group has the same commands as cli()."""
+        from autocode.core.registry import Refract
+        r = Refract("test-project")
+        group = r.run_cli
+        assert "list" in group.commands
+        assert "serve" in group.commands
+        assert "serve-api" in group.commands
+        assert "serve-mcp" in group.commands
+
+    # ------------------------------------------------------------------
+    # serve-api command
+    # ------------------------------------------------------------------
+
+    @patch('uvicorn.run')
+    def test_serve_api_calls_uvicorn(self, mock_uvicorn):
+        """serve-api command invokes uvicorn.run with correct parameters."""
+        from autocode.core.registry import Refract
+        from unittest.mock import MagicMock
+        r = Refract("test-project")
+        mock_api_app = MagicMock()
+        r.api = MagicMock(return_value=mock_api_app)
+
+        group = r.cli()
+        runner = CliRunner()
+        result = runner.invoke(group, ["serve-api", "--host", "0.0.0.0", "--port", "9000"])
+
+        assert result.exit_code == 0
+        r.api.assert_called_once()
+        mock_uvicorn.assert_called_once_with(mock_api_app, host="0.0.0.0", port=9000)
+
+    @patch('uvicorn.run')
+    def test_serve_api_default_host_port(self, mock_uvicorn):
+        """serve-api uses default host 127.0.0.1 and port 8000."""
+        from autocode.core.registry import Refract
+        from unittest.mock import MagicMock
+        r = Refract("test-project")
+        r.api = MagicMock(return_value=MagicMock())
+
+        group = r.cli()
+        runner = CliRunner()
+        result = runner.invoke(group, ["serve-api"])
+
+        assert result.exit_code == 0
+        call_kwargs = mock_uvicorn.call_args[1]
+        assert call_kwargs["host"] == "127.0.0.1"
+        assert call_kwargs["port"] == 8000
+
+    # ------------------------------------------------------------------
+    # Isolation: multiple Refract instances
+    # ------------------------------------------------------------------
+
+    def test_two_refract_instances_have_independent_cli_groups(self, sample_function_info):
+        """Each Refract instance gets its own isolated CLI group."""
+        from autocode.core.registry import Refract
+        r1 = Refract("project-a")
+        r1._registry.append(sample_function_info)
+
+        r2 = Refract("project-b")  # empty registry
+
+        g1 = r1.cli()
+        g2 = r2.cli()
+
+        assert "test_add" in g1.commands
+        assert "test_add" not in g2.commands
