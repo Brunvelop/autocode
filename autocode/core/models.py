@@ -103,6 +103,7 @@ class FunctionSchema(BaseModel):
     http_methods: list[HttpMethod] = Field(description="Supported HTTP methods")
     parameters: list[ParamSchema] = Field(description="Function parameters")
     streaming: bool = Field(default=False, description="Whether this function supports SSE streaming")
+    response_schema: dict | None = Field(default=None, description="JSON Schema of the response model")
 
 
 # --- Runtime Models (Internal Registry) ---
@@ -128,7 +129,8 @@ class FunctionInfo(BaseModel):
             description=self.description,
             http_methods=self.http_methods,
             parameters=self.params,  # ParamSchema serializes automatically
-            streaming=self.streaming
+            streaming=self.streaming,
+            response_schema=self.return_type.model_json_schema() if self.return_type else None
         )
 
 

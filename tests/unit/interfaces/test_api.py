@@ -583,6 +583,65 @@ class TestApiIntegration:
 
 
 # Additional unit tests for improved coverage
+class TestCreateResultResponseBaseModel:
+    """Tests for _format_response with custom BaseModel subclasses."""
+
+    def test_format_response_custom_basemodel_returns_model_dump(self):
+        """Any BaseModel subclass (not just GenericOutput) is serialized via .model_dump()."""
+        from pydantic import BaseModel as PydanticBaseModel
+
+        class SearchResponse(PydanticBaseModel):
+            users: list
+            total: int
+
+        result = SearchResponse(users=["ana", "bob"], total=2)
+        response = create_result_response(result)
+
+        assert isinstance(response, dict)
+        assert response["users"] == ["ana", "bob"]
+        assert response["total"] == 2
+
+    def test_format_response_basemodel_with_optional_fields(self):
+        """BaseModel with optional fields serializes correctly."""
+        from pydantic import BaseModel as PydanticBaseModel
+        from typing import Optional as Opt
+
+        class RichResponse(PydanticBaseModel):
+            value: int
+            label: str
+            notes: Opt[str] = None
+
+        result = RichResponse(value=42, label="ok")
+        response = create_result_response(result)
+
+        assert response["value"] == 42
+        assert response["label"] == "ok"
+        assert response["notes"] is None
+
+    def test_format_response_non_basemodel_non_dict_falls_back_to_generic_output(self):
+        """Non-BaseModel, non-dict results fall back to GenericOutput with warning message."""
+        class CustomObject:
+            def __init__(self, val):
+                self.val = val
+
+        obj = CustomObject("test")
+        response = create_result_response(obj)
+
+        assert isinstance(response, dict)
+        assert response["success"] is False
+        assert "non-BaseModel type" in response["message"]
+        assert "CustomObject" in response["message"]
+
+    def test_format_response_generic_output_still_works_via_basemodel_path(self):
+        """GenericOutput is still handled correctly (via BaseModel isinstance check)."""
+        output = GenericOutput(result=99, success=True, message="all good")
+        response = create_result_response(output)
+
+        assert response["result"] == 99
+        assert response["success"] is True
+        assert response["message"] == "all good"
+
+
 class TestCreateResultResponseExtended:
     """Extended tests for create_result_response with complex edge cases."""
     

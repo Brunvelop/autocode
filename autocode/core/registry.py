@@ -26,6 +26,7 @@ import logging
 import pkgutil
 from docstring_parser import parse
 
+from pydantic import BaseModel
 from autocode.core.models import (
     FunctionInfo, ParamSchema, GenericOutput, FunctionSchema,
     HttpMethod, Interface, DEFAULT_HTTP_METHODS, DEFAULT_INTERFACES
@@ -242,7 +243,7 @@ def _generate_function_info(
     return_annotation = sig.return_annotation
     
     if return_annotation == inspect.Parameter.empty:
-        raise RegistryError(f"Function '{func.__name__}' must have a return type annotation of GenericOutput")
+        raise RegistryError(f"Function '{func.__name__}' must have a return type annotation of BaseModel")
     
     # Resolve Optional/Union to inner type
     return_type = return_annotation
@@ -251,8 +252,8 @@ def _generate_function_info(
         if non_none:
             return_type = non_none[0]
     
-    if not (isinstance(return_type, type) and issubclass(return_type, GenericOutput)):
-        raise RegistryError(f"Function '{func.__name__}' must return GenericOutput, got {return_type}")
+    if not (isinstance(return_type, type) and issubclass(return_type, BaseModel)):
+        raise RegistryError(f"Function '{func.__name__}' must return BaseModel, got {return_type}")
     
     # Parse docstring for parameter descriptions
     doc = parse(inspect.getdoc(func) or "")

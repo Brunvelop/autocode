@@ -262,14 +262,15 @@ def _extract_params(func_info: FunctionInfo, request_params: Dict[str, Any]) -> 
 
 def _format_response(result: Any) -> Dict[str, Any]:
     """Format function result into API response."""
-    if isinstance(result, GenericOutput):
+    if isinstance(result, BaseModel):
         return result.model_dump()
     if isinstance(result, dict):
         return result
+    logger.warning(f"Function returned non-BaseModel type: {type(result).__name__}. Converting to string.")
     return GenericOutput(
         success=False,
         result=str(result),
-        message="Warning: Function returned non-GenericOutput type"
+        message=f"Warning: Function returned non-BaseModel type ({type(result).__name__})"
     ).model_dump()
 
 

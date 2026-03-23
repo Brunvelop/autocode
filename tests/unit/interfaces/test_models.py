@@ -6,7 +6,7 @@ registered in the registry, ensuring data validation and type safety.
 """
 import pytest
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
 from autocode.core.models import (
     ParamSchema, FunctionInfo, FunctionSchema, GenericOutput
@@ -448,3 +448,124 @@ class TestSerializeType:
         assert param.type_str == "str?"
         # model_dump() also serializes the type
         assert param.model_dump()['type'] == "str?"
+
+
+class TestResponseSchema:
+    """Tests for response_schema field in FunctionSchema and FunctionInfo.to_schema()."""
+
+    def test_function_schema_response_schema_default_none(self):
+        """response_schema defaults to None when not provided."""
+        schema = FunctionSchema(
+            name="test",
+            description="Test",
+            http_methods=["GET"],
+            parameters=[]
+        )
+        assert schema.response_schema is None
+
+    def test_function_schema_response_schema_can_be_set(self):
+        """response_schema accepts a dict when provided."""
+        json_schema = {"type": "object", "properties": {"result": {"type": "string"}}}
+        schema = FunctionSchema(
+            name="test",
+            description="Test",
+            http_methods=["GET"],
+            parameters=[],
+            response_schema=json_schema
+        )
+        assert schema.response_schema == json_schema
+
+    def test_function_schema_response_schema_in_serialization(self):
+        """response_schema is included in model_dump() output."""
+        json_schema = {"type": "object", "properties": {"x": {"type": "integer"}}}
+        schema = FunctionSchema(
+            name="test",
+            description="Test",
+            http_methods=["GET"],
+            parameters=[],
+            response_schema=json_schema
+        )
+        data = schema.model_dump()
+        assert "response_schema" in data
+        assert data["response_schema"] == json_schema
+
+    def test_function_schema_response_schema_none_in_serialization(self):
+        """response_schema=None is serialized as null in model_dump()."""
+        schema = FunctionSchema(
+            name="test",
+            description="Test",
+            http_methods=["GET"],
+            parameters=[]
+        )
+        data = schema.model_dump()
+        assert "response_schema" in data
+        assert data["response_schema"] is None
+
+    def test_function_info_to_schema_includes_response_schema_with_generic_output(self, sample_function):
+        """to_schema() generates correct JSON Schema for GenericOutput return type."""
+        func_info = FunctionInfo(
+            name="test_func",
+            func=sample_function,
+            description="Test function",
+            params=[],
+            return_type=GenericOutput
+        )
+        schema = func_info.to_schema()
+
+        assert schema.response_schema is not None
+        assert isinstance(schema.response_schema, dict)
+        # GenericOutput has: result (Any), success (bool), message (str | None)
+        assert "properties" in schema.response_schema
+        props = schema.response_schema["properties"]
+        assert "result" in props
+        assert "success" in props
+        assert "message" in props
+
+    def test_function_info_to_schema_response_schema_none_when_no_return_type(self, sample_function):
+        """to_schema() sets response_schema=None when return_type is None."""
+        func_info = FunctionInfo(
+            name="test_func",
+            func=sample_function,
+            description="Test function",
+            params=[],
+            return_type=None
+        )
+        schema = func_info.to_schema()
+        assert schema.response_schema is None
+
+    def test_function_info_to_schema_response_schema_with_custom_basemodel(self, sample_function):
+        """to_schema() generates correct JSON Schema for a custom BaseModel return type."""
+        class SearchResponse(BaseModel):
+            users: List[str]
+            total: int
+            page: int = 1
+
+        func_info = FunctionInfo(
+            name="search_func",
+            func=sample_function,
+            description="Search function",
+            params=[],
+            return_type=SearchResponse
+        )
+        schema = func_info.to_schema()
+
+        assert schema.response_schema is not None
+        assert isinstance(schema.response_schema, dict)
+        props = schema.response_schema["properties"]
+        assert "users" in props
+        assert "total" in props
+        assert "page" in props
+
+    def test_function_info_to_schema_response_schema_reflects_actual_type(self, sample_function):
+        """response_schema matches the actual model_json_schema() of return_type."""
+        func_info = FunctionInfo(
+            name="test_func",
+            func=sample_function,
+            description="Test function",
+            params=[],
+            return_type=GenericOutput
+        )
+        schema = func_info.to_schema()
+
+        expected_schema = GenericOutput.model_json_schema()
+        assert schema.response_schema == expected_schema

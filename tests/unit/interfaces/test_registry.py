@@ -16,6 +16,7 @@ from autocode.core.registry import (
     clear_registry, load_functions, get_stream_func,
     RegistryError, _has_register_decorator, _stream_registry
 )
+from pydantic import BaseModel
 from autocode.core.models import FunctionInfo, ParamSchema, GenericOutput, FunctionSchema
 
 
@@ -66,7 +67,7 @@ class TestGenerateFunctionInfo:
             return x + y
         
         # Should raise RegistryError because no return type annotation
-        with pytest.raises(RegistryError, match="must have a return type annotation"):
+        with pytest.raises(RegistryError, match="must have a return type annotation of BaseModel"):
             _generate_function_info(no_annotations_func)
     
     def test_generate_function_info_with_any_params(self):
@@ -712,3 +713,96 @@ class TestStrictMode:
             _registry.extend(original_functions)
             for m, mod in original_modules.items():
                 sys.modules[m] = mod
+
+
+class TestBaseModelSupport:
+    """Tests for relaxed return type validation: any BaseModel subclass is accepted."""
+
+    def test_register_function_accepts_plain_basemodel(self):
+        """Functions returning a plain BaseModel subclass (not GenericOutput) can be registered."""
+        class SearchResponse(BaseModel):
+            users: list[str]
+            total: int
+
+        @register_function()
+        def search_users(query: str) -> SearchResponse:
+            """Search for users.
+
+            Args:
+                query: Search query
+            """
+            return SearchResponse(users=["ana"], total=1)
+
+        func_info = get_function_by_name("search_users")
+        assert func_info is not None
+        assert func_info.name == "search_users"
+        assert func_info.return_type is SearchResponse
+
+        # Function still works normally
+        result = search_users("test")
+        assert result.users == ["ana"]
+        assert result.total == 1
+
+    def test_register_function_generic_output_still_works(self):
+        """GenericOutput (a BaseModel subclass) continues to register correctly."""
+        @register_function()
+        def legacy_func(x: int) -> GenericOutput:
+            """Legacy function using GenericOutput."""
+            return GenericOutput(result=x, success=True)
+
+        func_info = get_function_by_name("legacy_func")
+        assert func_info is not None
+        assert func_info.return_type is GenericOutput
+
+    def test_register_function_rejects_non_basemodel_return(self):
+        """Functions returning a non-BaseModel type (e.g. str, int) still raise RegistryError."""
+        with pytest.raises(RegistryError, match="must return BaseModel"):
+            @register_function()
+            def bad_func(x: int) -> str:
+                """Bad function with str return type."""
+                return str(x)
+
+    def test_register_function_rejects_dict_return(self):
+        """Functions returning dict (not a BaseModel) raise RegistryError."""
+        with pytest.raises(RegistryError, match="must return BaseModel"):
+            @register_function()
+            def dict_func(x: int) -> dict:
+                """Function returning raw dict."""
+                return {"x": x}
+
+    def test_generate_function_info_accepts_basemodel_subclass(self):
+        """_generate_function_info accepts any BaseModel subclass as return type."""
+        class RichResponse(BaseModel):
+            items: list[str]
+            count: int
+            page: int = 1
+
+        def rich_func(query: str) -> RichResponse:
+            """Rich function.
+
+            Args:
+                query: Query string
+            """
+            return RichResponse(items=[], count=0)
+
+        info = _generate_function_info(rich_func)
+
+        assert info.name == "rich_func"
+        assert info.return_type is RichResponse
+
+    def test_basemodel_subclass_return_type_stored_in_function_info(self):
+        """return_type in FunctionInfo is set to the actual BaseModel subclass."""
+        class TypedResponse(BaseModel):
+            value: int
+            label: str
+
+        @register_function(http_methods=["GET"])
+        def typed_func(x: int) -> TypedResponse:
+            """Typed function."""
+            return TypedResponse(value=x, label="ok")
+
+        func_info = get_function_by_name("typed_func")
+        assert func_info is not None
+        assert func_info.return_type is TypedResponse
+        # return_type should be a subclass of BaseModel but NOT necessarily GenericOutput
+        assert issubclass(func_info.return_type, BaseModel)
