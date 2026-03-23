@@ -41,6 +41,10 @@ _registry: list[FunctionInfo] = []
 _stream_registry: dict[str, Callable] = {}
 _loaded = False
 
+# Buffer for pending registrations (used by Refract._discover())
+_pending_registrations: list[FunctionInfo] = []
+_pending_stream_funcs: dict[str, Callable] = {}
+
 
 class RegistryError(Exception):
     """Custom exception for registry-related errors."""
@@ -78,10 +82,15 @@ def register_function(
             if stream_func is not None:
                 _stream_registry[info.name] = stream_func
             
+            # Store stream_func in pending buffer too
+            if stream_func is not None:
+                _pending_stream_funcs[info.name] = stream_func
+
             # Check for duplicates
             if any(f.name == info.name for f in _registry):
                 raise RegistryError(f"Function '{info.name}' is already registered")
             _registry.append(info)
+            _pending_registrations.append(info)
             logger.debug(f"Registered '{info.name}' with methods {info.http_methods}, streaming={streaming}")
         except Exception as e:
             raise RegistryError(f"Failed to register function '{func.__name__}': {e}") from e
@@ -187,10 +196,12 @@ def get_stream_func(name: str) -> Callable | None:
 
 
 def clear_registry() -> None:
-    """Clear registry and reset loaded flag. Used for testing."""
+    """Clear registry, pending buffer, and reset loaded flag. Used for testing."""
     global _loaded
     _registry.clear()
     _stream_registry.clear()
+    _pending_registrations.clear()
+    _pending_stream_funcs.clear()
     _loaded = False
 
 
@@ -326,3 +337,186 @@ def _has_register_decorator(module_path: str | None) -> bool:
         return False
     except Exception:
         return False
+
+
+# --- REFRACT CLASS ---
+
+class Refract:
+    """Instance-based registry that owns its own set of registered functions.
+
+    Allows multiple isolated registries in the same process, enabling
+    multi-project setups and clean test isolation.
+
+    Usage::
+
+        app = Refract("my-project", discover=["my_project.core"])
+        # @register_function-decorated functions in my_project.core are now
+        # associated with this instance's registry.
+
+    The ``discover`` flow uses the same buffer pattern as Celery:
+    - ``@register_function()`` decorators fire when modules are imported,
+      writing to the global ``_pending_registrations`` buffer.
+    - ``Refract._discover()`` imports the requested packages, then
+      *collects* everything in the buffer into this instance and clears it.
+
+    All existing module-level helpers (``get_all_functions``, etc.) continue
+    to work via the global ``_registry`` and are unaffected by Refract instances.
+    """
+
+    def __init__(self, name: str, discover: list[str] | None = None) -> None:
+        """Initialise a Refract registry instance.
+
+        Args:
+            name: Human-readable name for this instance (e.g. ``"my-project"``).
+            discover: List of package paths to scan for ``@register_function``
+                decorators (e.g. ``["my_project.core"]``). When provided,
+                ``_discover()`` is called immediately during ``__init__``.
+        """
+        self._name = name
+        self._registry: list[FunctionInfo] = []
+        self._stream_registry: dict[str, Callable] = {}
+
+        if discover:
+            self._discover(discover)
+
+    # ------------------------------------------------------------------
+    # Discovery
+    # ------------------------------------------------------------------
+
+    def _discover(self, packages: list[str], strict: bool = False) -> None:
+        """Import modules in *packages* and collect pending registrations.
+
+        For each package path in *packages*:
+        1. Walk all sub-modules using ``pkgutil.walk_packages``.
+        2. Skip modules that don't contain ``@register_function`` (AST scan).
+        3. Import each qualifying module — this fires the decorators, which
+           write to the global ``_pending_registrations`` buffer.
+        4. After all imports, drain the buffer into ``self._registry`` and
+           clear it so the next Refract instance starts with a clean slate.
+
+        Args:
+            packages: List of dotted package names to scan.
+            strict: If ``True``, raise ``RegistryError`` on the first
+                import failure instead of logging and continuing.
+        """
+        failed: list[tuple[str, str]] = []
+
+        for package_path in packages:
+            try:
+                pkg = importlib.import_module(package_path)
+            except ImportError as e:
+                raise RegistryError(
+                    f"[Refract:{self._name}] Failed to import package '{package_path}': {e}"
+                ) from e
+
+            pkg_file = getattr(pkg, "__path__", None)
+            if pkg_file is None:
+                logger.warning(
+                    f"[Refract:{self._name}] '{package_path}' has no __path__; skipping."
+                )
+                continue
+
+            modules = sorted(
+                pkgutil.walk_packages(pkg_file, pkg.__name__ + "."),
+                key=lambda x: x[1],
+            )
+
+            for _, module_name, is_pkg in modules:
+                if is_pkg:
+                    continue
+                module_path_str = _get_module_file_path(module_name)
+                if not _has_register_decorator(module_path_str):
+                    continue
+                try:
+                    importlib.import_module(module_name)
+                    logger.debug(f"[Refract:{self._name}] Imported {module_name}")
+                except Exception as e:
+                    failed.append((module_name, str(e)))
+                    logger.warning(
+                        f"[Refract:{self._name}] Could not import {module_name}: {e}"
+                    )
+
+        # Drain pending buffer into this instance's registry
+        self._registry.extend(_pending_registrations)
+        self._stream_registry.update(_pending_stream_funcs)
+        _pending_registrations.clear()
+        _pending_stream_funcs.clear()
+
+        logger.debug(
+            f"[Refract:{self._name}] Discovered {len(self._registry)} functions"
+        )
+
+        if failed and strict:
+            raise RegistryError(
+                f"[Refract:{self._name}] Failed to load modules in strict mode: "
+                f"{[m[0] for m in failed]}"
+            )
+
+    # ------------------------------------------------------------------
+    # Instance-level query API (mirrors the module-level public API)
+    # ------------------------------------------------------------------
+
+    def get_all_functions(self) -> list[FunctionInfo]:
+        """Return all functions registered in this instance.
+
+        Returns:
+            A copy of the instance's function list.
+        """
+        return list(self._registry)
+
+    def get_functions_for_interface(self, interface: Interface) -> list[FunctionInfo]:
+        """Filter functions by interface.
+
+        Args:
+            interface: One of ``"api"``, ``"cli"``, or ``"mcp"``.
+
+        Returns:
+            Functions that expose the requested interface.
+        """
+        return [f for f in self._registry if interface in f.interfaces]
+
+    def get_all_schemas(self) -> list[FunctionSchema]:
+        """Return serialisable schemas for all functions in this instance.
+
+        Returns:
+            List of ``FunctionSchema`` objects.
+        """
+        return [info.to_schema() for info in self._registry]
+
+    def get_function_by_name(self, name: str) -> FunctionInfo | None:
+        """Look up a function by name.
+
+        Args:
+            name: Exact function name.
+
+        Returns:
+            Matching ``FunctionInfo``, or ``None`` if not found.
+        """
+        return next((f for f in self._registry if f.name == name), None)
+
+    def get_stream_func(self, name: str) -> Callable | None:
+        """Return the streaming callable for a registered function.
+
+        Args:
+            name: Function name.
+
+        Returns:
+            The streaming ``Callable`` if registered, otherwise ``None``.
+        """
+        return self._stream_registry.get(name)
+
+    def function_count(self) -> int:
+        """Return the number of functions registered in this instance."""
+        return len(self._registry)
+
+    def clear(self) -> None:
+        """Remove all functions from this instance (does not touch the global registry)."""
+        self._registry.clear()
+        self._stream_registry.clear()
+
+    # ------------------------------------------------------------------
+    # Dunder helpers
+    # ------------------------------------------------------------------
+
+    def __repr__(self) -> str:
+        return f"Refract(name={self._name!r}, functions={self.function_count()})"

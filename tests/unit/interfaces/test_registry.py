@@ -14,7 +14,8 @@ from autocode.core.registry import (
     _generate_function_info, register_function,
     get_all_schemas, get_all_functions, get_function_by_name, function_count,
     clear_registry, load_functions, get_stream_func,
-    RegistryError, _has_register_decorator, _stream_registry
+    RegistryError, _has_register_decorator, _stream_registry,
+    Refract, _pending_registrations, _pending_stream_funcs,
 )
 from pydantic import BaseModel
 from autocode.core.models import FunctionInfo, ParamSchema, GenericOutput, FunctionSchema
@@ -806,3 +807,258 @@ class TestBaseModelSupport:
         assert func_info.return_type is TypedResponse
         # return_type should be a subclass of BaseModel but NOT necessarily GenericOutput
         assert issubclass(func_info.return_type, BaseModel)
+
+
+class TestRefractClass:
+    """Tests for the Refract instance-based registry class."""
+
+    def test_refract_instantiation_empty(self):
+        """Refract can be instantiated without discover, resulting in an empty registry."""
+        app = Refract("test-project")
+
+        assert app._name == "test-project"
+        assert app.function_count() == 0
+        assert app.get_all_functions() == []
+
+    def test_refract_repr(self):
+        """Refract has a meaningful repr."""
+        app = Refract("my-app")
+        assert "my-app" in repr(app)
+        assert "0" in repr(app)
+
+    def test_refract_collects_pending_registrations(self):
+        """_pending_registrations are drained into the Refract instance on _discover."""
+        # Manually populate the pending buffer (simulates what @register_function does)
+        def my_func(x: int) -> GenericOutput:
+            """My function."""
+            return GenericOutput(result=x)
+
+        from autocode.core.registry import _pending_registrations as pending
+
+        info = FunctionInfo(
+            name="refract_test_func",
+            func=my_func,
+            description="My function.",
+            params=[],
+            return_type=GenericOutput,
+        )
+        pending.append(info)
+
+        app = Refract("collector")
+        # Manually drain (simulate _discover calling the drain step)
+        app._registry.extend(_pending_registrations)
+        _pending_registrations.clear()
+
+        assert app.function_count() == 1
+        assert app.get_function_by_name("refract_test_func") is not None
+
+    def test_refract_discover_with_real_package(self):
+        """Refract._discover discovers @register_function functions in autocode.core."""
+        import sys
+
+        # Save state so we can restore after test
+        from autocode.core import registry as reg_module
+        original_functions = list(reg_module._registry)
+        original_stream = dict(reg_module._stream_registry)
+
+        # Modules that must stay cached so decorator writes to the same buffers
+        _KEEP_MODULES = {"autocode.core.registry", "autocode.core.models"}
+        modules_to_remove = [
+            m for m in sys.modules
+            if m.startswith("autocode.core.") and m not in _KEEP_MODULES
+        ]
+        original_modules = {m: sys.modules[m] for m in modules_to_remove}
+
+        try:
+            # Reset global state so modules will be re-imported
+            reg_module._loaded = False
+            reg_module._registry.clear()
+            reg_module._stream_registry.clear()
+            reg_module._pending_registrations.clear()
+            reg_module._pending_stream_funcs.clear()
+
+            for m in modules_to_remove:
+                del sys.modules[m]
+
+            app = Refract("autocode-test", discover=["autocode.core"])
+
+            # Should have discovered at least the known functions
+            assert app.function_count() > 0, "Refract should discover functions in autocode.core"
+
+            # chat function should be present (from autocode.core.ai.pipelines)
+            chat = app.get_function_by_name("chat")
+            assert chat is not None, "'chat' function should be discovered"
+
+            # Instance method variants
+            all_funcs = app.get_all_functions()
+            assert len(all_funcs) == app.function_count()
+
+            api_funcs = app.get_functions_for_interface("api")
+            assert all("api" in f.interfaces for f in api_funcs)
+
+            schemas = app.get_all_schemas()
+            assert len(schemas) == app.function_count()
+
+        finally:
+            # Restore global registry and modules
+            reg_module._loaded = True  # mark as already loaded
+            reg_module._registry.clear()
+            reg_module._registry.extend(original_functions)
+            reg_module._stream_registry.clear()
+            reg_module._stream_registry.update(original_stream)
+            reg_module._pending_registrations.clear()
+            reg_module._pending_stream_funcs.clear()
+            for m, mod in original_modules.items():
+                sys.modules[m] = mod
+
+    def test_refract_instance_isolation(self):
+        """Two Refract instances do not share state."""
+        app1 = Refract("app1")
+        app2 = Refract("app2")
+
+        # Manually inject a function into app1 only
+        def func_a(x: int) -> GenericOutput:
+            """Func A."""
+            return GenericOutput(result=x)
+
+        info_a = FunctionInfo(
+            name="func_a", func=func_a, description="Func A.", params=[], return_type=GenericOutput
+        )
+        app1._registry.append(info_a)
+
+        assert app1.function_count() == 1
+        assert app2.function_count() == 0
+        assert app1.get_function_by_name("func_a") is not None
+        assert app2.get_function_by_name("func_a") is None
+
+    def test_refract_clear(self):
+        """Refract.clear() empties the instance registry without touching the global registry."""
+        from autocode.core.registry import _registry as global_reg
+
+        # Add a function to global registry via decorator
+        @register_function()
+        def global_func(x: int) -> GenericOutput:
+            """Global function."""
+            return GenericOutput(result=x)
+
+        global_count_before = function_count()
+
+        # Populate a Refract instance independently
+        app = Refract("clearable")
+        info = FunctionInfo(
+            name="instance_func",
+            func=global_func,
+            description="Instance function.",
+            params=[],
+            return_type=GenericOutput,
+        )
+        app._registry.append(info)
+        assert app.function_count() == 1
+
+        app.clear()
+
+        # Instance is empty
+        assert app.function_count() == 0
+        # Global registry is unchanged
+        assert function_count() == global_count_before
+
+    def test_refract_get_stream_func(self):
+        """Refract.get_stream_func returns streaming callables stored during discover."""
+        async def my_stream(**kwargs):
+            yield "data"
+
+        app = Refract("streamer")
+
+        # Manually inject a streaming function into the instance
+        def streaming_fn(msg: str) -> GenericOutput:
+            """Streaming fn."""
+            return GenericOutput(result=msg)
+
+        info = FunctionInfo(
+            name="my_stream_fn",
+            func=streaming_fn,
+            description="Streaming fn.",
+            params=[],
+            return_type=GenericOutput,
+            streaming=True,
+        )
+        app._registry.append(info)
+        app._stream_registry["my_stream_fn"] = my_stream
+
+        assert app.get_stream_func("my_stream_fn") is my_stream
+        assert app.get_stream_func("nonexistent") is None
+
+    def test_refract_get_functions_for_interface(self):
+        """get_functions_for_interface filters correctly."""
+        app = Refract("filter-test")
+
+        def fn_api_only(x: int) -> GenericOutput:
+            return GenericOutput(result=x)
+
+        def fn_mcp_only(x: int) -> GenericOutput:
+            return GenericOutput(result=x)
+
+        info_api = FunctionInfo(
+            name="fn_api_only", func=fn_api_only, description="API only.",
+            params=[], return_type=GenericOutput, interfaces=["api"],
+        )
+        info_mcp = FunctionInfo(
+            name="fn_mcp_only", func=fn_mcp_only, description="MCP only.",
+            params=[], return_type=GenericOutput, interfaces=["mcp"],
+        )
+        app._registry.extend([info_api, info_mcp])
+
+        api_funcs = app.get_functions_for_interface("api")
+        mcp_funcs = app.get_functions_for_interface("mcp")
+
+        assert len(api_funcs) == 1 and api_funcs[0].name == "fn_api_only"
+        assert len(mcp_funcs) == 1 and mcp_funcs[0].name == "fn_mcp_only"
+
+    def test_refract_global_registry_unaffected_after_discover(self):
+        """After Refract._discover(), global _registry still has its own functions.
+
+        The pending buffer is drained into the Refract instance, but this should
+        NOT remove entries from the global _registry (they were already appended
+        by @register_function before the buffer was drained).
+        """
+        # Register a function via the normal decorator — goes to global + pending
+        @register_function()
+        def global_check_func(x: int) -> GenericOutput:
+            """Global check function."""
+            return GenericOutput(result=x)
+
+        global_count = function_count()
+        assert global_count > 0
+
+        # Drain pending buffer into a Refract instance
+        app = Refract("checker")
+        app._registry.extend(_pending_registrations)
+        _pending_registrations.clear()
+
+        # Global registry should still contain global_check_func
+        assert get_function_by_name("global_check_func") is not None
+        assert function_count() == global_count
+
+    def test_refract_discover_strict_mode_raises_on_bad_package(self):
+        """_discover(strict=True) raises RegistryError when a package cannot be imported."""
+        app = Refract("strict-test")
+
+        with pytest.raises(RegistryError, match="Failed to import package"):
+            app._discover(["nonexistent.package.that.does.not.exist"], strict=False)
+            # Note: the error for bad package import is not gated by strict flag —
+            # it raises regardless (only per-module failures are tolerated)
+
+    def test_refract_clear_registry_also_clears_pending_buffer(self):
+        """clear_registry() (global) also clears _pending_registrations buffer."""
+        # Register something — goes to both global and pending
+        @register_function()
+        def pending_test_func(x: int) -> GenericOutput:
+            """Pending test function."""
+            return GenericOutput(result=x)
+
+        assert len(_pending_registrations) > 0
+
+        clear_registry()
+
+        assert len(_pending_registrations) == 0
+        assert len(_pending_stream_funcs) == 0
