@@ -1,14 +1,16 @@
 /**
  * index.js (autocode-chat)
  * Orquestador del chat que compone todos los sub-componentes.
- * Extiende AutoFunctionController para reutilizar la lógica de estado y API,
- * pero implementa su propia UI (ChatWindow) en lugar de la tarjeta genérica.
+ * Extiende LitElement directamente y usa RefractClient por composición
+ * para toda la comunicación con la API (ya no hereda de AutoFunctionController).
  * 
- * REFACTORIZACIÓN: Lógica pura separada de estilos siguiendo el patrón estándar de Lit
+ * REFACTORIZACIÓN Commit 2: Herencia → Composición
+ * - Antes: extends AutoFunctionController (acoplamiento innecesario)
+ * - Ahora: extends LitElement + this._client = new RefractClient()
  */
 
-import { html } from 'https://cdn.jsdelivr.net/gh/lit/dist@3/core/lit-core.min.js';
-import { AutoFunctionController } from '../auto-element-generator.js';
+import { LitElement, html } from 'https://cdn.jsdelivr.net/gh/lit/dist@3/core/lit-core.min.js';
+import { RefractClient } from '../refract-client.js';
 import { themeTokens } from './styles/theme.js';
 import { badgeBase, ghostButton } from './styles/common.js';
 import { autocodeChatStyles } from './styles/autocode-chat.styles.js';
@@ -20,9 +22,24 @@ import './chat-window.js';
 import './context-bar.js';
 import './chat-settings.js';
 
-export class AutocodeChat extends AutoFunctionController {
+export class AutocodeChat extends LitElement {
     static properties = {
-        ...AutoFunctionController.properties,
+        // Schema de la función 'chat' cargado del registry
+        funcInfo: { type: Object, state: true },
+
+        // Estado de parámetros
+        params: { type: Object, state: true },
+
+        // Estado de respuesta
+        result: { type: Object, state: true },
+        envelope: { type: Object, state: true },
+        success: { type: Boolean, state: true },
+
+        // UI Status
+        _status: { type: String, state: true },
+        _statusMessage: { type: String, state: true },
+
+        // Config del chat (modelos disponibles, tools, etc.)
         _chatConfig: { state: true }
     };
 
@@ -30,24 +47,40 @@ export class AutocodeChat extends AutoFunctionController {
 
     constructor() {
         super();
-        this.funcName = 'chat'; // Hardcoded para este componente específico
-        
-        // Estado local del chat
-        this.conversationHistory = [];
-        this._pendingUserMessage = null;
-        this._chatConfig = null;
-        this._useStreaming = true; // Toggle streaming (controlado desde settings)
-        
-        // Inicializar params vacíos (se llenarán con defaults al cargar funcInfo)
+
+        // Capa 1: cliente HTTP puro (sin Lit)
+        this._client = new RefractClient();
+
+        // Schema de la función chat
+        this.funcInfo = null;
+
+        // Estado de parámetros
         this.params = {
             message: '',
             conversation_history: '',
             model: ''
         };
+
+        // Estado de respuesta
+        this.result = null;
+        this.envelope = null;
+        this.success = undefined;
+
+        // UI Status
+        this._status = 'default';
+        this._statusMessage = 'Listo';
+
+        // Estado local del chat
+        this.conversationHistory = [];
+        this._pendingUserMessage = null;
+        this._chatConfig = null;
+        this._useStreaming = true; // Toggle streaming (controlado desde settings)
+        this._streamFuncInfo = null;
     }
 
-    connectedCallback() {
+    async connectedCallback() {
         super.connectedCallback();
+        await this._loadFuncInfo();
         this._loadChatConfig();
         this._loadStreamFuncInfo();
     }
@@ -76,11 +109,12 @@ export class AutocodeChat extends AutoFunctionController {
      * Aquí configuramos los settings cuando funcInfo se carga.
      */
     updated(changedProperties) {
-        super.updated(changedProperties);
-        
-        // Cuando funcInfo se carga, configurar el panel de settings
-        if (changedProperties.has('funcInfo') && this.funcInfo && this._settings) {
-            this._settings.configure(this.funcInfo);
+        // Cuando funcInfo se carga, inicializar params con defaults y configurar settings
+        if (changedProperties.has('funcInfo') && this.funcInfo) {
+            this._initParamsWithDefaults();
+            if (this._settings) {
+                this._settings.configure(this.funcInfo);
+            }
         }
     }
 
@@ -114,6 +148,63 @@ export class AutocodeChat extends AutoFunctionController {
                 </div>
             </chat-window>
         `;
+    }
+
+    // ========================================================================
+    // STATE MANAGEMENT (reemplaza métodos heredados de AutoFunctionController)
+    // ========================================================================
+
+    /**
+     * Establece el valor de un parámetro y actualiza el estado reactivo.
+     */
+    setParam(name, value) {
+        this.params = { ...this.params, [name]: value };
+    }
+
+    /**
+     * Obtiene el valor actual de un parámetro.
+     */
+    getParam(name) {
+        return this.params[name];
+    }
+
+    /**
+     * Inicializa params con los valores por defecto de funcInfo.
+     * Respeta cualquier valor ya establecido en this.params.
+     */
+    _initParamsWithDefaults() {
+        const newParams = { ...this.params };
+        this.funcInfo?.parameters?.forEach(p => {
+            if (newParams[p.name] === undefined && p.default !== null) {
+                newParams[p.name] = p.default;
+            }
+        });
+        this.params = newParams;
+    }
+
+    /**
+     * Actualiza el estado visual del componente.
+     */
+    _setStatus(type, message) {
+        this._status = type;
+        this._statusMessage = message;
+    }
+
+    // ========================================================================
+    // FUNCTION INFO LOADING
+    // ========================================================================
+
+    /**
+     * Carga el schema de la función 'chat' desde el registry.
+     * Reemplaza el loadFunctionInfo() heredado de AutoFunctionController.
+     */
+    async _loadFuncInfo() {
+        try {
+            const schemas = await this._client.loadSchemas();
+            this.funcInfo = schemas['chat'] || null;
+        } catch (error) {
+            console.warn('⚠️ Error loading chat funcInfo:', error);
+        }
     }
 
     // ========================================================================
@@ -160,8 +251,10 @@ export class AutocodeChat extends AutoFunctionController {
 
     async _loadChatConfig() {
         try {
-            const result = await AutoFunctionController.executeFunction('get_chat_config', {});
-            this._chatConfig = result;
+            const data = await this._client.call('get_chat_config', {});
+            // Unwrap envelope si tiene la forma { result, success, message }
+            const hasEnvelopeShape = data && typeof data === 'object' && Object.prototype.hasOwnProperty.call(data, 'result');
+            this._chatConfig = hasEnvelopeShape ? data.result : data;
         } catch (error) {
             console.warn('⚠️ Error loading chat config:', error);
         }
@@ -173,9 +266,8 @@ export class AutocodeChat extends AutoFunctionController {
      */
     async _loadStreamFuncInfo() {
         try {
-            const response = await fetch('/functions/details');
-            const data = await response.json();
-            this._streamFuncInfo = data.functions['chat_stream'] || null;
+            const schemas = await this._client.loadSchemas();
+            this._streamFuncInfo = schemas['chat_stream'] || null;
         } catch (e) {
             console.warn('⚠️ Could not pre-load chat_stream info');
             this._streamFuncInfo = null;
@@ -192,10 +284,6 @@ export class AutocodeChat extends AutoFunctionController {
     _processResult(envelopeOrPayload) {
         if (!envelopeOrPayload) return;
 
-        // A partir de ahora el Controller expone:
-        // - this.result: payload (data.result)
-        // - this.envelope: envelope completo (data)
-        // Preferimos procesar/mostrar el envelope para conservar metadatos.
         const envelope = (envelopeOrPayload && typeof envelopeOrPayload === 'object' && Object.prototype.hasOwnProperty.call(envelopeOrPayload, 'result'))
             ? envelopeOrPayload
             : (this.envelope || envelopeOrPayload);
@@ -203,8 +291,6 @@ export class AutocodeChat extends AutoFunctionController {
         const isError = envelope?._isError || envelope?.success === false || this.success === false;
 
         if (isError) {
-            // Pasar el objeto completo si es posible para mantener metadatos (history, debug info)
-            // Si no es objeto, usar el string de error
             const content = (typeof envelope === 'object' && envelope !== null)
                 ? envelope
                 : (envelope?._message || envelope?.message || envelope?.error || 'Error desconocido');
@@ -249,7 +335,8 @@ export class AutocodeChat extends AutoFunctionController {
 
     /**
      * Calcula y actualiza el uso de la ventana de contexto.
-     * Usa AutoFunctionController.executeFunction() para llamar al endpoint.
+     * Usa this._client.call() para llamar al endpoint (antes usaba
+     * AutoFunctionController.executeFunction()).
      */
     async _updateContext() {
         const messages = [...this.conversationHistory];
@@ -265,20 +352,20 @@ export class AutocodeChat extends AutoFunctionController {
         }
 
         try {
-            // Usar el método estático del Controller en lugar de fetch directo
-            const result = await AutoFunctionController.executeFunction(
+            const data = await this._client.call(
                 'calculate_context_usage',
                 { 
                     model: this.getParam('model') || 'openrouter/openai/gpt-4o',
                     messages 
                 }
             );
-            
+            // Unwrap envelope
+            const hasEnvelopeShape = data && typeof data === 'object' && Object.prototype.hasOwnProperty.call(data, 'result');
+            const result = hasEnvelopeShape ? data.result : data;
             const { current = 0, max = 0 } = result;
             this._contextBar?.update(current, max);
         } catch (e) {
             console.warn('⚠️ Error calculating context:', e);
-            // No es crítico, solo log del error
         }
     }
 
@@ -318,6 +405,7 @@ export class AutocodeChat extends AutoFunctionController {
     /**
      * Envía mensaje usando streaming SSE (chat_stream endpoint).
      * Muestra tokens incrementalmente conforme llegan del servidor.
+     * Usa this._client.stream() (antes usaba this.callStreamAPI()).
      */
     async _sendMessageStream(message) {
         const streamId = this._messages.addStreamingMessage();
@@ -325,7 +413,7 @@ export class AutocodeChat extends AutoFunctionController {
         const statusLog = [];
         let streamFailed = false;
 
-        // Resetear envelope para evitar guardar datos stale si hay error
+        // Resetear estado de respuesta
         this.envelope = null;
         this.result = null;
         this.success = undefined;
@@ -333,7 +421,7 @@ export class AutocodeChat extends AutoFunctionController {
         try {
             this._setStatus('loading', 'Conectando...');
 
-            for await (const event of this.callStreamAPI('chat_stream', this.params, this._streamFuncInfo)) {
+            for await (const event of this._client.stream('chat_stream', this.params, this._streamFuncInfo)) {
                 switch (event.event) {
                     case 'token':
                         fullText += event.data.chunk;
@@ -409,11 +497,34 @@ export class AutocodeChat extends AutoFunctionController {
     /**
      * Fallback síncrono: ejecuta chat() normal sin streaming.
      * Usado cuando chat_stream no está disponible en el registry.
+     * Usa this._client.call() (antes usaba this.execute()).
      */
     async _sendMessageSync(message) {
         try {
-            await this.execute();
-            // Procesar siempre el envelope para conservar success/message + metadata DSPy
+            this._setStatus('loading', 'Ejecutando...');
+
+            const data = await this._client.call('chat', this.params, this.funcInfo);
+
+            // Guardar envelope completo
+            this.envelope = data;
+
+            // Unwrap envelope: extraer payload y metadata
+            const hasEnvelopeShape = data && typeof data === 'object' && Object.prototype.hasOwnProperty.call(data, 'result');
+            this.result = hasEnvelopeShape ? data.result : data;
+
+            if (data && typeof data === 'object') {
+                this.success = data.success;
+            } else {
+                this.success = undefined;
+            }
+
+            if (this.success === false) {
+                this._setStatus('error', 'Error en ejecución');
+            } else {
+                this._setStatus('success', 'Ejecutado correctamente');
+            }
+
+            // Procesar resultado y actualizar historial/UI
             this._processResult(this.envelope || this.result);
 
             // Notify other components (e.g. git-dashboard) that plans may have changed
@@ -423,6 +534,7 @@ export class AutocodeChat extends AutoFunctionController {
             if (this._messages) {
                 this._messages.addMessage('error', error.message || 'Error desconocido');
             }
+            this._setStatus('error', error.message || 'Error desconocido');
         }
     }
 }
