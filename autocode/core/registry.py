@@ -156,31 +156,41 @@ def load_functions(strict: bool = False) -> None:
     except ImportError as e:
         raise RegistryError(f"Failed to import autocode.core: {e}") from e
     
-    discovered, failed = [], []
+    discovered, failed, skipped_no_decorator = [], [], []
     modules = sorted(
         pkgutil.walk_packages(autocode.core.__path__, autocode.core.__name__ + "."), 
         key=lambda x: x[1]
     )
     
+    logger.info("[autocode] Scanning autocode.core...")
+
     for _, module_name, is_pkg in modules:
         if is_pkg:
             continue
         module_path = _get_module_file_path(module_name)
         if not _has_register_decorator(module_path):
+            skipped_no_decorator.append(module_name)
+            logger.debug(f"[autocode]   ℹ️  {module_name} — no @register_function found")
             continue
+        before = len(_registry)
         try:
             importlib.import_module(module_name)
+            n_funcs = len(_registry) - before
             discovered.append(module_name)
+            logger.info(f"[autocode]   ✅ {module_name} — {n_funcs} function{'s' if n_funcs != 1 else ''}")
         except Exception as e:
             failed.append((module_name, str(e)))
-            logger.warning(f"Could not import {module_name}: {e}")
+            logger.warning(f"[autocode]   ⚠️  {module_name} — skipped ({type(e).__name__}: {e})")
     
     _loaded = True
-    
+
+    logger.info(
+        f"[autocode] Total: {len(_registry)} function{'s' if len(_registry) != 1 else ''} registered"
+        + (f", {len(failed)} module{'s' if len(failed) != 1 else ''} skipped" if failed else "")
+    )
+
     if failed and strict:
         raise RegistryError(f"Failed to load modules in strict mode: {[m[0] for m in failed]}")
-    
-    logger.debug(f"Loaded {len(_registry)} functions from {len(discovered)} modules")
 
 
 def get_stream_func(name: str) -> Callable | None:
@@ -422,19 +432,24 @@ class Refract:
                 key=lambda x: x[1],
             )
 
+            logger.info(f"[refract:{self._name}] Scanning {package_path}...")
+
             for _, module_name, is_pkg in modules:
                 if is_pkg:
                     continue
                 module_path_str = _get_module_file_path(module_name)
                 if not _has_register_decorator(module_path_str):
+                    logger.debug(f"[refract:{self._name}]   ℹ️  {module_name} — no @register_function found")
                     continue
+                before = len(_pending_registrations)
                 try:
                     importlib.import_module(module_name)
-                    logger.debug(f"[Refract:{self._name}] Imported {module_name}")
+                    n_funcs = len(_pending_registrations) - before
+                    logger.info(f"[refract:{self._name}]   ✅ {module_name} — {n_funcs} function{'s' if n_funcs != 1 else ''}")
                 except Exception as e:
                     failed.append((module_name, str(e)))
                     logger.warning(
-                        f"[Refract:{self._name}] Could not import {module_name}: {e}"
+                        f"[refract:{self._name}]   ⚠️  {module_name} — skipped ({type(e).__name__}: {e})"
                     )
 
         # Drain pending buffer into this instance's registry
@@ -443,8 +458,10 @@ class Refract:
         _pending_registrations.clear()
         _pending_stream_funcs.clear()
 
-        logger.debug(
-            f"[Refract:{self._name}] Discovered {len(self._registry)} functions"
+        total_funcs = len(self._registry)
+        logger.info(
+            f"[refract:{self._name}] Total: {total_funcs} function{'s' if total_funcs != 1 else ''} registered"
+            + (f", {len(failed)} module{'s' if len(failed) != 1 else ''} skipped" if failed else "")
         )
 
         if failed and strict:
