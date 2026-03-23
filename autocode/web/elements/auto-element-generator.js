@@ -9,6 +9,7 @@
  */
 
 import { LitElement, html, css } from 'https://cdn.jsdelivr.net/gh/lit/dist@3/core/lit-core.min.js';
+import { RefractClient } from './refract-client.js';
 
 /**
  * CONTROLADOR BASE (LÓGICA PURA)
@@ -53,6 +54,9 @@ export class AutoFunctionController extends LitElement {
         this._statusMessage = 'Listo';
         this._errorMessage = '';
         this._isExecuting = false;
+
+        // Capa 1: cliente HTTP puro (sin Lit)
+        this._client = new RefractClient();
     }
 
     async connectedCallback() {
@@ -81,15 +85,12 @@ export class AutoFunctionController extends LitElement {
     }
 
     async loadFunctionInfo() {
-        const response = await fetch('/functions/details');
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        const data = await response.json();
-        
-        if (!data.functions[this.funcName]) {
+        const schemas = await this._client.loadSchemas();
+        const info = schemas[this.funcName];
+        if (!info) {
             throw new Error(`Function "${this.funcName}" not found in registry`);
         }
-        
-        this.funcInfo = data.functions[this.funcName];
+        this.funcInfo = info;
     }
 
     // Si funcInfo cambia, reinicializar defaults
@@ -307,154 +308,29 @@ export class AutoFunctionController extends LitElement {
 
     /**
      * Procesa parámetros aplicando conversiones de tipo según la definición de funcInfo.
-     * Extraído de callAPI() para reutilizar en callStreamAPI().
+     * Delega a RefractClient._processParams(); mantiene this.funcInfo como fallback.
      * @param {object} params - Parámetros crudos
      * @param {object|null} funcInfoOverride - FuncInfo alternativo (para streaming con otra función)
      * @returns {object} Parámetros procesados con tipos correctos
      */
     _processParams(params, funcInfoOverride = null) {
-        const info = funcInfoOverride || this.funcInfo;
-        const processedParams = {};
-        Object.entries(params).forEach(([key, val]) => {
-            const paramDef = info?.parameters?.find(p => p.name === key);
-            if (paramDef && this._isComplexType(paramDef.type) && typeof val === 'string') {
-                try {
-                    processedParams[key] = JSON.parse(val);
-                } catch {
-                    processedParams[key] = val;
-                }
-            } else if (paramDef && paramDef.type === 'int') {
-                processedParams[key] = parseInt(val);
-            } else if (paramDef && paramDef.type === 'float') {
-                processedParams[key] = parseFloat(val);
-            } else {
-                processedParams[key] = val;
-            }
-        });
-        return processedParams;
+        return this._client._processParams(params, funcInfoOverride || this.funcInfo);
     }
 
     async callAPI(params) {
-        const method = this.funcInfo.http_methods[0];
-        let url = `/${this.funcName}`;
-        let options = {
-            method: method.toUpperCase(),
-            headers: { 'Content-Type': 'application/json' }
-        };
-
-        const processedParams = this._processParams(params);
-
-        if (method.toUpperCase() === 'GET') {
-            const queryParams = new URLSearchParams();
-            for (const [key, val] of Object.entries(processedParams)) {
-                if (typeof val === 'object' && val !== null) {
-                    queryParams.append(key, JSON.stringify(val));
-                } else {
-                    queryParams.append(key, val);
-                }
-            }
-            const queryString = queryParams.toString();
-            if (queryString) url += `?${queryString}`;
-        } else {
-            options.body = JSON.stringify(processedParams);
-        }
-
-        const response = await fetch(url, options);
-        if (!response.ok) {
-            let errorMsg = `HTTP ${response.status}`;
-            try {
-                const errorData = await response.json();
-                errorMsg = errorData.detail 
-                    ? (typeof errorData.detail === 'string' ? errorData.detail : JSON.stringify(errorData.detail)) 
-                    : JSON.stringify(errorData);
-            } catch {
-                errorMsg = response.statusText || errorMsg;
-            }
-            throw new Error(errorMsg);
-        }
-
-        const data = await response.json();
-        return data;
+        return this._client.call(this.funcName, params, this.funcInfo);
     }
 
     /**
      * Async generator que consume un endpoint SSE y produce eventos parseados.
+     * Delega a RefractClient.stream().
      * @param {string} endpoint - Nombre del endpoint (se usa como URL: /{endpoint})
      * @param {object} params - Parámetros a enviar como JSON body
      * @param {object|null} funcInfo - FuncInfo para procesamiento de tipos (opcional)
      * @yields {{ event: string, data: object|string }} Eventos SSE parseados
      */
     async *callStreamAPI(endpoint, params, funcInfo = null, options = {}) {
-        const processedParams = this._processParams(params, funcInfo);
-
-        const response = await fetch(`/${endpoint}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(processedParams),
-            signal: options.signal,
-        });
-
-        if (!response.ok) {
-            let errorMsg = `HTTP ${response.status}`;
-            try {
-                const errorData = await response.json();
-                errorMsg = errorData.detail
-                    ? (typeof errorData.detail === 'string' ? errorData.detail : JSON.stringify(errorData.detail))
-                    : JSON.stringify(errorData);
-            } catch {
-                errorMsg = response.statusText || errorMsg;
-            }
-            throw new Error(errorMsg);
-        }
-
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = '';
-        let currentEvent = null;
-        let currentData = '';
-
-        while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-
-            buffer += decoder.decode(value, { stream: true });
-            const lines = buffer.split('\n');
-            buffer = lines.pop();
-
-            for (const line of lines) {
-                if (line.startsWith('event: ')) {
-                    currentEvent = line.slice(7).trim();
-                } else if (line.startsWith('data: ')) {
-                    currentData = line.slice(6);
-                } else if (line === '' && currentEvent && currentData) {
-                    try {
-                        yield { event: currentEvent, data: JSON.parse(currentData) };
-                    } catch (e) {
-                        yield { event: currentEvent, data: currentData };
-                    }
-                    currentEvent = null;
-                    currentData = '';
-                }
-            }
-        }
-
-        // Procesar contenido restante del buffer tras fin de stream
-        if (buffer) {
-            if (buffer.startsWith('event: ')) {
-                currentEvent = buffer.slice(7).trim();
-            } else if (buffer.startsWith('data: ')) {
-                currentData = buffer.slice(6);
-            }
-        }
-
-        // Evento pendiente si stream termina sin \n\n final
-        if (currentEvent && currentData) {
-            try {
-                yield { event: currentEvent, data: JSON.parse(currentData) };
-            } catch (e) {
-                yield { event: currentEvent, data: currentData };
-            }
-        }
+        yield* this._client.stream(endpoint, params, funcInfo || this.funcInfo, options);
     }
 
     /**
@@ -473,21 +349,17 @@ export class AutoFunctionController extends LitElement {
      * );
      */
     static async executeFunction(funcName, params) {
-        const controller = new AutoFunctionController();
-        controller.funcName = funcName;
-        
+        const client = new RefractClient();
         try {
-            // Cargar metadata de la función
-            await controller.loadFunctionInfo();
-            
-            // Establecer parámetros
-            Object.entries(params).forEach(([key, value]) => {
-                controller.setParam(key, value);
-            });
-            
-            // Ejecutar y retornar resultado
-            const result = await controller.execute();
-            return result;
+            const schemas = await client.loadSchemas();
+            const funcInfo = schemas[funcName];
+            if (!funcInfo) throw new Error(`Function "${funcName}" not found in registry`);
+
+            const data = await client.call(funcName, params, funcInfo);
+
+            // Misma lógica de unwrap que execute(): extraer payload del envelope
+            const hasEnvelopeShape = (data && typeof data === 'object' && Object.prototype.hasOwnProperty.call(data, 'result'));
+            return hasEnvelopeShape ? data.result : data;
         } catch (error) {
             console.error(`❌ Error executing function "${funcName}":`, error);
             throw error;
