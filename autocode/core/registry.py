@@ -649,19 +649,26 @@ class Refract:
     def mcp(self):
         """Create and return a FastAPI application with API + MCP integration.
 
-        **Transitional implementation (Commit 6):** delegates to the global
-        ``create_mcp_app()`` which uses the global registry.  This will be
-        replaced in Commit 7 with a proper ``create_mcp_app_for_refract(self)``
-        that reads from this instance's registry.
+        Equivalent to the module-level ``create_mcp_app()`` but driven by this
+        instance's registry instead of the global one.  Suitable for the
+        *mcp mode* (prototyping / stand-alone service with AI assistant support):
+
+            refract = Refract("my-project", discover=["my_project.core"])
+            fastapi_app = refract.mcp()   # pass to uvicorn
+
+        The returned app includes everything from ``refract.api()`` plus:
+        - MCP-specific endpoints (functions with ``"mcp"`` interface), tagged
+          ``"mcp-tools"`` so FastApiMCP can discover them.
+        - A mounted FastApiMCP server at the standard MCP HTTP path.
 
         Returns:
             A configured ``FastAPI`` application with MCP support.
+
+        Raises:
+            RuntimeError: If MCP server initialisation fails.
         """
         mod = importlib.import_module("autocode.interfaces.mcp")
-        # Commit 7 will add create_mcp_app_for_refract; for now, use global.
-        if hasattr(mod, "create_mcp_app_for_refract"):
-            return mod.create_mcp_app_for_refract(self)
-        return mod.create_mcp_app()
+        return mod.create_mcp_app_for_refract(self)
 
     # ------------------------------------------------------------------
     # Dunder helpers
