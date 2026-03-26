@@ -11,6 +11,7 @@ import os
 from typing import Any, Dict, List, Literal, Optional, Type, Union
 
 import dspy
+from autocode.app import app
 from autocode.core.ai.models import DspyOutput
 from autocode.core.ai.providers import ModelType
 
@@ -412,7 +413,6 @@ def prepare_chat_tools(enabled_tools: Optional[List[str]] = None) -> list:
     Returns:
         Lista de funciones wrapper listas para usar como tools en DSPy.
     """
-    from autocode.app import app  # noqa: PLC0415 — lazy import para evitar circular
     mcp_functions = app.get_functions_for_interface("mcp")
     tools = []
     for func_info in mcp_functions:
