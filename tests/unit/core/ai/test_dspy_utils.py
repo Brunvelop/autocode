@@ -62,7 +62,8 @@ class TestPrepareChatTools:
     def test_returns_tools_list(self, mock_refract_cls):
         """prepare_chat_tools returns a list of tool wrappers."""
         from autocode.core.ai.dspy_utils import prepare_chat_tools
-        from autocode.core.models import FunctionInfo, ParamSchema, GenericOutput
+        from refract import FunctionInfo, ParamSchema
+        from autocode.core.models import GenericOutput
         
         mock_app = Mock()
         mock_refract_cls.current.return_value = mock_app
@@ -87,7 +88,8 @@ class TestPrepareChatTools:
     def test_filters_by_enabled_tools(self, mock_refract_cls):
         """prepare_chat_tools filters by enabled_tools list."""
         from autocode.core.ai.dspy_utils import prepare_chat_tools
-        from autocode.core.models import FunctionInfo, ParamSchema, GenericOutput
+        from refract import FunctionInfo, ParamSchema
+        from autocode.core.models import GenericOutput
         
         mock_app = Mock()
         mock_refract_cls.current.return_value = mock_app
@@ -123,7 +125,8 @@ class TestCreateToolWrapper:
     def test_wrapper_has_correct_name(self):
         """Wrapper function has the correct __name__."""
         from autocode.core.ai.dspy_utils import _create_tool_wrapper
-        from autocode.core.models import FunctionInfo, ParamSchema, GenericOutput
+        from refract import FunctionInfo, ParamSchema
+        from autocode.core.models import GenericOutput
         
         func_info = FunctionInfo(
             name="my_tool", func=Mock(), description="My tool",
@@ -135,7 +138,8 @@ class TestCreateToolWrapper:
     def test_wrapper_has_enriched_docstring(self):
         """Wrapper has docstring with parameter info."""
         from autocode.core.ai.dspy_utils import _create_tool_wrapper
-        from autocode.core.models import FunctionInfo, ParamSchema, GenericOutput
+        from refract import FunctionInfo, ParamSchema
+        from autocode.core.models import GenericOutput
         
         func_info = FunctionInfo(
             name="search", func=Mock(), description="Search files",
@@ -156,7 +160,8 @@ class TestCreateToolWrapper:
     def test_wrapper_handles_kwargs_nested(self):
         """Wrapper handles DSPy ReAct nested kwargs pattern."""
         from autocode.core.ai.dspy_utils import _create_tool_wrapper
-        from autocode.core.models import FunctionInfo, ParamSchema, GenericOutput
+        from refract import FunctionInfo, ParamSchema
+        from autocode.core.models import GenericOutput
         
         real_func = Mock(return_value="result")
         func_info = FunctionInfo(
@@ -173,7 +178,8 @@ class TestCreateToolWrapper:
     def test_wrapper_handles_direct_kwargs(self):
         """Wrapper handles direct keyword arguments."""
         from autocode.core.ai.dspy_utils import _create_tool_wrapper
-        from autocode.core.models import FunctionInfo, ParamSchema, GenericOutput
+        from refract import FunctionInfo, ParamSchema
+        from autocode.core.models import GenericOutput
         
         real_func = Mock(return_value="result")
         func_info = FunctionInfo(
@@ -189,7 +195,8 @@ class TestCreateToolWrapper:
     def test_wrapper_handles_execution_error(self):
         """Wrapper catches exceptions and returns error string."""
         from autocode.core.ai.dspy_utils import _create_tool_wrapper
-        from autocode.core.models import FunctionInfo, ParamSchema, GenericOutput
+        from refract import FunctionInfo, ParamSchema
+        from autocode.core.models import GenericOutput
         
         real_func = Mock(side_effect=ValueError("bad input"))
         func_info = FunctionInfo(
@@ -205,7 +212,8 @@ class TestCreateToolWrapper:
     def test_wrapper_docstring_includes_choices(self):
         """Wrapper docstring includes choices for Literal types."""
         from autocode.core.ai.dspy_utils import _create_tool_wrapper
-        from autocode.core.models import FunctionInfo, ParamSchema, GenericOutput
+        from refract import FunctionInfo, ParamSchema
+        from autocode.core.models import GenericOutput
         
         func_info = FunctionInfo(
             name="choose", func=Mock(), description="Choose option",
@@ -536,7 +544,8 @@ class TestGetAvailableToolsInfo:
     def test_returns_sorted_tool_info(self):
         """Returns sorted list of dicts with name, description, enabled_by_default."""
         from autocode.core.ai.dspy_utils import get_available_tools_info
-        from autocode.core.models import FunctionInfo, GenericOutput
+        from refract import FunctionInfo
+        from autocode.core.models import GenericOutput
 
         func_b = FunctionInfo(
             name="zebra_tool", func=Mock(), description="Z tool",
