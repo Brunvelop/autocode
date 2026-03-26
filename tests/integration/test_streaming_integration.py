@@ -1,183 +1,22 @@
 """
-Integration tests for SSE streaming functionality.
+Integration tests for autocode's chat_stream registration with refract.
 
-Tests the complete integration between registry streaming support,
-API endpoint registration, and SSE response handling.
+Verifies that autocode's specific streaming functions (chat_stream) are
+correctly registered with the Refract instance: streaming flag, stream_func
+assignment, interface exposure, and schema representation.
+
+These are autocode-domain tests — they test that autocode's configuration
+of refract is correct, not the refract framework itself.
 """
 import pytest
-from unittest.mock import Mock, patch
-from fastapi.testclient import TestClient
 
-from refract import register_function
 from refract.registry import _clear_pending
 from autocode.app import app
-from autocode.core.models import GenericOutput
 
 
-class TestStreamingEndToEnd:
-    """End-to-end integration tests for SSE streaming."""
+class TestChatStreamRegistration:
+    """Tests that use real module imports to verify chat_stream registration.
 
-    @pytest.fixture(autouse=True)
-    def setup_streaming_functions(self):
-        """Register test functions with streaming support."""
-        async def mock_stream_func(message: str, temperature: float = 0.7):
-            """Mock stream function that produces SSE events."""
-            yield 'event: status\ndata: {"message": "Processing..."}\n\n'
-            yield 'event: token\ndata: {"chunk": "Hello ", "field": "response", "predict_name": "predict", "is_last_chunk": false}\n\n'
-            yield 'event: token\ndata: {"chunk": "World", "field": "response", "predict_name": "predict", "is_last_chunk": true}\n\n'
-            yield 'event: complete\ndata: {"success": true, "result": {"response": "Hello World"}, "message": "Done", "reasoning": null, "trajectory": null, "completions": null, "history": null}\n\n'
-
-        @register_function(
-            http_methods=["POST"],
-            interfaces=["api"],
-            streaming=True,
-            stream_func=mock_stream_func
-        )
-        def test_stream(message: str, temperature: float = 0.7) -> GenericOutput:
-            """Test streaming function."""
-            return GenericOutput(result="sync fallback", success=True)
-
-        @register_function(http_methods=["GET", "POST"], interfaces=["api"])
-        def test_normal(x: int = 1) -> GenericOutput:
-            """Normal non-streaming function."""
-            return GenericOutput(result=x * 2, success=True)
-
-        # Flush pending registrations into the app instance
-        app._drain_pending()
-
-        yield
-
-    def test_streaming_endpoint_exists(self):
-        """The streaming endpoint exists and accepts POST."""
-        api_app = app.api()
-        client = TestClient(api_app)
-
-        response = client.post("/test_stream", json={"message": "hello"})
-        assert response.status_code == 200
-
-    def test_streaming_content_type(self):
-        """The streaming endpoint returns text/event-stream content type."""
-        api_app = app.api()
-        client = TestClient(api_app)
-
-        response = client.post("/test_stream", json={"message": "hello"})
-        assert response.status_code == 200
-        assert "text/event-stream" in response.headers.get("content-type", "")
-
-    def test_streaming_response_contains_sse_events(self):
-        """The streaming response body contains properly formatted SSE events."""
-        api_app = app.api()
-        client = TestClient(api_app)
-
-        response = client.post("/test_stream", json={"message": "hello"})
-        body = response.text
-
-        # Should contain token events
-        assert "event: token" in body
-        assert '"chunk": "Hello "' in body
-        assert '"chunk": "World"' in body
-
-        # Should contain status event
-        assert "event: status" in body
-        assert "Processing..." in body
-
-        # Should contain complete event
-        assert "event: complete" in body
-        assert '"success": true' in body
-
-    def test_streaming_headers(self):
-        """The streaming response includes required SSE headers."""
-        api_app = app.api()
-        client = TestClient(api_app)
-
-        response = client.post("/test_stream", json={"message": "hello"})
-        assert response.headers.get("cache-control") == "no-cache"
-
-    def test_non_streaming_endpoints_unchanged(self):
-        """Non-streaming endpoints continue to work as before."""
-        api_app = app.api()
-        client = TestClient(api_app)
-
-        # GET should work
-        response = client.get("/test_normal?x=5")
-        assert response.status_code == 200
-        data = response.json()
-        assert data["result"] == 10
-        assert data["success"] is True
-
-        # POST should work
-        response = client.post("/test_normal", json={"x": 7})
-        assert response.status_code == 200
-        data = response.json()
-        assert data["result"] == 14
-
-    def test_functions_details_includes_streaming_field(self):
-        """GET /functions/details includes streaming: true for streaming functions."""
-        api_app = app.api()
-        client = TestClient(api_app)
-
-        response = client.get("/functions/details")
-        assert response.status_code == 200
-        data = response.json()
-
-        # Streaming function should have streaming: true
-        assert "test_stream" in data["functions"]
-        assert data["functions"]["test_stream"]["streaming"] is True
-
-        # Normal function should have streaming: false
-        assert "test_normal" in data["functions"]
-        assert data["functions"]["test_normal"]["streaming"] is False
-
-    def test_get_stream_func_returns_callable_for_streaming(self):
-        """get_stream_func returns the stream function for streaming functions."""
-        stream_func = app.get_stream_func("test_stream")
-        assert stream_func is not None
-        assert callable(stream_func)
-
-    def test_get_stream_func_returns_none_for_non_streaming(self):
-        """get_stream_func returns None for non-streaming functions."""
-        stream_func = app.get_stream_func("test_normal")
-        assert stream_func is None
-
-    def test_get_stream_func_returns_none_for_unknown(self):
-        """get_stream_func returns None for unknown function names."""
-        stream_func = app.get_stream_func("nonexistent_function")
-        assert stream_func is None
-
-    def test_schemas_include_streaming_field(self):
-        """get_all_schemas includes streaming field in serialized schemas."""
-        schemas = app.get_all_schemas()
-        stream_schema = next((s for s in schemas if s.name == "test_stream"), None)
-        normal_schema = next((s for s in schemas if s.name == "test_normal"), None)
-
-        assert stream_schema is not None
-        assert stream_schema.streaming is True
-
-        assert normal_schema is not None
-        assert normal_schema.streaming is False
-
-    def test_streaming_and_normal_coexist(self):
-        """Streaming and non-streaming functions coexist on the same app."""
-        api_app = app.api()
-        client = TestClient(api_app)
-
-        # Both should respond
-        stream_resp = client.post("/test_stream", json={"message": "hi"})
-        normal_resp = client.get("/test_normal?x=3")
-
-        assert stream_resp.status_code == 200
-        assert normal_resp.status_code == 200
-
-        # Stream should be SSE
-        assert "text/event-stream" in stream_resp.headers.get("content-type", "")
-
-        # Normal should be JSON
-        assert "application/json" in normal_resp.headers.get("content-type", "")
-
-
-class TestStreamingWithRealRegistry:
-    """Tests that use the real module imports to verify chat_stream registration.
-    
     These tests need the real module imports to fire @register_function decorators.
     We override the autouse cleanup_registry fixture because once Python caches
     imported modules, re-calling load_functions() won't re-fire decorators.
