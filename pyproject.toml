@@ -18,17 +18,15 @@ classifiers = [
     "Topic :: Software Development :: Documentation",
 ]
 dependencies = [
-    "fastapi>=0.104.1",
-    "uvicorn>=0.24.0",
+    # Framework (fastapi, uvicorn, pydantic, fastapi-mcp, docstring-parser vienen de refract)
+    "refract @ git+https://github.com/Brunvelop/refract",
+    # Dominio propio de autocode
     "jinja2>=3.1.4",
-    "pydantic>=2.11.5",
     "python-dotenv>=1.1.0",
     "pyyaml>=6.0.1",
     "tiktoken>=0.9.0",
     "httpx>=0.24.0",
     "beautifulsoup4>=4.13.4",
-    "fastapi-mcp>=0.4.0",
-    "docstring-parser>=0.17.0",
     "dspy-ai>=3.0.3",
     "mcp>=1.0.0",
     "litellm>=1.80.9",

@@ -181,21 +181,17 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "beautifulsoup4" },
-    { name = "docstring-parser" },
     { name = "dspy-ai" },
-    { name = "fastapi" },
-    { name = "fastapi-mcp" },
     { name = "gitpython" },
     { name = "httpx" },
     { name = "jinja2" },
     { name = "litellm" },
     { name = "lizard" },
     { name = "mcp" },
-    { name = "pydantic" },
     { name = "python-dotenv" },
     { name = "pyyaml" },
+    { name = "refract" },
     { name = "tiktoken" },
-    { name = "uvicorn" },
 ]
 
 [package.dev-dependencies]
@@ -209,21 +205,17 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "beautifulsoup4", specifier = ">=4.13.4" },
-    { name = "docstring-parser", specifier = ">=0.17.0" },
     { name = "dspy-ai", specifier = ">=3.0.3" },
-    { name = "fastapi", specifier = ">=0.104.1" },
-    { name = "fastapi-mcp", specifier = ">=0.4.0" },
     { name = "gitpython", specifier = ">=3.1.40" },
     { name = "httpx", specifier = ">=0.24.0" },
     { name = "jinja2", specifier = ">=3.1.4" },
     { name = "litellm", specifier = ">=1.80.9" },
     { name = "lizard", specifier = ">=1.17.0" },
     { name = "mcp", specifier = ">=1.0.0" },
-    { name = "pydantic", specifier = ">=2.11.5" },
     { name = "python-dotenv", specifier = ">=1.1.0" },
     { name = "pyyaml", specifier = ">=6.0.1" },
+    { name = "refract", git = "https://github.com/Brunvelop/refract" },
     { name = "tiktoken", specifier = ">=0.9.0" },
-    { name = "uvicorn", specifier = ">=0.24.0" },
 ]
 
 [package.metadata.requires-dev]
@@ -2039,6 +2031,19 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/22/f5/df4e9027acead3ecc63e50fe1e36aca1523e1719559c499951bb4b53188f/referencing-0.37.0.tar.gz", hash = "sha256:44aefc3142c5b842538163acb373e24cce6632bd54bdb01b21ad5863489f50d8", size = 78036, upload-time = "2025-10-13T15:30:48.871Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/2c/58/ca301544e1fa93ed4f80d724bf5b194f6e4b945841c5bfd555878eea9fcb/referencing-0.37.0-py3-none-any.whl", hash = "sha256:381329a9f99628c9069361716891d34ad94af76e461dcb0335825aecc7692231", size = 26766, upload-time = "2025-10-13T15:30:47.625Z" },
+]
+
+[[package]]
+name = "refract"
+version = "1.0.0"
+source = { git = "https://github.com/Brunvelop/refract#7d2ad34f6a297d20a7ee7e959feea2a25122ff2c" }
+dependencies = [
+    { name = "click" },
+    { name = "docstring-parser" },
+    { name = "fastapi" },
+    { name = "fastapi-mcp" },
+    { name = "pydantic" },
+    { name = "uvicorn" },
 ]
 
 [[package]]
