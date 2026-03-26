@@ -6,7 +6,7 @@
  */
 
 import { LitElement, html } from 'https://cdn.jsdelivr.net/gh/lit/dist@3/core/lit-core.min.js';
-import { AutoFunctionController } from '/elements/controller.js';
+import { RefractClient } from '/elements/client.js';
 import { themeTokens } from './styles/theme.js';
 import { commitDetailStyles } from './styles/commit-detail.styles.js';
 import './files-metrics-table.js';
@@ -26,6 +26,10 @@ export class CommitDetail extends LitElement {
 
     constructor() {
         super();
+
+        // HTTP client
+        this._client = new RefractClient();
+
         this.commitHash = null;
         this.commitSummary = null;
         this._detail = null;
@@ -121,6 +125,16 @@ export class CommitDetail extends LitElement {
     // API
     // ========================================================================
 
+    /**
+     * Call API and unwrap envelope → payload.
+     * Mirrors the behavior of AutoFunctionController.executeFunction().
+     */
+    async _call(funcName, params) {
+        const data = await this._client.call(funcName, params);
+        return (data && typeof data === 'object' && Object.prototype.hasOwnProperty.call(data, 'result'))
+            ? data.result : data;
+    }
+
     async _loadDetail() {
         if (!this.commitHash) return;
         this._loading = true;
@@ -128,7 +142,7 @@ export class CommitDetail extends LitElement {
         this._detail = null;
 
         try {
-            const result = await AutoFunctionController.executeFunction(
+            const result = await this._call(
                 'get_commit_detail',
                 { commit_hash: this.commitHash }
             );
@@ -145,7 +159,7 @@ export class CommitDetail extends LitElement {
         if (!this.commitHash) return;
         this._metricsLoading = true;
         try {
-            const result = await AutoFunctionController.executeFunction(
+            const result = await this._call(
                 'get_commit_metrics',
                 { commit_hash: this.commitHash }
             );

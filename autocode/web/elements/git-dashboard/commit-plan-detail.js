@@ -6,7 +6,8 @@
  */
 
 import { LitElement, html } from 'https://cdn.jsdelivr.net/gh/lit/dist@3/core/lit-core.min.js';
-import { AutoFunctionController } from '/elements/controller.js';
+import { AutoFunctionController } from '/elements/controller.js';  // kept for streaming (_executePlan)
+import { RefractClient } from '/elements/client.js';
 import { themeTokens } from './styles/theme.js';
 import { commitPlanDetailStyles } from './styles/commit-plan-detail.styles.js';
 
@@ -78,6 +79,9 @@ export class CommitPlanDetail extends LitElement {
         this._isApproving = false;
         this._isReverting = false;
         this._isAnalyzingReview = false;
+
+        // HTTP client
+        this._client = new RefractClient();
     }
 
     connectedCallback() {
@@ -254,6 +258,20 @@ export class CommitPlanDetail extends LitElement {
     }
 
     // ========================================================================
+    // HTTP CLIENT HELPER
+    // ========================================================================
+
+    /**
+     * Call API and unwrap envelope → payload.
+     * Mirrors the behavior of AutoFunctionController.executeFunction().
+     */
+    async _call(funcName, params) {
+        const data = await this._client.call(funcName, params);
+        return (data && typeof data === 'object' && Object.prototype.hasOwnProperty.call(data, 'result'))
+            ? data.result : data;
+    }
+
+    // ========================================================================
     // API
     // ========================================================================
 
@@ -265,7 +283,7 @@ export class CommitPlanDetail extends LitElement {
         this._plan = null;
 
         try {
-            const result = await AutoFunctionController.executeFunction(
+            const result = await this._call(
                 'get_commit_plan',
                 { plan_id: this.planId }
             );
@@ -312,7 +330,7 @@ export class CommitPlanDetail extends LitElement {
     async _updateStatus(e) {
         const newStatus = e.target.value;
         try {
-            await AutoFunctionController.executeFunction(
+            await this._call(
                 'update_commit_plan',
                 { plan_id: this.planId, status: newStatus }
             );
@@ -331,7 +349,7 @@ export class CommitPlanDetail extends LitElement {
      */
     async _loadModelChoices() {
         try {
-            const result = await AutoFunctionController.executeFunction(
+            const result = await this._call(
                 'get_chat_config',
                 {}
             );
@@ -352,7 +370,7 @@ export class CommitPlanDetail extends LitElement {
         if (!confirm(`¿Eliminar plan "${this._plan?.title}"?`)) return;
 
         try {
-            await AutoFunctionController.executeFunction(
+            await this._call(
                 'delete_commit_plan',
                 { plan_id: this.planId }
             );
@@ -719,7 +737,7 @@ export class CommitPlanDetail extends LitElement {
      */
     async _resetToDraft() {
         try {
-            await AutoFunctionController.executeFunction(
+            await this._call(
                 'update_commit_plan',
                 { plan_id: this.planId, status: 'draft' }
             );
@@ -1155,17 +1173,16 @@ export class CommitPlanDetail extends LitElement {
 
     /**
      * Call an API function and return the full envelope {success, result, message}.
-     * Unlike executeFunction which only returns result, this gives access to success/message.
+     * Uses this._client.call() directly to access success/message metadata.
      */
     async _callAndCheckSuccess(funcName, params) {
-        const controller = new AutoFunctionController();
-        controller.funcName = funcName;
-        await controller.loadFunctionInfo();
-        Object.entries(params).forEach(([key, value]) => {
-            controller.setParam(key, value);
-        });
-        await controller.execute();
-        return { success: controller.success, result: controller.result, message: controller.message };
+        const data = await this._client.call(funcName, params);
+        const hasEnvelopeShape = data && typeof data === 'object' && Object.prototype.hasOwnProperty.call(data, 'result');
+        return {
+            success: data?.success ?? true,
+            result: hasEnvelopeShape ? data.result : data,
+            message: data?.message ?? '',
+        };
     }
 
     // ========================================================================

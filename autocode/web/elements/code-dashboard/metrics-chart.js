@@ -17,7 +17,7 @@
 
 import { LitElement, html } from 'https://cdn.jsdelivr.net/gh/lit/dist@3/core/lit-core.min.js';
 import * as d3 from 'https://cdn.jsdelivr.net/npm/d3@7/+esm';
-import { AutoFunctionController } from '/elements/controller.js';
+import { RefractClient } from '/elements/client.js';
 import { themeTokens } from './styles/theme.js';
 import { metricsChartStyles } from './styles/metrics-chart.styles.js';
 
@@ -60,6 +60,10 @@ export class MetricsChart extends LitElement {
 
     constructor() {
         super();
+
+        // HTTP client
+        this._client = new RefractClient();
+
         this._history = null;
         this._loading = false;
         this._error = null;
@@ -84,9 +88,9 @@ export class MetricsChart extends LitElement {
         this._loading = true;
         this._error = null;
         try {
-            const result = await AutoFunctionController.executeFunction(
-                'get_metrics_history', {}
-            );
+            const data = await this._client.call('get_metrics_history', {});
+            const result = (data && typeof data === 'object' && Object.prototype.hasOwnProperty.call(data, 'result'))
+                ? data.result : data;
             this._history = result;
         } catch (e) {
             this._error = e.message || 'Error cargando historial';

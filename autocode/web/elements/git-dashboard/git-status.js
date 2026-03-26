@@ -6,7 +6,7 @@
  */
 
 import { LitElement, html, css } from 'https://cdn.jsdelivr.net/gh/lit/dist@3/core/lit-core.min.js';
-import { AutoFunctionController } from '/elements/controller.js';
+import { RefractClient } from '/elements/client.js';
 import { themeTokens } from './styles/theme.js';
 import './files-metrics-table.js';
 
@@ -137,6 +137,10 @@ export class GitStatus extends LitElement {
 
     constructor() {
         super();
+
+        // HTTP client
+        this._client = new RefractClient();
+
         this.status = null;
         this.loading = false;
         this.error = null;
@@ -267,10 +271,20 @@ export class GitStatus extends LitElement {
     // API
     // ========================================================================
 
+    /**
+     * Call API and unwrap envelope → payload.
+     * Mirrors the behavior of AutoFunctionController.executeFunction().
+     */
+    async _call(funcName, params) {
+        const data = await this._client.call(funcName, params);
+        return (data && typeof data === 'object' && Object.prototype.hasOwnProperty.call(data, 'result'))
+            ? data.result : data;
+    }
+
     async _loadWorkingMetrics() {
         this._metricsLoading = true;
         try {
-            const result = await AutoFunctionController.executeFunction(
+            const result = await this._call(
                 'get_working_changes_metrics',
                 {}
             );

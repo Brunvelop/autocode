@@ -1,17 +1,17 @@
 /**
  * index.js
  * CodeExplorer - Componente principal para exploración visual de código.
- * 
- * Usa AutoFunctionController.executeFunction() para llamar al backend,
- * pero extiende LitElement directamente (standalone con backend).
- * 
+ *
+ * Usa RefractClient.call() para llamar al backend,
+ * extendiendo LitElement directamente (standalone con backend).
+ *
  * El backend devuelve una estructura plana (graph.nodes con parent_id)
  * para evitar recursión en OpenAPI schema. Este componente reconstruye
  * el árbol en el cliente.
  */
 
 import { LitElement, html } from 'https://cdn.jsdelivr.net/gh/lit/dist@3/core/lit-core.min.js';
-import { AutoFunctionController } from '/elements/controller.js';
+import { RefractClient } from '/elements/client.js';
 import { themeTokens } from './styles/theme.js';
 import { codeExplorerStyles } from './styles/code-explorer.styles.js';
 
@@ -39,7 +39,10 @@ export class CodeExplorer extends LitElement {
 
     constructor() {
         super();
-        
+
+        // HTTP client
+        this._client = new RefractClient();
+
         // Configuración por defecto
         this.path = '.';
         this.depth = -1;  // Ilimitado
@@ -149,6 +152,20 @@ export class CodeExplorer extends LitElement {
     }
 
     // ========================================================================
+    // HTTP CLIENT HELPER
+    // ========================================================================
+
+    /**
+     * Call API and unwrap envelope → payload.
+     * Mirrors the behavior of AutoFunctionController.executeFunction().
+     */
+    async _call(funcName, params) {
+        const data = await this._client.call(funcName, params);
+        return (data && typeof data === 'object' && Object.prototype.hasOwnProperty.call(data, 'result'))
+            ? data.result : data;
+    }
+
+    // ========================================================================
     // PUBLIC API
     // ========================================================================
 
@@ -160,7 +177,7 @@ export class CodeExplorer extends LitElement {
         this._error = null;
 
         try {
-            const result = await AutoFunctionController.executeFunction(
+            const result = await this._call(
                 'get_code_structure',
                 {
                     path: this.path,

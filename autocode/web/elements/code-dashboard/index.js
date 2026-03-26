@@ -16,11 +16,11 @@
  *   - Navegación into/up
  *   - Content area con placeholders por tab
  *
- * Usa AutoFunctionController.executeFunction() para llamar al backend.
+ * Usa RefractClient.call() para llamar al backend.
  */
 
 import { LitElement, html } from 'https://cdn.jsdelivr.net/gh/lit/dist@3/core/lit-core.min.js';
-import { AutoFunctionController } from '/elements/controller.js';
+import { RefractClient } from '/elements/client.js';
 import { themeTokens } from './styles/theme.js';
 import { codeDashboardStyles } from './styles/code-dashboard.styles.js';
 import './treemap-view.js';
@@ -62,6 +62,10 @@ export class CodeDashboard extends LitElement {
 
     constructor() {
         super();
+
+        // HTTP client
+        this._client = new RefractClient();
+
         this._snapshot = null;
         this._currentNodeId = '.';
         this._viewMode = 'treemap';
@@ -92,9 +96,19 @@ export class CodeDashboard extends LitElement {
     // DATA LOADING
     // ========================================================================
 
+    /**
+     * Call API and unwrap envelope → payload.
+     * Mirrors the behavior of AutoFunctionController.executeFunction().
+     */
+    async _call(funcName, params) {
+        const data = await this._client.call(funcName, params);
+        return (data && typeof data === 'object' && Object.prototype.hasOwnProperty.call(data, 'result'))
+            ? data.result : data;
+    }
+
     async _loadCommits() {
         try {
-            const result = await AutoFunctionController.executeFunction(
+            const result = await this._call(
                 'get_git_log',
                 { max_count: 20 }
             );
@@ -115,7 +129,7 @@ export class CodeDashboard extends LitElement {
         this._error = null;
         try {
             const params = commitHash ? { commit_hash: commitHash } : {};
-            const result = await AutoFunctionController.executeFunction(
+            const result = await this._call(
                 'get_architecture_snapshot',
                 params
             );
