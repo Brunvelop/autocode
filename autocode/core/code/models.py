@@ -354,3 +354,32 @@ class ArchitectureSnapshot(BaseModel):
 class ArchitectureSnapshotOutput(GenericOutput):
     """Output de get_architecture_snapshot()."""
     result: Optional[ArchitectureSnapshot] = None
+
+
+# ==============================================================================
+# HEALTH CHECK OUTPUT MODELS
+# ==============================================================================
+
+
+class HealthViolationResult(BaseModel):
+    """Pydantic model for a structured health violation."""
+
+    rule: str = Field(..., description="Rule identifier (mi, function_cc, nesting, sloc, avg_cc, rank_f, circular_deps, project_mi, project_cc)")
+    level: str = Field(..., description="Severity: critical or warning")
+    path: str = Field(..., description="Affected file or function (relative path)")
+    value: float = Field(..., description="Measured value that violates the threshold")
+    threshold: float = Field(..., description="Threshold that was violated")
+    detail: Optional[str] = Field(None, description="Extra information (function name, line, etc.)")
+
+
+class HealthCheckResultModel(BaseModel):
+    """Pydantic model for the result of all quality gates."""
+
+    passed: bool = Field(..., description="True if no critical violations found")
+    violations: List[HealthViolationResult] = Field(default_factory=list, description="All violations (critical + warning)")
+    summary: dict = Field(default_factory=dict, description="Aggregated metrics for display")
+
+
+class HealthCheckOutput(GenericOutput):
+    """Output of get_health_check()."""
+    result: Optional[HealthCheckResultModel] = None

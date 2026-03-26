@@ -13,14 +13,14 @@ Used by:
 - autocode.interfaces.cli (health-check command)
 - tests/health/test_code_health.py (health quality gates for autocode itself)
 """
-from __future__ import annotations
-
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
-from autocode.core.code.models import FileMetrics, PackageCoupling
+from refract import register_function
+
+from autocode.core.code.models import FileMetrics, PackageCoupling, HealthCheckOutput, HealthCheckResultModel, HealthViolationResult
 
 
 # ==============================================================================
@@ -396,3 +396,64 @@ def _build_summary(
         summary["Circular deps"] = f"{circ_count} {circ_icon}"
 
     return summary
+
+
+# ==============================================================================
+# REFRACTED FUNCTION — API + MCP interface
+# ==============================================================================
+
+
+@register_function(http_methods=["GET"], interfaces=["api", "mcp"])
+def get_health_check(strict: bool = False, project_root: str = ".") -> HealthCheckOutput:
+    """Run code health quality gates against a project.
+
+    Analyzes all files tracked by git and checks them against quality thresholds
+    defined in [tool.codehealth] of pyproject.toml (or strict defaults with strict=True).
+
+    Args:
+        strict: Use strict default thresholds, ignoring any [tool.codehealth] in pyproject.toml.
+        project_root: Root directory of the project to analyze.
+    """
+    from autocode.core.code.analyzer import analyze_file_metrics
+    from autocode.core.code.coupling import analyze_coupling
+    from autocode.core.vcs.git import get_tracked_files
+
+    _ALL_EXTENSIONS = (".py", ".js", ".mjs", ".jsx")
+    root = Path(project_root).resolve()
+    config = HealthConfig() if strict else load_thresholds(root)
+    files = get_tracked_files(*_ALL_EXTENSIONS, cwd=str(root))
+
+    file_metrics = []
+    for fpath in files:
+        if any(Path(fpath).match(pattern) for pattern in config.exclude):
+            continue
+        try:
+            content = (root / fpath).read_text(encoding="utf-8")
+            file_metrics.append(analyze_file_metrics(fpath, content))
+        except Exception:
+            pass
+
+    coupling = analyze_coupling(files)
+    result = run_health_check(config, file_metrics, coupling_result=coupling)
+
+    violations = [
+        HealthViolationResult(
+            rule=v.rule,
+            level=v.level,
+            path=v.path,
+            value=v.value,
+            threshold=v.threshold,
+            detail=v.detail,
+        )
+        for v in result.violations
+    ]
+
+    return HealthCheckOutput(
+        result=HealthCheckResultModel(
+            passed=result.passed,
+            violations=violations,
+            summary=result.summary,
+        ),
+        success=result.passed,
+        message="All gates passed" if result.passed else "Critical violations found",
+    )

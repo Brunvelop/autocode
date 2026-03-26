@@ -90,31 +90,11 @@ def health_check(output_format: str, strict: bool, project_root: str):
         autocode health-check --project-root /path/to/project
     """
     import sys
-    from pathlib import Path
 
-    from autocode.core.code.analyzer import analyze_file_metrics
-    from autocode.core.code.coupling import analyze_coupling
-    from autocode.core.code.health import HealthConfig, load_thresholds, run_health_check
-    from autocode.core.vcs.git import get_tracked_files
+    from autocode.core.code.health import get_health_check
 
-    root = Path(project_root).resolve()
-    config = HealthConfig() if strict else load_thresholds(root)
-
-    _ALL_EXTENSIONS = (".py", ".js", ".mjs", ".jsx")
-    files = get_tracked_files(*_ALL_EXTENSIONS, cwd=str(root))
-
-    file_metrics = []
-    for fpath in files:
-        if any(Path(fpath).match(pattern) for pattern in config.exclude):
-            continue
-        try:
-            content = (root / fpath).read_text(encoding="utf-8")
-            file_metrics.append(analyze_file_metrics(fpath, content))
-        except Exception:
-            pass
-
-    coupling = analyze_coupling(files)
-    result = run_health_check(config, file_metrics, coupling_result=coupling)
+    output = get_health_check(strict=strict, project_root=project_root)
+    result = output.result
 
     if output_format == "json":
         _print_health_json(result)

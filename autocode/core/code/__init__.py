@@ -35,6 +35,7 @@ from .models import (
 from .structure import get_code_structure, get_code_summary
 from .metrics import generate_code_metrics, get_metrics_snapshots, get_commit_metrics, get_metrics_history
 from .architecture import get_architecture_snapshot
+from .health import get_health_check
 
 __all__ = [
     # Structure
@@ -72,4 +73,6 @@ __all__ = [
     'ArchitectureSnapshotOutput',
     # Architecture functions
     'get_architecture_snapshot',
+    # Health check
+    'get_health_check',
 ]
