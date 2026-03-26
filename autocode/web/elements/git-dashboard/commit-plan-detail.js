@@ -6,7 +6,6 @@
  */
 
 import { LitElement, html } from 'https://cdn.jsdelivr.net/gh/lit/dist@3/core/lit-core.min.js';
-import { AutoFunctionController } from '/elements/controller.js';  // kept for streaming (_executePlan)
 import { RefractClient } from '/elements/client.js';
 import { themeTokens } from './styles/theme.js';
 import { commitPlanDetailStyles } from './styles/commit-plan-detail.styles.js';
@@ -263,7 +262,6 @@ export class CommitPlanDetail extends LitElement {
 
     /**
      * Call API and unwrap envelope → payload.
-     * Mirrors the behavior of AutoFunctionController.executeFunction().
      */
     async _call(funcName, params) {
         const data = await this._client.call(funcName, params);
@@ -547,11 +545,7 @@ export class CommitPlanDetail extends LitElement {
         this._plan = { ...this._plan, status: 'executing' };
 
         try {
-            const controller = new AutoFunctionController();
-            controller.funcName = 'execute_commit_plan';
-            await controller.loadFunctionInfo();
-
-            for await (const { event, data } of controller.callStreamAPI(
+            for await (const { event, data } of this._client.stream(
                 'execute_commit_plan',
                 { plan_id: this.planId, backend: this._selectedBackend, model: this._selectedModel, review_mode: this._selectedReviewMode },
                 null,
