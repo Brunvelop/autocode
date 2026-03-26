@@ -2036,7 +2036,7 @@ wheels = [
 [[package]]
 name = "refract"
 version = "1.0.0"
-source = { git = "https://github.com/Brunvelop/refract#3aa9cd593685864b4525a15960d7027e16b27f10" }
+source = { git = "https://github.com/Brunvelop/refract#7b056e5326e57452739ea9ff39b7348977f8a550" }
 dependencies = [
     { name = "click" },
     { name = "docstring-parser" },

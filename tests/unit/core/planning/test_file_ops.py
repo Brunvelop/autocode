@@ -211,11 +211,15 @@ class TestFileOpsRegistration:
     def test_functions_registered_as_mcp(self):
         """Las 4 funciones se registran con interfaces=['mcp']."""
         import importlib
-        from autocode.core import registry as reg_module
+        from autocode.app import app
+        from refract.registry import _clear_pending
         import autocode.core.planning.file_ops as file_ops_module
 
+        app.clear()
+        _clear_pending()
         importlib.reload(file_ops_module)
-        mcp_funcs = [f for f in reg_module._registry if "mcp" in f.interfaces]
+        app._drain_pending()
+        mcp_funcs = [f for f in app._registry if "mcp" in f.interfaces]
         names = [f.name for f in mcp_funcs]
         assert "read_file_content" in names
         assert "write_file_content" in names
@@ -225,11 +229,15 @@ class TestFileOpsRegistration:
     def test_functions_not_registered_as_api(self):
         """Las file_ops NO se exponen como API endpoints."""
         import importlib
-        from autocode.core import registry as reg_module
+        from autocode.app import app
+        from refract.registry import _clear_pending
         import autocode.core.planning.file_ops as file_ops_module
 
+        app.clear()
+        _clear_pending()
         importlib.reload(file_ops_module)
-        api_funcs = [f for f in reg_module._registry if "api" in f.interfaces]
+        app._drain_pending()
+        api_funcs = [f for f in app._registry if "api" in f.interfaces]
         names = [f.name for f in api_funcs]
         assert "read_file_content" not in names
         assert "write_file_content" not in names

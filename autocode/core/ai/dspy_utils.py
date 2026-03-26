@@ -11,7 +11,7 @@ import os
 from typing import Any, Dict, List, Literal, Optional, Type, Union
 
 import dspy
-from autocode.app import app
+from refract import Refract
 from autocode.core.ai.models import DspyOutput
 from autocode.core.ai.providers import ModelType
 
@@ -413,7 +413,7 @@ def prepare_chat_tools(enabled_tools: Optional[List[str]] = None) -> list:
     Returns:
         Lista de funciones wrapper listas para usar como tools en DSPy.
     """
-    mcp_functions = app.get_functions_for_interface("mcp")
+    mcp_functions = Refract.current().get_functions_for_interface("mcp")
     tools = []
     for func_info in mcp_functions:
         if enabled_tools is not None and func_info.name not in enabled_tools:

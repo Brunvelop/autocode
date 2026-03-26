@@ -58,12 +58,14 @@ class TestGenerateWithDspy:
 class TestPrepareChatTools:
     """Tests for prepare_chat_tools helper."""
     
-    @patch('autocode.core.registry.get_functions_for_interface')
-    def test_returns_tools_list(self, mock_get_funcs):
+    @patch('autocode.core.ai.dspy_utils.Refract')
+    def test_returns_tools_list(self, mock_refract_cls):
         """prepare_chat_tools returns a list of tool wrappers."""
         from autocode.core.ai.dspy_utils import prepare_chat_tools
         from autocode.core.models import FunctionInfo, ParamSchema, GenericOutput
         
+        mock_app = Mock()
+        mock_refract_cls.current.return_value = mock_app
         mock_func = Mock(return_value=GenericOutput(result="ok", success=True))
         func_info = FunctionInfo(
             name="test_tool",
@@ -74,19 +76,21 @@ class TestPrepareChatTools:
             interfaces=["mcp"],
             return_type=GenericOutput
         )
-        mock_get_funcs.return_value = [func_info]
+        mock_app.get_functions_for_interface.return_value = [func_info]
         
         tools = prepare_chat_tools()
         assert len(tools) == 1
         assert tools[0].__name__ == "test_tool"
         assert "A test tool" in tools[0].__doc__
     
-    @patch('autocode.core.registry.get_functions_for_interface')
-    def test_filters_by_enabled_tools(self, mock_get_funcs):
+    @patch('autocode.core.ai.dspy_utils.Refract')
+    def test_filters_by_enabled_tools(self, mock_refract_cls):
         """prepare_chat_tools filters by enabled_tools list."""
         from autocode.core.ai.dspy_utils import prepare_chat_tools
         from autocode.core.models import FunctionInfo, ParamSchema, GenericOutput
         
+        mock_app = Mock()
+        mock_refract_cls.current.return_value = mock_app
         func1 = FunctionInfo(
             name="tool_a", func=Mock(), description="Tool A",
             params=[], http_methods=["GET"], interfaces=["mcp"], return_type=GenericOutput
@@ -95,18 +99,20 @@ class TestPrepareChatTools:
             name="tool_b", func=Mock(), description="Tool B",
             params=[], http_methods=["GET"], interfaces=["mcp"], return_type=GenericOutput
         )
-        mock_get_funcs.return_value = [func1, func2]
+        mock_app.get_functions_for_interface.return_value = [func1, func2]
         
         tools = prepare_chat_tools(enabled_tools=["tool_a"])
         assert len(tools) == 1
         assert tools[0].__name__ == "tool_a"
     
-    @patch('autocode.core.registry.get_functions_for_interface')
-    def test_empty_when_no_mcp_functions(self, mock_get_funcs):
+    @patch('autocode.core.ai.dspy_utils.Refract')
+    def test_empty_when_no_mcp_functions(self, mock_refract_cls):
         """prepare_chat_tools returns empty list when no MCP functions."""
         from autocode.core.ai.dspy_utils import prepare_chat_tools
         
-        mock_get_funcs.return_value = []
+        mock_app = Mock()
+        mock_refract_cls.current.return_value = mock_app
+        mock_app.get_functions_for_interface.return_value = []
         tools = prepare_chat_tools()
         assert tools == []
 

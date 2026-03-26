@@ -7,8 +7,7 @@ with DSPy generation for complete workflows.
 from typing import Dict, Any, Optional, List, get_args
 import os
 import litellm
-from refract import register_function
-from autocode.app import app
+from refract import register_function, Refract
 from autocode.core.models import GenericOutput
 from autocode.core.ai.models import DspyOutput
 from autocode.core.utils.openrouter import fetch_models_info
@@ -295,7 +294,7 @@ def get_chat_config() -> GenericOutput:
                 "supported_parameters": info.get("supported_parameters", [])
             })
 
-        mcp_functions = app.get_functions_for_interface("mcp")
+        mcp_functions = Refract.current().get_functions_for_interface("mcp")
 
         return GenericOutput(
             success=True,

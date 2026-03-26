@@ -431,14 +431,16 @@ class TestGetChatConfig:
 
     @patch('autocode.core.ai.pipelines.get_available_tools_info')
     @patch('autocode.core.ai.pipelines.get_all_module_kwargs_schemas')
-    @patch('autocode.core.ai.pipelines.get_functions_for_interface')
+    @patch('autocode.core.ai.pipelines.Refract')
     @patch('autocode.core.ai.pipelines.fetch_models_info')
     def test_happy_path_returns_all_sections(
-        self, mock_fetch_models, mock_get_funcs, mock_schemas, mock_tools_info
+        self, mock_fetch_models, mock_refract_cls, mock_schemas, mock_tools_info
     ):
         """Returns success=True with module_kwargs_schemas, available_tools, models."""
         mock_fetch_models.return_value = {}
-        mock_get_funcs.return_value = []
+        mock_app = Mock()
+        mock_refract_cls.current.return_value = mock_app
+        mock_app.get_functions_for_interface.return_value = []
         mock_schemas.return_value = {
             "Predict": {"params": [], "supports_tools": False},
             "ReAct": {"params": [{"name": "max_iters"}], "supports_tools": True},
@@ -460,10 +462,10 @@ class TestGetChatConfig:
 
     @patch('autocode.core.ai.pipelines.get_available_tools_info')
     @patch('autocode.core.ai.pipelines.get_all_module_kwargs_schemas')
-    @patch('autocode.core.ai.pipelines.get_functions_for_interface')
+    @patch('autocode.core.ai.pipelines.Refract')
     @patch('autocode.core.ai.pipelines.fetch_models_info')
     def test_models_data_structure(
-        self, mock_fetch_models, mock_get_funcs, mock_schemas, mock_tools_info
+        self, mock_fetch_models, mock_refract_cls, mock_schemas, mock_tools_info
     ):
         """Each model entry has the expected fields from merge of base list + OpenRouter info."""
         mock_fetch_models.return_value = {
@@ -475,7 +477,9 @@ class TestGetChatConfig:
                 "supported_parameters": ["temperature", "max_tokens"],
             }
         }
-        mock_get_funcs.return_value = []
+        mock_app = Mock()
+        mock_refract_cls.current.return_value = mock_app
+        mock_app.get_functions_for_interface.return_value = []
         mock_schemas.return_value = {}
         mock_tools_info.return_value = []
 
@@ -496,14 +500,16 @@ class TestGetChatConfig:
 
     @patch('autocode.core.ai.pipelines.get_available_tools_info')
     @patch('autocode.core.ai.pipelines.get_all_module_kwargs_schemas')
-    @patch('autocode.core.ai.pipelines.get_functions_for_interface')
+    @patch('autocode.core.ai.pipelines.Refract')
     @patch('autocode.core.ai.pipelines.fetch_models_info')
     def test_model_without_openrouter_info_uses_defaults(
-        self, mock_fetch_models, mock_get_funcs, mock_schemas, mock_tools_info
+        self, mock_fetch_models, mock_refract_cls, mock_schemas, mock_tools_info
     ):
         """Models not found in OpenRouter still appear with id and fallback name."""
         mock_fetch_models.return_value = {}  # No OpenRouter info for any model
-        mock_get_funcs.return_value = []
+        mock_app = Mock()
+        mock_refract_cls.current.return_value = mock_app
+        mock_app.get_functions_for_interface.return_value = []
         mock_schemas.return_value = {}
         mock_tools_info.return_value = []
 
