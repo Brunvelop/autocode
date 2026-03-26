@@ -11,7 +11,7 @@
  */
 
 import { LitElement, html } from 'https://cdn.jsdelivr.net/gh/lit/dist@3/core/lit-core.min.js';
-import { AutoFunctionController } from '../auto-element-generator.js';
+import { AutoFunctionController } from '/elements/controller.js';
 import { themeTokens } from './styles/theme.js';
 import { codeExplorerStyles } from './styles/code-explorer.styles.js';
 

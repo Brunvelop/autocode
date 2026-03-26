@@ -6,7 +6,7 @@
  */
 
 import { LitElement, html, css } from 'https://cdn.jsdelivr.net/gh/lit/dist@3/core/lit-core.min.js';
-import { AutoFunctionController } from '../auto-element-generator.js';
+import { AutoFunctionController } from '/elements/controller.js';
 import { themeTokens } from './styles/theme.js';
 import './files-metrics-table.js';
 

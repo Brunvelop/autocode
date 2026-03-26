@@ -10,7 +10,7 @@
  */
 
 import { LitElement, html } from 'https://cdn.jsdelivr.net/gh/lit/dist@3/core/lit-core.min.js';
-import { RefractClient } from '../refract-client.js';
+import { RefractClient } from '/elements/client.js';
 import { themeTokens } from './styles/theme.js';
 import { badgeBase, ghostButton } from './styles/common.js';
 import { autocodeChatStyles } from './styles/autocode-chat.styles.js';
