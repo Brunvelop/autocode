@@ -113,7 +113,7 @@
         await componentModule;
 
         // Get reference to AutoFunctionController from the module system
-        const autoGenModule = await import('../../../elements/auto-element-generator.js');
+        const autoGenModule = await import('/refract/controller.js');
         const originalExecute = autoGenModule.AutoFunctionController.executeFunction;
 
         autoGenModule.AutoFunctionController.executeFunction = async function(funcName, params) {

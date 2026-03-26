@@ -209,7 +209,7 @@ Si necesitas crear un componente con una interfaz específica pero contenida en 
 
 ```javascript
 import { html, css } from 'lit';
-import { AutoFunctionController } from './auto-element-generator.js';
+import { AutoFunctionController } from '/refract/controller.js';
 import { themeTokens } from '../shared/styles/theme.js';
 import { spinnerStyles } from '../shared/styles/common.js';
 
