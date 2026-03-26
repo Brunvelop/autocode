@@ -8,7 +8,7 @@ import subprocess
 import logging
 from typing import Optional
 
-from autocode.core.registry import register_function
+from refract import register_function
 from autocode.core.models import GenericOutput
 from autocode.core.vcs.models import (
     GitCommit,

@@ -14,7 +14,7 @@ from datetime import datetime
 
 from autocode.core.planning.persistence import save_plan, load_plan, list_plan_summaries, delete_plan
 from autocode.core.planning.transitions import validate_transition, InvalidTransitionError
-from autocode.core.registry import register_function
+from refract import register_function
 from autocode.core.vcs.git import git, git_checked
 from autocode.core.models import GenericOutput
 from autocode.core.planning.models import (

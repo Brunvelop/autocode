@@ -12,7 +12,7 @@ from datetime import datetime
 from autocode.core.vcs.git import git_checked
 from autocode.core.planning.persistence import load_plan, save_plan
 from autocode.core.planning.transitions import REVIEWABLE_STATUSES
-from autocode.core.registry import register_function
+from refract import register_function
 from autocode.core.models import GenericOutput
 from autocode.core.planning.models import CommitPlanOutput
 

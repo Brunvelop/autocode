@@ -33,7 +33,7 @@ import time
 from datetime import datetime
 from typing import AsyncGenerator
 
-from autocode.core.registry import register_function
+from refract import register_function
 from autocode.core.models import GenericOutput
 from autocode.core.ai.streaming import _format_sse
 from autocode.core.planning.models import (

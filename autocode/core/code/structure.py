@@ -9,7 +9,7 @@ Usa get_git_tree() para obtener solo archivos trackeados por git.
 from pathlib import Path
 from typing import List, Optional, Dict
 
-from autocode.core.registry import register_function
+from refract import register_function
 from autocode.core.vcs import get_git_tree
 from .models import CodeNode, CodeGraph, CodeStructureOutput, CodeStructureResult, CodeSummaryOutput
 
