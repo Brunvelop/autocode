@@ -537,155 +537,47 @@ class Refract:
     # ------------------------------------------------------------------
 
     def api(self):
-        """Create and return a complete FastAPI application for this instance.
-
-        Equivalent to the module-level ``create_api_app()`` but driven by this
-        instance's registry instead of the global one.  Suitable for the
-        *app mode* (prototyping / stand-alone service):
-
-            refract = Refract("my-project", discover=["my_project.core"])
-            fastapi_app = refract.api()   # pass to uvicorn
-
-        The returned app includes:
-        - Dynamic function endpoints (one route per HTTP method per function).
-        - ``GET /functions/details`` — schema discovery for the frontend.
-        - ``GET /health`` — health check.
-        - Standard HTML views (root, ``/functions``, ``/demo``, ``/tests``).
-        - Static file mounts (``/elements``, ``/tests``, ``/static``).
-
-        Returns:
-            A configured ``FastAPI`` application.
-        """
-        mod = importlib.import_module("autocode.interfaces.api")
-        return mod.create_api_app_for_refract(self)
+        """Removed: autocode.interfaces deleted in Paso 7. Use autocode.app.app instead."""
+        raise NotImplementedError(
+            "autocode.interfaces has been removed. Use 'from autocode.app import app' "
+            "and call app.api() on the Refract instance from the refract package."
+        )
 
     def router(self):
-        """Create and return an ``APIRouter`` with only the dynamic endpoints.
-
-        Suitable for the *router mode* (production / embedded service) where
-        the caller supplies their own ``FastAPI`` application:
-
-            from fastapi import FastAPI
-            from fastapi.middleware.cors import CORSMiddleware
-
-            my_app = FastAPI()
-            my_app.add_middleware(CORSMiddleware, allow_origins=["*"])
-            my_app.include_router(refract.router())
-
-        The router includes:
-        - Dynamic function endpoints.
-        - ``GET /functions/details``.
-        - ``GET /health``.
-
-        It does **not** include static file mounts or HTML pages — those are
-        the caller's responsibility.
-
-        Returns:
-            A ``fastapi.routing.APIRouter`` instance.
-        """
-        mod = importlib.import_module("autocode.interfaces.api")
-        return mod.create_router_for_refract(self)
+        """Removed: autocode.interfaces deleted in Paso 7. Use autocode.app.app instead."""
+        raise NotImplementedError(
+            "autocode.interfaces has been removed. Use 'from autocode.app import app' "
+            "and call app.router() on the Refract instance from the refract package."
+        )
 
     def cli(self):
-        """Create and return a Click group for this instance.
-
-        Equivalent to the module-level ``app`` Click group but driven by this
-        instance's registry instead of the global one.  Suitable for the
-        *cli mode* (prototyping / stand-alone tool):
-
-            refract = Refract("my-project", discover=["my_project.core"])
-            cli_app = refract.cli()   # Click group — call or pass to entry point
-
-        The returned group includes:
-        - ``list`` — list registered functions.
-        - ``serve-api`` — start the FastAPI server.
-        - ``serve-mcp`` — start the API + MCP server.
-        - ``serve`` — recommended unified server (alias for ``serve-mcp``).
-        - Dynamic function commands for all ``"cli"``-interface functions.
-        - Custom commands registered via ``@self.command()``.
-
-        Returns:
-            A ``click.Group`` ready to serve as a CLI entry point.
-        """
-        mod = importlib.import_module("autocode.interfaces.cli")
-        return mod.create_cli_for_refract(self)
+        """Removed: autocode.interfaces deleted in Paso 7. Use autocode.app.app instead."""
+        raise NotImplementedError(
+            "autocode.interfaces has been removed. Use 'from autocode.app import app' "
+            "and call app.cli() on the Refract instance from the refract package."
+        )
 
     def command(self, name: str | None = None, **kwargs):
-        """Decorator to register a custom CLI command on this instance.
-
-        Custom commands are added to the Click group returned by ``cli()``
-        alongside the built-in ``serve``, ``list``, and dynamic function commands.
-
-        Usage::
-
-            app = Refract("my-project", discover=["my_project.core"])
-
-            @app.command()
-            def health_check():
-                \"\"\"Run code health quality gates.\"\"\"
-                ...
-
-            @app.command(name="my-cmd", help="A custom command")
-            def custom():
-                ...
-
-        Args:
-            name: Optional command name override.  Defaults to the function
-                name with underscores replaced by hyphens.
-            **kwargs: Additional keyword arguments forwarded to
-                ``click.Group.command()``.
-
-        Returns:
-            A decorator that registers the function as a custom CLI command.
-        """
-        def decorator(func: Callable) -> Callable:
-            cmd_name = name if name is not None else func.__name__.replace('_', '-')
-            self._custom_commands.append((cmd_name, func, kwargs))
-            return func
-        return decorator
+        """Removed: autocode.interfaces deleted in Paso 7. Use autocode.app.app instead."""
+        raise NotImplementedError(
+            "autocode.interfaces has been removed. Use 'from autocode.app import app' "
+            "and call @app.command() on the Refract instance from the refract package."
+        )
 
     @property
     def run_cli(self):
-        """Return the Click group for use as a ``pyproject.toml`` entry point.
-
-        Enables zero-boilerplate entry points::
-
-            # pyproject.toml
-            [project.scripts]
-            my-project = "my_project.app:app.run_cli"
-
-        ``app.run_cli`` resolves to the ``click.Group`` returned by
-        ``self.cli()``.  Since Click groups are callable, the entry point
-        system invokes ``cli_group()`` directly.
-
-        Returns:
-            A ``click.Group`` that can be called as the CLI entry point.
-        """
-        return self.cli()
+        """Removed: autocode.interfaces deleted in Paso 7. Use autocode.app.app instead."""
+        raise NotImplementedError(
+            "autocode.interfaces has been removed. Use 'from autocode.app import app' "
+            "and call app.run_cli on the Refract instance from the refract package."
+        )
 
     def mcp(self):
-        """Create and return a FastAPI application with API + MCP integration.
-
-        Equivalent to the module-level ``create_mcp_app()`` but driven by this
-        instance's registry instead of the global one.  Suitable for the
-        *mcp mode* (prototyping / stand-alone service with AI assistant support):
-
-            refract = Refract("my-project", discover=["my_project.core"])
-            fastapi_app = refract.mcp()   # pass to uvicorn
-
-        The returned app includes everything from ``refract.api()`` plus:
-        - MCP-specific endpoints (functions with ``"mcp"`` interface), tagged
-          ``"mcp-tools"`` so FastApiMCP can discover them.
-        - A mounted FastApiMCP server at the standard MCP HTTP path.
-
-        Returns:
-            A configured ``FastAPI`` application with MCP support.
-
-        Raises:
-            RuntimeError: If MCP server initialisation fails.
-        """
-        mod = importlib.import_module("autocode.interfaces.mcp")
-        return mod.create_mcp_app_for_refract(self)
+        """Removed: autocode.interfaces deleted in Paso 7. Use autocode.app.app instead."""
+        raise NotImplementedError(
+            "autocode.interfaces has been removed. Use 'from autocode.app import app' "
+            "and call app.mcp() on the Refract instance from the refract package."
+        )
 
     # ------------------------------------------------------------------
     # Dunder helpers

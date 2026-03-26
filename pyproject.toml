@@ -36,7 +36,7 @@ dependencies = [
 
 
 [project.scripts]
-autocode = "autocode.interfaces.cli:app"
+autocode = "autocode.app:app.run_cli"
 
 [project.entry-points."pytest11"]
 autocode-health = "autocode.testing.plugin"
@@ -132,7 +132,7 @@ warning_project_avg_complexity = 3.5
 critical_project_avg_mi = 35.0
 warning_project_avg_mi = 45.0
 # Dependencias circulares entre paquetes
-# Estado actual: 1 (autocode.core ↔ autocode.interfaces — conocida)
+# Estado actual: 0 (autocode.interfaces eliminado en Paso 7)
 max_circular_deps = 0
 # Globs a excluir del análisis (ej: ["tests/*", "setup.py"])
 exclude = []
