@@ -8,11 +8,9 @@ import pytest
 from unittest.mock import Mock, patch
 from fastapi.testclient import TestClient
 
-from autocode.core.registry import (
-    register_function, clear_registry, get_stream_func,
-    get_all_schemas, load_functions, get_function_by_name
-)
-from autocode.interfaces.api import create_api_app
+from refract import register_function
+from refract.registry import _clear_pending
+from autocode.app import app
 from autocode.core.models import GenericOutput
 
 
@@ -44,32 +42,32 @@ class TestStreamingEndToEnd:
             """Normal non-streaming function."""
             return GenericOutput(result=x * 2, success=True)
 
+        # Flush pending registrations into the app instance
+        app._drain_pending()
+
         yield
 
-    @patch('autocode.interfaces.api.load_functions')
-    def test_streaming_endpoint_exists(self, mock_load):
+    def test_streaming_endpoint_exists(self):
         """The streaming endpoint exists and accepts POST."""
-        app = create_api_app()
-        client = TestClient(app)
+        api_app = app.api()
+        client = TestClient(api_app)
 
         response = client.post("/test_stream", json={"message": "hello"})
         assert response.status_code == 200
 
-    @patch('autocode.interfaces.api.load_functions')
-    def test_streaming_content_type(self, mock_load):
+    def test_streaming_content_type(self):
         """The streaming endpoint returns text/event-stream content type."""
-        app = create_api_app()
-        client = TestClient(app)
+        api_app = app.api()
+        client = TestClient(api_app)
 
         response = client.post("/test_stream", json={"message": "hello"})
         assert response.status_code == 200
         assert "text/event-stream" in response.headers.get("content-type", "")
 
-    @patch('autocode.interfaces.api.load_functions')
-    def test_streaming_response_contains_sse_events(self, mock_load):
+    def test_streaming_response_contains_sse_events(self):
         """The streaming response body contains properly formatted SSE events."""
-        app = create_api_app()
-        client = TestClient(app)
+        api_app = app.api()
+        client = TestClient(api_app)
 
         response = client.post("/test_stream", json={"message": "hello"})
         body = response.text
@@ -87,20 +85,18 @@ class TestStreamingEndToEnd:
         assert "event: complete" in body
         assert '"success": true' in body
 
-    @patch('autocode.interfaces.api.load_functions')
-    def test_streaming_headers(self, mock_load):
+    def test_streaming_headers(self):
         """The streaming response includes required SSE headers."""
-        app = create_api_app()
-        client = TestClient(app)
+        api_app = app.api()
+        client = TestClient(api_app)
 
         response = client.post("/test_stream", json={"message": "hello"})
         assert response.headers.get("cache-control") == "no-cache"
 
-    @patch('autocode.interfaces.api.load_functions')
-    def test_non_streaming_endpoints_unchanged(self, mock_load):
+    def test_non_streaming_endpoints_unchanged(self):
         """Non-streaming endpoints continue to work as before."""
-        app = create_api_app()
-        client = TestClient(app)
+        api_app = app.api()
+        client = TestClient(api_app)
 
         # GET should work
         response = client.get("/test_normal?x=5")
@@ -115,11 +111,10 @@ class TestStreamingEndToEnd:
         data = response.json()
         assert data["result"] == 14
 
-    @patch('autocode.interfaces.api.load_functions')
-    def test_functions_details_includes_streaming_field(self, mock_load):
+    def test_functions_details_includes_streaming_field(self):
         """GET /functions/details includes streaming: true for streaming functions."""
-        app = create_api_app()
-        client = TestClient(app)
+        api_app = app.api()
+        client = TestClient(api_app)
 
         response = client.get("/functions/details")
         assert response.status_code == 200
@@ -135,23 +130,23 @@ class TestStreamingEndToEnd:
 
     def test_get_stream_func_returns_callable_for_streaming(self):
         """get_stream_func returns the stream function for streaming functions."""
-        stream_func = get_stream_func("test_stream")
+        stream_func = app.get_stream_func("test_stream")
         assert stream_func is not None
         assert callable(stream_func)
 
     def test_get_stream_func_returns_none_for_non_streaming(self):
         """get_stream_func returns None for non-streaming functions."""
-        stream_func = get_stream_func("test_normal")
+        stream_func = app.get_stream_func("test_normal")
         assert stream_func is None
 
     def test_get_stream_func_returns_none_for_unknown(self):
         """get_stream_func returns None for unknown function names."""
-        stream_func = get_stream_func("nonexistent_function")
+        stream_func = app.get_stream_func("nonexistent_function")
         assert stream_func is None
 
     def test_schemas_include_streaming_field(self):
         """get_all_schemas includes streaming field in serialized schemas."""
-        schemas = get_all_schemas()
+        schemas = app.get_all_schemas()
         stream_schema = next((s for s in schemas if s.name == "test_stream"), None)
         normal_schema = next((s for s in schemas if s.name == "test_normal"), None)
 
@@ -161,11 +156,10 @@ class TestStreamingEndToEnd:
         assert normal_schema is not None
         assert normal_schema.streaming is False
 
-    @patch('autocode.interfaces.api.load_functions')
-    def test_streaming_and_normal_coexist(self, mock_load):
+    def test_streaming_and_normal_coexist(self):
         """Streaming and non-streaming functions coexist on the same app."""
-        app = create_api_app()
-        client = TestClient(app)
+        api_app = app.api()
+        client = TestClient(api_app)
 
         # Both should respond
         stream_resp = client.post("/test_stream", json={"message": "hi"})
@@ -182,7 +176,7 @@ class TestStreamingEndToEnd:
 
 
 class TestStreamingWithRealRegistry:
-    """Tests that use the real registry load to verify chat_stream registration.
+    """Tests that use the real module imports to verify chat_stream registration.
     
     These tests need the real module imports to fire @register_function decorators.
     We override the autouse cleanup_registry fixture because once Python caches
@@ -193,21 +187,25 @@ class TestStreamingWithRealRegistry:
     @pytest.fixture(autouse=True)
     def cleanup_registry(self):
         """Override global autouse fixture: clear + force reload of pipelines."""
-        clear_registry()
+        app.clear()
+        _clear_pending()
         yield
-        clear_registry()
+        app.clear()
+        _clear_pending()
 
     def _force_load(self):
         """Force reload of pipelines module to re-fire @register_function decorators."""
         import importlib
         import autocode.core.ai.pipelines
-        clear_registry()
+        app.clear()
+        _clear_pending()
         importlib.reload(autocode.core.ai.pipelines)
+        app._drain_pending()
 
     def test_chat_stream_is_registered(self):
-        """chat_stream is registered after load_functions()."""
+        """chat_stream is registered after forcing reload of pipelines."""
         self._force_load()
-        func_info = get_function_by_name("chat_stream")
+        func_info = app.get_function_by_name("chat_stream")
         assert func_info is not None
         assert func_info.streaming is True
         assert func_info.name == "chat_stream"
@@ -215,7 +213,7 @@ class TestStreamingWithRealRegistry:
     def test_chat_stream_has_stream_func(self):
         """chat_stream has a corresponding stream_func in the stream registry."""
         self._force_load()
-        stream_func = get_stream_func("chat_stream")
+        stream_func = app.get_stream_func("chat_stream")
         assert stream_func is not None
         assert callable(stream_func)
 
@@ -223,26 +221,26 @@ class TestStreamingWithRealRegistry:
         """chat_stream's stream_func is the stream_chat function."""
         from autocode.core.ai.streaming import stream_chat
         self._force_load()
-        stream_func = get_stream_func("chat_stream")
+        stream_func = app.get_stream_func("chat_stream")
         assert stream_func is stream_chat
 
     def test_chat_has_no_stream_func(self):
         """Regular chat() function has no stream_func."""
         self._force_load()
-        stream_func = get_stream_func("chat")
+        stream_func = app.get_stream_func("chat")
         assert stream_func is None
 
     def test_chat_is_not_streaming(self):
         """Regular chat() function has streaming=False."""
         self._force_load()
-        func_info = get_function_by_name("chat")
+        func_info = app.get_function_by_name("chat")
         assert func_info is not None
         assert func_info.streaming is False
 
     def test_chat_stream_schema_in_functions_details(self):
         """chat_stream appears in schemas with streaming=True."""
         self._force_load()
-        schemas = get_all_schemas()
+        schemas = app.get_all_schemas()
         stream_schema = next((s for s in schemas if s.name == "chat_stream"), None)
         assert stream_schema is not None
         assert stream_schema.streaming is True
@@ -250,7 +248,7 @@ class TestStreamingWithRealRegistry:
     def test_chat_stream_only_exposes_api_interface(self):
         """chat_stream is only exposed on the API interface (not CLI/MCP)."""
         self._force_load()
-        func_info = get_function_by_name("chat_stream")
+        func_info = app.get_function_by_name("chat_stream")
         assert func_info is not None
         assert "api" in func_info.interfaces
         assert "cli" not in func_info.interfaces

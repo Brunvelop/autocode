@@ -6,8 +6,10 @@ from unittest.mock import Mock, MagicMock, patch
 from typing import Dict, Any, List
 import logging
 
-from autocode.core.models import ParamSchema, FunctionInfo, GenericOutput
-from autocode.core.registry import clear_registry, get_all_functions, get_function_by_name
+from refract import ParamSchema, FunctionInfo
+from refract.registry import _clear_pending
+from autocode.core.models import GenericOutput
+from autocode.app import app
 
 # Configure logging for tests
 logging.basicConfig(level=logging.DEBUG)
@@ -23,9 +25,11 @@ logging.getLogger('asyncio').setLevel(logging.WARNING)
 @pytest.fixture(autouse=True)
 def cleanup_registry():
     """Automatically clear registry before and after each test to ensure isolation."""
-    clear_registry()
+    app.clear()
+    _clear_pending()
     yield
-    clear_registry()
+    app.clear()
+    _clear_pending()
 
 
 @pytest.fixture
@@ -95,12 +99,10 @@ def populated_registry(sample_function_info):
     """Registry with sample function for integration testing.
     
     Note: Uses internal registry access for test setup only.
-    Tests should use public API (get_function_by_name, get_all_functions) to verify.
+    Tests should use public API (app.get_function_by_name, app.get_all_functions)
+    to verify.
     """
-    # Import here to limit scope - this is intentional test-only access
-    from autocode.core.registry import _registry
-    _registry.append(sample_function_info)
-    # Return None - tests should use public API to access registry
+    app._registry.append(sample_function_info)
     return None
 
 
@@ -138,5 +140,3 @@ def fastapi_test_client():
         from fastapi.testclient import TestClient
         return TestClient(app)
     return _create_test_client
-
-

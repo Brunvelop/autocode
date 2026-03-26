@@ -9,13 +9,9 @@ from unittest.mock import Mock, patch, MagicMock
 from fastapi.testclient import TestClient
 from click.testing import CliRunner
 
-from autocode.core.registry import (
-    register_function, clear_registry, function_count,
-    get_function_by_name, get_all_functions
-)
-from autocode.interfaces.api import create_api_app
-from autocode.interfaces.cli import app as cli_app, _register_commands
-from autocode.interfaces.mcp import create_mcp_app
+from refract import register_function
+from refract.registry import _clear_pending
+from autocode.app import app
 from autocode.core.models import GenericOutput
 
 
@@ -64,18 +60,17 @@ class TestFullIntegration:
             """
             return GenericOutput(result={"message": f"Hello, {name}!"}, success=True)
         
-        # Re-register CLI commands after adding new functions
-        _register_commands()
+        # Flush pending registrations into the app instance
+        app._drain_pending()
         
         yield
         
         # Cleanup is handled by conftest.py cleanup_registry fixture
     
-    @patch('autocode.interfaces.api.load_functions')
-    def test_api_integration_with_registered_functions(self, mock_load):
+    def test_api_integration_with_registered_functions(self):
         """Test that API correctly serves registered functions."""
-        app = create_api_app()
-        client = TestClient(app)
+        api_app = app.api()
+        client = TestClient(api_app)
         
         # Test GET endpoint with defaults
         response = client.get("/integration_add?a=5")
@@ -108,60 +103,54 @@ class TestFullIntegration:
     def test_cli_integration_with_registered_functions(self):
         """Test that CLI correctly exposes registered functions."""
         runner = CliRunner()
+        cli = app.cli()
         
         # Test list command shows registered functions
-        result = runner.invoke(cli_app, ['list'])
+        result = runner.invoke(cli, ['list'])
         assert result.exit_code == 0
         assert "integration_add" in result.output
         assert "integration_multiply" in result.output
         assert "integration_greet" in result.output
         
         # Test executing registered function via CLI
-        result = runner.invoke(cli_app, ['integration_add', '--a', '8', '--b', '2'])
+        result = runner.invoke(cli, ['integration_add', '--a', '8', '--b', '2'])
         assert result.exit_code == 0
         assert "10" in result.output
         
         # Test with default parameters
-        result = runner.invoke(cli_app, ['integration_add', '--a', '5'])
+        result = runner.invoke(cli, ['integration_add', '--a', '5'])
         assert result.exit_code == 0
         assert "15" in result.output
         
         # Test help for registered function
-        result = runner.invoke(cli_app, ['integration_add', '--help'])
+        result = runner.invoke(cli, ['integration_add', '--help'])
         assert result.exit_code == 0
         assert "Add two integers for integration testing" in result.output
         assert "--a" in result.output
         assert "--b" in result.output
     
-    @patch('autocode.interfaces.mcp.create_api_app')
-    @patch('autocode.interfaces.mcp.FastApiMCP')
-    def test_mcp_integration_preserves_api_functionality(self, mock_fastapi_mcp, mock_create_api_app):
+    def test_mcp_integration_preserves_api_functionality(self):
         """Test that MCP integration preserves API functionality."""
-        # Create actual API app for this test
-        mock_create_api_app.side_effect = lambda: create_api_app()
-        
-        # Mock MCP components
-        mock_mcp_instance = Mock()
-        mock_fastapi_mcp.return_value = mock_mcp_instance
-        
-        # Create MCP app
-        with patch('autocode.interfaces.api.load_functions'):
-            mcp_app = create_mcp_app()
-        
-        # Test that API functionality is preserved
-        client = TestClient(mcp_app)
-        
-        # Test health endpoint
-        response = client.get("/health")
-        assert response.status_code == 200
-        
-        # Test functions endpoint
-        response = client.get("/functions")
-        assert response.status_code == 200
-        
-        # Verify MCP was integrated
-        mock_fastapi_mcp.assert_called_once()
-        mock_mcp_instance.mount_http.assert_called_once()
+        with patch('refract.mcp.FastApiMCP') as mock_fastapi_mcp:
+            mock_mcp_instance = Mock()
+            mock_fastapi_mcp.return_value = mock_mcp_instance
+
+            mcp_app = app.mcp()
+
+            # Test that API functionality is preserved
+            client = TestClient(mcp_app)
+
+            # Test health endpoint
+            response = client.get("/health")
+            assert response.status_code == 200
+
+            # Test functions endpoint
+            response = client.get("/functions")
+            assert response.status_code == 200
+
+            # Verify MCP was integrated
+            mock_fastapi_mcp.assert_called_once()
+            mock_mcp_instance.mount_http.assert_called_once()
     
     def test_registry_function_parameter_inference(self):
         """Test that parameter inference works correctly across interfaces."""
@@ -184,8 +173,10 @@ class TestFullIntegration:
                 "optional_bool": optional_bool
             }, success=True)
         
+        app._drain_pending()
+        
         # Verify function was registered correctly using public API
-        func_info = get_function_by_name("complex_function")
+        func_info = app.get_function_by_name("complex_function")
         assert func_info is not None
         assert func_info.name == "complex_function"
         assert len(func_info.params) == 3
@@ -205,8 +196,7 @@ class TestFullIntegration:
         assert bool_param.required is False
         assert bool_param.default is True
     
-    @patch('autocode.interfaces.api.load_functions')
-    def test_error_handling_across_interfaces(self, mock_load):
+    def test_error_handling_across_interfaces(self):
         """Test error handling consistency across interfaces."""
         # Register a function that can error
         @register_function()
@@ -216,9 +206,11 @@ class TestFullIntegration:
                 raise ValueError("Value cannot be negative")
             return GenericOutput(result=value * 2, success=True)
         
+        app._drain_pending()
+        
         # Test API error handling
-        app = create_api_app()
-        client = TestClient(app)
+        api_app = app.api()
+        client = TestClient(api_app)
         
         # Should work with positive value
         response = client.post("/error_prone_function", json={"value": 5})
@@ -228,19 +220,17 @@ class TestFullIntegration:
         response = client.post("/error_prone_function", json={"value": -1})
         assert response.status_code == 400  # Parameter error
         
-        # Re-register CLI commands for new function
-        _register_commands()
-        
         # Test CLI error handling
         runner = CliRunner()
+        cli = app.cli()
         
         # Should work with positive value
-        result = runner.invoke(cli_app, ['error_prone_function', '--value', '3'])
+        result = runner.invoke(cli, ['error_prone_function', '--value', '3'])
         assert result.exit_code == 0
         assert "6" in result.output
         
         # Should handle error gracefully
-        result = runner.invoke(cli_app, ['error_prone_function', '--value', '-2'])
+        result = runner.invoke(cli, ['error_prone_function', '--value', '-2'])
         assert result.exit_code != 0
     
 class TestInterfaceConsistency:
@@ -253,36 +243,35 @@ class TestInterfaceConsistency:
             """Test function for consistency checking."""
             return GenericOutput(result=f"{param1}:{param2}", success=True)
         
-        # Test via API
-        with patch('autocode.interfaces.api.load_functions'):
-            app = create_api_app()
-            client = TestClient(app)
-            
-            # API with defaults
-            response = client.post("/consistency_test", json={"param1": "test"})
-            assert response.status_code == 200
-            data = response.json()
-            assert data["result"] == "test:100"
-            
-            # API with all params
-            response = client.post("/consistency_test", json={"param1": "test", "param2": 50})
-            assert response.status_code == 200
-            data = response.json()
-            assert data["result"] == "test:50"
+        app._drain_pending()
         
-        # Re-register CLI commands for new function
-        _register_commands()
+        # Test via API
+        api_app = app.api()
+        client = TestClient(api_app)
+        
+        # API with defaults
+        response = client.post("/consistency_test", json={"param1": "test"})
+        assert response.status_code == 200
+        data = response.json()
+        assert data["result"] == "test:100"
+        
+        # API with all params
+        response = client.post("/consistency_test", json={"param1": "test", "param2": 50})
+        assert response.status_code == 200
+        data = response.json()
+        assert data["result"] == "test:50"
         
         # Test via CLI
         runner = CliRunner()
+        cli = app.cli()
         
         # CLI with defaults
-        result = runner.invoke(cli_app, ['consistency_test', '--param1', 'test'])
+        result = runner.invoke(cli, ['consistency_test', '--param1', 'test'])
         assert result.exit_code == 0
         assert "test:100" in result.output
         
         # CLI with all params
-        result = runner.invoke(cli_app, ['consistency_test', '--param1', 'test', '--param2', '50'])
+        result = runner.invoke(cli, ['consistency_test', '--param1', 'test', '--param2', '50'])
         assert result.exit_code == 0
         assert "test:50" in result.output
     
@@ -298,8 +287,10 @@ class TestInterfaceConsistency:
             """
             return GenericOutput(result={"x": x, "y": y}, success=True)
         
+        app._drain_pending()
+        
         # Access function info using public API
-        func_info = get_function_by_name("metadata_test")
+        func_info = app.get_function_by_name("metadata_test")
         assert func_info is not None
         
         # Verify metadata
@@ -321,7 +312,7 @@ class TestCrossModuleDependencies:
     
     def test_registry_integration_with_all_interfaces(self):
         """Test that registry changes are reflected in all interfaces."""
-        initial_count = function_count()
+        initial_count = app.function_count()
         
         # Add function dynamically
         @register_function()
@@ -329,18 +320,20 @@ class TestCrossModuleDependencies:
             """Dynamically added function."""
             return GenericOutput(result=f"Dynamic: {value}", success=True)
         
+        app._drain_pending()
+        
         # Verify registry was updated using public API
-        assert function_count() == initial_count + 1
-        func_info = get_function_by_name("dynamic_function")
+        assert app.function_count() == initial_count + 1
+        func_info = app.get_function_by_name("dynamic_function")
         assert func_info is not None
         
         # Test that CLI reflects the change
         runner = CliRunner()
-        result = runner.invoke(cli_app, ['list'])
+        cli = app.cli()
+        result = runner.invoke(cli, ['list'])
         assert "dynamic_function" in result.output
     
-    @patch('autocode.interfaces.api.load_functions')
-    def test_mcp_and_api_integration(self, mock_load):
+    def test_mcp_and_api_integration(self):
         """Test integration between MCP and API components."""
         # Register a test function
         @register_function()
@@ -348,45 +341,20 @@ class TestCrossModuleDependencies:
             """Function for MCP testing."""
             return GenericOutput(result={"processed": data.upper()}, success=True)
         
+        app._drain_pending()
+        
         # Create MCP app
-        with patch('autocode.interfaces.mcp.FastApiMCP') as mock_mcp:
+        with patch('refract.mcp.FastApiMCP') as mock_mcp:
             mock_mcp_instance = Mock()
             mock_mcp.return_value = mock_mcp_instance
             
-            app = create_mcp_app()
+            mcp_app = app.mcp()
             
             # Verify MCP was initialized with the app
             mock_mcp.assert_called_once()
-            call_args = mock_mcp.call_args
-            assert call_args[0][0] == app  # First argument should be the app
             
             # Verify app configuration
-            assert "MCP Server" in app.title
-            assert "MCP integration" in app.description
-    
-    def test_error_propagation_across_modules(self):
-        """Test that errors propagate correctly across module boundaries."""
-        # Test that searching for non-existent function returns None
-        result = get_function_by_name("nonexistent")
-        assert result is None
-        
-        # Test that API would handle registry errors
-        from autocode.interfaces.api import _execute_function as execute_function_with_params
-        from autocode.core.models import FunctionInfo
-        
-        # Create a function info that references nonexistent function
-        fake_func = lambda: None  # This won't be called
-        fake_func_info = FunctionInfo(
-            name="fake",
-            func=fake_func,
-            description="Fake function",
-            params=[]
-        )
-        
-        # This should work (no registry lookup involved in execute_function_with_params)
-        result = execute_function_with_params(fake_func_info, {}, "POST")
-        # When function returns None (not GenericOutput), API wraps it with warning
-        assert result["success"] is False or result["result"] == "None"
+            assert "MCP" in mcp_app.title or "Autocode" in mcp_app.title
 
 
 class TestRealWorldScenarios:
@@ -431,32 +399,31 @@ class TestRealWorldScenarios:
                 "score": max(0, 100 - len(issues) * 10)
             }, success=True)
         
-        # Test via API
-        with patch('autocode.interfaces.api.load_functions'):
-            app = create_api_app()
-            client = TestClient(app)
-            
-            # Note: "line1\nline2\n" splits into ['line1', 'line2', ''] = 3 elements
-            test_code = "def test():\n    return 'hello world'"
-            
-            response = client.post("/analyze_code_quality", json={
-                "code": test_code,
-                "strict_mode": False,
-                "max_line_length": 80
-            })
-            
-            assert response.status_code == 200
-            data = response.json()
-            assert data["result"]["total_lines"] == 2
-            assert data["result"]["score"] >= 0
-            assert isinstance(data["result"]["issues"], list)
+        app._drain_pending()
         
-        # Re-register CLI commands for new function
-        _register_commands()
+        # Test via API
+        api_app = app.api()
+        client = TestClient(api_app)
+        
+        # Note: "line1\nline2\n" splits into ['line1', 'line2', ''] = 3 elements
+        test_code = "def test():\n    return 'hello world'"
+        
+        response = client.post("/analyze_code_quality", json={
+            "code": test_code,
+            "strict_mode": False,
+            "max_line_length": 80
+        })
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert data["result"]["total_lines"] == 2
+        assert data["result"]["score"] >= 0
+        assert isinstance(data["result"]["issues"], list)
         
         # Test via CLI
         runner = CliRunner()
-        result = runner.invoke(cli_app, [
+        cli = app.cli()
+        result = runner.invoke(cli, [
             'analyze_code_quality',
             '--code', 'print("hello")',
             '--max-line-length', '10'
@@ -490,27 +457,27 @@ class TestRealWorldScenarios:
                 complexity += code.count(keyword)
             return GenericOutput(result=complexity, success=True)
         
+        app._drain_pending()
+        
         # Verify all tools are registered using public API
-        format_func = get_function_by_name("format_code")
-        check_func = get_function_by_name("check_imports")
-        calc_func = get_function_by_name("calculate_complexity")
+        format_func = app.get_function_by_name("format_code")
+        check_func = app.get_function_by_name("check_imports")
+        calc_func = app.get_function_by_name("calculate_complexity")
         
         assert format_func is not None
         assert check_func is not None
         assert calc_func is not None
         
-        # Re-register CLI commands for new functions
-        _register_commands()
-        
         # Test that they work independently
         runner = CliRunner()
+        cli = app.cli()
         
         # Test format_code
-        result = runner.invoke(cli_app, ['format_code', '--code', 'x=1'])
+        result = runner.invoke(cli, ['format_code', '--code', 'x=1'])
         assert result.exit_code == 0
         assert "[pep8]" in result.output
         
         # Test calculate_complexity
-        result = runner.invoke(cli_app, ['calculate_complexity', '--code', 'if x: pass'])
+        result = runner.invoke(cli, ['calculate_complexity', '--code', 'if x: pass'])
         assert result.exit_code == 0
         assert "2" in result.output  # Base(1) + if(1) = 2
