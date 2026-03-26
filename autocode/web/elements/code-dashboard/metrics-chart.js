@@ -17,7 +17,7 @@
 
 import { LitElement, html } from 'https://cdn.jsdelivr.net/gh/lit/dist@3/core/lit-core.min.js';
 import * as d3 from 'https://cdn.jsdelivr.net/npm/d3@7/+esm';
-import { RefractClient } from '/elements/client.js';
+import { RefractClient } from '/refract/client.js';
 import { themeTokens } from './styles/theme.js';
 import { metricsChartStyles } from './styles/metrics-chart.styles.js';
 

@@ -10,7 +10,7 @@
  */
 
 import { LitElement, html } from 'https://cdn.jsdelivr.net/gh/lit/dist@3/core/lit-core.min.js';
-import { RefractClient } from '/elements/client.js';
+import { RefractClient } from '/refract/client.js';
 import { themeTokens } from './styles/theme.js';
 import { gitDashboardStyles } from './styles/git-dashboard.styles.js';
 
