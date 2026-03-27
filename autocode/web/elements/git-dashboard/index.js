@@ -309,20 +309,6 @@ export class GitDashboard extends LitElement {
     }
 
     // ========================================================================
-    // HTTP CLIENT HELPER
-    // ========================================================================
-
-    /**
-     * Call API and unwrap envelope → payload.
-     * Mirrors the behavior of AutoFunctionController.executeFunction().
-     */
-    async _call(funcName, params) {
-        const data = await this._client.call(funcName, params);
-        return (data && typeof data === 'object' && Object.prototype.hasOwnProperty.call(data, 'result'))
-            ? data.result : data;
-    }
-
-    // ========================================================================
     // PUBLIC API
     // ========================================================================
 
@@ -341,7 +327,7 @@ export class GitDashboard extends LitElement {
         this._gitError = null;
 
         try {
-            const result = await this._call(
+            const result = await this._client.call(
                 'get_git_status',
                 {}
             );
@@ -365,7 +351,7 @@ export class GitDashboard extends LitElement {
         this._error = null;
 
         try {
-            const result = await this._call(
+            const result = await this._client.call(
                 'get_git_log',
                 {
                     max_count: this.maxCount,
@@ -634,7 +620,7 @@ export class GitDashboard extends LitElement {
      */
     async _loadPlans() {
         try {
-            const plans = await this._call(
+            const plans = await this._client.call(
                 'list_commit_plans',
                 {}
             );

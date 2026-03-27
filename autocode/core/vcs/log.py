@@ -8,16 +8,15 @@ import subprocess
 import logging
 from typing import Optional
 
+from fastapi import HTTPException
 from refract import register_function
-from autocode.core.models import GenericOutput
 from autocode.core.vcs.models import (
     GitCommit,
     GitBranch,
     GitLogGraph,
-    GitLogOutput,
+    GitLogSummary,
     GitFileChange,
     GitCommitDetail,
-    GitCommitDetailOutput,
 )
 
 logger = logging.getLogger(__name__)
@@ -29,7 +28,7 @@ _LOG_FORMAT = f"%H{_SEP}%h{_SEP}%an{_SEP}%ae{_SEP}%aI{_SEP}%P{_SEP}%s"
 
 
 @register_function(http_methods=["GET"], interfaces=["api"])
-def get_git_log(max_count: int = 50, branch: str = "") -> GitLogOutput:
+def get_git_log(max_count: int = 50, branch: str = "") -> GitLogGraph:
     """
     Obtiene el historial de commits del repositorio como un grafo.
 
@@ -66,27 +65,21 @@ def get_git_log(max_count: int = 50, branch: str = "") -> GitLogOutput:
         for b in branches:
             b.is_current = b.name == current_branch
 
-        graph = GitLogGraph(commits=commits, branches=branches)
-
-        return GitLogOutput(
-            success=True,
-            result=graph,
-            message=f"{len(commits)} commits, {len(branches)} branches",
-        )
+        return GitLogGraph(commits=commits, branches=branches)
 
     except subprocess.CalledProcessError as e:
         error_msg = f"Git error: {e.stderr.strip() if e.stderr else str(e)}"
         logger.error(error_msg)
-        return GitLogOutput(success=False, message=error_msg)
+        raise HTTPException(status_code=500, detail=error_msg)
 
     except Exception as e:
         error_msg = f"Error obteniendo git log: {str(e)}"
         logger.error(error_msg)
-        return GitLogOutput(success=False, message=error_msg)
+        raise HTTPException(status_code=500, detail=error_msg)
 
 
 @register_function(http_methods=["GET"], interfaces=["api", "mcp"])
-def get_git_log_summary(max_count: int = 15, branch: str = "") -> GenericOutput:
+def get_git_log_summary(max_count: int = 15, branch: str = "") -> GitLogSummary:
     """
     Obtiene un resumen compacto del historial de commits.
     
@@ -119,11 +112,7 @@ def get_git_log_summary(max_count: int = 15, branch: str = "") -> GenericOutput:
         lines = [l for l in result.stdout.strip().split("\n") if l]
         
         if not lines:
-            return GenericOutput(
-                success=True,
-                result=f"Branch: {current_branch}\nNo commits found.",
-                message="No commits"
-            )
+            return GitLogSummary(summary=f"Branch: {current_branch}\nNo commits found.")
         
         # Obtener conteo de branches
         branch_result = subprocess.run(
@@ -137,26 +126,21 @@ def get_git_log_summary(max_count: int = 15, branch: str = "") -> GenericOutput:
         output_lines.extend(lines)
         output_lines.append(f"---\nShowing {len(lines)} commits")
         
-        summary = "\n".join(output_lines)
-        return GenericOutput(
-            success=True,
-            result=summary,
-            message=f"{len(lines)} commits on {current_branch}"
-        )
+        return GitLogSummary(summary="\n".join(output_lines))
         
     except subprocess.CalledProcessError as e:
         error_msg = f"Git error: {e.stderr.strip() if e.stderr else str(e)}"
         logger.error(error_msg)
-        return GenericOutput(success=False, result=None, message=error_msg)
+        raise HTTPException(status_code=500, detail=error_msg)
         
     except Exception as e:
         error_msg = f"Error obteniendo git log summary: {str(e)}"
         logger.error(error_msg)
-        return GenericOutput(success=False, result=None, message=error_msg)
+        raise HTTPException(status_code=500, detail=error_msg)
 
 
 @register_function(http_methods=["GET"], interfaces=["api", "mcp"])
-def get_commit_detail(commit_hash: str) -> GitCommitDetailOutput:
+def get_commit_detail(commit_hash: str) -> GitCommitDetail:
     """
     Obtiene el detalle de un commit específico incluyendo archivos cambiados.
 
@@ -170,14 +154,14 @@ def get_commit_detail(commit_hash: str) -> GitCommitDetailOutput:
 
         line = result.stdout.strip()
         if not line:
-            return GitCommitDetailOutput(
-                success=False, message=f"Commit {commit_hash} no encontrado"
+            raise HTTPException(
+                status_code=404, detail=f"Commit {commit_hash} no encontrado"
             )
 
         parts = line.split(_SEP, 6)
         if len(parts) < 7:
-            return GitCommitDetailOutput(
-                success=False, message=f"Error parseando commit {commit_hash}"
+            raise HTTPException(
+                status_code=500, detail=f"Error parseando commit {commit_hash}"
             )
 
         full_hash, short_hash, author, email, date, parents_str, subject = parts
@@ -199,7 +183,7 @@ def get_commit_detail(commit_hash: str) -> GitCommitDetailOutput:
         total_add = sum(f.additions for f in files)
         total_del = sum(f.deletions for f in files)
 
-        detail = GitCommitDetail(
+        return GitCommitDetail(
             hash=full_hash,
             short_hash=short_hash,
             message_full=message_full,
@@ -215,21 +199,18 @@ def get_commit_detail(commit_hash: str) -> GitCommitDetailOutput:
             },
         )
 
-        return GitCommitDetailOutput(
-            success=True,
-            result=detail,
-            message=f"Commit {short_hash}: {len(files)} archivos cambiados",
-        )
+    except HTTPException:
+        raise
 
     except subprocess.CalledProcessError as e:
         error_msg = f"Git error: {e.stderr.strip() if e.stderr else str(e)}"
         logger.error(error_msg)
-        return GitCommitDetailOutput(success=False, message=error_msg)
+        raise HTTPException(status_code=500, detail=error_msg)
 
     except Exception as e:
         error_msg = f"Error obteniendo detalle del commit: {str(e)}"
         logger.error(error_msg)
-        return GitCommitDetailOutput(success=False, message=error_msg)
+        raise HTTPException(status_code=500, detail=error_msg)
 
 
 # ==============================================================================

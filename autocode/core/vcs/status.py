@@ -8,10 +8,11 @@ import subprocess
 import logging
 from typing import List, Optional, Literal
 
+from fastapi import HTTPException
 from pydantic import BaseModel, Field
 
 from refract import register_function
-from autocode.core.models import GenericOutput
+from autocode.core.vcs.models import GitStatusSummary
 
 logger = logging.getLogger(__name__)
 
@@ -49,18 +50,12 @@ class GitStatusResult(BaseModel):
     total_staged: int = Field(default=0, description="Total archivos en staging")
 
 
-class GitStatusOutput(GenericOutput):
-    """Output de get_git_status()."""
-    
-    result: Optional[GitStatusResult] = None
-
-
 # ==============================================================================
 # FUNCTIONS
 # ==============================================================================
 
 @register_function(http_methods=["GET"], interfaces=["api"])
-def get_git_status() -> GitStatusOutput:
+def get_git_status() -> GitStatusResult:
     """
     Obtiene el estado actual del repositorio git.
     
@@ -68,7 +63,7 @@ def get_git_status() -> GitStatusOutput:
     También incluye estadísticas de líneas añadidas/eliminadas.
     
     Returns:
-        GitStatusOutput con el estado completo del repositorio
+        GitStatusResult con el estado completo del repositorio
     """
     try:
         # Obtener branch actual
@@ -119,7 +114,7 @@ def get_git_status() -> GitStatusOutput:
         
         is_clean = len(files) == 0
         
-        result = GitStatusResult(
+        return GitStatusResult(
             branch=branch,
             is_clean=is_clean,
             files=files,
@@ -130,25 +125,19 @@ def get_git_status() -> GitStatusOutput:
             total_staged=counters["staged"]
         )
         
-        return GitStatusOutput(
-            success=True,
-            result=result,
-            message=f"Status: {len(files)} archivos con cambios" if files else "Working directory limpio"
-        )
-        
     except subprocess.CalledProcessError as e:
         error_msg = f"Git error: {e.stderr.strip() if e.stderr else str(e)}"
         logger.error(error_msg)
-        return GitStatusOutput(success=False, message=error_msg)
+        raise HTTPException(status_code=500, detail=error_msg)
         
     except Exception as e:
         error_msg = f"Error obteniendo git status: {str(e)}"
         logger.error(error_msg)
-        return GitStatusOutput(success=False, message=error_msg)
+        raise HTTPException(status_code=500, detail=error_msg)
 
 
 @register_function(http_methods=["GET"], interfaces=["api", "mcp"])
-def get_git_status_summary() -> GenericOutput:
+def get_git_status_summary() -> GitStatusSummary:
     """
     Obtiene un resumen compacto del estado del repositorio git.
     
@@ -157,7 +146,7 @@ def get_git_status_summary() -> GenericOutput:
     y un resumen de contadores al final.
     
     Returns:
-        GenericOutput con result=texto compacto del status
+        GitStatusSummary con texto compacto del status
     """
     try:
         # Obtener branch
@@ -176,12 +165,7 @@ def get_git_status_summary() -> GenericOutput:
         lines = [l for l in status_result.stdout.strip().split('\n') if l]
         
         if not lines:
-            summary = f"Branch: {branch} | Clean (no changes)"
-            return GenericOutput(
-                success=True,
-                result=summary,
-                message="Working directory limpio"
-            )
+            return GitStatusSummary(summary=f"Branch: {branch} | Clean (no changes)")
         
         # Construir resumen compacto
         output_lines = [f"Branch: {branch}"]
@@ -243,22 +227,17 @@ def get_git_status_summary() -> GenericOutput:
         
         output_lines.append(f"---\nTotal: {', '.join(parts)}")
         
-        summary = "\n".join(output_lines)
-        return GenericOutput(
-            success=True,
-            result=summary,
-            message=f"Status: {len(lines)} archivos con cambios"
-        )
+        return GitStatusSummary(summary="\n".join(output_lines))
         
     except subprocess.CalledProcessError as e:
         error_msg = f"Git error: {e.stderr.strip() if e.stderr else str(e)}"
         logger.error(error_msg)
-        return GenericOutput(success=False, result=None, message=error_msg)
+        raise HTTPException(status_code=500, detail=error_msg)
         
     except Exception as e:
         error_msg = f"Error obteniendo git status summary: {str(e)}"
         logger.error(error_msg)
-        return GenericOutput(success=False, result=None, message=error_msg)
+        raise HTTPException(status_code=500, detail=error_msg)
 
 
 def _parse_status_line(line: str) -> Optional[GitFileStatus]:

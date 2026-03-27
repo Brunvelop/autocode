@@ -271,20 +271,10 @@ export class GitStatus extends LitElement {
     // API
     // ========================================================================
 
-    /**
-     * Call API and unwrap envelope → payload.
-     * Mirrors the behavior of AutoFunctionController.executeFunction().
-     */
-    async _call(funcName, params) {
-        const data = await this._client.call(funcName, params);
-        return (data && typeof data === 'object' && Object.prototype.hasOwnProperty.call(data, 'result'))
-            ? data.result : data;
-    }
-
     async _loadWorkingMetrics() {
         this._metricsLoading = true;
         try {
-            const result = await this._call(
+            const result = await this._client.call(
                 'get_working_changes_metrics',
                 {}
             );

@@ -8,8 +8,6 @@ from typing import Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field
 
-from autocode.core.models import GenericOutput
-
 
 class GitNodeEntry(BaseModel):
     """Representación plana de un nodo en el árbol git (no-recursivo / adjacency list)."""
@@ -29,10 +27,15 @@ class GitTreeGraph(BaseModel):
     nodes: List[GitNodeEntry] = Field(default_factory=list, description="Todos los nodos del árbol")
 
 
-class GitTreeOutput(GenericOutput):
-    """Output específico para la estructura del árbol git."""
+# ==============================================================================
+# GIT STATUS SUMMARY
+# ==============================================================================
 
-    result: Optional[GitTreeGraph] = Field(default=None, description="Representación en grafo del árbol git")
+
+class GitStatusSummary(BaseModel):
+    """Resumen compacto del git status en texto plano (para MCP/LLM)."""
+
+    summary: str = Field(..., description="Texto compacto del status")
 
 
 # ==============================================================================
@@ -71,10 +74,10 @@ class GitLogGraph(BaseModel):
     branches: List[GitBranch] = Field(default_factory=list, description="Todas las ramas")
 
 
-class GitLogOutput(GenericOutput):
-    """Output de get_git_log()."""
+class GitLogSummary(BaseModel):
+    """Resumen compacto del historial de commits en texto plano (para MCP/LLM)."""
 
-    result: Optional[GitLogGraph] = Field(default=None, description="Grafo del log git")
+    summary: str = Field(..., description="Texto compacto del log")
 
 
 class GitFileChange(BaseModel):
@@ -104,7 +107,3 @@ class GitCommitDetail(BaseModel):
     )
 
 
-class GitCommitDetailOutput(GenericOutput):
-    """Output de get_commit_detail()."""
-
-    result: Optional[GitCommitDetail] = Field(default=None, description="Detalle del commit")

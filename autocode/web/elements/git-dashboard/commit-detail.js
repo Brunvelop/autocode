@@ -125,16 +125,6 @@ export class CommitDetail extends LitElement {
     // API
     // ========================================================================
 
-    /**
-     * Call API and unwrap envelope → payload.
-     * Mirrors the behavior of AutoFunctionController.executeFunction().
-     */
-    async _call(funcName, params) {
-        const data = await this._client.call(funcName, params);
-        return (data && typeof data === 'object' && Object.prototype.hasOwnProperty.call(data, 'result'))
-            ? data.result : data;
-    }
-
     async _loadDetail() {
         if (!this.commitHash) return;
         this._loading = true;
@@ -142,7 +132,7 @@ export class CommitDetail extends LitElement {
         this._detail = null;
 
         try {
-            const result = await this._call(
+            const result = await this._client.call(
                 'get_commit_detail',
                 { commit_hash: this.commitHash }
             );
@@ -159,7 +149,7 @@ export class CommitDetail extends LitElement {
         if (!this.commitHash) return;
         this._metricsLoading = true;
         try {
-            const result = await this._call(
+            const result = await this._client.call(
                 'get_commit_metrics',
                 { commit_hash: this.commitHash }
             );
