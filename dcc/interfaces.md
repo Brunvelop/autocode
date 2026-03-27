@@ -2,9 +2,19 @@
 > Document-Code Compression v1.0
 > Módulo de exposición automática de funciones
 
+> ⚠️ **OBSOLETO**: El módulo `autocode/interfaces/` ha sido **reemplazado por [Refract](https://github.com/Brunvelop/refract)**.
+> Las responsabilidades de este módulo (registry, API, CLI, MCP) ahora las gestiona Refract.
+>
+> - `from autocode.interfaces.registry import register_function` → `from refract import register_function`
+> - `from autocode.interfaces.models import GenericOutput` → `from autocode.core.models import GenericOutput`
+> - La API, CLI y MCP se crean vía `Refract(...)` en `autocode/app.py`
+>
+> Este DCC se conserva como **referencia histórica** de la arquitectura anterior.
+> Para la arquitectura actual, ver: `dcc/autocode.md` y la documentación de Refract.
+
 ---
 
-## AXIOMAS
+## AXIOMAS (históricos — implementados ahora por Refract)
 
 ```
 A1. Registry es la fuente única de verdad
@@ -13,7 +23,7 @@ A1. Registry es la fuente única de verdad
 A2. Interfaces son "Thin Layers"
     → Solo traducen protocolos, NUNCA contienen lógica de negocio
 
-A3. GenericOutput es el contrato universal
+A3. GenericOutput es el contrato de salida
     → Toda función registrada DEBE retornar GenericOutput o subclase
 
 A4. Autodescubrimiento > Configuración
@@ -373,52 +383,41 @@ AÑADIR FUNCIÓN STREAMING:
 
 ## VERIFICACIÓN
 
+> ⚠️ Los paths de módulo ya no son válidos. Usar equivalentes de Refract:
+
 ```bash
-# Tests de contratos y registry
-pytest tests/unit/interfaces/test_registry.py
-pytest tests/unit/interfaces/test_models.py
-
-# Tests de API
-pytest tests/unit/interfaces/test_api.py
-
-# Tests de CLI
-pytest tests/unit/interfaces/test_cli.py
-
-# Tests de MCP
-pytest tests/unit/interfaces/test_mcp.py
-
 # Verificar que toda función retorna GenericOutput:
 python -c "
-from autocode.interfaces.registry import load_core_functions, FUNCTION_REGISTRY
-from autocode.interfaces.models import GenericOutput
-load_core_functions()
+from refract import FUNCTION_REGISTRY
+from autocode.core.models import GenericOutput
 for name, info in FUNCTION_REGISTRY.items():
-    assert info.return_type and issubclass(info.return_type, GenericOutput), \
-        f'{name} no retorna GenericOutput'
+    if info.return_type:
+        assert issubclass(info.return_type, GenericOutput), \
+            f'{name} no retorna GenericOutput'
 print(f'✓ {len(FUNCTION_REGISTRY)} funciones verificadas')
 "
 
 # Listar funciones disponibles
-python -m autocode.interfaces.cli list
+uv run autocode list
 ```
 
 ---
 
-## ARCHIVOS
+## ARCHIVOS (históricos — ya no existen en el codebase)
 
 ```
-autocode/interfaces/
-├── __init__.py          # Package marker
-├── models.py            # Contratos: GenericOutput, ParamSchema, FunctionInfo
-├── registry.py          # FUNCTION_REGISTRY + @register_function + autodiscovery
-├── api.py               # Adapter FastAPI (create_api_app, register_dynamic_endpoints)
-├── cli.py               # Adapter Click (app, _register_commands)
-├── mcp.py               # Adapter MCP (create_mcp_app, fastapi_mcp integration)
-├── logging_config.py    # Configuración logging (ThirdPartyLogFilter)
-└── ARCHITECTURE.md      # Documentación narrativa
+autocode/interfaces/         ← ELIMINADO, reemplazado por Refract
+├── models.py                → autocode/core/models.py (GenericOutput)
+├── registry.py              → refract (register_function, FUNCTION_REGISTRY)
+├── api.py                   → refract (Refract.api())
+├── cli.py                   → refract (Refract.cli())
+└── mcp.py                   → refract (Refract.mcp())
+
+Punto de entrada actual:
+autocode/app.py              → Refract("autocode", discover=["autocode.core"], ...)
 ```
 
 ---
 
-> **Regeneración**: Este DCC + Python stdlib + FastAPI + Click + fastapi_mcp = autocode/interfaces
-> **Extracción**: inspect(autocode/interfaces) + AST analysis = Este DCC
+> **Nota histórica**: Este DCC describe la arquitectura anterior a la integración con Refract.
+> **Arquitectura actual**: `dcc/autocode.md` + documentación de Refract.

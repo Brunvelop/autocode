@@ -13,11 +13,14 @@ A1. Una función, una verdad
 A2. Core es agnóstico
     → Core NO importa de interfaces, web, ni conoce cómo se consume
 
-A3. Interfaces son espejos
-    → API/CLI/MCP son transformaciones 1:1 del Registry, sin lógica propia
+A3. Refract como capa de exposición
+    → API/CLI/MCP/WebUI son generados por Refract desde el registry de funciones
+    → `from refract import register_function` es el único punto de registro
 
-A4. Output universal
-    → Toda función retorna GenericOutput{result, success, message}
+A4. Output tipado (en transición)
+    → Las funciones registradas devuelven GenericOutput o subclase tipada
+    → Objetivo: devolver modelos de dominio directos con errores vía excepciones
+    → Ver: dcc/core.md para detalles del modelo de salida
 
 A5. Generación > Configuración
     → Preferir introspección automática sobre archivos de config manuales
@@ -28,13 +31,15 @@ A5. Generación > Configuración
 ## CONTRATOS
 
 ```python
-# === Contrato de Salida (inmutable) ===
+# === Contrato de Salida (actual) ===
 GenericOutput:
-    result: Any          # El valor de retorno
+    result: Any          # El valor de retorno (idealmente tipado en subclases)
     success: bool        # ¿Operación exitosa?
     message: str?        # Contexto opcional
 
 # === Contrato de Registro ===
+from refract import register_function
+
 @register_function(http_methods?, interfaces?)
 def f(params: typed) -> GenericOutput
 
@@ -65,32 +70,32 @@ FunctionInfo:
 ┌─────────────────────────────────────────────────────────┐
 │                        CORE                             │
 │  (Funciones puras + @register_function)                 │
-│  ai/ · utils/ · vcs/                                    │
+│  ai/ · utils/ · vcs/ · code/ · planning/               │
 └───────────────────────┬─────────────────────────────────┘
-                        │
+                        │ from refract import register_function
                         ▼ popula
 ┌─────────────────────────────────────────────────────────┐
-│                      REGISTRY                           │
-│  FUNCTION_REGISTRY: Dict[str, FunctionInfo]             │
-│  (Fuente única de verdad)                               │
+│                      REFRACT                            │
+│  Registry + API + CLI + MCP + WebUI (/dashboard)        │
+│  (Capa de exposición unificada)                         │
 └───────────────────────┬─────────────────────────────────┘
                         │
           ┌─────────────┼─────────────┐
           ▼             ▼             ▼
       ┌───────┐    ┌────────┐    ┌────────┐
       │  API  │    │  CLI   │    │  MCP   │
-      │FastAPI│    │Typer   │    │Protocol│
+      │FastAPI│    │Click   │    │Protocol│
       └───┬───┘    └────────┘    └────────┘
           │
           ▼ expone /functions/details
 ┌─────────────────────────────────────────────────────────┐
 │                    WEB ELEMENTS                         │
-│  AutoFunctionController → AutoFunctionElement           │
-│  (Genera <auto-{func}> dinámicamente)                   │
+│  autocode/web/: index.html + custom dashboards          │
+│  refract/web/: /dashboard con <auto-{func}> generados   │
 └─────────────────────────────────────────────────────────┘
 
 Regla de dependencia:
-  Core ← Registry ← Interfaces ← Web
+  Core ← Refract ← Web
   (Las flechas apuntan hacia lo que se conoce)
 ```
 
@@ -145,17 +150,17 @@ Consumo: Cada componente importa tokens, no define valores
 
 ```
 ∀ f ∈ FUNCTION_REGISTRY:
-    f.return_type ⊆ GenericOutput
     f.params inferidos de inspect.signature(f)
     f.description inferido de docstring_parser(f)
+    f.return_type ∈ {GenericOutput, subclase de GenericOutput}  # en transición
 
 ∀ adapter ∈ {API, CLI, MCP}:
     adapter.endpoints = transform(FUNCTION_REGISTRY)
     adapter.logic ∩ domain_logic = ∅
 
-∀ component ∈ WebElements:
+∀ component ∈ autocode/web/elements:
     component.styles ⊇ themeTokens
-    component extends AutoFunctionController ∨ LitElement
+    component usa RefractClient para llamar al backend
 ```
 
 ---
@@ -253,13 +258,19 @@ AÑADIR COMPONENTE CUSTOM:
 ## VERIFICACIÓN
 
 ```bash
-# Los invariantes son testeables:
-pytest tests/unit/interfaces/test_registry.py  # Contratos
-pytest tests/unit/interfaces/test_models.py    # Tipos
+# Tests unitarios
+pytest tests/unit/
 
 # Verificar que toda función registrada retorna GenericOutput:
-∀ name, info in FUNCTION_REGISTRY.items():
-    assert issubclass(info.return_type, GenericOutput)
+python -c "
+from refract import FUNCTION_REGISTRY
+from autocode.core.models import GenericOutput
+for name, info in FUNCTION_REGISTRY.items():
+    if info.return_type:
+        assert issubclass(info.return_type, GenericOutput), \
+            f'{name} no retorna GenericOutput'
+print(f'✓ {len(FUNCTION_REGISTRY)} funciones verificadas')
+"
 ```
 
 ---

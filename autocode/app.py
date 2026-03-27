@@ -39,8 +39,6 @@ app = Refract(
     discover=["autocode.core"],
     views={
         "/": os.path.join(_WEB, "views", "index.html"),
-        "/functions": os.path.join(_WEB, "views", "functions.html"),
-        "/demo": os.path.join(_WEB, "views", "demo.html"),
         "/tests": os.path.join(_WEB, "tests", "index.html"),
     },
     static_dirs=[

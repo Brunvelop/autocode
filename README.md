@@ -29,8 +29,8 @@ uv run autocode serve
 
 # Open in browser
 #   Dashboard:      http://localhost:8000
-#   API Docs:       http://localhost:8000/docs      (auto-generated OpenAPI/Swagger)
-#   Functions UI:   http://localhost:8000/functions
+#   API Docs:       http://localhost:8000/docs       (auto-generated OpenAPI/Swagger)
+#   Functions UI:   http://localhost:8000/dashboard  (auto-generated from Refract)
 ```
 
 ### Other ways to interact
@@ -66,7 +66,7 @@ uv run autocode serve --reload
 Autocode uses a **Registry-Driven Architecture**. The registry is the single source of truth:
 
 ```python
-from autocode.core.registry import register_function
+from refract import register_function
 from autocode.core.models import GenericOutput
 
 @register_function(http_methods=["GET", "POST"])
@@ -259,7 +259,7 @@ Options for `serve*`:
 The web UI is served automatically by `autocode serve` at the root URL. It includes:
 
 - **Dashboard** (`/`) — Overview with code metrics, git status, and chat
-- **Functions** (`/functions`) — Auto-generated UI for every registered function
+- **Functions** (`/dashboard`) — Auto-generated UI for every registered function (served by Refract)
 - **API Docs** (`/docs`) — Interactive OpenAPI/Swagger documentation
 - **Tests** (`/tests`) — Browser-based test runner for web components
 
@@ -278,30 +278,22 @@ Web components are built with [Lit](https://lit.dev/) and auto-generated from th
 
 ```
 autocode/
+├── app.py                   # Refract application instance (entry point)
 ├── core/                    # Business logic (the only place to add features)
-│   ├── registry.py             # Central function registry (source of truth)
-│   ├── models.py               # Shared models (GenericOutput, FunctionInfo, etc.)
 │   ├── ai/                     # AI chat & generation (DSPy-based)
 │   ├── code/                   # Code analysis, metrics, health checks
 │   ├── planning/               # Commit planning & file operations
 │   ├── vcs/                    # Git integration
-│   ├── workflow/               # AI session management
 │   └── utils/                  # File I/O, OpenRouter client
-├── interfaces/              # Auto-generated interfaces (stable, don't touch)
-│   ├── api.py                  # FastAPI — dynamic endpoints from registry
-│   ├── cli.py                  # Click — dynamic commands from registry
-│   └── mcp.py                  # MCP — dynamic tools from registry
 ├── testing/                 # Pytest plugin for code health
 │   ├── plugin.py               # pytest11 entry point
 │   └── gates.py                # Quality gate test classes
 └── web/                     # Frontend
-    ├── views/                  # HTML pages
-    └── elements/               # Lit web components (auto-generated + custom)
+    ├── views/                  # HTML pages (index.html — autocode's own UI)
+    └── elements/               # Lit web components (custom dashboards, chat)
 ```
 
-**Key principle:** Add functions in `core/`, the interfaces adapt automatically. You never edit `api.py` to add an endpoint.
-
-> 📖 Interface architecture: [`autocode/interfaces/ARCHITECTURE.md`](autocode/interfaces/ARCHITECTURE.md)
+**Key principle:** Add functions in `core/`, Refract exposes them automatically as REST API, CLI commands, MCP tools, and web components (`/dashboard`). You never write adapter code.
 
 ---
 
@@ -312,7 +304,7 @@ autocode/
 1. Create your function in `autocode/core/`:
 
 ```python
-from autocode.core.registry import register_function
+from refract import register_function
 from autocode.core.models import GenericOutput
 
 @register_function(
