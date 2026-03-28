@@ -5,13 +5,12 @@ This module implements Server-Sent Events (SSE) streaming for chat operations,
 allowing real-time token delivery to the frontend.
 """
 import asyncio
-import json
 import logging
 from typing import AsyncGenerator, Dict, Any, Optional, List
 
 import dspy
 from dspy.streaming import StreamResponse, StatusMessage
-from refract.sse import format_sse as _refract_format_sse
+from autocode.core.utils.sse import format_sse_event as _format_sse
 
 from autocode.core.ai.providers import ModelType
 from autocode.core.ai.dspy_utils import (
@@ -253,18 +252,3 @@ async def stream_chat(
             yield _format_sse("error", {"message": error_msg, "success": False})
 
 
-def _format_sse(event: str, data: dict) -> str:
-    """Format an SSE event from a dict payload.
-
-    Thin wrapper over ``refract.sse.format_sse``: serializes the dict with
-    ``ensure_ascii=False`` (preserves unicode / emojis) and delegates the
-    SSE framing to refract, keeping a single source of truth for the wire format.
-
-    Args:
-        event: SSE event type (token, status, complete, error, …)
-        data: Event payload as a dict — will be JSON-serialised.
-
-    Returns:
-        SSE-formatted string ready to be yielded by a streaming response.
-    """
-    return _refract_format_sse(event, json.dumps(data, ensure_ascii=False))

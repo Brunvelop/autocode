@@ -34,7 +34,7 @@ from datetime import datetime
 from typing import AsyncGenerator
 
 from refract import register_function
-from autocode.core.ai.streaming import _format_sse
+from autocode.core.utils.sse import format_sse_event as _format_sse
 from autocode.core.planning.models import (
     CommitPlan,
     ExecutionStep,

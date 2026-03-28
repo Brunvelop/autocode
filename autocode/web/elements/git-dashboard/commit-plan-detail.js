@@ -90,6 +90,12 @@ export class CommitPlanDetail extends LitElement {
 
     disconnectedCallback() {
         super.disconnectedCallback();
+        // Cancel any active SSE stream to avoid orphaned connections when the
+        // component is unmounted (e.g. navigating away mid-execution).
+        if (this._abortController) {
+            this._abortController.abort();
+            this._abortController = null;
+        }
         this._stopElapsedTimer();
     }
 
