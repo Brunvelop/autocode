@@ -38,6 +38,7 @@ export class AutocodeChat extends LitElement {
         // UI Status
         _status: { type: String, state: true },
         _statusMessage: { type: String, state: true },
+        _isExecuting: { type: Boolean, state: true },
 
         // Config del chat (modelos disponibles, tools, etc.)
         _chatConfig: { state: true }
@@ -69,6 +70,7 @@ export class AutocodeChat extends LitElement {
         // UI Status
         this._status = 'default';
         this._statusMessage = 'Listo';
+        this._isExecuting = false;
 
         // Estado local del chat
         this.conversationHistory = [];
@@ -143,7 +145,7 @@ export class AutocodeChat extends LitElement {
                 
                 <!-- Footer: input y context bar -->
                 <div slot="footer" class="footer-container">
-                    <chat-input placeholder="Escribe tu mensaje..."></chat-input>
+                    <chat-input placeholder="Escribe tu mensaje..." ?disabled=${this._isExecuting}></chat-input>
                     <context-bar current="0" max="0"></context-bar>
                 </div>
             </chat-window>
@@ -359,7 +361,9 @@ export class AutocodeChat extends LitElement {
 
     async _sendMessage(message) {
         if (!message?.trim()) return;
+        if (this._isExecuting) return;
 
+        this._isExecuting = true;
         this._pendingUserMessage = message;
         
         // 1. UI Optimista
@@ -379,10 +383,14 @@ export class AutocodeChat extends LitElement {
         }
 
         // 3. Usar streaming si disponible Y habilitado, sino fallback síncrono
-        if (this._streamFuncInfo?.streaming && this._useStreaming) {
-            await this._sendMessageStream(message);
-        } else {
-            await this._sendMessageSync(message);
+        try {
+            if (this._streamFuncInfo?.streaming && this._useStreaming) {
+                await this._sendMessageStream(message);
+            } else {
+                await this._sendMessageSync(message);
+            }
+        } finally {
+            this._isExecuting = false;
         }
 
         // 4. Limpieza
