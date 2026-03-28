@@ -15,7 +15,12 @@ import logging
 from pathlib import Path
 
 from refract import register_function
-from autocode.core.models import GenericOutput
+from autocode.core.planning.models import (
+    FileReadResult,
+    FileWriteResult,
+    FileReplaceResult,
+    FileDeleteResult,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +60,7 @@ def _resolve_path(path: str) -> Path:
 
 
 @register_function(interfaces=["mcp"])
-def read_file_content(path: str) -> GenericOutput:
+def read_file_content(path: str) -> FileReadResult:
     """Read the content of a file.
 
     Reads a file relative to the project root. Files larger than 500KB
@@ -64,45 +69,30 @@ def read_file_content(path: str) -> GenericOutput:
     Args:
         path: Relative path to the file to read
     """
-    try:
-        resolved = _resolve_path(path)
+    resolved = _resolve_path(path)
 
-        if not resolved.exists():
-            return GenericOutput(
-                success=False,
-                result=None,
-                message=f"File not found: {path}",
-            )
+    if not resolved.exists():
+        raise ValueError(f"File not found: {path}")
 
-        size = resolved.stat().st_size
-        content = resolved.read_text(encoding="utf-8")
+    size = resolved.stat().st_size
+    content = resolved.read_text(encoding="utf-8")
 
-        # Truncar si excede el límite
-        truncated = False
-        if size > MAX_READ_SIZE:
-            content = content[:MAX_READ_SIZE]
-            truncated = True
+    # Truncar si excede el límite
+    truncated = False
+    if size > MAX_READ_SIZE:
+        content = content[:MAX_READ_SIZE]
+        truncated = True
 
-        message = f"Read {size} bytes from {path}"
-        if truncated:
-            message = f"File truncated: read {MAX_READ_SIZE} of {size} bytes (size limit exceeded)"
-
-        return GenericOutput(
-            success=True,
-            result={
-                "content": content,
-                "path": str(path),
-                "size": size,
-            },
-            message=message,
-        )
-    except Exception as e:
-        logger.error(f"Error reading file {path}: {e}")
-        return GenericOutput(success=False, result=None, message=str(e))
+    return FileReadResult(
+        content=content,
+        path=str(path),
+        size=size,
+        truncated=truncated,
+    )
 
 
 @register_function(interfaces=["mcp"])
-def write_file_content(path: str, content: str) -> GenericOutput:
+def write_file_content(path: str, content: str) -> FileWriteResult:
     """Write content to a file, creating directories if needed.
 
     Creates or overwrites a file with the given content. Parent directories
@@ -112,31 +102,23 @@ def write_file_content(path: str, content: str) -> GenericOutput:
         path: Relative path to the file to write
         content: Content to write to the file
     """
-    try:
-        resolved = _resolve_path(path)
+    resolved = _resolve_path(path)
 
-        # Crear directorios intermedios
-        resolved.parent.mkdir(parents=True, exist_ok=True)
+    # Crear directorios intermedios
+    resolved.parent.mkdir(parents=True, exist_ok=True)
 
-        # Escribir contenido
-        resolved.write_text(content, encoding="utf-8")
-        bytes_written = len(content.encode("utf-8"))
+    # Escribir contenido
+    resolved.write_text(content, encoding="utf-8")
+    bytes_written = len(content.encode("utf-8"))
 
-        return GenericOutput(
-            success=True,
-            result={
-                "path": str(path),
-                "bytes_written": bytes_written,
-            },
-            message=f"Wrote {bytes_written} bytes to {path}",
-        )
-    except Exception as e:
-        logger.error(f"Error writing file {path}: {e}")
-        return GenericOutput(success=False, result=None, message=str(e))
+    return FileWriteResult(
+        path=str(path),
+        bytes_written=bytes_written,
+    )
 
 
 @register_function(interfaces=["mcp"])
-def replace_in_file(path: str, old_string: str, new_string: str) -> GenericOutput:
+def replace_in_file(path: str, old_string: str, new_string: str) -> FileReplaceResult:
     """Replace the first occurrence of a string in a file.
 
     Searches for old_string in the file and replaces only the first
@@ -147,52 +129,32 @@ def replace_in_file(path: str, old_string: str, new_string: str) -> GenericOutpu
         old_string: Exact string to search for (can be multiline)
         new_string: Replacement string
     """
-    try:
-        resolved = _resolve_path(path)
+    resolved = _resolve_path(path)
 
-        if not resolved.exists():
-            return GenericOutput(
-                success=False,
-                result=None,
-                message=f"File not found: {path}",
-            )
+    if not resolved.exists():
+        raise ValueError(f"File not found: {path}")
 
-        content = resolved.read_text(encoding="utf-8")
+    content = resolved.read_text(encoding="utf-8")
 
-        # Contar ocurrencias
-        occurrences = content.count(old_string)
+    # Contar ocurrencias
+    occurrences = content.count(old_string)
 
-        if occurrences == 0:
-            return GenericOutput(
-                success=False,
-                result={"occurrences": 0},
-                message=f"old_string not found in {path}",
-            )
+    if occurrences == 0:
+        raise ValueError(f"old_string not found in {path}")
 
-        # Reemplazar solo la primera ocurrencia
-        new_content = content.replace(old_string, new_string, 1)
-        resolved.write_text(new_content, encoding="utf-8")
+    # Reemplazar solo la primera ocurrencia
+    new_content = content.replace(old_string, new_string, 1)
+    resolved.write_text(new_content, encoding="utf-8")
 
-        message = f"Replaced 1 occurrence in {path}"
-        if occurrences > 1:
-            message += f" (warning: {occurrences} total occurrences found, only first replaced)"
-
-        return GenericOutput(
-            success=True,
-            result={
-                "replaced": True,
-                "occurrences": occurrences,
-                "path": str(path),
-            },
-            message=message,
-        )
-    except Exception as e:
-        logger.error(f"Error replacing in file {path}: {e}")
-        return GenericOutput(success=False, result=None, message=str(e))
+    return FileReplaceResult(
+        replaced=True,
+        occurrences=occurrences,
+        path=str(path),
+    )
 
 
 @register_function(interfaces=["mcp"])
-def delete_file(path: str) -> GenericOutput:
+def delete_file(path: str) -> FileDeleteResult:
     """Delete a file.
 
     Removes a file from the filesystem. Returns error if the file
@@ -201,23 +163,11 @@ def delete_file(path: str) -> GenericOutput:
     Args:
         path: Relative path to the file to delete
     """
-    try:
-        resolved = _resolve_path(path)
+    resolved = _resolve_path(path)
 
-        if not resolved.exists():
-            return GenericOutput(
-                success=False,
-                result=None,
-                message=f"File not found: {path}",
-            )
+    if not resolved.exists():
+        raise ValueError(f"File not found: {path}")
 
-        resolved.unlink()
+    resolved.unlink()
 
-        return GenericOutput(
-            success=True,
-            result={"deleted": str(path)},
-            message=f"Deleted {path}",
-        )
-    except Exception as e:
-        logger.error(f"Error deleting file {path}: {e}")
-        return GenericOutput(success=False, result=None, message=str(e))
+    return FileDeleteResult(deleted=str(path))

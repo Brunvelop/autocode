@@ -122,6 +122,32 @@ class CommitPlanSummary(BaseModel):
 # ==============================================================================
 
 
+class FileReadResult(BaseModel):
+    """Resultado de leer un archivo."""
+    content: str = Field(..., description="Contenido del archivo")
+    path: str = Field(..., description="Ruta del archivo leído")
+    size: int = Field(..., description="Tamaño en bytes del archivo")
+    truncated: bool = Field(False, description="Si el contenido fue truncado por exceder el límite")
+
+
+class FileWriteResult(BaseModel):
+    """Resultado de escribir un archivo."""
+    path: str = Field(..., description="Ruta del archivo escrito")
+    bytes_written: int = Field(..., description="Bytes escritos")
+
+
+class FileReplaceResult(BaseModel):
+    """Resultado de reemplazar contenido en un archivo."""
+    replaced: bool = Field(..., description="Si se realizó el reemplazo")
+    occurrences: int = Field(..., description="Número total de ocurrencias encontradas")
+    path: str = Field(..., description="Ruta del archivo modificado")
+
+
+class FileDeleteResult(BaseModel):
+    """Resultado de eliminar un archivo."""
+    deleted: str = Field(..., description="Ruta del archivo eliminado")
+
+
 class CommitPlanList(BaseModel):
     """Lista de resúmenes de planes de commit."""
     plans: List[CommitPlanSummary] = Field(default_factory=list)
