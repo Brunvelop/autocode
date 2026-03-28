@@ -12,7 +12,7 @@ from typing import Any, Dict, List, Literal, Optional, Type, Union
 
 import dspy
 from refract import Refract
-from autocode.core.ai.models import DspyOutput
+from autocode.core.ai.models import DspyOutput, ChatResult
 from autocode.core.ai.providers import ModelType
 
 
@@ -284,73 +284,70 @@ def generate_with_dspy(
     max_tokens: int = 16000,
     temperature: float = 0.7,
     **lm_kwargs
-) -> DspyOutput:
+) -> ChatResult:
     """
     Generador genérico que ejecuta cualquier signature de DSPy con el módulo seleccionado.
-    
+
     Esta función proporciona una interfaz unificada para ejecutar cualquier
     signature de DSPy con diferentes módulos (Predict, ChainOfThought, ReAct, etc.).
-    Retorna siempre un DspyOutput con los campos principales y metadata DSPy.
-    
+    Retorna un ChatResult con el campo 'response' y metadata DSPy (reasoning, trajectory,
+    history, completions).
+
     Args:
         signature_class: La clase de signature de DSPy a utilizar
         inputs: Diccionario con los parámetros de entrada para la signature
         model: Modelo de inferencia a utilizar
         module_type: Tipo de módulo DSPy a usar (Predict, ChainOfThought, etc.)
-        module_kwargs: Parámetros adicionales específicos del módulo 
+        module_kwargs: Parámetros adicionales específicos del módulo
             (ej: tools para ReAct)
         max_tokens: Número máximo de tokens a generar (default: 16000)
         temperature: Temperature para la generación (default: 0.7)
         **lm_kwargs: Parámetros adicionales para dspy.LM (stop, cache, etc.)
-        
+
     Returns:
-        DspyOutput con todos los campos de output de la signature, más metadata DSPy
-        (reasoning, completions, observations cuando apliquen).
-        
+        ChatResult con response y metadata DSPy (reasoning, completions,
+        trajectory, history cuando apliquen).
+
     Raises:
         ValueError: Si la API key no está configurada o module_type es inválido
-        
+        RuntimeError: Si hay error en la ejecución del módulo DSPy o no se
+            encuentran campos de output en la respuesta
+
     Examples:
         >>> # Ejemplo básico con ChatSignature
         >>> result = generate_with_dspy(
         ...     ChatSignature,
         ...     {"message": "Hola", "conversation_history": ""}
         ... )
-        >>> print(result.result['response'])
-        >>> print(result.success)  # True
-        
+        >>> print(result.response)
+
         >>> # Ejemplo con ChainOfThought (incluye reasoning)
         >>> result = generate_with_dspy(
         ...     ChatSignature,
         ...     {"message": "¿Qué es Python?", "conversation_history": ""},
         ...     module_type='ChainOfThought'
         ... )
-        >>> print(result.result['response'])
+        >>> print(result.response)
         >>> print(result.reasoning)  # Razonamiento paso a paso
     """
     # Inicializar module_kwargs si no se proporciona
     if module_kwargs is None:
         module_kwargs = {}
-    
+
     # Validar module_type
     error_msg = _validate_module_type(module_type)
     if error_msg:
         logger.error(error_msg)
-        return DspyOutput(success=False, result={}, message=error_msg)
-    
+        raise ValueError(error_msg)
+
     # Configurar el Language Model
-    try:
-        lm = get_dspy_lm(
-            model, 
-            max_tokens=max_tokens, 
-            temperature=temperature, 
-            **lm_kwargs
-        )
-    except ValueError as e:
-        error_msg = f"Error configurando LM: {str(e)}"
-        logger.error(error_msg)
-        return DspyOutput(success=False, result={}, message=error_msg)
-    
+    lm = get_dspy_lm(
+        model,
+        max_tokens=max_tokens,
+        temperature=temperature,
+        **lm_kwargs
+    )
+
     # Ejecutar el módulo DSPy
     try:
         logger.debug(f"Ejecutando módulo {module_type} con signature {signature_class.__name__}")
@@ -360,7 +357,7 @@ def generate_with_dspy(
     except Exception as e:
         error_msg = f"Error en generación DSPy: {str(e)}"
         logger.error(error_msg, exc_info=True)
-        return DspyOutput(success=False, result={}, message=error_msg)
+        raise RuntimeError(error_msg) from e
 
     # Extraer y normalizar metadatos
     reasoning, completions, trajectory, history = _extract_metadata(response, lm)
@@ -373,23 +370,11 @@ def generate_with_dspy(
         expected_fields = list(signature_class.output_fields.keys())
         error_msg = f"No se encontraron campos de output en la response de DSPy. Esperados: {expected_fields}"
         logger.warning(error_msg)
-        
-        # Retornamos el DspyOutput fallido PERO con history y trajectory para debugging
-        return DspyOutput(
-            success=False, 
-            result={}, 
-            message=error_msg,
-            reasoning=reasoning,
-            completions=completions,
-            trajectory=trajectory,
-            history=history
-        )
-    
+        raise RuntimeError(error_msg)
+
     logger.info(f"Generación exitosa con {len(result)} campos de output")
-    return DspyOutput(
-        success=True,
-        result=result,
-        message="Generación exitosa",
+    return ChatResult(
+        response=result.get('response', ''),
         reasoning=reasoning,
         completions=completions,
         trajectory=trajectory,

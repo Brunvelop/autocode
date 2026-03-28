@@ -276,21 +276,17 @@ export class AutocodeChat extends LitElement {
     // ========================================================================
 
     /**
-     * Procesa el resultado de la ejecución y actualiza el historial y la UI
+     * Procesa el resultado de la ejecución y actualiza el historial y la UI.
+     * Recibe directamente un ChatResult (sin envelope wrapper).
      */
-    _processResult(envelopeOrPayload) {
-        if (!envelopeOrPayload) return;
+    _processResult(data) {
+        if (!data) return;
 
-        const envelope = (envelopeOrPayload && typeof envelopeOrPayload === 'object' && Object.prototype.hasOwnProperty.call(envelopeOrPayload, 'result'))
-            ? envelopeOrPayload
-            : (this.envelope || envelopeOrPayload);
-
-        const isError = envelope?._isError || envelope?.success === false || this.success === false;
-
-        if (isError) {
-            const content = (typeof envelope === 'object' && envelope !== null)
-                ? envelope
-                : (envelope?._message || envelope?.message || envelope?.error || 'Error desconocido');
+        // Los errores llegan como _isError (streaming) — los HTTP errors van por catch
+        if (data?._isError) {
+            const content = (typeof data === 'object' && data !== null)
+                ? data
+                : (data?._message || 'Error desconocido');
 
             if (this._messages) {
                 this._messages.addMessage('error', content);
@@ -300,19 +296,18 @@ export class AutocodeChat extends LitElement {
 
         // Mostrar respuesta
         if (this._messages) {
-            this._messages.addMessage('assistant', envelope);
+            this._messages.addMessage('assistant', data);
         }
 
-        // Actualizar historial interno
-        const responseText = envelope?.result?.response ||
-                           envelope?.response ||
-                           (typeof envelope === 'string' ? envelope : JSON.stringify(envelope?.result || envelope, null, 2));
+        // Actualizar historial interno — ChatResult tiene response en el top level
+        const responseText = data?.response ||
+                             (typeof data === 'string' ? data : JSON.stringify(data));
 
         if (this._pendingUserMessage) {
             this.conversationHistory.push({ role: 'user', content: this._pendingUserMessage });
             this._pendingUserMessage = null;
         }
-        
+
         this.conversationHistory.push({ role: 'assistant', content: responseText });
 
         // Sincronizar historial con params para la próxima vuelta
@@ -431,11 +426,12 @@ export class AutocodeChat extends LitElement {
                         break;
 
                     case 'complete': {
-                        const envelope = { ...event.data, _statusLog: statusLog };
-                        this._messages.finalizeStreaming(streamId, envelope);
-                        this.envelope = envelope;
-                        this.result = event.data.result;
-                        this.success = event.data.success;
+                        // event.data is ChatResult-shaped: {response, reasoning, trajectory, history, completions}
+                        const data = { ...event.data, _statusLog: statusLog };
+                        this._messages.finalizeStreaming(streamId, data);
+                        this.envelope = data;
+                        this.result = data;
+                        this.success = true;
                         this._setStatus('success', 'Completado');
                         // Notify other components (e.g. git-dashboard) that plans may have changed
                         window.dispatchEvent(new CustomEvent('plans-changed'));
@@ -490,35 +486,24 @@ export class AutocodeChat extends LitElement {
     /**
      * Fallback síncrono: ejecuta chat() normal sin streaming.
      * Usado cuando chat_stream no está disponible en el registry.
-     * Usa this._client.call() (antes usaba this.execute()).
+     * chat() retorna ChatResult directamente — sin envelope unwrap.
+     * Los errores llegan como HTTP exceptions → throw en RefractClient.
      */
     async _sendMessageSync(message) {
         try {
             this._setStatus('loading', 'Ejecutando...');
 
+            // ChatResult: {response, reasoning, trajectory, history, completions}
             const data = await this._client.call('chat', this.params, this.funcInfo);
 
-            // Guardar envelope completo
             this.envelope = data;
+            this.result = data;
+            this.success = true;
 
-            // Unwrap envelope: extraer payload y metadata
-            const hasEnvelopeShape = data && typeof data === 'object' && Object.prototype.hasOwnProperty.call(data, 'result');
-            this.result = hasEnvelopeShape ? data.result : data;
-
-            if (data && typeof data === 'object') {
-                this.success = data.success;
-            } else {
-                this.success = undefined;
-            }
-
-            if (this.success === false) {
-                this._setStatus('error', 'Error en ejecución');
-            } else {
-                this._setStatus('success', 'Ejecutado correctamente');
-            }
+            this._setStatus('success', 'Ejecutado correctamente');
 
             // Procesar resultado y actualizar historial/UI
-            this._processResult(this.envelope || this.result);
+            this._processResult(data);
 
             // Notify other components (e.g. git-dashboard) that plans may have changed
             window.dispatchEvent(new CustomEvent('plans-changed'));

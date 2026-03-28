@@ -15,7 +15,7 @@ from autocode.core.ai.pipelines import (
     chat_stream,
     get_chat_config,
 )
-from autocode.core.ai.models import DspyOutput, ContextUsage, ChatConfig
+from autocode.core.ai.models import ChatResult, ContextUsage, ChatConfig
 
 
 # =============================================================================
@@ -246,21 +246,16 @@ class TestChat:
 
     @patch('autocode.core.ai.pipelines.generate_with_dspy')
     @patch('autocode.core.ai.pipelines.prepare_chat_tools')
-    def test_happy_path_returns_dspy_output(self, mock_prepare_tools, mock_generate):
-        """Returns the DspyOutput produced by generate_with_dspy."""
+    def test_happy_path_returns_chat_result(self, mock_prepare_tools, mock_generate):
+        """Returns the ChatResult produced by generate_with_dspy."""
         mock_prepare_tools.return_value = []
-        expected = DspyOutput(
-            success=True,
-            result={"response": "Hello!"},
-            message="Generación exitosa"
-        )
+        expected = ChatResult(response="Hello!")
         mock_generate.return_value = expected
 
         result = chat(message="Hello", conversation_history="")
 
-        assert isinstance(result, DspyOutput)
-        assert result.success is True
-        assert result.result["response"] == "Hello!"
+        assert isinstance(result, ChatResult)
+        assert result.response == "Hello!"
 
     @patch('autocode.core.ai.pipelines.generate_with_dspy')
     @patch('autocode.core.ai.pipelines.prepare_chat_tools')
@@ -268,7 +263,7 @@ class TestChat:
         """With module_type='ReAct', tools and max_iters=5 are auto-injected."""
         mock_tools = [Mock(name="tool_a"), Mock(name="tool_b")]
         mock_prepare_tools.return_value = mock_tools
-        mock_generate.return_value = DspyOutput(success=True, result={})
+        mock_generate.return_value = ChatResult(response="")
 
         chat(
             message="Hello",
@@ -289,7 +284,7 @@ class TestChat:
     def test_react_does_not_overwrite_existing_tools(self, mock_prepare_tools, mock_generate):
         """If module_kwargs already has 'tools', it is NOT overwritten."""
         mock_prepare_tools.return_value = [Mock()]
-        mock_generate.return_value = DspyOutput(success=True, result={})
+        mock_generate.return_value = ChatResult(response="")
         custom_tools = [Mock(name="custom")]
 
         chat(
@@ -309,7 +304,7 @@ class TestChat:
     def test_non_react_no_tools_injection(self, mock_prepare_tools, mock_generate):
         """With non-ReAct module types, tools are NOT injected into module_kwargs."""
         mock_prepare_tools.return_value = []
-        mock_generate.return_value = DspyOutput(success=True, result={})
+        mock_generate.return_value = ChatResult(response="")
 
         chat(
             message="Hello",
@@ -328,7 +323,7 @@ class TestChat:
     def test_prompt_cache_default_enabled(self, mock_prepare_tools, mock_generate):
         """By default, cache_control_injection_points is added to lm_kwargs."""
         mock_prepare_tools.return_value = []
-        mock_generate.return_value = DspyOutput(success=True, result={})
+        mock_generate.return_value = ChatResult(response="")
 
         chat(message="Hello", conversation_history="", enable_prompt_cache=True)
 
@@ -340,7 +335,7 @@ class TestChat:
     def test_prompt_cache_disabled(self, mock_prepare_tools, mock_generate):
         """With enable_prompt_cache=False, cache_control_injection_points is NOT added."""
         mock_prepare_tools.return_value = []
-        mock_generate.return_value = DspyOutput(success=True, result={})
+        mock_generate.return_value = ChatResult(response="")
 
         chat(message="Hello", conversation_history="", enable_prompt_cache=False)
 
@@ -349,23 +344,23 @@ class TestChat:
 
     @patch('autocode.core.ai.pipelines.generate_with_dspy')
     @patch('autocode.core.ai.pipelines.prepare_chat_tools')
-    def test_exception_returns_error_dspy_output(self, mock_prepare_tools, mock_generate):
-        """If generate_with_dspy raises an exception, returns DspyOutput with success=False."""
+    def test_exception_raises_http_exception(self, mock_prepare_tools, mock_generate):
+        """If generate_with_dspy raises an exception, chat() raises HTTPException 500."""
         mock_prepare_tools.return_value = []
         mock_generate.side_effect = RuntimeError("Unexpected failure")
 
-        result = chat(message="Hello", conversation_history="")
+        with pytest.raises(HTTPException) as exc_info:
+            chat(message="Hello", conversation_history="")
 
-        assert isinstance(result, DspyOutput)
-        assert result.success is False
-        assert "Unexpected failure" in result.message
+        assert exc_info.value.status_code == 500
+        assert "Unexpected failure" in exc_info.value.detail
 
     @patch('autocode.core.ai.pipelines.generate_with_dspy')
     @patch('autocode.core.ai.pipelines.prepare_chat_tools')
     def test_inputs_passed_correctly_to_generate(self, mock_prepare_tools, mock_generate):
         """Verifies message and conversation_history are passed as inputs dict."""
         mock_prepare_tools.return_value = []
-        mock_generate.return_value = DspyOutput(success=True, result={})
+        mock_generate.return_value = ChatResult(response="")
 
         chat(message="What is Python?", conversation_history="User: hi | Assistant: hello")
 
@@ -385,7 +380,7 @@ class TestChatStream:
     @patch('autocode.core.ai.pipelines.chat')
     def test_delegates_to_chat_with_all_params(self, mock_chat):
         """chat_stream delegates to chat() passing all parameters unchanged."""
-        expected = DspyOutput(success=True, result={"response": "hi"})
+        expected = ChatResult(response="hi")
         mock_chat.return_value = expected
 
         result = chat_stream(

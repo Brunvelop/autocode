@@ -373,7 +373,10 @@ export class ChatDebugInfo extends LitElement {
         else if (data.result && data.result.history) info.history = data.result.history;
 
         // 4. Extraer Success
+        // ChatResult no tiene campo 'success' — inferirlo del contenido
         if (data.success !== undefined) info.success = data.success;
+        else if (data.response !== undefined) info.success = true;  // ChatResult con response → exitoso
+        else if (data._isError) info.success = false;               // Marcado como error
 
         // 5. Extraer Status Log (streaming)
         if (data._statusLog && Array.isArray(data._statusLog)) {

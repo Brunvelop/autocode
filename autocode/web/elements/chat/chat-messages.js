@@ -174,18 +174,22 @@ export class ChatMessages extends LitElement {
 
     _extractMainText(content) {
         // Estrategias de extracción del texto principal:
-        // 1) Priorizar el payload si existe (GenericOutput/DspyOutput: result)
-        if (content.result && typeof content.result === 'string') return content.result;
-        if (content.result && content.result.response) return content.result.response;
+        // 1) Campo response directo (ChatResult — campo top-level)
         if (content.response) return content.response;
 
-        // 2) Errores explícitos
+        // 2) Legacy: result.response (DspyOutput format — transición)
+        if (content.result && content.result.response) return content.result.response;
+
+        // 3) result como string directo
+        if (content.result && typeof content.result === 'string') return content.result;
+
+        // 4) Errores explícitos
         if (content.error) return content.error;
 
-        // 3) Mensaje (message) suele ser metadata del envelope; usarlo como fallback
+        // 5) Mensaje de error o metadata
         if (content.message) return content.message;
-        
-        // 4) Fallback a JSON string
+
+        // 6) Fallback a JSON string
         return JSON.stringify(content.result || content, null, 2);
     }
 

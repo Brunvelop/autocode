@@ -4,6 +4,7 @@ Unit tests for DSPy utilities.
 import pytest
 from unittest.mock import Mock, patch
 from autocode.core.ai.dspy_utils import generate_with_dspy
+from autocode.core.ai.models import ChatResult
 from autocode.core.ai.signatures import ChatSignature
 
 class MockPrediction:
@@ -45,8 +46,9 @@ class TestGenerateWithDspy:
             module_type='Predict'
         )
         
-        # Assert
-        assert result.success is True
+        # Assert — generate_with_dspy now returns ChatResult directly
+        assert isinstance(result, ChatResult)
+        assert result.response == "Answer"
         # Verify completions are strings, not objects
         assert isinstance(result.completions, list)
         assert len(result.completions) == 2
@@ -271,76 +273,69 @@ class TestGetDspyLm:
 
 
 class TestGenerateWithDspyErrorPaths:
-    """Tests for generate_with_dspy() error-handling paths."""
+    """Tests for generate_with_dspy() error-handling paths.
 
-    def test_invalid_module_type_returns_error(self):
-        """Invalid module_type returns DspyOutput with success=False."""
+    generate_with_dspy now raises exceptions instead of returning success=False.
+    """
+
+    def test_invalid_module_type_raises_value_error(self):
+        """Invalid module_type raises ValueError."""
         from autocode.core.ai.dspy_utils import generate_with_dspy
 
-        result = generate_with_dspy(
-            signature_class=ChatSignature,
-            inputs={"message": "Hi", "conversation_history": ""},
-            module_type='NonExistent',
-        )
-
-        assert result.success is False
-        assert "NonExistent" in result.message
+        with pytest.raises(ValueError, match="NonExistent"):
+            generate_with_dspy(
+                signature_class=ChatSignature,
+                inputs={"message": "Hi", "conversation_history": ""},
+                module_type='NonExistent',
+            )
 
     @patch('autocode.core.ai.dspy_utils.get_dspy_lm', side_effect=ValueError("OPENROUTER_API_KEY no está configurada"))
-    def test_lm_config_error_returns_error(self, mock_get_lm):
-        """When get_dspy_lm raises ValueError, returns DspyOutput with success=False."""
+    def test_lm_config_error_raises_value_error(self, mock_get_lm):
+        """When get_dspy_lm raises ValueError, generate_with_dspy re-raises it."""
         from autocode.core.ai.dspy_utils import generate_with_dspy
 
-        result = generate_with_dspy(
-            signature_class=ChatSignature,
-            inputs={"message": "Hi", "conversation_history": ""},
-        )
-
-        assert result.success is False
-        assert "Error configurando LM" in result.message
+        with pytest.raises(ValueError, match="OPENROUTER_API_KEY"):
+            generate_with_dspy(
+                signature_class=ChatSignature,
+                inputs={"message": "Hi", "conversation_history": ""},
+            )
 
     @patch('autocode.core.ai.dspy_utils.get_dspy_lm')
     @patch('autocode.core.ai.dspy_utils._create_and_execute_module', side_effect=RuntimeError("API timeout"))
-    def test_execution_exception_returns_error(self, mock_execute, mock_get_lm):
-        """When module execution raises, returns DspyOutput with success=False."""
+    def test_execution_exception_raises_runtime_error(self, mock_execute, mock_get_lm):
+        """When module execution raises, generate_with_dspy raises RuntimeError."""
         from autocode.core.ai.dspy_utils import generate_with_dspy
 
         mock_get_lm.return_value = Mock(history=[])
 
-        result = generate_with_dspy(
-            signature_class=ChatSignature,
-            inputs={"message": "Hi", "conversation_history": ""},
-        )
-
-        assert result.success is False
-        assert "Error en generación DSPy" in result.message
-        assert "API timeout" in result.message
+        with pytest.raises(RuntimeError, match="API timeout"):
+            generate_with_dspy(
+                signature_class=ChatSignature,
+                inputs={"message": "Hi", "conversation_history": ""},
+            )
 
     @patch('autocode.core.ai.dspy_utils.get_dspy_lm')
     @patch('autocode.core.ai.dspy_utils._create_and_execute_module')
-    def test_response_without_output_fields_returns_error_with_metadata(self, mock_execute, mock_get_lm):
-        """Response with no matching output fields returns error but preserves metadata."""
+    def test_response_without_output_fields_raises_runtime_error(self, mock_execute, mock_get_lm):
+        """Response with no matching output fields raises RuntimeError."""
         from autocode.core.ai.dspy_utils import generate_with_dspy
 
         mock_lm = Mock()
         mock_lm.history = [{"prompt": "test", "response": "test"}]
         mock_get_lm.return_value = mock_lm
 
-        # Response con atributo 'response' pero ChatSignature espera 'response'
-        # Simular que ningún output_field está en el response
-        mock_response = Mock(spec=[])  # spec vacío: ningún atributo
+        # spec vacío: ningún output_field estará disponible
+        mock_response = Mock(spec=[])
         mock_response.completions = None
         mock_response.reasoning = "some reasoning"
         mock_response.trajectory = None
         mock_execute.return_value = mock_response
 
-        result = generate_with_dspy(
-            signature_class=ChatSignature,
-            inputs={"message": "Hi", "conversation_history": ""},
-        )
-
-        assert result.success is False
-        assert result.history is not None  # metadata de debug preservada
+        with pytest.raises(RuntimeError, match="No se encontraron campos de output"):
+            generate_with_dspy(
+                signature_class=ChatSignature,
+                inputs={"message": "Hi", "conversation_history": ""},
+            )
 
 
 class TestNormalizeMetadata:

@@ -297,25 +297,25 @@ class TestStreamChat:
             assert len(error_events) == 0
     
     @pytest.mark.asyncio
-    async def test_stream_chat_no_prediction_emits_failed_complete(self):
-        """When no Prediction is received, emit a failed complete event."""
+    async def test_stream_chat_no_prediction_emits_error_event(self):
+        """When no Prediction is received, emit an error event (not a complete event)."""
         import dspy
         from dspy.streaming import StatusMessage
-        
+
         mock_chunks = [
             StatusMessage(message="Processing..."),
             # No Prediction chunk — stream ends without one
         ]
-        
+
         async def mock_stream(*args, **kwargs):
             for chunk in mock_chunks:
                 yield chunk
-        
+
         with patch('autocode.core.ai.streaming.get_dspy_lm') as mock_lm, \
              patch('autocode.core.ai.streaming.prepare_chat_tools', return_value=[]), \
              patch('autocode.core.ai.streaming.MODULE_MAP') as mock_module_map, \
              patch('autocode.core.ai.streaming.dspy') as mock_dspy:
-            
+
             mock_lm.return_value = Mock()
             mock_module_map.__getitem__ = Mock(return_value=Mock())
             mock_dspy.streamify.return_value = mock_stream
@@ -324,14 +324,18 @@ class TestStreamChat:
             mock_dspy.streaming.StreamListener = Mock()
             mock_dspy.streaming.StreamResponse = type('SR', (), {})
             mock_dspy.streaming.StatusMessage = StatusMessage
-            
+
             events = []
             async for event in stream_chat(message="test", conversation_history=""):
                 events.append(event)
-            
+
+            # No prediction → error event, not complete event
+            error_events = [e for e in events if "event: error" in e]
+            assert len(error_events) == 1
             complete_events = [e for e in events if "event: complete" in e]
-            assert len(complete_events) == 1
-            data_line = complete_events[0].split("\n")[1]
+            assert len(complete_events) == 0
+
+            data_line = error_events[0].split("\n")[1]
             data = json.loads(data_line.replace("data: ", ""))
             assert data["success"] is False
             assert "No prediction" in data["message"]
@@ -377,21 +381,16 @@ class TestStreamChat:
 
 
 class TestBuildCompleteEvent:
-    """Direct unit tests for _build_complete_event() helper."""
+    """Direct unit tests for _build_complete_event() helper.
 
-    def test_none_prediction_returns_failed_payload(self):
-        """_build_complete_event with None prediction returns success=False payload."""
-        from autocode.core.ai.streaming import _build_complete_event
+    _build_complete_event now returns ChatResult-shaped dicts:
+    {response, reasoning, trajectory, history, completions}.
+    It is only called when prediction is not None (no-prediction case
+    is handled in stream_chat as an error event).
+    """
 
-        result = _build_complete_event(None, Mock())
-
-        assert result["success"] is False
-        assert result["result"] == {}
-        assert "No prediction" in result["message"]
-        assert result["history"] is None
-
-    def test_prediction_with_response_returns_success(self):
-        """_build_complete_event with valid prediction returns success=True."""
+    def test_prediction_with_response_returns_chat_result_shape(self):
+        """_build_complete_event with valid prediction returns ChatResult-shaped dict."""
         import dspy
         from autocode.core.ai.streaming import _build_complete_event
 
@@ -401,9 +400,12 @@ class TestBuildCompleteEvent:
 
         result = _build_complete_event(prediction, lm)
 
-        assert result["success"] is True
-        assert result["result"]["response"] == "Hello!"
-        assert result["message"] == "Streaming completado"
+        assert result["response"] == "Hello!"
+        assert "success" not in result  # ChatResult shape has no success field
+        assert "result" not in result   # No nested result wrapper
+        assert "message" not in result  # No message field
+        assert result["history"] is None
+        assert result["completions"] is None
 
     def test_prediction_with_trajectory_is_normalized(self):
         """Trajectory dict in prediction is normalized and serialized."""
@@ -437,7 +439,7 @@ class TestBuildCompleteEvent:
         assert isinstance(result["history"], list)
 
     def test_lm_history_serialization_failure_logged(self):
-        """If DspyOutput.serialize_value raises on history, history stays None (lines 132-133)."""
+        """If DspyOutput.serialize_value raises on history, history stays None."""
         import dspy
         from autocode.core.ai.streaming import _build_complete_event
         from autocode.core.ai import models as ai_models
@@ -451,7 +453,21 @@ class TestBuildCompleteEvent:
 
         # Exception was caught; history falls back to None
         assert result["history"] is None
-        assert result["success"] is True  # Prediction is still valid
+        assert result["response"] == "Hi"  # Prediction is still valid
+
+    def test_prediction_with_no_response_attr_uses_empty_string(self):
+        """If prediction has no response field, response defaults to empty string."""
+        import dspy
+        from autocode.core.ai.streaming import _build_complete_event
+
+        # Prediction without a response field
+        prediction = dspy.Prediction()
+        lm = Mock()
+        lm.history = []
+
+        result = _build_complete_event(prediction, lm)
+
+        assert result["response"] == ""
 
 
 class TestClassifyStreamingError:
