@@ -1,25 +1,46 @@
-# Arquitectura de Elementos Automáticos
+# Arquitectura de Elementos Web
 
-Este documento describe la arquitectura del sistema de generación automática de Web Components en Autocode. El sistema está diseñado siguiendo el patrón **Separation of Concerns (SoC)**, desacoplando la lógica de negocio de la interfaz de usuario.
+Este documento describe la arquitectura actual del sistema de Web Components en Autocode. El sistema está diseñado siguiendo el patrón **Composición sobre Herencia**: todos los componentes extienden `LitElement` directamente y usan `RefractClient` por composición para la comunicación con el backend.
+
+> **Nota histórica**: Una versión anterior usaba `AutoFunctionController` como clase base heredable. Esa arquitectura fue refactorizada a composición. `AutoFunctionController` sigue existiendo pero **solo** es usado por `AutoFunctionElement` (elementos auto-generados desde el registry). Ningún componente "real" hereda de él.
+
+---
 
 ## 🏗️ Visión General
 
-El objetivo es generar automáticamente componentes web funcionales (`<auto-function>`) a partir de las definiciones de funciones registradas en el backend (Python), permitiendo al mismo tiempo una personalización total de la UI cuando sea necesario (como en el caso del Chat).
+### Patrón Universal
+
+**Todos** los componentes del proyecto siguen el mismo patrón base:
+
+```
+extends LitElement
+    ↓
+this._client = new RefractClient()   ← (solo si necesitan backend)
+    ↓
+this._client.call('func_name', params)
+```
 
 ### Jerarquía de Clases
 
 ```mermaid
 classDiagram
     direction TB
-    
-    LitElement <|-- AutoFunctionController
-    AutoFunctionController <|-- AutoFunctionElement
-    AutoFunctionController <|-- AutocodeChat
-    AutoFunctionElement <|-- GeneratedAutoElement
+
+    LitElement <|-- AutocodeChat
+    LitElement <|-- GitDashboard
+    LitElement <|-- CodeDashboard
+    LitElement <|-- CodeExplorer
+    LitElement <|-- ScreenRecorder
+
+    AutocodeChat *-- RefractClient
+    GitDashboard *-- RefractClient
+    CodeDashboard *-- RefractClient
+    CodeExplorer *-- RefractClient
 
     AutocodeChat *-- ChatWindow
     ChatWindow *-- ChatMessages
     ChatWindow *-- ChatInput
+    ChatWindow *-- ChatSettings
 
     class LitElement {
         +render()
@@ -27,22 +48,69 @@ classDiagram
         +updated()
     }
 
+    class RefractClient {
+        +call(funcName, params) Promise
+        +stream(funcName, params, funcInfo, opts) AsyncIterable
+        +loadSchemas() Promise
+        +getSchema(funcName) Object
+    }
+
+    class AutocodeChat {
+        -_client : RefractClient
+        +params : Object
+        +funcInfo : Object
+        -_isExecuting : Boolean
+        -_sendMessage(msg)
+        -_sendMessageStream(msg)
+        -_sendMessageSync(msg)
+        -_updateContext()
+    }
+
+    class GitDashboard {
+        -_client : RefractClient
+        -_commits : Array
+        -_branches : Array
+        +refresh()
+    }
+
+    class CodeDashboard {
+        -_client : RefractClient
+        -_snapshot : Object
+        +refresh(commitHash)
+    }
+
+    class CodeExplorer {
+        -_client : RefractClient
+        -_rootNode : Object
+        +refresh()
+    }
+
+    class ScreenRecorder {
+        -_service : RecorderService
+        +startRecording()
+        +stopRecording()
+    }
+
+    note for AutocodeChat "Composición: LitElement + RefractClient"
+    note for ScreenRecorder "Standalone puro: sin backend"
+```
+
+### Auto-generación (papel actual de AutoFunctionController)
+
+```mermaid
+classDiagram
+    direction TB
+
+    LitElement <|-- AutoFunctionController
+    AutoFunctionController <|-- AutoFunctionElement
+    AutoFunctionElement <|-- GeneratedAutoElement
+
     class AutoFunctionController {
         +funcName : String
         +funcInfo : Object
         +params : Object
-        +result : Object
-        +errors : Object
-        -_status : String
-        -_statusMessage : String
-        -_errorMessage : String
-        -_isExecuting : Boolean
-        +setParam(name, value)
         +execute()
-        +validate()
         +callAPI(params)
-        +executeFunction(funcName, params) [static]
-        -_isComplexType(type)
     }
 
     class AutoFunctionElement {
@@ -50,25 +118,19 @@ classDiagram
         +renderParam()
     }
 
-    class AutocodeChat {
-        +render()
-        -_sendMessage(msg)
-        -_processResult(res)
-        -_updateContext()
-    }
-
     class GeneratedAutoElement {
         +funcName : String
     }
 
-    note for AutoFunctionController "Lógica pura: Estado, Validación, API"
-    note for AutoFunctionElement "UI Genérica: Tarjeta Shadow DOM"
-    note for AutocodeChat "UI Compleja: Composición + Shadow DOM"
+    note for AutoFunctionController "Solo usado por auto-generación"
+    note for GeneratedAutoElement "Creado dinámicamente por AutoElementGenerator"
 ```
+
+---
 
 ## 🎨 Sistema de Diseño Compartido
 
-El proyecto utiliza un **sistema de tokens de diseño centralizado** para mantener consistencia visual en todos los componentes. Este sistema está ubicado en `shared/styles/` y es utilizado tanto por componentes generados automáticamente como por componentes personalizados.
+El proyecto utiliza un **sistema de tokens de diseño centralizado** para mantener consistencia visual en todos los componentes. Este sistema está ubicado en `shared/styles/` y es utilizado por todos los componentes.
 
 ### Estructura
 
@@ -121,7 +183,7 @@ Exporta estilos reutilizables como `css` template literals:
 
 ### Patrón de Re-exportación
 
-Para mantener compatibilidad con componentes existentes, los módulos de estilos antiguos re-exportan desde `shared/styles/`:
+Para mantener compatibilidad con componentes existentes, los módulos de estilos locales re-exportan desde `shared/styles/`:
 
 ```javascript
 // chat/styles/theme.js
@@ -142,7 +204,7 @@ import { spinnerStyles } from '../../shared/styles/common.js';
 export const myStyles = css`
     ${themeTokens}    // ← Inyecta todas las variables CSS
     ${spinnerStyles}  // ← Agrega utilidades específicas
-    
+
     :host {
         display: block;
         padding: var(--design-spacing-md);
@@ -150,7 +212,7 @@ export const myStyles = css`
         border-radius: var(--design-radius-md);
         color: var(--dark-text-primary);
     }
-    
+
     .my-button {
         padding: var(--design-spacing-sm) var(--design-spacing-lg);
         background: var(--design-primary);
@@ -160,274 +222,343 @@ export const myStyles = css`
 `;
 ```
 
-### Beneficios
-
-1. **Consistencia visual**: Todos los componentes usan los mismos valores
-2. **Mantenibilidad**: Un solo lugar para actualizar el diseño
-3. **Theming**: Fácil implementar temas al cambiar variables CSS
-4. **Documentación implícita**: Los nombres de variables son auto-descriptivos
-5. **Reutilización**: Utilidades comunes (spinners, badges) no se duplican
-
 ---
 
 ## 🧩 Componentes Core
 
-### 1. `AutoFunctionController` (Lógica Pura)
-Es la clase base que maneja toda la "inteligencia" del componente. **No tiene UI**.
+### `RefractClient` (Capa de Comunicación)
 
-*   **Responsabilidades**:
-    *   Gestión del estado reactivo (`params`, `result`, `status`, `errors`).
-    *   Comunicación con la API (`callAPI`). Soporta GET (query params) y POST (JSON body).
-    *   Validación de datos (`validate`). Soporta tipos complejos (`dict`, `list`, `json`) via `_isComplexType`.
-    *   Gestión de eventos:
-        *   `function-connected`: Disparado al cargar la metadata.
-        *   `params-changed`: Al modificar un parámetro.
-        *   `before-execute`: Antes de llamar a la API (cancelable).
-        *   `after-execute`: Al recibir respuesta exitosa.
-        *   `execute-error`: Al fallar la ejecución.
-    *   **Carga de metadatos**: Si se proporciona el atributo `func-name`, valida y carga automáticamente la información de la función desde el registry.
-    *   **Ejecución inter-funciones**: Método estático `executeFunction()` para llamar funciones sin crear elementos DOM.
+El cliente HTTP que todos los componentes con backend usan por composición. Se importa desde `/refract/client.js`.
 
-### 2. `AutoFunctionElement` (UI Genérica)
-Es la implementación visual por defecto para los elementos generados automáticamente.
+**API principal:**
 
-*   **Diseño**: Simple y autocontenido. No usa slots ni variables CSS complejas.
-*   **Responsabilidades**:
-    *   Proveer una UI estándar tipo "Tarjeta".
-    *   Visualizar inputs y resultados.
-*   **Nota**: Esta clase **no está diseñada para ser extendida** para personalización. Si necesitas una UI diferente, crea tu propio componente extendiendo `AutoFunctionController`.
+```javascript
+// Llamada síncrona — devuelve el resultado directamente
+const result = await this._client.call('func_name', { param1: value1 });
 
-### 3. `AutoElementGenerator` (Fábrica)
-Es el servicio que consulta el registro de funciones (`/functions/details`) y registra dinámicamente nuevos Custom Elements que extienden `AutoFunctionElement`.
+// Streaming SSE — devuelve un AsyncIterable de eventos
+for await (const event of this._client.stream('func_stream', params, funcInfo, { signal })) {
+    // event.event: 'token' | 'status' | 'complete' | 'error'
+    // event.data: payload del evento
+}
+
+// Cargar schemas del registry (con cache interno)
+await this._client.loadSchemas();
+const funcInfo = this._client.getSchema('func_name'); // null si no existe
+```
+
+**Manejo de errores:**
+- `call()` lanza excepciones en caso de error HTTP — usar `try/catch`
+- `stream()` emite eventos `{ event: 'error', data: {...} }` para errores del servidor
+
+### `AutoFunctionController` + `AutoFunctionElement` (Auto-generación)
+
+Conjunto de clases para generar automáticamente Web Components a partir del registry de funciones del backend.
+
+- **`AutoFunctionController`**: Clase base con lógica de estado, validación y API. No tiene UI propia.
+- **`AutoFunctionElement`**: UI genérica tipo "tarjeta" para elementos auto-generados.
+- **`AutoElementGenerator`**: Servicio que consulta `/functions/details` y registra dinámicamente nuevos Custom Elements.
+
+> **Cuándo usarlos**: Solo para exponer funciones del registry con una UI genérica (`<auto-calculator>`, etc.). Para componentes con lógica propia, usa el patrón `LitElement` + `RefractClient`.
 
 ---
 
-## 🛠️ Guía de Desarrollo y Extensión
+## 🛠️ Guía de Desarrollo: Dos Patrones
 
-### Opción A: UI Personalizada Simple
-Si necesitas crear un componente con una interfaz específica pero contenida en un solo elemento, extiende el controlador.
+### Patrón 1: Componente con Backend (`LitElement` + `RefractClient`)
+
+Para cualquier componente que necesite llamar al backend. Es el patrón estándar del proyecto.
 
 ```javascript
-import { html, css } from 'lit';
-import { AutoFunctionController } from '/refract/controller.js';
+import { LitElement, html, css } from 'https://cdn.jsdelivr.net/gh/lit/dist@3/core/lit-core.min.js';
+import { RefractClient } from '/refract/client.js';
 import { themeTokens } from '../shared/styles/theme.js';
 import { spinnerStyles } from '../shared/styles/common.js';
 
-export class MyCustomElement extends AutoFunctionController {
+export class MyDashboard extends LitElement {
+    static properties = {
+        _data: { state: true },
+        _loading: { state: true },
+        _error: { state: true },
+    };
+
     static styles = [themeTokens, spinnerStyles, css`
         :host {
             display: block;
             padding: var(--design-spacing-md);
         }
-        
-        .container {
-            background: var(--design-bg-white);
-            border-radius: var(--design-radius-md);
-            box-shadow: var(--design-shadow-md);
-        }
     `];
-    
-    // ... implementación estándar
-}
-```
 
-### Opción B: Patrón de Componentes Compuestos (Ejemplo: Chat)
-Para interfaces complejas como `AutocodeChat`, se recomienda un enfoque de composición donde el controlador orquesta el estado pero delega la renderización a componentes especializados.
-
-**Características Clave del Chat:**
-1.  **Herencia**: Extiende `AutoFunctionController` para heredar la lógica de `execute()`, `params` y `callAPI`.
-2.  **Shadow DOM**: Usa Shadow DOM real con CSS puro (sin Tailwind) para encapsulación completa.
-3.  **Composición**:
-    *   `chat-window`: Contenedor visual (marco).
-    *   `chat-messages`: Renderizador de historial y respuestas ricas (Reasoning, Trajectories).
-    *   `chat-input`: Manejo de entrada de usuario.
-4.  **Flujo de Datos Unidireccional**:
-    *   UI (Input) -> `setParam()` -> Controlador
-    *   Controlador -> `execute()` -> API
-    *   API -> `result` -> `_processResult()` -> Actualización de componentes hijos (Message List).
-
-Este patrón permite mantener la lógica de negocio centralizada en el controlador (reutilizando validaciones y conexión API) mientras se construye una UI rica y modular.
-
-### Opción C: Componentes Standalone (Ejemplo: Screen Recorder)
-Para componentes que **no necesitan backend**, el patrón recomendado es extender directamente `LitElement` sin heredar de `AutoFunctionController`.
-
-**Ejemplo: Screen Recorder**
-```javascript
-import { LitElement, html } from 'lit';
-
-export class ScreenRecorder extends LitElement {
     constructor() {
         super();
-        this._service = new RecorderService(); // Lógica pura
+        this._client = new RefractClient();  // ← Composición, no herencia
+        this._data = null;
+        this._loading = false;
+        this._error = null;
     }
-    
+
+    async connectedCallback() {
+        super.connectedCallback();
+        await this.refresh();
+    }
+
+    async refresh() {
+        this._loading = true;
+        this._error = null;
+        try {
+            this._data = await this._client.call('my_function', { param: 'value' });
+        } catch (e) {
+            this._error = e.message;
+        } finally {
+            this._loading = false;
+        }
+    }
+
     render() {
-        return html`
-            <recorder-controls .isRecording=${this._isRecording}>
-            </recorder-controls>
-            ${this._showPlayer ? html`
-                <video-player .blob=${this._recordingBlob}>
-                </video-player>
-            ` : ''}
-        `;
+        if (this._loading) return html`<div class="spinner"></div>`;
+        if (this._error) return html`<div class="error">${this._error}</div>`;
+        return html`<div>${JSON.stringify(this._data)}</div>`;
     }
 }
+
+customElements.define('my-dashboard', MyDashboard);
 ```
 
-**Características Clave:**
-1.  **Sin Backend**: No hace llamadas API, toda la lógica está en el navegador.
-2.  **Servicios Puros**: La lógica compleja (ej: `RecorderService`) se encapsula en clases separadas.
-3.  **Composición**: Usa sub-componentes especializados (similar al chat).
-4.  **Reutiliza Estilos**: Importa tokens del sistema de diseño existente.
-5.  **API Programática**: Expone métodos públicos para control externo.
-
-**Estructura Típica:**
+**Estructura típica de archivos:**
 ```
-screen-recorder/
-├── index.js                 # Orquestador principal (LitElement)
-├── recorder-service.js      # Lógica pura (clase vanilla)
-├── recorder-controls.js     # UI de controles (LitElement)
-├── video-player.js          # UI del reproductor (LitElement)
+my-component/
+├── index.js                 # Orquestador principal (LitElement + RefractClient)
+├── sub-component-a.js       # Sub-componente UI (LitElement puro)
+├── sub-component-b.js       # Sub-componente UI (LitElement puro)
 ├── styles/
-│   ├── theme.js            # Importa tokens compartidos
-│   ├── recorder-controls.styles.js
-│   └── video-player.styles.js
+│   ├── theme.js             # Re-exporta desde shared/styles/theme.js
+│   └── my-component.styles.js
+```
+
+### Patrón 2: Componente Standalone (`LitElement` puro)
+
+Para componentes que no necesitan backend — toda la lógica está en el navegador.
+
+```javascript
+import { LitElement, html } from 'https://cdn.jsdelivr.net/gh/lit/dist@3/core/lit-core.min.js';
+import { themeTokens } from '../shared/styles/theme.js';
+import { MyService } from './my-service.js';  // Lógica pura (clase vanilla)
+
+export class MyWidget extends LitElement {
+    static properties = {
+        _active: { state: true },
+    };
+
+    static styles = [themeTokens];
+
+    constructor() {
+        super();
+        this._service = new MyService();  // Lógica encapsulada en clase vanilla
+        this._active = false;
+    }
+
+    render() {
+        return html`
+            <button @click=${this._handleToggle}>
+                ${this._active ? 'Activo' : 'Inactivo'}
+            </button>
+        `;
+    }
+
+    async _handleToggle() {
+        await this._service.toggle();
+        this._active = this._service.isActive();
+    }
+}
+
+customElements.define('my-widget', MyWidget);
 ```
 
 **Cuándo usar este patrón:**
 - ✅ Componentes de UI pura (file explorer, media players)
 - ✅ Utilidades del navegador (grabación, clipboard, geolocation)
 - ✅ Visualizaciones que no requieren datos del servidor
-- ❌ Componentes que necesitan ejecutar funciones del registry
+- ❌ Componentes que necesitan ejecutar funciones del registry → usar Patrón 1
 
 ---
 
-## 🔗 Comunicación Inter-Funciones
+## 🔗 Comunicación con el Backend
 
-### Método Estático `executeFunction()`
-
-Para llamar a funciones del registry desde otros componentes sin crear elementos en el DOM:
+### Llamada Estándar (`call`)
 
 ```javascript
-// Ejemplo: El chat calculando uso de contexto
-const result = await AutoFunctionController.executeFunction(
-    'calculate_context_usage',
-    { model: 'gpt-4', messages: [...] }
-);
+// Dentro de un componente
+async _loadData() {
+    try {
+        const result = await this._client.call('get_git_log', {
+            max_count: 50,
+            branch: '',
+        });
+        this._commits = result.commits || [];
+    } catch (error) {
+        this._error = error.message;
+    }
+}
 ```
 
-**Características**:
-- ✅ Reutiliza toda la infraestructura del controller
-- ✅ Validación automática de parámetros
-- ✅ Error handling estandarizado
-- ✅ Emite eventos del ciclo de vida
-- ✅ No contamina el DOM
+### Streaming SSE (`stream`)
 
-**Casos de Uso**:
-1. **Funciones auxiliares**: Calcular tokens, validar datos, etc.
-2. **Composición de funcionalidades**: Una función que llama a otra
-3. **Background tasks**: Operaciones que no necesitan UI
-
-**Ejemplo Completo**:
+Para endpoints que emiten eventos SSE durante la ejecución:
 
 ```javascript
-export class AutocodeChat extends AutoFunctionController {
-    async _updateContext() {
-        const messages = [...this.conversationHistory];
-        
-        try {
-            // Llamar a otra función sin crear elementos DOM
-            const result = await AutoFunctionController.executeFunction(
-                'calculate_context_usage',
-                { 
-                    model: this.getParam('model'),
-                    messages 
-                }
-            );
-            
-            const { current, max } = result;
-            this._contextBar?.update(current, max);
-        } catch (e) {
-            console.warn('⚠️ Error calculating context:', e);
+async _sendMessageStream(message) {
+    const abortController = new AbortController();
+
+    for await (const event of this._client.stream(
+        'chat_stream',
+        this.params,
+        this._streamFuncInfo,
+        { signal: abortController.signal }
+    )) {
+        switch (event.event) {
+            case 'token':
+                // Evento incremental — acumular texto
+                fullText += event.data.chunk;
+                break;
+
+            case 'status':
+                // Actualización de progreso
+                this._setStatus('loading', event.data.message);
+                break;
+
+            case 'complete':
+                // Resultado final
+                this._result = event.data;
+                break;
+
+            case 'error':
+                // Error del servidor
+                console.error('Stream error:', event.data.message);
+                break;
         }
     }
 }
+```
+
+### Carga de Schemas del Registry
+
+Para componentes que necesitan los metadatos de una función (parámetros, tipos, defaults):
+
+```javascript
+async connectedCallback() {
+    super.connectedCallback();
+    await this._client.loadSchemas();                    // Cache compartido
+    this.funcInfo = this._client.getSchema('chat');      // null si no existe
+}
+```
+
+### Llamadas Inter-Componente
+
+Para llamar a una función del backend desde cualquier contexto (sin crear elementos DOM):
+
+```javascript
+// Antes: AutoFunctionController.executeFunction('func', params) — OBSOLETO
+// Ahora: usar una instancia de RefractClient
+
+const client = new RefractClient();
+const result = await client.call('calculate_context_usage', {
+    model: 'openai/gpt-4o',
+    messages: [...]
+});
 ```
 
 ---
 
 ## ⚠️ Reglas de Oro
 
-1.  **Usa `setParam(key, value)`**: Nunca modifiques `this.params` directamente. Usa `setParam` para asegurar la reactividad.
-2.  **Validación State-Driven**: El controlador valida los datos en memoria. La UI solo debe encargarse de reflejar el estado y capturar input.
-3.  **FuncInfo**: El controlador necesita `this.funcInfo` para operar. Se carga automáticamente si existe `func-name` en el constructor.
-4.  **Inter-Function Calls**: Usa `AutoFunctionController.executeFunction()` en lugar de `fetch` directo para mantener consistencia.
-5.  **Hook `updated()`**: Cuando extiendas el controller, usa el hook `updated(changedProperties)` para reaccionar a cambios en `funcInfo` u otras propiedades reactivas.
+1. **Composición, no herencia**: Usa `this._client = new RefractClient()` en el constructor. Nunca extiendas `AutoFunctionController` para nuevos componentes.
+
+2. **Estado inmutable**: Nunca mutes arrays/objetos de estado directamente. Crea nuevas referencias para activar la reactividad de Lit:
+   ```javascript
+   // ❌ Mal
+   this._commits.push(newCommit);
+   // ✅ Bien
+   this._commits = [...this._commits, newCommit];
+   ```
+
+3. **AbortController para streams**: Siempre guarda el `AbortController` de un stream activo y llama a `.abort()` en `disconnectedCallback()` o al iniciar un nuevo stream.
+
+4. **Manejo de errores consistente**: Usa el patrón `_loading` / `_error` / dato con `try/catch/finally` en todos los métodos async que llamen al backend.
+
+5. **Estilos con tokens**: Nunca uses valores hardcodeados para colores, espaciado o tipografía. Siempre usa variables del sistema de diseño (`var(--design-spacing-md)`, etc.).
+
+6. **`updated()` para reaccionar a cambios**: Usa el hook `updated(changedProperties)` para inicializar UI cuando lleguen datos async:
+   ```javascript
+   updated(changedProperties) {
+       if (changedProperties.has('funcInfo') && this.funcInfo) {
+           this._settings?.configure(this.funcInfo);
+       }
+   }
+   ```
+
+---
+
+## 📦 Comparación de Componentes Actuales
+
+| Aspecto | `autocode-chat` | `git-dashboard` | `code-dashboard` | `code-explorer` | `screen-recorder` |
+|---------|----------------|-----------------|-----------------|-----------------|-------------------|
+| **Herencia** | `LitElement` | `LitElement` | `LitElement` | `LitElement` | `LitElement` |
+| **Backend** | ✅ `RefractClient` | ✅ `RefractClient` | ✅ `RefractClient` | ✅ `RefractClient` | ❌ No |
+| **Streaming** | ✅ SSE | ❌ No | ❌ No | ❌ No | ❌ No |
+| **Composición** | Multi-componente | Multi-componente | Multi-componente | Multi-componente | Multi-componente |
+| **Sub-componentes** | chat-window, chat-messages, chat-input, chat-settings | commit-node, commit-detail, git-status | treemap-view, dependency-graph, metrics-panel | code-node, code-metrics | recorder-controls, video-player |
 
 ---
 
 ## 📚 Patrones Comunes
 
-### Carga de Metadata Automática
+### Carga de Datos al Conectar
 
 ```javascript
-export class MyComponent extends AutoFunctionController {
-    constructor() {
-        super();
-        this.funcName = 'my_function'; // ← Activa carga automática
-    }
-    
-    // El controller carga funcInfo automáticamente en connectedCallback()
-    
-    updated(changedProperties) {
-        super.updated(changedProperties);
-        
-        // Reaccionar cuando funcInfo se cargue
-        if (changedProperties.has('funcInfo') && this.funcInfo) {
-            console.log('Metadata cargada:', this.funcInfo);
-            // Inicializar UI, settings, etc.
-        }
+async connectedCallback() {
+    super.connectedCallback();
+    await this.refresh();
+}
+
+async refresh() {
+    this._loading = true;
+    this._error = null;
+    try {
+        const result = await this._client.call('my_function', {});
+        this._data = result;
+    } catch (e) {
+        this._error = e.message;
+        console.error('❌ Error loading data:', e);
+    } finally {
+        this._loading = false;
     }
 }
 ```
 
-### Sincronización de Settings
+### Propagación de Cambios entre Sub-componentes
+
+Usa Custom Events para comunicación hijo → padre, y propiedades (`.prop=${value}`) para padre → hijo:
 
 ```javascript
-_handleSettingsChange(e) {
-    const settings = e.detail;
-    
-    // Sincronizar todos los settings con el estado del controller
-    Object.entries(settings).forEach(([key, value]) => {
-        this.setParam(key, value); // ← Usa API del controller
-    });
-    
-    this.requestUpdate(); // Forzar re-render si es necesario
+// Sub-componente emite evento
+this.dispatchEvent(new CustomEvent('item-selected', {
+    detail: { item },
+    bubbles: true,
+    composed: true,
+}));
+
+// Componente padre escucha
+connectedCallback() {
+    super.connectedCallback();
+    this.addEventListener('item-selected', this._handleItemSelected.bind(this));
 }
-```
 
-### Gestión de Historial (Chat)
-
-```javascript
-async _sendMessage(message) {
-    // 1. UI optimista
-    this._messages.addMessage('user', message);
-    
-    // 2. Actualizar estado
-    this.setParam('message', message);
-    this.setParam('conversation_history', this._formatHistory());
-    
-    // 3. Ejecutar (hereda del controller)
-    await this.execute();
-    
-    // 4. Procesar resultado
-    this._processResult(this.result);
+_handleItemSelected(e) {
+    this._selectedItem = e.detail.item;
 }
 ```
 
 ### Importación de Estilos Compartidos
-
-Todos los componentes deben usar el sistema de diseño compartido para mantener consistencia visual:
 
 ```javascript
 // archivo-de-estilos.styles.js
@@ -437,18 +568,17 @@ import { spinnerStyles, badgeBase } from '../../shared/styles/common.js';
 
 export const miComponenteStyles = css`
     ${themeTokens}       // ← Variables CSS globales
-    ${spinnerStyles}     // ← Animación de spinner
+    ${spinnerStyles}     // ← Animación de spinner (opcional)
     ${badgeBase}         // ← Estilos de badges (opcional)
-    
+
     :host {
-        /* Usar variables del sistema */
         padding: var(--design-spacing-md);
         background: var(--dark-bg-primary);
         border-radius: var(--design-radius-md);
         color: var(--dark-text-primary);
         font-family: var(--design-font-family);
     }
-    
+
     .button {
         padding: var(--design-spacing-sm) var(--design-spacing-lg);
         background: var(--design-primary);
@@ -457,65 +587,55 @@ export const miComponenteStyles = css`
         font-size: var(--design-font-size-base);
         font-weight: var(--design-font-weight-medium);
     }
-    
-    .button:hover {
-        background: var(--design-primary-light);
-    }
 `;
 ```
 
 **Recomendaciones:**
 - ✅ Siempre importar `themeTokens` como primera línea de estilos
 - ✅ Usar variables CSS en lugar de valores hardcodeados
-- ✅ Importar solo las utilidades que necesites (`spinnerStyles`, `badgeBase`, etc.)
+- ✅ Importar solo las utilidades que necesites
 - ✅ Mantener un archivo separado para estilos complejos (`component.styles.js`)
 - ❌ No redefinir variables que ya existen en el sistema
 - ❌ No usar valores absolutos para colores, espaciado o tipografía
 
 ---
 
-## 📦 Comparación de Patrones
-
-| Aspecto | AutoFunctionElement | Compuesto (Chat) | Standalone (Recorder) |
-|---------|-------------------|------------------|----------------------|
-| **Herencia** | `AutoFunctionController` | `AutoFunctionController` | `LitElement` |
-| **Backend** | ✅ Sí (registry) | ✅ Sí (registry) | ❌ No |
-| **Composición** | No (monolítico) | Sí (multi-componente) | Sí (multi-componente) |
-| **Validación** | Automática | Automática | Manual |
-| **Estilos** | Sistema compartido | Sistema compartido | Sistema compartido |
-| **Ejemplo** | `<auto-calculator>` | `<autocode-chat>` | `<screen-recorder>` |
-
----
-
 ## 🐛 Debugging Tips
 
-### Inspeccionar Estado del Controller
+### Inspeccionar Estado de un Componente
 
 ```javascript
 // En la consola del navegador:
 const chat = document.querySelector('autocode-chat');
 console.log('Params:', chat.params);
 console.log('FuncInfo:', chat.funcInfo);
-console.log('Result:', chat.result);
-console.log('Errors:', chat.errors);
+console.log('Client:', chat._client);
+
+const dashboard = document.querySelector('git-dashboard');
+console.log('Commits:', dashboard._commits);
+console.log('Error:', dashboard._error);
 ```
 
-### Verificar Carga de Metadata
+### Test de RefractClient en Consola
 
 ```javascript
-// Escuchar evento de conexión
-document.addEventListener('function-connected', (e) => {
-    console.log('Function connected:', e.detail);
-});
-```
+// Test manual — instanciar cliente directamente
+const client = new RefractClient();
 
-### Test de executeFunction()
-
-```javascript
-// Test manual en consola
-const result = await AutoFunctionController.executeFunction(
-    'hello_world',
-    { name: 'Test' }
-);
+// Llamada estándar
+const result = await client.call('get_git_log', { max_count: 5 });
 console.log(result);
+
+// Ver schemas disponibles
+await client.loadSchemas();
+console.log(client.getSchema('chat'));
+```
+
+### Verificar que el Registry Responde
+
+```javascript
+const client = new RefractClient();
+await client.loadSchemas();
+// Si no lanza error, el registry está disponible
+console.log('✅ Registry OK');
 ```
