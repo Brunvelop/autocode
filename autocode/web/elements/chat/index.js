@@ -474,7 +474,13 @@ export class AutocodeChat extends LitElement {
                         this.result = data;
                         this.success = true;
                         this._setStatus('success', 'Completado');
-                        // Notify other components (e.g. git-dashboard) that plans may have changed
+                        // Refract lifecycle event — allows other components to react generically
+                        this.dispatchEvent(new CustomEvent('after-execute', {
+                            detail: { funcName: 'chat', params: this.params, result: data, envelope: data },
+                            bubbles: true,
+                            composed: true
+                        }));
+                        // TODO: remove once all consumers migrate to 'after-execute'
                         window.dispatchEvent(new CustomEvent('plans-changed'));
                         break;
                     }
@@ -496,6 +502,12 @@ export class AutocodeChat extends LitElement {
                                 ...event.data, _isError: true, _statusLog: statusLog
                             });
                             this._setStatus('error', event.data.message);
+                            // Refract lifecycle event — server-side stream error
+                            this.dispatchEvent(new CustomEvent('execute-error', {
+                                detail: { funcName: 'chat', params: this.params, error: new Error(event.data.message) },
+                                bubbles: true,
+                                composed: true
+                            }));
                         }
                         break;
                 }
@@ -531,6 +543,12 @@ export class AutocodeChat extends LitElement {
                 _isError: true, _message: error.message, _statusLog: statusLog
             });
             this._setStatus('error', error.message);
+            // Refract lifecycle event — unexpected network/runtime error
+            this.dispatchEvent(new CustomEvent('execute-error', {
+                detail: { funcName: 'chat', params: this.params, error },
+                bubbles: true,
+                composed: true
+            }));
         } finally {
             // Liberar referencia al controller — el stream ha terminado (éxito, error o abort)
             this._abortController = null;
@@ -559,7 +577,13 @@ export class AutocodeChat extends LitElement {
             // Procesar resultado y actualizar historial/UI
             this._processResult(data);
 
-            // Notify other components (e.g. git-dashboard) that plans may have changed
+            // Refract lifecycle event — allows other components to react generically
+            this.dispatchEvent(new CustomEvent('after-execute', {
+                detail: { funcName: 'chat', params: this.params, result: data, envelope: data },
+                bubbles: true,
+                composed: true
+            }));
+            // TODO: remove once all consumers migrate to 'after-execute'
             window.dispatchEvent(new CustomEvent('plans-changed'));
 
         } catch (error) {
@@ -567,6 +591,12 @@ export class AutocodeChat extends LitElement {
                 this._messages.addMessage('error', error.message || 'Error desconocido');
             }
             this._setStatus('error', error.message || 'Error desconocido');
+            // Refract lifecycle event — lets consumers handle errors generically
+            this.dispatchEvent(new CustomEvent('execute-error', {
+                detail: { funcName: 'chat', params: this.params, error },
+                bubbles: true,
+                composed: true
+            }));
         }
     }
 }
