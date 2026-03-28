@@ -4,7 +4,7 @@
  * Extiende LitElement directamente y usa RefractClient por composición
  * para toda la comunicación con la API (ya no hereda de AutoFunctionController).
  * 
- * REFACTORIZACIÓN Commit 2: Herencia → Composición
+ * REFACTORIZACIÓN: Herencia → Composición
  * - Antes: extends AutoFunctionController (acoplamiento innecesario)
  * - Ahora: extends LitElement + this._client = new RefractClient()
  */
@@ -78,6 +78,9 @@ export class AutocodeChat extends LitElement {
         this._chatConfig = null;
         this._useStreaming = true; // Toggle streaming (controlado desde settings)
         this._streamFuncInfo = null;
+
+        // AbortController para el stream SSE activo (null si no hay stream en curso)
+        this._abortController = null;
     }
 
     async connectedCallback() {
@@ -85,6 +88,23 @@ export class AutocodeChat extends LitElement {
         await this._loadFuncInfo();
         this._loadChatConfig();
         this._loadStreamFuncInfo();
+    }
+
+    disconnectedCallback() {
+        super.disconnectedCallback();
+        // Cancelar cualquier stream SSE activo para evitar streams huérfanos
+        this._abortCurrentStream();
+    }
+
+    /**
+     * Cancela el stream SSE activo si existe.
+     * Seguro de llamar en cualquier momento (no-op si no hay stream).
+     */
+    _abortCurrentStream() {
+        if (this._abortController) {
+            this._abortController.abort();
+            this._abortController = null;
+        }
     }
 
     firstUpdated() {
@@ -243,8 +263,12 @@ export class AutocodeChat extends LitElement {
     }
 
     _handleNewChat() {
+        // Cancelar stream activo antes de limpiar el chat
+        this._abortCurrentStream();
+
         this.conversationHistory = [];
         this._pendingUserMessage = null;
+        this._isExecuting = false;
         this.setParam('conversation_history', '');
         
         if (this._messages) this._messages.clear();
@@ -401,7 +425,8 @@ export class AutocodeChat extends LitElement {
     /**
      * Envía mensaje usando streaming SSE (chat_stream endpoint).
      * Muestra tokens incrementalmente conforme llegan del servidor.
-     * Usa this._client.stream() (antes usaba this.callStreamAPI()).
+     * Usa this._client.stream() con AbortSignal para poder cancelar el stream
+     * en cualquier momento (nueva conversación, cierre del componente).
      */
     async _sendMessageStream(message) {
         const streamId = this._messages.addStreamingMessage();
@@ -414,10 +439,18 @@ export class AutocodeChat extends LitElement {
         this.result = null;
         this.success = undefined;
 
+        // Crear AbortController para este stream — permite cancelación desde fuera
+        this._abortController = new AbortController();
+
         try {
             this._setStatus('loading', 'Conectando...');
 
-            for await (const event of this._client.stream('chat_stream', this.params, this._streamFuncInfo)) {
+            for await (const event of this._client.stream(
+                'chat_stream',
+                this.params,
+                this._streamFuncInfo,
+                { signal: this._abortController.signal }
+            )) {
                 switch (event.event) {
                     case 'token':
                         fullText += event.data.chunk;
@@ -484,10 +517,23 @@ export class AutocodeChat extends LitElement {
             this.setParam('conversation_history', this._formatHistory());
 
         } catch (error) {
+            // AbortError: cancelación intencional (nueva conversación, cierre del componente)
+            // No mostrar error al usuario — es una operación normal
+            if (error.name === 'AbortError') {
+                this._messages.finalizeStreaming(streamId, {
+                    message: 'Conversación cancelada', _statusLog: statusLog
+                });
+                this._setStatus('default', 'Listo');
+                return;
+            }
+
             this._messages.finalizeStreaming(streamId, {
                 _isError: true, _message: error.message, _statusLog: statusLog
             });
             this._setStatus('error', error.message);
+        } finally {
+            // Liberar referencia al controller — el stream ha terminado (éxito, error o abort)
+            this._abortController = null;
         }
     }
 
