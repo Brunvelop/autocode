@@ -40,6 +40,7 @@
     <script type="module">
         import '../../utils/test-runner.js';
         import { TestRunner } from '../../utils/test-runner.js';
+        import { mockRefractCall } from '../../utils/mock-client.js';
 
         const runner = new TestRunner();
 
@@ -101,22 +102,12 @@
         // Mock data for metrics-chart (get_metrics_history)
         const MOCK_HISTORY = { points: [], available_metrics: [] };
 
-        // Intercept the AutoFunctionController globally
+        // Intercept RefractClient.prototype.call globally BEFORE importing component
         let mockBehavior = 'success'; // 'success' | 'error' | 'loading'
         let executeCallCount = 0;
         let lastExecutedFunction = null;
 
-        // Import component
-        const componentModule = import('../../../elements/code-dashboard/index.js');
-
-        // After import, patch the controller
-        await componentModule;
-
-        // Get reference to AutoFunctionController from the module system
-        const autoGenModule = await import('/refract/controller.js');
-        const originalExecute = autoGenModule.AutoFunctionController.executeFunction;
-
-        autoGenModule.AutoFunctionController.executeFunction = async function(funcName, params) {
+        await mockRefractCall(async (funcName) => {
             executeCallCount++;
             lastExecutedFunction = funcName;
 
@@ -130,8 +121,11 @@
             if (funcName === 'get_architecture_snapshot') return MOCK_SNAPSHOT;
             if (funcName === 'generate_code_metrics') return MOCK_METRICS;
             if (funcName === 'get_metrics_history') return MOCK_HISTORY;
-            return originalExecute.call(this, funcName, params);
-        };
+            if (funcName === 'get_git_log') return { commits: [], branches: [{ name: 'main', is_current: true }] };
+        });
+
+        // Import component
+        await import('../../../elements/code-dashboard/index.js');
 
         // Helper: create a fresh component instance
         function createDashboard() {

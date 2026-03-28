@@ -34,6 +34,7 @@
     <script type="module">
         import '../../utils/test-runner.js';
         import { TestRunner } from '../../utils/test-runner.js';
+        import { mockRefractCall } from '../../utils/mock-client.js';
 
         const runner = new TestRunner();
 
@@ -126,15 +127,8 @@
         let lastExecutedFunction = null;
         let calledFunctions = [];
 
-        // Import component
-        const componentModule = import('../../../elements/code-dashboard/metrics-panel.js');
-        await componentModule;
-
-        // Patch AutoFunctionController after import
-        const autoGenModule = await import('/refract/controller.js');
-        const originalExecute = autoGenModule.AutoFunctionController.executeFunction;
-
-        autoGenModule.AutoFunctionController.executeFunction = async function(funcName, params) {
+        // Patch RefractClient.prototype.call BEFORE importing component
+        await mockRefractCall(async (funcName) => {
             executeCallCount++;
             lastExecutedFunction = funcName;
             calledFunctions.push(funcName);
@@ -149,8 +143,13 @@
                 if (mockBehavior === 'circular') return MOCK_METRICS_CIRCULAR;
                 return MOCK_METRICS;
             }
-            return originalExecute.call(this, funcName, params);
-        };
+            if (funcName === 'get_metrics_history') {
+                return { points: [], available_metrics: [] };
+            }
+        });
+
+        // Import component
+        await import('../../../elements/code-dashboard/metrics-panel.js');
 
         // Helper: create a fresh component instance
         function createPanel(attrs = {}) {

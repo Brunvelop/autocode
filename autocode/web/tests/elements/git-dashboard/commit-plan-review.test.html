@@ -37,6 +37,7 @@
 
     <script type="module">
         import { TestRunner } from '../../utils/test-runner.js';
+        import { mockRefractCall } from '../../utils/mock-client.js';
 
         const runner = new TestRunner();
 
@@ -121,17 +122,14 @@
         }
 
         // ====================================================================
-        // MOCK: Intercept AutoFunctionController
+        // MOCK: Intercept RefractClient.prototype.call
         // ====================================================================
 
         let currentMockPlan = makePlan();
         let lastApproveCall = null;
         let lastRevertCall = null;
 
-        const autoGenModule = await import('/refract/controller.js');
-        const originalExecute = autoGenModule.AutoFunctionController.executeFunction;
-
-        autoGenModule.AutoFunctionController.executeFunction = async function(funcName, params) {
+        await mockRefractCall(async (funcName, params) => {
             if (funcName === 'get_commit_plan') {
                 return { ...currentMockPlan };
             }
@@ -156,8 +154,7 @@
             if (funcName === 'list_commit_plans') {
                 return [];
             }
-            return originalExecute.call(this, funcName, params);
-        };
+        });
 
         // Import component
         await import('../../../elements/git-dashboard/commit-plan-detail.js');

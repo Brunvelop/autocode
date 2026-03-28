@@ -39,6 +39,7 @@
     <script type="module">
         import '../../utils/test-runner.js';
         import { TestRunner } from '../../utils/test-runner.js';
+        import { mockRefractCall } from '../../utils/mock-client.js';
 
         const runner = new TestRunner();
 
@@ -76,15 +77,11 @@
 
         const MOCK_PLANS = [];
 
-        // Patch AutoFunctionController BEFORE importing git-dashboard
-        const autoGenModule = await import('/refract/controller.js');
-        const originalExecute = autoGenModule.AutoFunctionController.executeFunction;
-
-        autoGenModule.AutoFunctionController.executeFunction = async function(funcName, params) {
+        // Patch RefractClient.prototype.call BEFORE importing git-dashboard
+        await mockRefractCall(async (funcName) => {
             if (funcName === 'get_git_log') return MOCK_GIT_LOG;
             if (funcName === 'list_commit_plans') return MOCK_PLANS;
-            return originalExecute.call(this, funcName, params);
-        };
+        });
 
         // Import git-dashboard component
         await import('../../../elements/git-dashboard/index.js');
