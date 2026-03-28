@@ -212,7 +212,7 @@ class TestExecuteCommitPlanSync:
         (discarding SSE bytes) and then calls load_plan() to read the authoritative
         final state from persistence.
 
-        Key assertion: result.result contains 'started_at', a field present in
+        Key assertion: result.execution contains 'started_at', a field present in
         plan.execution.model_dump() but NOT in the plan_complete SSE event data.
         """
         plan = _make_plan()
@@ -237,31 +237,32 @@ class TestExecuteCommitPlanSync:
             from autocode.core.planning.executor import execute_commit_plan
             result = execute_commit_plan("20260101-120000", backend="mock")
 
-        assert result.success is True
-        assert isinstance(result.result, dict)
-        assert "started_at" in result.result, (
-            "result.result should come from plan.execution.model_dump() (contains "
+        assert result.status == "pending_review", (
+            f"Expected status='pending_review', got {result.status!r}."
+        )
+        assert isinstance(result.execution, dict), (
+            "result.execution should be a dict from plan.execution.model_dump()"
+        )
+        assert "started_at" in result.execution, (
+            "result.execution should come from plan.execution.model_dump() (contains "
             "'started_at'), not from SSE event data (which does not have 'started_at'). "
             "This indicates the sync wrapper is still parsing SSE instead of reading "
             "the final plan state from persistence."
         )
-        assert result.message == "Plan pending_review", (
-            f"Expected message='Plan pending_review', got {result.message!r}. "
-            "The sync wrapper should set message based on the loaded plan's status."
-        )
 
-    def test_sync_wrapper_returns_failure_when_plan_not_found(self):
-        """Sync wrapper returns failure with explicit message when plan doesn't exist."""
+    def test_sync_wrapper_raises_when_plan_not_found(self):
+        """Sync wrapper raises HTTPException(404) when plan doesn't exist."""
+        from fastapi import HTTPException
+
         with _patch_load_plan(None):
             from autocode.core.planning.executor import execute_commit_plan
-            result = execute_commit_plan("nonexistent", backend="mock")
+            with pytest.raises(HTTPException) as exc_info:
+                execute_commit_plan("nonexistent", backend="mock")
 
-        assert result.success is False
-        assert result.message == "Plan not found or not executed", (
-            f"Expected message='Plan not found or not executed', got {result.message!r}. "
-            "The old implementation returned str(SSE data dict) as the message, "
-            "which is an unstructured string. The new implementation should return "
-            "a clear error message."
+        assert exc_info.value.status_code == 404
+        assert "not found" in exc_info.value.detail.lower(), (
+            f"Expected 'not found' in detail, got {exc_info.value.detail!r}. "
+            "The sync wrapper should raise HTTPException(404) with a clear message."
         )
 
 

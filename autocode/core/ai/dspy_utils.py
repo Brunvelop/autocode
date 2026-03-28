@@ -12,7 +12,7 @@ from typing import Any, Dict, List, Literal, Optional, Type, Union
 
 import dspy
 from refract import Refract
-from autocode.core.ai.models import DspyOutput, ChatResult
+from autocode.core.ai.models import ChatResult
 from autocode.core.ai.providers import ModelType
 
 
@@ -92,7 +92,7 @@ def _normalize_metadata(
     """
     Normaliza los metadatos de DSPy a tipos serializables.
 
-    Convierte objetos complejos (Prediction, ModelResponse, GenericOutput, etc.)
+    Convierte objetos complejos (Prediction, ModelResponse, etc.)
     a tipos básicos de Python seguros para Pydantic y JSON.
 
     Args:

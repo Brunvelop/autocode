@@ -17,7 +17,7 @@ from autocode.core.ai.dspy_utils import (
     get_dspy_lm, MODULE_MAP, ModuleType,
     prepare_chat_tools
 )
-from autocode.core.ai.models import DspyOutput
+from autocode.core.ai.models import normalize_trajectory, serialize_value
 from autocode.core.ai.signatures import ChatSignature
 
 logger = logging.getLogger(__name__)
@@ -113,13 +113,13 @@ def _build_complete_event(prediction: Any, lm: Any) -> dict:
 
     trajectory = getattr(prediction, 'trajectory', None)
     if isinstance(trajectory, (dict, list)):
-        trajectory = DspyOutput.normalize_trajectory(trajectory)
-        trajectory = DspyOutput.serialize_value(trajectory)
+        trajectory = normalize_trajectory(trajectory)
+        trajectory = serialize_value(trajectory)
 
     history = None
     if hasattr(lm, 'history') and lm.history:
         try:
-            history = DspyOutput.serialize_value(lm.history)
+            history = serialize_value(lm.history)
         except Exception as e:
             logger.warning(f"Could not serialize lm.history: {e}")
 

@@ -34,12 +34,12 @@ from datetime import datetime
 from typing import AsyncGenerator
 
 from refract import register_function
-from autocode.core.models import GenericOutput
 from autocode.core.ai.streaming import _format_sse
 from autocode.core.planning.models import (
     CommitPlan,
     ExecutionStep,
     PlanExecutionState,
+    PlanExecutionResult,
     ReviewResult,
 )
 from autocode.core.planning.backends import get_backend
@@ -549,7 +549,7 @@ def execute_commit_plan(
     backend: str = "opencode",
     model: str = "",
     review_mode: str = "human",
-) -> GenericOutput:
+) -> PlanExecutionResult:
     """Ejecuta un plan de commit delegando a un backend pluggable.
 
     El backend (opencode, cline) ejecuta la instrucción del plan y reporta
@@ -563,8 +563,15 @@ def execute_commit_plan(
         backend: Backend de ejecución (opencode, cline)
         model: Modelo de inferencia a utilizar
         review_mode: Modo de review post-ejecución ("human" o "auto")
+
+    Returns:
+        PlanExecutionResult con el status final del plan y el estado de ejecución.
+
+    Raises:
+        HTTPException: Si el plan no se encuentra o no ha sido ejecutado.
     """
     import asyncio
+    from fastapi import HTTPException
 
     async def _drain():
         """Consume all SSE events from stream_execute_plan, discarding them.
@@ -580,14 +587,9 @@ def execute_commit_plan(
     # Read authoritative final state from persistence — no SSE string parsing needed.
     plan = load_plan(plan_id)
     if not plan or not plan.execution:
-        return GenericOutput(
-            success=False,
-            result={},
-            message="Plan not found or not executed",
-        )
+        raise HTTPException(status_code=404, detail="Plan not found or not executed")
 
-    return GenericOutput(
-        success=plan.status in ("completed", "pending_review"),
-        result=plan.execution.model_dump() if plan.execution else {},
-        message=f"Plan {plan.status}",
+    return PlanExecutionResult(
+        status=plan.status,
+        execution=plan.execution.model_dump() if plan.execution else None,
     )

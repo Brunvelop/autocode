@@ -158,6 +158,12 @@ class DeleteResult(BaseModel):
     deleted: str = Field(..., description="ID del recurso eliminado")
 
 
+class PlanExecutionResult(BaseModel):
+    """Resultado de la ejecución síncrona de un plan (wrapper de execute_commit_plan)."""
+    status: str = Field(..., description="Estado final del plan tras la ejecución")
+    execution: Optional[dict] = Field(None, description="Estado de ejecución serializado")
+
+
 class PlanReviewMetrics(BaseModel):
     """Métricas de review de un plan para la UI."""
     files: List[dict] = Field(default_factory=list)

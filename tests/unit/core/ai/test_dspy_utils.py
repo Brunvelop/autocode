@@ -7,12 +7,14 @@ from autocode.core.ai.dspy_utils import generate_with_dspy
 from autocode.core.ai.models import ChatResult
 from autocode.core.ai.signatures import ChatSignature
 
+
 class MockPrediction:
     def __init__(self, response):
         self.response = response
-        
+
     def __str__(self):
         return self.response
+
 
 class TestGenerateWithDspy:
 
@@ -23,33 +25,27 @@ class TestGenerateWithDspy:
         Test that generate_with_dspy handles DSPy Prediction objects in completions
         by converting them to strings, avoiding Pydantic validation errors.
         """
-        # Setup mocks
         mock_lm = Mock()
-        mock_lm.history = []  # Setup empty history to avoid iteration error
+        mock_lm.history = []
         mock_get_lm.return_value = mock_lm
-        
-        # Simulate a DSPy response that contains Prediction objects in completions
-        # This happens typically with dspy.Predict module
+
         mock_response = Mock()
         mock_response.response = "Answer"
         mock_response.completions = [
             MockPrediction("Answer 1"),
             MockPrediction("Answer 2")
         ]
-        
+
         mock_execute.return_value = mock_response
-        
-        # Execute
+
         result = generate_with_dspy(
             signature_class=ChatSignature,
             inputs={"message": "Test", "conversation_history": ""},
             module_type='Predict'
         )
-        
-        # Assert — generate_with_dspy now returns ChatResult directly
+
         assert isinstance(result, ChatResult)
         assert result.response == "Answer"
-        # Verify completions are strings, not objects
         assert isinstance(result.completions, list)
         assert len(result.completions) == 2
         assert result.completions[0] == "Answer 1"
@@ -59,17 +55,16 @@ class TestGenerateWithDspy:
 
 class TestPrepareChatTools:
     """Tests for prepare_chat_tools helper."""
-    
+
     @patch('autocode.core.ai.dspy_utils.Refract')
     def test_returns_tools_list(self, mock_refract_cls):
         """prepare_chat_tools returns a list of tool wrappers."""
         from autocode.core.ai.dspy_utils import prepare_chat_tools
         from refract import FunctionInfo, ParamSchema
-        from autocode.core.models import GenericOutput
-        
+
         mock_app = Mock()
         mock_refract_cls.current.return_value = mock_app
-        mock_func = Mock(return_value=GenericOutput(result="ok", success=True))
+        mock_func = Mock(return_value=ChatResult(response="ok"))
         func_info = FunctionInfo(
             name="test_tool",
             func=mock_func,
@@ -77,43 +72,42 @@ class TestPrepareChatTools:
             params=[ParamSchema(name="x", type=int, required=True, description="Input")],
             http_methods=["GET"],
             interfaces=["mcp"],
-            return_type=GenericOutput
+            return_type=ChatResult
         )
         mock_app.get_functions_for_interface.return_value = [func_info]
-        
+
         tools = prepare_chat_tools()
         assert len(tools) == 1
         assert tools[0].__name__ == "test_tool"
         assert "A test tool" in tools[0].__doc__
-    
+
     @patch('autocode.core.ai.dspy_utils.Refract')
     def test_filters_by_enabled_tools(self, mock_refract_cls):
         """prepare_chat_tools filters by enabled_tools list."""
         from autocode.core.ai.dspy_utils import prepare_chat_tools
         from refract import FunctionInfo, ParamSchema
-        from autocode.core.models import GenericOutput
-        
+
         mock_app = Mock()
         mock_refract_cls.current.return_value = mock_app
         func1 = FunctionInfo(
             name="tool_a", func=Mock(), description="Tool A",
-            params=[], http_methods=["GET"], interfaces=["mcp"], return_type=GenericOutput
+            params=[], http_methods=["GET"], interfaces=["mcp"], return_type=ChatResult
         )
         func2 = FunctionInfo(
             name="tool_b", func=Mock(), description="Tool B",
-            params=[], http_methods=["GET"], interfaces=["mcp"], return_type=GenericOutput
+            params=[], http_methods=["GET"], interfaces=["mcp"], return_type=ChatResult
         )
         mock_app.get_functions_for_interface.return_value = [func1, func2]
-        
+
         tools = prepare_chat_tools(enabled_tools=["tool_a"])
         assert len(tools) == 1
         assert tools[0].__name__ == "tool_a"
-    
+
     @patch('autocode.core.ai.dspy_utils.Refract')
     def test_empty_when_no_mcp_functions(self, mock_refract_cls):
         """prepare_chat_tools returns empty list when no MCP functions."""
         from autocode.core.ai.dspy_utils import prepare_chat_tools
-        
+
         mock_app = Mock()
         mock_refract_cls.current.return_value = mock_app
         mock_app.get_functions_for_interface.return_value = []
@@ -123,110 +117,103 @@ class TestPrepareChatTools:
 
 class TestCreateToolWrapper:
     """Tests for _create_tool_wrapper helper."""
-    
+
     def test_wrapper_has_correct_name(self):
         """Wrapper function has the correct __name__."""
         from autocode.core.ai.dspy_utils import _create_tool_wrapper
         from refract import FunctionInfo, ParamSchema
-        from autocode.core.models import GenericOutput
-        
+
         func_info = FunctionInfo(
             name="my_tool", func=Mock(), description="My tool",
-            params=[], http_methods=["GET"], interfaces=["mcp"], return_type=GenericOutput
+            params=[], http_methods=["GET"], interfaces=["mcp"], return_type=ChatResult
         )
         wrapper = _create_tool_wrapper(func_info)
         assert wrapper.__name__ == "my_tool"
-    
+
     def test_wrapper_has_enriched_docstring(self):
         """Wrapper has docstring with parameter info."""
         from autocode.core.ai.dspy_utils import _create_tool_wrapper
         from refract import FunctionInfo, ParamSchema
-        from autocode.core.models import GenericOutput
-        
+
         func_info = FunctionInfo(
             name="search", func=Mock(), description="Search files",
             params=[
                 ParamSchema(name="query", type=str, required=True, description="Search query"),
                 ParamSchema(name="limit", type=int, default=10, required=False, description="Max results")
             ],
-            http_methods=["GET"], interfaces=["mcp"], return_type=GenericOutput
+            http_methods=["GET"], interfaces=["mcp"], return_type=ChatResult
         )
         wrapper = _create_tool_wrapper(func_info)
-        
+
         assert "Search files" in wrapper.__doc__
         assert "query" in wrapper.__doc__
         assert "required" in wrapper.__doc__
         assert "limit" in wrapper.__doc__
         assert "optional" in wrapper.__doc__
-    
+
     def test_wrapper_handles_kwargs_nested(self):
         """Wrapper handles DSPy ReAct nested kwargs pattern."""
         from autocode.core.ai.dspy_utils import _create_tool_wrapper
         from refract import FunctionInfo, ParamSchema
-        from autocode.core.models import GenericOutput
-        
+
         real_func = Mock(return_value="result")
         func_info = FunctionInfo(
             name="my_func", func=real_func, description="Test",
             params=[ParamSchema(name="x", type=int, required=True, description="Input")],
-            http_methods=["GET"], interfaces=["mcp"], return_type=GenericOutput
+            http_methods=["GET"], interfaces=["mcp"], return_type=ChatResult
         )
         wrapper = _create_tool_wrapper(func_info)
-        
-        # DSPy sometimes passes params as kwargs={'x': 5}
+
         result = wrapper(kwargs={"x": 5})
         real_func.assert_called_once_with(x=5)
-    
+
     def test_wrapper_handles_direct_kwargs(self):
         """Wrapper handles direct keyword arguments."""
         from autocode.core.ai.dspy_utils import _create_tool_wrapper
         from refract import FunctionInfo, ParamSchema
-        from autocode.core.models import GenericOutput
-        
+
         real_func = Mock(return_value="result")
         func_info = FunctionInfo(
             name="my_func", func=real_func, description="Test",
             params=[ParamSchema(name="x", type=int, required=True, description="Input")],
-            http_methods=["GET"], interfaces=["mcp"], return_type=GenericOutput
+            http_methods=["GET"], interfaces=["mcp"], return_type=ChatResult
         )
         wrapper = _create_tool_wrapper(func_info)
-        
+
         result = wrapper(x=5)
         real_func.assert_called_once_with(x=5)
-    
+
     def test_wrapper_handles_execution_error(self):
         """Wrapper catches exceptions and returns error string."""
         from autocode.core.ai.dspy_utils import _create_tool_wrapper
         from refract import FunctionInfo, ParamSchema
-        from autocode.core.models import GenericOutput
-        
+
         real_func = Mock(side_effect=ValueError("bad input"))
         func_info = FunctionInfo(
             name="failing_func", func=real_func, description="Fails",
-            params=[], http_methods=["GET"], interfaces=["mcp"], return_type=GenericOutput
+            params=[], http_methods=["GET"], interfaces=["mcp"], return_type=ChatResult
         )
         wrapper = _create_tool_wrapper(func_info)
-        
+
         result = wrapper()
         assert "Error ejecutando failing_func" in result
         assert "bad input" in result
-    
+
     def test_wrapper_docstring_includes_choices(self):
         """Wrapper docstring includes choices for Literal types."""
         from autocode.core.ai.dspy_utils import _create_tool_wrapper
         from refract import FunctionInfo, ParamSchema
-        from autocode.core.models import GenericOutput
-        
+
         func_info = FunctionInfo(
             name="choose", func=Mock(), description="Choose option",
             params=[
-                ParamSchema(name="option", type=str, required=True, 
-                           description="The option", choices=["a", "b", "c"])
+                ParamSchema(name="option", type=str, required=True,
+                            description="The option", choices=["a", "b", "c"])
             ],
-            http_methods=["GET"], interfaces=["mcp"], return_type=GenericOutput
+            http_methods=["GET"], interfaces=["mcp"], return_type=ChatResult
         )
         wrapper = _create_tool_wrapper(func_info)
-        
+
         assert "choices: a, b, c" in wrapper.__doc__
 
 
@@ -273,10 +260,7 @@ class TestGetDspyLm:
 
 
 class TestGenerateWithDspyErrorPaths:
-    """Tests for generate_with_dspy() error-handling paths.
-
-    generate_with_dspy now raises exceptions instead of returning success=False.
-    """
+    """Tests for generate_with_dspy() error-handling paths."""
 
     def test_invalid_module_type_raises_value_error(self):
         """Invalid module_type raises ValueError."""
@@ -324,7 +308,6 @@ class TestGenerateWithDspyErrorPaths:
         mock_lm.history = [{"prompt": "test", "response": "test"}]
         mock_get_lm.return_value = mock_lm
 
-        # spec vacío: ningún output_field estará disponible
         mock_response = Mock(spec=[])
         mock_response.completions = None
         mock_response.reasoning = "some reasoning"
@@ -383,7 +366,7 @@ class TestNormalizeMetadata:
 
         item = Mock()
         item.model_dump = Mock(return_value={"prompt": "hello", "response": "world"})
-        del item.__dict__  # force model_dump path
+        del item.__dict__
 
         _, _, history, _ = _normalize_metadata(None, None, [item], None)
         assert history == [{"prompt": "hello", "response": "world"}]
@@ -441,7 +424,7 @@ class TestExtractSignatureOutputs:
         from autocode.core.ai.dspy_utils import _extract_signature_outputs
 
         response = Mock()
-        response.response = "Hello!"  # ChatSignature output field
+        response.response = "Hello!"
 
         result = _extract_signature_outputs(response, ChatSignature)
 
@@ -453,7 +436,7 @@ class TestExtractSignatureOutputs:
         from autocode.core.ai.dspy_utils import _extract_signature_outputs
 
         response = Mock()
-        response.response = None  # None → should be skipped
+        response.response = None
 
         result = _extract_signature_outputs(response, ChatSignature)
 
@@ -540,24 +523,21 @@ class TestGetAvailableToolsInfo:
         """Returns sorted list of dicts with name, description, enabled_by_default."""
         from autocode.core.ai.dspy_utils import get_available_tools_info
         from refract import FunctionInfo
-        from autocode.core.models import GenericOutput
 
         func_b = FunctionInfo(
             name="zebra_tool", func=Mock(), description="Z tool",
-            params=[], http_methods=["GET"], interfaces=["mcp"], return_type=GenericOutput
+            params=[], http_methods=["GET"], interfaces=["mcp"], return_type=ChatResult
         )
         func_a = FunctionInfo(
             name="alpha_tool", func=Mock(), description="A tool",
-            params=[], http_methods=["GET"], interfaces=["mcp"], return_type=GenericOutput
+            params=[], http_methods=["GET"], interfaces=["mcp"], return_type=ChatResult
         )
 
         result = get_available_tools_info([func_b, func_a])
 
         assert len(result) == 2
-        # Sorted alphabetically
         assert result[0]['name'] == 'alpha_tool'
         assert result[1]['name'] == 'zebra_tool'
-        # Each entry has required keys
         assert result[0]['description'] == 'A tool'
         assert result[0]['enabled_by_default'] is True
 
@@ -609,20 +589,18 @@ class TestNormalizeMetadataEdgeCases:
         assert trajectory == [{"action": "tool_call"}]
 
     def test_trajectory_dict_with_plain_values(self):
-        """Trajectory dict values without model_dump or __dict__ are kept as-is (else branch)."""
+        """Trajectory dict values without model_dump or __dict__ are kept as-is."""
         from autocode.core.ai.dspy_utils import _normalize_metadata
 
-        # Plain str/int values have neither model_dump nor __dict__
         _, _, _, trajectory = _normalize_metadata(
             None, None, None, {"step_0": "plain string", "step_1": 42}
         )
         assert trajectory == {"step_0": "plain string", "step_1": 42}
 
     def test_trajectory_list_with_plain_values(self):
-        """Trajectory list items without model_dump or __dict__ are kept as-is (else branch)."""
+        """Trajectory list items without model_dump or __dict__ are kept as-is."""
         from autocode.core.ai.dspy_utils import _normalize_metadata
 
-        # Plain str/int values have neither model_dump nor __dict__
         _, _, _, trajectory = _normalize_metadata(
             None, None, None, ["step_a", "step_b", 99]
         )
@@ -630,7 +608,7 @@ class TestNormalizeMetadataEdgeCases:
 
 
 class TestCreateAndExecuteModule:
-    """Tests for _create_and_execute_module() private helper (lines 215-218)."""
+    """Tests for _create_and_execute_module() private helper."""
 
     def test_creates_and_executes_module_with_context(self):
         """_create_and_execute_module creates the correct module and calls it."""
@@ -697,7 +675,6 @@ class TestGetModuleKwargsSchemaEdgeCases:
             schema = get_module_kwargs_schema('FakeModule')
 
         assert len(schema['params']) == 1
-        # Function objects have __name__, so default should be serialized as 'my_func'
         assert schema['params'][0]['default'] == 'my_func'
 
     def test_all_schemas_are_json_serializable(self):
@@ -706,7 +683,6 @@ class TestGetModuleKwargsSchemaEdgeCases:
         from autocode.core.ai.dspy_utils import get_all_module_kwargs_schemas
 
         schemas = get_all_module_kwargs_schemas()
-        # Should not raise TypeError
         json_output = json.dumps(schemas)
         assert json_output is not None
         assert len(json_output) > 0

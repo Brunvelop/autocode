@@ -439,16 +439,15 @@ class TestBuildCompleteEvent:
         assert isinstance(result["history"], list)
 
     def test_lm_history_serialization_failure_logged(self):
-        """If DspyOutput.serialize_value raises on history, history stays None."""
+        """If serialize_value raises on history, history stays None."""
         import dspy
         from autocode.core.ai.streaming import _build_complete_event
-        from autocode.core.ai import models as ai_models
 
         prediction = dspy.Prediction(response="Hi")
         lm = Mock()
         lm.history = [{"some": "data"}]  # Non-empty → enters the try block
 
-        with patch.object(ai_models.DspyOutput, 'serialize_value', side_effect=RuntimeError("fail")):
+        with patch('autocode.core.ai.streaming.serialize_value', side_effect=RuntimeError("fail")):
             result = _build_complete_event(prediction, lm)
 
         # Exception was caught; history falls back to None

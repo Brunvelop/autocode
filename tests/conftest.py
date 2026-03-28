@@ -6,10 +6,15 @@ from unittest.mock import Mock, MagicMock, patch
 from typing import Dict, Any, List
 import logging
 
+from pydantic import BaseModel, Field
 from refract import ParamSchema, FunctionInfo
 from refract.registry import _clear_pending
-from autocode.core.models import GenericOutput
 from autocode.app import app
+
+
+class AddResult(BaseModel):
+    """Simple result model used in test fixtures."""
+    result: int = Field(..., description="Sum of x and y")
 
 # Configure logging for tests
 logging.basicConfig(level=logging.DEBUG)
@@ -35,7 +40,7 @@ def cleanup_registry():
 @pytest.fixture
 def sample_function():
     """Sample function for testing registry functionality."""
-    def test_add(x: int, y: int = 1) -> GenericOutput:
+    def test_add(x: int, y: int = 1) -> AddResult:
         """Add two numbers together.
         
         Args:
@@ -45,7 +50,7 @@ def sample_function():
         Returns:
             Sum of x and y
         """
-        return GenericOutput(result=x + y, success=True)
+        return AddResult(result=x + y)
     return test_add
 
 
@@ -73,7 +78,7 @@ def sample_function_info(sample_function):
             ParamSchema(name="y", type=int, default=1, required=False, description="Second number")
         ],
         http_methods=["GET", "POST"],
-        return_type=GenericOutput
+        return_type=AddResult
     )
 
 
