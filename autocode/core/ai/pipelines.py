@@ -56,7 +56,7 @@ def _read_path_content(path: str) -> str:
     return "\n".join(contents)
 
 
-@register_function(http_methods=["POST"], interfaces=["api", "cli"])
+@register_function(http_methods=["POST"], interfaces=["api"])
 def calculate_context_usage(
     model: ModelType,
     messages: Optional[List[Dict[str, str]]] = None,
@@ -110,7 +110,7 @@ def calculate_context_usage(
         raise HTTPException(status_code=500, detail=f"Error calculando uso de contexto: {str(e)}")
 
 
-@register_function(http_methods=["POST"], interfaces=["api", "cli"])
+@register_function(http_methods=["POST"], interfaces=["api"])
 def chat(
     message: str,
     conversation_history: str = "",
