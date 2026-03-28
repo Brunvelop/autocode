@@ -11,6 +11,7 @@ from typing import AsyncGenerator, Dict, Any, Optional, List
 
 import dspy
 from dspy.streaming import StreamResponse, StatusMessage
+from refract.sse import format_sse as _refract_format_sse
 
 from autocode.core.ai.providers import ModelType
 from autocode.core.ai.dspy_utils import (
@@ -253,13 +254,17 @@ async def stream_chat(
 
 
 def _format_sse(event: str, data: dict) -> str:
-    """Formatea un evento como SSE.
-    
+    """Format an SSE event from a dict payload.
+
+    Thin wrapper over ``refract.sse.format_sse``: serializes the dict with
+    ``ensure_ascii=False`` (preserves unicode / emojis) and delegates the
+    SSE framing to refract, keeping a single source of truth for the wire format.
+
     Args:
-        event: Tipo de evento (token, status, complete, error)
-        data: Datos del evento como diccionario
-        
+        event: SSE event type (token, status, complete, error, …)
+        data: Event payload as a dict — will be JSON-serialised.
+
     Returns:
-        String formateado como evento SSE
+        SSE-formatted string ready to be yielded by a streaming response.
     """
-    return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+    return _refract_format_sse(event, json.dumps(data, ensure_ascii=False))
