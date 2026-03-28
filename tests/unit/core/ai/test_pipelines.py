@@ -7,6 +7,7 @@ Coverage target: calculate_context_usage, chat, chat_stream, get_chat_config.
 import pytest
 import os
 from unittest.mock import Mock, patch
+from fastapi import HTTPException
 
 from autocode.core.ai.pipelines import (
     calculate_context_usage,
@@ -14,8 +15,7 @@ from autocode.core.ai.pipelines import (
     chat_stream,
     get_chat_config,
 )
-from autocode.core.ai.models import DspyOutput
-from autocode.core.models import GenericOutput
+from autocode.core.ai.models import DspyOutput, ContextUsage, ChatConfig
 
 
 # =============================================================================
@@ -27,7 +27,7 @@ class TestCalculateContextUsage:
 
     @patch('autocode.core.ai.pipelines.litellm')
     def test_happy_path_returns_correct_fields(self, mock_litellm):
-        """Returns success=True with current, max, percentage calculated from litellm."""
+        """Returns ContextUsage with current, max, percentage calculated from litellm."""
         mock_litellm.token_counter.return_value = 500
         mock_litellm.get_max_tokens.return_value = 4000
 
@@ -37,11 +37,10 @@ class TestCalculateContextUsage:
             messages=messages
         )
 
-        assert isinstance(result, GenericOutput)
-        assert result.success is True
-        assert result.result["current"] == 500
-        assert result.result["max"] == 4000
-        assert result.result["percentage"] == 12.5
+        assert isinstance(result, ContextUsage)
+        assert result.current == 500
+        assert result.max == 4000
+        assert result.percentage == 12.5
 
         mock_litellm.token_counter.assert_called_once_with(
             model='openrouter/openai/gpt-4o', messages=messages
@@ -59,8 +58,8 @@ class TestCalculateContextUsage:
             messages=[{"role": "user", "content": "x"}]
         )
 
-        assert result.success is True
-        assert result.result["percentage"] == 33.33
+        assert isinstance(result, ContextUsage)
+        assert result.percentage == 33.33
 
     @patch('autocode.core.ai.pipelines.litellm')
     def test_max_tokens_zero_no_division_error(self, mock_litellm):
@@ -73,26 +72,24 @@ class TestCalculateContextUsage:
             messages=[{"role": "user", "content": "Hello"}]
         )
 
-        assert result.success is True
-        assert result.result["percentage"] == 0
-        assert result.result["current"] == 500
-        assert result.result["max"] == 0
+        assert isinstance(result, ContextUsage)
+        assert result.percentage == 0
+        assert result.current == 500
+        assert result.max == 0
 
     @patch('autocode.core.ai.pipelines.litellm')
-    def test_litellm_error_returns_failure(self, mock_litellm):
-        """If litellm raises an exception, returns success=False with zero values."""
+    def test_litellm_error_raises_http_exception(self, mock_litellm):
+        """If litellm raises an exception, raises HTTPException 500."""
         mock_litellm.token_counter.side_effect = Exception("Model not found")
 
-        result = calculate_context_usage(
-            model='openrouter/openai/gpt-4o',
-            messages=[{"role": "user", "content": "Hello"}]
-        )
+        with pytest.raises(HTTPException) as exc_info:
+            calculate_context_usage(
+                model='openrouter/openai/gpt-4o',
+                messages=[{"role": "user", "content": "Hello"}]
+            )
 
-        assert result.success is False
-        assert result.result["current"] == 0
-        assert result.result["max"] == 0
-        assert result.result["percentage"] == 0
-        assert "Model not found" in result.message
+        assert exc_info.value.status_code == 500
+        assert "Model not found" in exc_info.value.detail
 
 
 # =============================================================================
@@ -116,8 +113,8 @@ class TestCalculateContextUsageWithPath:
             path=str(tmp_path)
         )
 
-        assert result.success is True
-        assert result.result["current"] == 200
+        assert isinstance(result, ContextUsage)
+        assert result.current == 200
 
         # token_counter was called with a list containing one user message with the file content
         call_kwargs = mock_litellm.token_counter.call_args.kwargs
@@ -142,8 +139,8 @@ class TestCalculateContextUsageWithPath:
             path=str(tmp_path)
         )
 
-        assert result.success is True
-        assert result.result["current"] == 300
+        assert isinstance(result, ContextUsage)
+        assert result.current == 300
 
         # token_counter was called with the original message + the path content message
         call_kwargs = mock_litellm.token_counter.call_args.kwargs
@@ -166,7 +163,7 @@ class TestCalculateContextUsageWithPath:
             path=str(single_file)
         )
 
-        assert result.success is True
+        assert isinstance(result, ContextUsage)
         call_kwargs = mock_litellm.token_counter.call_args.kwargs
         messages_passed = call_kwargs['messages']
         assert len(messages_passed) == 1
@@ -186,26 +183,23 @@ class TestCalculateContextUsageWithPath:
             path=str(tmp_path)
         )
 
-        assert result.success is True
+        assert isinstance(result, ContextUsage)
         # The readable file content is passed; binary file is ignored
         call_kwargs = mock_litellm.token_counter.call_args.kwargs
         messages_passed = call_kwargs['messages']
         assert len(messages_passed) == 1
         assert "print('hi')" in messages_passed[0]["content"]
 
-    @patch('autocode.core.ai.pipelines.litellm')
-    def test_path_nonexistent_returns_failure(self, mock_litellm):
-        """A path that does not exist returns success=False with a clear message."""
-        mock_litellm.get_max_tokens.return_value = 4000
+    def test_path_nonexistent_raises_http_404(self):
+        """A path that does not exist raises HTTPException 404."""
+        with pytest.raises(HTTPException) as exc_info:
+            calculate_context_usage(
+                model='openrouter/openai/gpt-4o',
+                path='/this/path/definitely/does/not/exist/xyz123'
+            )
 
-        result = calculate_context_usage(
-            model='openrouter/openai/gpt-4o',
-            path='/this/path/definitely/does/not/exist/xyz123'
-        )
-
-        assert result.success is False
-        assert result.result["current"] == 0
-        assert "Path no encontrado" in result.message
+        assert exc_info.value.status_code == 404
+        assert "Path no encontrado" in exc_info.value.detail
 
     @patch('autocode.core.ai.pipelines.litellm')
     def test_path_empty_directory_adds_no_content(self, mock_litellm, tmp_path):
@@ -218,7 +212,7 @@ class TestCalculateContextUsageWithPath:
             path=str(tmp_path)  # empty directory
         )
 
-        assert result.success is True
+        assert isinstance(result, ContextUsage)
         # No content to add → token_counter called with empty messages list
         call_kwargs = mock_litellm.token_counter.call_args.kwargs
         assert call_kwargs['messages'] == []
@@ -436,7 +430,7 @@ class TestGetChatConfig:
     def test_happy_path_returns_all_sections(
         self, mock_fetch_models, mock_refract_cls, mock_schemas, mock_tools_info
     ):
-        """Returns success=True with module_kwargs_schemas, available_tools, models."""
+        """Returns ChatConfig with module_kwargs_schemas, available_tools, models."""
         mock_fetch_models.return_value = {}
         mock_app = Mock()
         mock_refract_cls.current.return_value = mock_app
@@ -451,14 +445,12 @@ class TestGetChatConfig:
 
         result = get_chat_config()
 
-        assert isinstance(result, GenericOutput)
-        assert result.success is True
-        assert "module_kwargs_schemas" in result.result
-        assert "available_tools" in result.result
-        assert "models" in result.result
-
-        assert result.result["module_kwargs_schemas"]["ReAct"]["supports_tools"] is True
-        assert result.result["available_tools"][0]["name"] == "tool_a"
+        assert isinstance(result, ChatConfig)
+        assert "Predict" in result.module_kwargs_schemas
+        assert "ReAct" in result.module_kwargs_schemas
+        assert result.module_kwargs_schemas["ReAct"]["supports_tools"] is True
+        assert result.available_tools[0]["name"] == "tool_a"
+        assert isinstance(result.models, list)
 
     @patch('autocode.core.ai.pipelines.get_available_tools_info')
     @patch('autocode.core.ai.pipelines.get_all_module_kwargs_schemas')
@@ -485,8 +477,8 @@ class TestGetChatConfig:
 
         result = get_chat_config()
 
-        assert result.success is True
-        models = result.result["models"]
+        assert isinstance(result, ChatConfig)
+        models = result.models
         assert isinstance(models, list)
         assert len(models) > 0
 
@@ -515,8 +507,8 @@ class TestGetChatConfig:
 
         result = get_chat_config()
 
-        assert result.success is True
-        models = result.result["models"]
+        assert isinstance(result, ChatConfig)
+        models = result.models
         # All base models should still be present
         assert len(models) > 0
 
@@ -527,15 +519,15 @@ class TestGetChatConfig:
             assert model["name"] != ""  # Not empty
 
     @patch('autocode.core.ai.pipelines.fetch_models_info')
-    def test_error_returns_failure(self, mock_fetch_models):
-        """If an internal call raises, returns success=False with empty result."""
+    def test_error_raises_http_exception(self, mock_fetch_models):
+        """If an internal call raises, raises HTTPException 500."""
         mock_fetch_models.side_effect = RuntimeError("Network error")
 
-        result = get_chat_config()
+        with pytest.raises(HTTPException) as exc_info:
+            get_chat_config()
 
-        assert result.success is False
-        assert result.result == {}
-        assert "Network error" in result.message
+        assert exc_info.value.status_code == 500
+        assert "Network error" in exc_info.value.detail
 
 
 # =============================================================================

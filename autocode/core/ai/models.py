@@ -7,7 +7,7 @@ de DSPy y otras funcionalidades de AI.
 """
 
 import json
-from pydantic import Field
+from pydantic import BaseModel, Field
 from typing import Any, Dict, List, Optional, Union
 from autocode.core.models import GenericOutput
 
@@ -171,3 +171,17 @@ class DspyOutput(GenericOutput):
         if isinstance(value, dict):
             return {key: DspyOutput.serialize_value(val) for key, val in value.items()}
         return DspyOutput._serialize_complex_object(value)
+
+
+class ContextUsage(BaseModel):
+    """Domain model for context window usage."""
+    current: int = Field(0, description="Tokens actuales en el contexto")
+    max: int = Field(0, description="Tokens máximos del modelo")
+    percentage: float = Field(0.0, description="Porcentaje de uso del contexto")
+
+
+class ChatConfig(BaseModel):
+    """Domain model for chat configuration."""
+    module_kwargs_schemas: dict = Field(default_factory=dict, description="Esquemas de parámetros por tipo de módulo")
+    available_tools: list = Field(default_factory=list, description="Herramientas MCP disponibles")
+    models: list = Field(default_factory=list, description="Modelos disponibles con metadata")

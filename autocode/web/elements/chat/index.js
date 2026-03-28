@@ -251,10 +251,7 @@ export class AutocodeChat extends LitElement {
 
     async _loadChatConfig() {
         try {
-            const data = await this._client.call('get_chat_config', {});
-            // Unwrap envelope si tiene la forma { result, success, message }
-            const hasEnvelopeShape = data && typeof data === 'object' && Object.prototype.hasOwnProperty.call(data, 'result');
-            this._chatConfig = hasEnvelopeShape ? data.result : data;
+            this._chatConfig = await this._client.call('get_chat_config', {});
         } catch (error) {
             console.warn('⚠️ Error loading chat config:', error);
         }
@@ -352,17 +349,13 @@ export class AutocodeChat extends LitElement {
         }
 
         try {
-            const data = await this._client.call(
+            const { current = 0, max = 0 } = await this._client.call(
                 'calculate_context_usage',
                 { 
                     model: this.getParam('model') || 'openrouter/openai/gpt-4o',
                     messages 
                 }
             );
-            // Unwrap envelope
-            const hasEnvelopeShape = data && typeof data === 'object' && Object.prototype.hasOwnProperty.call(data, 'result');
-            const result = hasEnvelopeShape ? data.result : data;
-            const { current = 0, max = 0 } = result;
             this._contextBar?.update(current, max);
         } catch (e) {
             console.warn('⚠️ Error calculating context:', e);

@@ -7,9 +7,9 @@ with DSPy generation for complete workflows.
 from typing import Dict, Any, Optional, List, get_args
 import os
 import litellm
+from fastapi import HTTPException
 from refract import register_function, Refract
-from autocode.core.models import GenericOutput
-from autocode.core.ai.models import DspyOutput
+from autocode.core.ai.models import DspyOutput, ContextUsage, ChatConfig
 from autocode.core.utils.openrouter import fetch_models_info
 from autocode.core.ai.providers import ModelType
 from autocode.core.ai.dspy_utils import (
@@ -61,7 +61,7 @@ def calculate_context_usage(
     model: ModelType,
     messages: Optional[List[Dict[str, str]]] = None,
     path: Optional[str] = None,
-) -> GenericOutput:
+) -> ContextUsage:
     """
     Calcula el uso actual y máximo de la ventana de contexto para un modelo.
     
@@ -77,19 +77,19 @@ def calculate_context_usage(
               Opcional si se proporcionan `messages`.
         
     Returns:
-        GenericOutput con result={"current": int, "max": int, "percentage": float}
+        ContextUsage con current, max y percentage
     """
+    all_messages: List[Dict[str, str]] = list(messages) if messages else []
+
+    # Si se proporciona path, añadir su contenido como mensaje user sintético
+    if path is not None:
+        if not os.path.exists(path):
+            raise HTTPException(status_code=404, detail=f"Path no encontrado: {path}")
+        path_content = _read_path_content(path)
+        if path_content:
+            all_messages.append({"role": "user", "content": path_content})
+
     try:
-        all_messages: List[Dict[str, str]] = list(messages) if messages else []
-
-        # Si se proporciona path, añadir su contenido como mensaje user sintético
-        if path is not None:
-            if not os.path.exists(path):
-                raise FileNotFoundError(f"Path no encontrado: {path}")
-            path_content = _read_path_content(path)
-            if path_content:
-                all_messages.append({"role": "user", "content": path_content})
-
         # Calcular tokens actuales usando litellm.token_counter
         current_tokens = litellm.token_counter(model=model, messages=all_messages)
         
@@ -99,22 +99,15 @@ def calculate_context_usage(
         # Calcular porcentaje de uso
         percentage = (current_tokens / max_tokens * 100) if max_tokens > 0 else 0
         
-        return GenericOutput(
-            success=True,
-            result={
-                "current": current_tokens,
-                "max": max_tokens,
-                "percentage": round(percentage, 2)
-            },
-            message=f"Context usage: {current_tokens}/{max_tokens} tokens ({percentage:.1f}%)"
+        return ContextUsage(
+            current=current_tokens,
+            max=max_tokens,
+            percentage=round(percentage, 2)
         )
-        
+    except HTTPException:
+        raise
     except Exception as e:
-        return GenericOutput(
-            success=False,
-            result={"current": 0, "max": 0, "percentage": 0},
-            message=f"Error calculando uso de contexto: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Error calculando uso de contexto: {str(e)}")
 
 
 @register_function(http_methods=["POST"], interfaces=["api", "cli"])
@@ -256,7 +249,7 @@ def chat_stream(
 
 
 @register_function(http_methods=["GET"], interfaces=["api"])
-def get_chat_config() -> GenericOutput:
+def get_chat_config() -> ChatConfig:
     """
     Obtiene la configuración disponible para el chat.
     
@@ -269,10 +262,7 @@ def get_chat_config() -> GenericOutput:
     según el module_type seleccionado y el modelo.
     
     Returns:
-        GenericOutput con:
-        - result.module_kwargs_schemas: Dict[module_type, {params, supports_tools}]
-        - result.available_tools: List[{name, description, enabled_by_default}]
-        - result.models: List[Dict] con info de cada modelo
+        ChatConfig con module_kwargs_schemas, available_tools y models
     """
     try:
         # Obtener lista base de modelos definidos en el sistema
@@ -296,18 +286,12 @@ def get_chat_config() -> GenericOutput:
 
         mcp_functions = Refract.current().get_functions_for_interface("mcp")
 
-        return GenericOutput(
-            success=True,
-            result={
-                "module_kwargs_schemas": get_all_module_kwargs_schemas(),
-                "available_tools": get_available_tools_info(mcp_functions),
-                "models": models_data
-            },
-            message="Configuración de chat obtenida exitosamente"
+        return ChatConfig(
+            module_kwargs_schemas=get_all_module_kwargs_schemas(),
+            available_tools=get_available_tools_info(mcp_functions),
+            models=models_data
         )
+    except HTTPException:
+        raise
     except Exception as e:
-        return GenericOutput(
-            success=False,
-            result={},
-            message=f"Error obteniendo configuración: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Error obteniendo configuración: {str(e)}")
