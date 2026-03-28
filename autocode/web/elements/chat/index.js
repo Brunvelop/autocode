@@ -328,22 +328,28 @@ export class AutocodeChat extends LitElement {
         // Actualizar historial interno — ChatResult tiene response en el top level
         const responseText = data?.response ||
                              (typeof data === 'string' ? data : JSON.stringify(data));
-
-        if (this._pendingUserMessage) {
-            this.conversationHistory.push({ role: 'user', content: this._pendingUserMessage });
-            this._pendingUserMessage = null;
-        }
-
-        this.conversationHistory.push({ role: 'assistant', content: responseText });
-
-        // Sincronizar historial con params para la próxima vuelta
-        this.setParam('conversation_history', this._formatHistory());
+        this._appendToHistory(responseText);
     }
 
     _formatHistory() {
         return this.conversationHistory.map(msg => 
             `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content}`
         ).join(' | ');
+    }
+
+    /**
+     * Añade el mensaje del usuario pendiente y la respuesta del asistente al historial,
+     * y sincroniza el historial serializado con los params del backend.
+     * Punto único de actualización del historial — evita duplicación entre sync y stream.
+     * @param {string} responseText - Texto de la respuesta del asistente
+     */
+    _appendToHistory(responseText) {
+        if (this._pendingUserMessage) {
+            this.conversationHistory.push({ role: 'user', content: this._pendingUserMessage });
+            this._pendingUserMessage = null;
+        }
+        this.conversationHistory.push({ role: 'assistant', content: responseText });
+        this.setParam('conversation_history', this._formatHistory());
     }
 
     _getSimpleModelName() {
@@ -521,12 +527,7 @@ export class AutocodeChat extends LitElement {
 
             // Actualizar historial de conversación
             const responseText = fullText || this.result?.response || '';
-            if (this._pendingUserMessage) {
-                this.conversationHistory.push({ role: 'user', content: this._pendingUserMessage });
-                this._pendingUserMessage = null;
-            }
-            this.conversationHistory.push({ role: 'assistant', content: responseText });
-            this.setParam('conversation_history', this._formatHistory());
+            this._appendToHistory(responseText);
 
         } catch (error) {
             // AbortError: cancelación intencional (nueva conversación, cierre del componente)
