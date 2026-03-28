@@ -39,7 +39,7 @@
         const runner = new TestRunner();
 
         // ====================================================================
-        // MOCK: Intercept AutoFunctionController before component loads
+        // MOCK: Intercept RefractClient.prototype.call before component loads
         // ====================================================================
 
         // MetricsComparison shape — what generate_code_metrics returns
@@ -205,7 +205,7 @@
                 stage.appendChild(el);
                 await waitForLoaded(el);
 
-                runner.assertTrue(executeCallCount > prevCount, 'Debería haber llamado a executeFunction');
+                runner.assertTrue(executeCallCount > prevCount, 'Debería haber llamado a RefractClient.call');
                 const newCalls = calledFunctions.slice(prevCount);
                 runner.assertTrue(
                     newCalls.includes('generate_code_metrics'),

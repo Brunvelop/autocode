@@ -45,7 +45,7 @@
         const runner = new TestRunner();
 
         // ====================================================================
-        // MOCK: Intercept AutoFunctionController before component loads
+        // MOCK: Intercept RefractClient.prototype.call before component loads
         // ====================================================================
 
         const MOCK_SNAPSHOT = {
@@ -179,7 +179,7 @@
 
                 runner.assertTrue(
                     executeCallCount > prevCount,
-                    'Debería haber llamado a executeFunction'
+                    'Debería haber llamado a RefractClient.call'
                 );
                 runner.assertEqual(lastExecutedFunction, 'get_architecture_snapshot');
             });
