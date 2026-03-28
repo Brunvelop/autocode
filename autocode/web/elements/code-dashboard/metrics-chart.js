@@ -88,10 +88,7 @@ export class MetricsChart extends LitElement {
         this._loading = true;
         this._error = null;
         try {
-            const data = await this._client.call('get_metrics_history', {});
-            const result = (data && typeof data === 'object' && Object.prototype.hasOwnProperty.call(data, 'result'))
-                ? data.result : data;
-            this._history = result;
+            this._history = await this._client.call('get_metrics_history', {});
         } catch (e) {
             this._error = e.message || 'Error cargando historial';
         } finally {

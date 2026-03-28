@@ -79,10 +79,10 @@ class TestArchitectureModels:
         assert snapshot.total_files == 1
         assert snapshot.avg_mi == 75.0
 
-    def test_architecture_snapshot_output_success(self):
-        """Output wrapper should carry snapshot in result field."""
+    def test_architecture_snapshot_direct_return(self):
+        """ArchitectureSnapshot can be returned directly without Output wrapper."""
         from autocode.core.code.models import (
-            ArchitectureNode, ArchitectureSnapshot, ArchitectureSnapshotOutput,
+            ArchitectureNode, ArchitectureSnapshot,
         )
 
         root = ArchitectureNode(
@@ -92,18 +92,6 @@ class TestArchitectureModels:
             root_id=".", nodes=[root],
             commit_hash="abc", commit_short="abc", branch="main", timestamp="now",
         )
-        output = ArchitectureSnapshotOutput(
-            success=True, result=snapshot, message="ok"
-        )
-        assert output.success is True
-        assert output.result.root_id == "."
-
-    def test_architecture_snapshot_output_error(self):
-        """Output wrapper should support error state with result=None."""
-        from autocode.core.code.models import ArchitectureSnapshotOutput
-
-        output = ArchitectureSnapshotOutput(
-            success=False, result=None, message="git error"
-        )
-        assert output.success is False
-        assert output.result is None
+        assert snapshot.root_id == "."
+        assert len(snapshot.nodes) == 1
+        assert snapshot.nodes[0].id == "."

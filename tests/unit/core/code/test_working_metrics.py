@@ -249,8 +249,8 @@ class TestAnalyzeWorkingChanges:
 class TestGetWorkingChangesMetricsEndpoint:
     """Tests for the registered endpoint get_working_changes_metrics()."""
 
-    def test_endpoint_returns_success_output(self):
-        """El endpoint debe retornar CommitMetricsOutput con success=True."""
+    def test_endpoint_returns_commit_metrics_directly(self):
+        """El endpoint debe retornar CommitMetrics directamente."""
         from autocode.core.code.models import CommitMetrics
 
         fake_metrics = CommitMetrics(
@@ -264,25 +264,25 @@ class TestGetWorkingChangesMetricsEndpoint:
             mock_analyze.return_value = fake_metrics
 
             from autocode.core.code.metrics import get_working_changes_metrics
-            from autocode.core.code.models import CommitMetricsOutput
 
             result = get_working_changes_metrics()
 
-        assert isinstance(result, CommitMetricsOutput)
-        assert result.success is True
-        assert result.result is not None
-        assert result.result.commit_hash == "working"
+        assert isinstance(result, CommitMetrics)
+        assert result.commit_hash == "working"
+        assert result.files == []
 
-    def test_endpoint_returns_failure_on_error(self):
-        """El endpoint debe capturar excepciones y retornar success=False."""
+    def test_endpoint_raises_http_exception_on_error(self):
+        """El endpoint debe lanzar HTTPException cuando ocurre un error."""
+        import pytest
+        from fastapi import HTTPException
+
         with patch("autocode.core.code.metrics._analyze_working_changes") as mock_analyze:
             mock_analyze.side_effect = RuntimeError("git error")
 
             from autocode.core.code.metrics import get_working_changes_metrics
-            from autocode.core.code.models import CommitMetricsOutput
 
-            result = get_working_changes_metrics()
+            with pytest.raises(HTTPException) as exc_info:
+                get_working_changes_metrics()
 
-        assert isinstance(result, CommitMetricsOutput)
-        assert result.success is False
-        assert "git error" in result.message
+        assert exc_info.value.status_code == 500
+        assert "git error" in exc_info.value.detail

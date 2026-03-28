@@ -18,6 +18,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
+from fastapi import HTTPException
 from refract import register_function
 from autocode.core.vcs.git import git, git_show, get_tracked_files
 from autocode.core.code.analyzer import analyze_file_metrics
@@ -32,13 +33,10 @@ from autocode.core.code.snapshots import (
 from autocode.core.code.models import (
     MetricsSnapshot,
     MetricsComparison,
-    MetricsSnapshotOutput,
-    MetricsSnapshotListOutput,
+    MetricsSnapshotList,
     CommitMetrics,
     CommitFileMetrics,
-    CommitMetricsOutput,
     MetricsHistory,
-    MetricsHistoryOutput,
 )
 
 logger = logging.getLogger(__name__)
@@ -53,7 +51,7 @@ _ALL_EXTENSIONS = (".py", ".js", ".mjs", ".jsx")
 
 
 @register_function(http_methods=["GET"], interfaces=["api", "mcp"])
-def generate_code_metrics() -> MetricsSnapshotOutput:
+def generate_code_metrics() -> MetricsComparison:
     """
     Genera un snapshot completo de métricas del proyecto y lo compara con el anterior.
 
@@ -77,22 +75,14 @@ def generate_code_metrics() -> MetricsSnapshotOutput:
             save_snapshot(snapshot)
 
         previous = load_previous_snapshot(snapshot.commit_hash)
-        comparison = _compare_snapshots(previous, snapshot)
-
-        source = "cache" if cached is not None else "generado"
-        return MetricsSnapshotOutput(
-            success=True,
-            result=comparison,
-            message=f"Snapshot ({source}): {snapshot.total_files} archivos, "
-                    f"avg CC={snapshot.avg_complexity:.2f}, avg MI={snapshot.avg_mi:.1f}",
-        )
+        return _compare_snapshots(previous, snapshot)
     except Exception as e:
         logger.error(f"Error generando métricas: {e}")
-        return MetricsSnapshotOutput(success=False, message=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @register_function(http_methods=["GET"], interfaces=["api", "mcp"])
-def get_metrics_snapshots() -> MetricsSnapshotListOutput:
+def get_metrics_snapshots() -> MetricsSnapshotList:
     """
     Lista todos los snapshots de métricas guardados.
 
@@ -101,18 +91,14 @@ def get_metrics_snapshots() -> MetricsSnapshotListOutput:
     """
     try:
         snapshots = list_snapshots()
-        return MetricsSnapshotListOutput(
-            success=True,
-            result=snapshots,
-            message=f"{len(snapshots)} snapshots encontrados",
-        )
+        return MetricsSnapshotList(snapshots=snapshots)
     except Exception as e:
         logger.error(f"Error listando snapshots: {e}")
-        return MetricsSnapshotListOutput(success=False, message=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @register_function(http_methods=["GET"], interfaces=["api", "mcp"])
-def get_commit_metrics(commit_hash: str) -> CommitMetricsOutput:
+def get_commit_metrics(commit_hash: str) -> CommitMetrics:
     """
     Calcula métricas before/after de los archivos cambiados en un commit.
 
@@ -123,19 +109,14 @@ def get_commit_metrics(commit_hash: str) -> CommitMetricsOutput:
         commit_hash: Hash del commit (completo o abreviado)
     """
     try:
-        metrics = _analyze_commit(commit_hash)
-        return CommitMetricsOutput(
-            success=True,
-            result=metrics,
-            message=f"Commit {metrics.commit_short}: {len(metrics.files)} archivos analizados",
-        )
+        return _analyze_commit(commit_hash)
     except Exception as e:
         logger.error(f"Error analizando commit {commit_hash}: {e}")
-        return CommitMetricsOutput(success=False, message=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @register_function(http_methods=["GET"], interfaces=["api", "mcp"])
-def get_working_changes_metrics() -> CommitMetricsOutput:
+def get_working_changes_metrics() -> CommitMetrics:
     """
     Calcula métricas before/after de los archivos modificados en el working directory.
 
@@ -144,19 +125,14 @@ def get_working_changes_metrics() -> CommitMetricsOutput:
     Útil para ver el impacto de código a punto de ser commiteado.
     """
     try:
-        metrics = _analyze_working_changes()
-        return CommitMetricsOutput(
-            success=True,
-            result=metrics,
-            message=f"Working changes: {len(metrics.files)} archivos analizados",
-        )
+        return _analyze_working_changes()
     except Exception as e:
         logger.error(f"Error analizando working changes: {e}")
-        return CommitMetricsOutput(success=False, message=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @register_function(http_methods=["GET"], interfaces=["api", "mcp"])
-def get_metrics_history(max_count: int = 100) -> MetricsHistoryOutput:
+def get_metrics_history(max_count: int = 100) -> MetricsHistory:
     """
     Obtiene la serie temporal de métricas agregadas para graficar.
 
@@ -189,16 +165,10 @@ def get_metrics_history(max_count: int = 100) -> MetricsHistoryOutput:
             {"key": "circular_deps_count", "label": "Deps Circulares", "group": "coupling", "description": "Dependencias circulares detectadas"},
         ]
 
-        history = MetricsHistory(points=points, available_metrics=available_metrics)
-
-        return MetricsHistoryOutput(
-            success=True,
-            result=history,
-            message=f"{len(points)} snapshots en historial",
-        )
+        return MetricsHistory(points=points, available_metrics=available_metrics)
     except Exception as e:
         logger.error(f"Error obteniendo historial de métricas: {e}")
-        return MetricsHistoryOutput(success=False, message=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ==============================================================================

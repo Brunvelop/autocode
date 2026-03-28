@@ -19,11 +19,11 @@ from datetime import datetime
 from pathlib import Path
 from typing import List, Dict, Optional, Tuple, Set
 
+from fastapi import HTTPException
 from refract import register_function
 from autocode.core.code.models import (
     ArchitectureNode,
     ArchitectureSnapshot,
-    ArchitectureSnapshotOutput,
     FileDependency,
 )
 from autocode.core.vcs.git import git, git_show, get_tracked_files, get_tracked_files_at_commit
@@ -43,7 +43,7 @@ _ALL_EXTENSIONS = (".py", ".js", ".mjs", ".jsx")
 
 
 @register_function(http_methods=["GET"], interfaces=["api"])
-def get_architecture_snapshot(path: str = ".", commit_hash: str = "") -> ArchitectureSnapshotOutput:
+def get_architecture_snapshot(path: str = ".", commit_hash: str = "") -> ArchitectureSnapshot:
     """
     Obtiene un snapshot de la arquitectura del proyecto con métricas por nodo.
 
@@ -101,7 +101,7 @@ def get_architecture_snapshot(path: str = ".", commit_hash: str = "") -> Archite
             all_files, content_reader=content_reader
         )
 
-        snapshot = ArchitectureSnapshot(
+        return ArchitectureSnapshot(
             root_id=root_id,
             nodes=nodes,
             commit_hash=commit_full,
@@ -118,16 +118,9 @@ def get_architecture_snapshot(path: str = ".", commit_hash: str = "") -> Archite
             circular_dependencies=circular_dependencies,
         )
 
-        return ArchitectureSnapshotOutput(
-            success=True,
-            result=snapshot,
-            message=f"Arquitectura: {total_files} archivos, {total_sloc} SLOC, "
-                    f"MI={avg_mi:.1f}, CC={avg_complexity:.2f}",
-        )
-
     except Exception as e:
         logger.error(f"Error generando snapshot de arquitectura: {e}")
-        return ArchitectureSnapshotOutput(success=False, message=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ==============================================================================

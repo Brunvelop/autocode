@@ -56,9 +56,7 @@ export class MetricsPanel extends LitElement {
         this._loading = true;
         this._error = null;
         try {
-            const data = await this._client.call('generate_code_metrics', {});
-            this._data = (data && typeof data === 'object' && Object.prototype.hasOwnProperty.call(data, 'result'))
-                ? data.result : data;
+            this._data = await this._client.call('generate_code_metrics', {});
         } catch (e) {
             this._error = e.message || 'Error generando métricas';
         } finally {

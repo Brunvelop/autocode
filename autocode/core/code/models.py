@@ -9,8 +9,6 @@ Similar a GitNodeEntry/GitTreeGraph en autocode/core/vcs/models.py.
 from typing import List, Optional, Literal
 from pydantic import BaseModel, Field
 
-from autocode.core.models import GenericOutput
-
 
 # Tipos de nodos soportados
 NodeType = Literal["directory", "file", "class", "function", "method", "import", "variable"]
@@ -66,21 +64,13 @@ class CodeStructureResult(BaseModel):
     total_classes: int = Field(0, description="Total de clases")
 
 
-class CodeStructureOutput(GenericOutput):
+class CodeSummaryResult(BaseModel):
     """
-    Output de get_code_structure().
-    Extiende GenericOutput con tipado específico para result.
-    """
-    result: Optional[CodeStructureResult] = None
-
-
-class CodeSummaryOutput(GenericOutput):
-    """
-    Output de get_code_summary().
+    Resultado de get_code_summary().
     Versión compacta en texto plano, optimizada para uso en LLMs.
     Devuelve un string tipo tree con estructura y métricas básicas.
     """
-    result: Optional[str] = None
+    summary: str = Field(..., description="Texto tree del resumen de estructura")
 
 
 # ==============================================================================
@@ -204,23 +194,13 @@ class CommitMetrics(BaseModel):
 
 
 # ==============================================================================
-# METRICS OUTPUT MODELS (GenericOutput wrappers)
+# METRICS LIST MODEL
 # ==============================================================================
 
 
-class MetricsSnapshotOutput(GenericOutput):
-    """Output de generate_code_metrics() y get_metrics_snapshot()."""
-    result: Optional[MetricsComparison] = None
-
-
-class MetricsSnapshotListOutput(GenericOutput):
-    """Output de get_metrics_snapshots()."""
-    result: Optional[List[dict]] = None
-
-
-class CommitMetricsOutput(GenericOutput):
-    """Output de get_commit_metrics()."""
-    result: Optional[CommitMetrics] = None
+class MetricsSnapshotList(BaseModel):
+    """Resultado de get_metrics_snapshots()."""
+    snapshots: List[dict] = Field(default_factory=list, description="Lista de snapshots guardados")
 
 
 # ==============================================================================
@@ -267,9 +247,6 @@ class MetricsHistory(BaseModel):
     )
 
 
-class MetricsHistoryOutput(GenericOutput):
-    """Output de get_metrics_history()."""
-    result: Optional[MetricsHistory] = None
 
 
 # ==============================================================================
@@ -351,9 +328,6 @@ class ArchitectureSnapshot(BaseModel):
     )
 
 
-class ArchitectureSnapshotOutput(GenericOutput):
-    """Output de get_architecture_snapshot()."""
-    result: Optional[ArchitectureSnapshot] = None
 
 
 # ==============================================================================
@@ -380,6 +354,3 @@ class HealthCheckResultModel(BaseModel):
     summary: dict = Field(default_factory=dict, description="Aggregated metrics for display")
 
 
-class HealthCheckOutput(GenericOutput):
-    """Output of get_health_check()."""
-    result: Optional[HealthCheckResultModel] = None

@@ -91,8 +91,7 @@ def health_check(output_format: str, strict: bool, project_root: str):
 
     from autocode.core.code.health import get_health_check
 
-    output = get_health_check(strict=strict, project_root=project_root)
-    result = output.result
+    result = get_health_check(strict=strict, project_root=project_root)
 
     if output_format == "json":
         _print_health_json(result)

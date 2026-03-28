@@ -20,7 +20,7 @@ from typing import Optional
 
 from refract import register_function
 
-from autocode.core.code.models import FileMetrics, PackageCoupling, HealthCheckOutput, HealthCheckResultModel, HealthViolationResult
+from autocode.core.code.models import FileMetrics, PackageCoupling, HealthCheckResultModel, HealthViolationResult
 
 
 # ==============================================================================
@@ -404,7 +404,7 @@ def _build_summary(
 
 
 @register_function(http_methods=["GET"], interfaces=["api", "mcp"])
-def get_health_check(strict: bool = False, project_root: str = ".") -> HealthCheckOutput:
+def get_health_check(strict: bool = False, project_root: str = ".") -> HealthCheckResultModel:
     """Run code health quality gates against a project.
 
     Analyzes all files tracked by git and checks them against quality thresholds
@@ -417,6 +417,7 @@ def get_health_check(strict: bool = False, project_root: str = ".") -> HealthChe
     from autocode.core.code.analyzer import analyze_file_metrics
     from autocode.core.code.coupling import analyze_coupling
     from autocode.core.vcs.git import get_tracked_files
+    from fastapi import HTTPException
 
     _ALL_EXTENSIONS = (".py", ".js", ".mjs", ".jsx")
     root = Path(project_root).resolve()
@@ -448,12 +449,8 @@ def get_health_check(strict: bool = False, project_root: str = ".") -> HealthChe
         for v in result.violations
     ]
 
-    return HealthCheckOutput(
-        result=HealthCheckResultModel(
-            passed=result.passed,
-            violations=violations,
-            summary=result.summary,
-        ),
-        success=result.passed,
-        message="All gates passed" if result.passed else "Critical violations found",
+    return HealthCheckResultModel(
+        passed=result.passed,
+        violations=violations,
+        summary=result.summary,
     )

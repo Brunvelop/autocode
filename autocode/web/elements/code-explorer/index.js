@@ -152,20 +152,6 @@ export class CodeExplorer extends LitElement {
     }
 
     // ========================================================================
-    // HTTP CLIENT HELPER
-    // ========================================================================
-
-    /**
-     * Call API and unwrap envelope → payload.
-     * Mirrors the behavior of AutoFunctionController.executeFunction().
-     */
-    async _call(funcName, params) {
-        const data = await this._client.call(funcName, params);
-        return (data && typeof data === 'object' && Object.prototype.hasOwnProperty.call(data, 'result'))
-            ? data.result : data;
-    }
-
-    // ========================================================================
     // PUBLIC API
     // ========================================================================
 
@@ -177,7 +163,7 @@ export class CodeExplorer extends LitElement {
         this._error = null;
 
         try {
-            const result = await this._call(
+            const result = await this._client.call(
                 'get_code_structure',
                 {
                     path: this.path,
