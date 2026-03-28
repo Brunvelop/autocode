@@ -69,7 +69,7 @@ def create_commit_plan(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@register_function(http_methods=["GET"], interfaces=["api", "mcp"])
+@register_function(http_methods=["GET"], interfaces=["api", "mcp", "cli"])
 def list_commit_plans(status: str = "") -> CommitPlanList:
     """
     Lista todos los planes de commit guardados.
@@ -108,7 +108,7 @@ def get_commit_plan(plan_id: str) -> CommitPlan:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@register_function(http_methods=["POST"], interfaces=["api", "mcp"])
+@register_function(http_methods=["PUT"], interfaces=["api", "mcp"])
 def update_commit_plan(
     plan_id: str,
     title: str = "",
@@ -172,7 +172,7 @@ def update_commit_plan(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@register_function(http_methods=["POST"], interfaces=["api", "mcp"])
+@register_function(http_methods=["DELETE"], interfaces=["api", "mcp"])
 def delete_commit_plan(plan_id: str) -> DeleteResult:
     """
     Elimina un plan de commit.

@@ -136,7 +136,7 @@ def get_git_status() -> GitStatusResult:
         raise HTTPException(status_code=500, detail=error_msg)
 
 
-@register_function(http_methods=["GET"], interfaces=["api", "mcp"])
+@register_function(http_methods=["GET"], interfaces=["api", "mcp", "cli"])
 def get_git_status_summary() -> GitStatusSummary:
     """
     Obtiene un resumen compacto del estado del repositorio git.

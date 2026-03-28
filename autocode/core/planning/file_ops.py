@@ -59,7 +59,7 @@ def _resolve_path(path: str) -> Path:
 # ==============================================================================
 
 
-@register_function(interfaces=["mcp"])
+@register_function(http_methods=["GET"], interfaces=["mcp"])
 def read_file_content(path: str) -> FileReadResult:
     """Read the content of a file.
 
@@ -91,7 +91,7 @@ def read_file_content(path: str) -> FileReadResult:
     )
 
 
-@register_function(interfaces=["mcp"])
+@register_function(http_methods=["POST"], interfaces=["mcp"])
 def write_file_content(path: str, content: str) -> FileWriteResult:
     """Write content to a file, creating directories if needed.
 
@@ -117,7 +117,7 @@ def write_file_content(path: str, content: str) -> FileWriteResult:
     )
 
 
-@register_function(interfaces=["mcp"])
+@register_function(http_methods=["POST"], interfaces=["mcp"])
 def replace_in_file(path: str, old_string: str, new_string: str) -> FileReplaceResult:
     """Replace the first occurrence of a string in a file.
 
@@ -153,7 +153,7 @@ def replace_in_file(path: str, old_string: str, new_string: str) -> FileReplaceR
     )
 
 
-@register_function(interfaces=["mcp"])
+@register_function(http_methods=["POST"], interfaces=["mcp"])
 def delete_file(path: str) -> FileDeleteResult:
     """Delete a file.
 

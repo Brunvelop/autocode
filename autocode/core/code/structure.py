@@ -101,7 +101,7 @@ def get_code_structure(
         raise HTTPException(status_code=500, detail=f"Error analizando estructura: {str(e)}")
 
 
-@register_function(http_methods=["GET"], interfaces=["api", "mcp"])
+@register_function(http_methods=["GET"], interfaces=["api", "mcp", "cli"])
 def get_code_summary(
     path: str = ".",
     depth: int = -1,

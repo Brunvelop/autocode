@@ -78,7 +78,7 @@ def get_git_log(max_count: int = 50, branch: str = "") -> GitLogGraph:
         raise HTTPException(status_code=500, detail=error_msg)
 
 
-@register_function(http_methods=["GET"], interfaces=["api", "mcp"])
+@register_function(http_methods=["GET"], interfaces=["api", "mcp", "cli"])
 def get_git_log_summary(max_count: int = 15, branch: str = "") -> GitLogSummary:
     """
     Obtiene un resumen compacto del historial de commits.

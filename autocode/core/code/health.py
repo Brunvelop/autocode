@@ -360,7 +360,7 @@ def _build_summary(
 # ==============================================================================
 
 
-@register_function(http_methods=["GET"], interfaces=["api", "mcp"])
+@register_function(http_methods=["GET"], interfaces=["api", "mcp", "cli"])
 def get_health_check(strict: bool = False, project_root: str = ".") -> HealthCheckResult:
     """Run code health quality gates against a project.
 
