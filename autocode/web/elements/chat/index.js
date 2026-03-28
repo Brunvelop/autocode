@@ -218,12 +218,12 @@ export class AutocodeChat extends LitElement {
 
     /**
      * Carga el schema de la función 'chat' desde el registry.
-     * Reemplaza el loadFunctionInfo() heredado de AutoFunctionController.
+     * Usa getSchema() idiomático de RefractClient (aprovecha el cache interno).
      */
     async _loadFuncInfo() {
         try {
-            const schemas = await this._client.loadSchemas();
-            this.funcInfo = schemas['chat'] || null;
+            await this._client.loadSchemas();
+            this.funcInfo = this._client.getSchema('chat');
         } catch (error) {
             console.warn('⚠️ Error loading chat funcInfo:', error);
         }
@@ -285,12 +285,13 @@ export class AutocodeChat extends LitElement {
 
     /**
      * Pre-carga la info de chat_stream del registry para evitar latencia en el primer mensaje.
+     * Usa getSchema() idiomático de RefractClient (aprovecha el cache interno de loadSchemas).
      * Si chat_stream no está disponible, _streamFuncInfo queda null y se usa fallback síncrono.
      */
     async _loadStreamFuncInfo() {
         try {
-            const schemas = await this._client.loadSchemas();
-            this._streamFuncInfo = schemas['chat_stream'] || null;
+            await this._client.loadSchemas();
+            this._streamFuncInfo = this._client.getSchema('chat_stream');
         } catch (e) {
             console.warn('⚠️ Could not pre-load chat_stream info');
             this._streamFuncInfo = null;
