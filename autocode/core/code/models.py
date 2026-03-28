@@ -335,8 +335,8 @@ class ArchitectureSnapshot(BaseModel):
 # ==============================================================================
 
 
-class HealthViolationResult(BaseModel):
-    """Pydantic model for a structured health violation."""
+class HealthViolation(BaseModel):
+    """Violación estructurada de una quality gate."""
 
     rule: str = Field(..., description="Rule identifier (mi, function_cc, nesting, sloc, avg_cc, rank_f, circular_deps, project_mi, project_cc)")
     level: str = Field(..., description="Severity: critical or warning")
@@ -346,11 +346,11 @@ class HealthViolationResult(BaseModel):
     detail: Optional[str] = Field(None, description="Extra information (function name, line, etc.)")
 
 
-class HealthCheckResultModel(BaseModel):
-    """Pydantic model for the result of all quality gates."""
+class HealthCheckResult(BaseModel):
+    """Resultado de ejecutar todas las quality gates."""
 
     passed: bool = Field(..., description="True if no critical violations found")
-    violations: List[HealthViolationResult] = Field(default_factory=list, description="All violations (critical + warning)")
+    violations: List[HealthViolation] = Field(default_factory=list, description="All violations (critical + warning)")
     summary: dict = Field(default_factory=dict, description="Aggregated metrics for display")
 
 

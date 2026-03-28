@@ -27,8 +27,8 @@ from .models import (
     ArchitectureNode,
     ArchitectureSnapshot,
     # Health check models
-    HealthViolationResult,
-    HealthCheckResultModel,
+    HealthViolation,
+    HealthCheckResult,
 )
 from .structure import get_code_structure, get_code_summary
 from .metrics import generate_code_metrics, get_metrics_snapshots, get_commit_metrics, get_metrics_history
@@ -67,8 +67,8 @@ __all__ = [
     # Architecture functions
     'get_architecture_snapshot',
     # Health check models
-    'HealthViolationResult',
-    'HealthCheckResultModel',
+    'HealthViolation',
+    'HealthCheckResult',
     # Health check function
     'get_health_check',
 ]
