@@ -19,7 +19,10 @@ from autocode.core.vcs.models import (
     # Tree models
     GitNodeEntry,
     GitTreeGraph,
-    # Status summary model
+    # Status models
+    FileStatus,
+    GitFileStatus,
+    GitStatusResult,
     GitStatusSummary,
     # Log/Graph models
     GitCommit,
@@ -33,8 +36,6 @@ from autocode.core.vcs.tree import get_git_tree
 from autocode.core.vcs.status import (
     get_git_status,
     get_git_status_summary,
-    GitFileStatus,
-    GitStatusResult,
 )
 from autocode.core.vcs.log import get_git_log, get_git_log_summary, get_commit_detail
 from autocode.core.vcs.git import git, git_checked, git_show, git_add_and_commit, get_tracked_files, get_tracked_files_at_commit

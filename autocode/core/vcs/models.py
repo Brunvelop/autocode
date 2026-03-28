@@ -8,6 +8,8 @@ from typing import Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field
 
+FileStatus = Literal["added", "modified", "deleted", "renamed", "untracked", "staged"]
+
 
 class GitNodeEntry(BaseModel):
     """Representación plana de un nodo en el árbol git (no-recursivo / adjacency list)."""
@@ -28,8 +30,34 @@ class GitTreeGraph(BaseModel):
 
 
 # ==============================================================================
-# GIT STATUS SUMMARY
+# GIT STATUS MODELS
 # ==============================================================================
+
+
+class GitFileStatus(BaseModel):
+    """Estado de un archivo individual en el repositorio."""
+
+    path: str = Field(..., description="Path relativo del archivo")
+    status: FileStatus = Field(..., description="Estado del archivo")
+    staged: bool = Field(default=False, description="Si está en staging area")
+    old_path: Optional[str] = Field(None, description="Path anterior (para renamed)")
+    additions: int = Field(default=0, description="Líneas añadidas")
+    deletions: int = Field(default=0, description="Líneas eliminadas")
+
+
+class GitStatusResult(BaseModel):
+    """Resultado del status del repositorio."""
+
+    branch: str = Field(..., description="Nombre de la branch actual")
+    is_clean: bool = Field(default=True, description="Si el repo está limpio")
+    files: List[GitFileStatus] = Field(default_factory=list, description="Archivos con cambios")
+
+    # Contadores por tipo
+    total_added: int = Field(default=0, description="Total archivos añadidos")
+    total_modified: int = Field(default=0, description="Total archivos modificados")
+    total_deleted: int = Field(default=0, description="Total archivos eliminados")
+    total_untracked: int = Field(default=0, description="Total archivos sin trackear")
+    total_staged: int = Field(default=0, description="Total archivos en staging")
 
 
 class GitStatusSummary(BaseModel):
