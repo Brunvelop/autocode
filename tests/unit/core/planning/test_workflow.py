@@ -3,14 +3,12 @@ Tests for workflow.py — approve/revert/review_metrics operations.
 
 These operations are extracted from planner.py into a dedicated workflow module
 that handles git-related operations (approve, revert) and review metrics retrieval.
-
-RED phase: autocode.core.planning.workflow does NOT exist yet.
-These tests will fail with ImportError until the module is created.
 """
 import json
 from unittest.mock import patch
 
 import pytest
+from fastapi import HTTPException
 
 from autocode.core.planning.workflow import (
     approve_plan,
@@ -84,15 +82,14 @@ class TestApprovePlanWorkflow:
 
             result = approve_plan(plan_id=plan_id)
 
-        assert result.success is True
-        assert result.result.status == "completed"
+        assert result.status == "completed"
         # Verify git was called for add + commit
         git_calls = [str(c) for c in mock_git.call_args_list]
         assert any("add" in c for c in git_calls)
         assert any("commit" in c for c in git_calls)
 
     def test_approve_rejects_wrong_status(self, tmp_path):
-        """Plan en draft → approve → error."""
+        """Plan en draft → approve → HTTPException 400."""
         plan_data = {
             "id": "20260501-130000",
             "title": "Draft Plan",
@@ -102,10 +99,10 @@ class TestApprovePlanWorkflow:
         (tmp_path / "20260501-130000.json").write_text(json.dumps(plan_data))
 
         with patch("autocode.core.planning.persistence.PLANS_DIR", str(tmp_path)):
-            result = approve_plan(plan_id="20260501-130000")
-
-        assert result.success is False
-        assert "status" in result.message.lower() or "pending_review" in result.message.lower()
+            with pytest.raises(HTTPException) as exc_info:
+                approve_plan(plan_id="20260501-130000")
+        assert exc_info.value.status_code == 400
+        assert "status" in exc_info.value.detail.lower() or "pending_review" in exc_info.value.detail.lower()
 
     def test_approve_stores_commit_hash(self, tmp_path):
         """Tras approve, execution.commit_hash se rellena con el hash del commit."""
@@ -117,8 +114,7 @@ class TestApprovePlanWorkflow:
 
             result = approve_plan(plan_id=plan_id)
 
-        assert result.success is True
-        assert result.result.execution.commit_hash == "def456789"
+        assert result.execution.commit_hash == "def456789"
 
     def test_approve_with_custom_message(self, tmp_path):
         """approve con commit_message usa ese mensaje en vez del plan title."""
@@ -130,7 +126,7 @@ class TestApprovePlanWorkflow:
 
             result = approve_plan(plan_id=plan_id, commit_message="custom: my message")
 
-        assert result.success is True
+        assert result.status == "completed"
         # Verify the commit call used the custom message
         commit_calls = [c for c in mock_git.call_args_list
                         if "commit" in str(c)]
@@ -138,12 +134,12 @@ class TestApprovePlanWorkflow:
         assert "custom: my message" in str(commit_calls[0])
 
     def test_approve_nonexistent_plan(self, tmp_path):
-        """approve_plan con plan inexistente → error."""
+        """approve_plan con plan inexistente → HTTPException 404."""
         with patch("autocode.core.planning.persistence.PLANS_DIR", str(tmp_path)):
-            result = approve_plan(plan_id="nonexistent")
-
-        assert result.success is False
-        assert "no encontrado" in result.message.lower() or "not found" in result.message.lower()
+            with pytest.raises(HTTPException) as exc_info:
+                approve_plan(plan_id="nonexistent")
+        assert exc_info.value.status_code == 404
+        assert "no encontrado" in exc_info.value.detail.lower() or "not found" in exc_info.value.detail.lower()
 
 
 # ==============================================================================
@@ -204,8 +200,7 @@ class TestRevertPlanWorkflow:
              patch("autocode.core.planning.workflow.git_checked") as mock_git:
             result = revert_plan(plan_id=plan_id)
 
-        assert result.success is True
-        assert result.result.status == "reverted"
+        assert result.status == "reverted"
         # Verify git checkout was called with the files
         git_calls = [str(c) for c in mock_git.call_args_list]
         assert any("checkout" in c for c in git_calls)
@@ -213,7 +208,7 @@ class TestRevertPlanWorkflow:
         assert any("src/utils.py" in c for c in git_calls)
 
     def test_revert_rejects_wrong_status(self, tmp_path):
-        """Plan en draft → revert → error."""
+        """Plan en draft → revert → HTTPException 400."""
         plan_data = {
             "id": "20260501-150000",
             "title": "Draft Plan",
@@ -223,10 +218,10 @@ class TestRevertPlanWorkflow:
         (tmp_path / "20260501-150000.json").write_text(json.dumps(plan_data))
 
         with patch("autocode.core.planning.persistence.PLANS_DIR", str(tmp_path)):
-            result = revert_plan(plan_id="20260501-150000")
-
-        assert result.success is False
-        assert "status" in result.message.lower() or "pending_review" in result.message.lower()
+            with pytest.raises(HTTPException) as exc_info:
+                revert_plan(plan_id="20260501-150000")
+        assert exc_info.value.status_code == 400
+        assert "status" in exc_info.value.detail.lower() or "pending_review" in exc_info.value.detail.lower()
 
     def test_revert_marks_as_reverted(self, tmp_path):
         """Tras revert, el status es 'reverted'."""
@@ -236,8 +231,7 @@ class TestRevertPlanWorkflow:
              patch("autocode.core.planning.workflow.git_checked"):
             result = revert_plan(plan_id=plan_id)
 
-        assert result.success is True
-        assert result.result.status == "reverted"
+        assert result.status == "reverted"
 
     def test_revert_uses_parent_commit(self, tmp_path):
         """Revert usa parent_commit del plan como referencia para checkout."""
@@ -249,7 +243,7 @@ class TestRevertPlanWorkflow:
              patch("autocode.core.planning.workflow.git_checked") as mock_git:
             result = revert_plan(plan_id=plan_id)
 
-        assert result.success is True
+        assert result.status == "reverted"
         git_calls_str = str(mock_git.call_args_list)
         assert "deadbeef123" in git_calls_str
 
@@ -273,16 +267,15 @@ class TestRevertPlanWorkflow:
              patch("autocode.core.planning.workflow.git_checked", side_effect=git_side_effect):
             result = revert_plan(plan_id=plan_id)
 
-        assert result.success is True
-        assert result.result.status == "reverted"
+        assert result.status == "reverted"
 
     def test_revert_nonexistent_plan(self, tmp_path):
-        """revert_plan con plan inexistente → error."""
+        """revert_plan con plan inexistente → HTTPException 404."""
         with patch("autocode.core.planning.persistence.PLANS_DIR", str(tmp_path)):
-            result = revert_plan(plan_id="nonexistent")
-
-        assert result.success is False
-        assert "no encontrado" in result.message.lower() or "not found" in result.message.lower()
+            with pytest.raises(HTTPException) as exc_info:
+                revert_plan(plan_id="nonexistent")
+        assert exc_info.value.status_code == 404
+        assert "no encontrado" in exc_info.value.detail.lower() or "not found" in exc_info.value.detail.lower()
 
 
 # ==============================================================================
@@ -343,23 +336,23 @@ class TestRevertPlanFallback:
              patch("autocode.core.planning.workflow.git_checked", side_effect=git_side_effect) as mock_git:
             result = revert_plan(plan_id=plan_id)
 
-        assert result.success is True
-        assert result.result.status == "reverted"
+        assert result.status == "reverted"
         # Verify git diff --name-only was called with parent_commit
         diff_calls = [c for c in mock_git.call_args_list if "diff" in str(c)]
         assert len(diff_calls) >= 1
         assert "deadbeef" in str(diff_calls[0])
 
     def test_revert_empty_files_no_parent_commit_returns_error(self, tmp_path):
-        """Empty files_changed AND no parent_commit → error (no way to know what to revert)."""
+        """Empty files_changed AND no parent_commit → HTTPException 400."""
         plan_id = self._create_plan(tmp_path, files_changed=[], parent_commit="")
 
         with patch("autocode.core.planning.persistence.PLANS_DIR", str(tmp_path)), \
              patch("autocode.core.planning.workflow.git_checked") as mock_git:
-            result = revert_plan(plan_id=plan_id)
+            with pytest.raises(HTTPException) as exc_info:
+                revert_plan(plan_id=plan_id)
 
-        assert result.success is False
-        assert "no files" in result.message.lower() or "empty" in result.message.lower()
+        assert exc_info.value.status_code == 400
+        assert "no files" in exc_info.value.detail.lower() or "empty" in exc_info.value.detail.lower()
         # git diff should NOT be called since there's no parent_commit
         diff_calls = [c for c in mock_git.call_args_list if "diff" in str(c)]
         assert len(diff_calls) == 0
@@ -377,7 +370,7 @@ class TestRevertPlanFallback:
              patch("autocode.core.planning.workflow.git_checked", side_effect=git_side_effect) as mock_git:
             result = revert_plan(plan_id=plan_id)
 
-        assert result.success is True
+        assert result.status == "reverted"
         git_calls_str = str(mock_git.call_args_list)
         # Both recomputed files should be checked out
         assert "src/module_a.py" in git_calls_str
@@ -465,25 +458,22 @@ class TestGetPlanReviewMetricsWorkflow:
         with patch("autocode.core.planning.persistence.PLANS_DIR", str(tmp_path)):
             result = get_plan_review_metrics(plan_id=plan_id)
 
-        assert result.success is True
-        data = result.result
-
         # Verify files
-        assert len(data["files"]) == 2
-        assert data["files"][0]["path"] == "src/main.py"
-        assert data["files"][0]["delta_sloc"] == 20
-        assert data["files"][1]["path"] == "src/utils.py"
+        assert len(result.files) == 2
+        assert result.files[0]["path"] == "src/main.py"
+        assert result.files[0]["delta_sloc"] == 20
+        assert result.files[1]["path"] == "src/utils.py"
 
         # Verify summary
-        assert data["summary"]["verdict"] == "approved"
-        assert data["summary"]["summary"] == "All checks passed"
-        assert data["summary"]["mode"] == "auto"
-        assert "Minor style issue" in data["summary"]["issues"]
-        assert "Consider adding docstrings" in data["summary"]["suggestions"]
+        assert result.summary["verdict"] == "approved"
+        assert result.summary["summary"] == "All checks passed"
+        assert result.summary["mode"] == "auto"
+        assert "Minor style issue" in result.summary["issues"]
+        assert "Consider adding docstrings" in result.summary["suggestions"]
 
         # Verify quality_gates
-        assert data["quality_gates"]["complexity_ok"] is True
-        assert data["quality_gates"]["no_regressions"] is True
+        assert result.quality_gates["complexity_ok"] is True
+        assert result.quality_gates["no_regressions"] is True
 
     def test_returns_empty_when_no_review(self, tmp_path):
         """Plan sin review → returns empty files/summary/quality_gates."""
@@ -492,15 +482,13 @@ class TestGetPlanReviewMetricsWorkflow:
         with patch("autocode.core.planning.persistence.PLANS_DIR", str(tmp_path)):
             result = get_plan_review_metrics(plan_id=plan_id)
 
-        assert result.success is True
-        data = result.result
-        assert data["files"] == []
-        assert data["summary"] == {}
-        assert data["quality_gates"] == {}
+        assert result.files == []
+        assert result.summary == {}
+        assert result.quality_gates == {}
 
     def test_nonexistent_plan_returns_error(self, tmp_path):
-        """Plan inexistente → success=False."""
+        """Plan inexistente → HTTPException 404."""
         with patch("autocode.core.planning.persistence.PLANS_DIR", str(tmp_path)):
-            result = get_plan_review_metrics(plan_id="nonexistent")
-
-        assert result.success is False
+            with pytest.raises(HTTPException) as exc_info:
+                get_plan_review_metrics(plan_id="nonexistent")
+        assert exc_info.value.status_code == 404

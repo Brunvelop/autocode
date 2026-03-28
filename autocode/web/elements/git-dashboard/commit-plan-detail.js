@@ -257,19 +257,6 @@ export class CommitPlanDetail extends LitElement {
     }
 
     // ========================================================================
-    // HTTP CLIENT HELPER
-    // ========================================================================
-
-    /**
-     * Call API and unwrap envelope → payload.
-     */
-    async _call(funcName, params) {
-        const data = await this._client.call(funcName, params);
-        return (data && typeof data === 'object' && Object.prototype.hasOwnProperty.call(data, 'result'))
-            ? data.result : data;
-    }
-
-    // ========================================================================
     // API
     // ========================================================================
 
@@ -281,7 +268,7 @@ export class CommitPlanDetail extends LitElement {
         this._plan = null;
 
         try {
-            const result = await this._call(
+            const result = await this._client.call(
                 'get_commit_plan',
                 { plan_id: this.planId }
             );
@@ -328,7 +315,7 @@ export class CommitPlanDetail extends LitElement {
     async _updateStatus(e) {
         const newStatus = e.target.value;
         try {
-            await this._call(
+            await this._client.call(
                 'update_commit_plan',
                 { plan_id: this.planId, status: newStatus }
             );
@@ -347,7 +334,7 @@ export class CommitPlanDetail extends LitElement {
      */
     async _loadModelChoices() {
         try {
-            const result = await this._call(
+            const result = await this._client.call(
                 'get_chat_config',
                 {}
             );
@@ -368,7 +355,7 @@ export class CommitPlanDetail extends LitElement {
         if (!confirm(`¿Eliminar plan "${this._plan?.title}"?`)) return;
 
         try {
-            await this._call(
+            await this._client.call(
                 'delete_commit_plan',
                 { plan_id: this.planId }
             );
@@ -731,7 +718,7 @@ export class CommitPlanDetail extends LitElement {
      */
     async _resetToDraft() {
         try {
-            await this._call(
+            await this._client.call(
                 'update_commit_plan',
                 { plan_id: this.planId, status: 'draft' }
             );
@@ -1109,18 +1096,14 @@ export class CommitPlanDetail extends LitElement {
 
     /**
      * Approve the plan: git add + commit → completed.
-     * Checks backend success and shows error if operation failed.
+     * Backend raises HTTPException on error, so try/catch handles all cases.
      */
     async _approvePlan() {
         if (this._isApproving) return;
         this._isApproving = true;
 
         try {
-            const envelope = await this._callAndCheckSuccess('approve_plan', { plan_id: this.planId });
-            if (!envelope.success) {
-                alert(`❌ Error al aprobar: ${envelope.message || 'Error desconocido'}`);
-                return;
-            }
+            await this._client.call('approve_plan', { plan_id: this.planId });
             // Reload plan to get updated status + commit hash
             await this._loadPlan();
             this.dispatchEvent(new CustomEvent('plan-updated', {
@@ -1137,7 +1120,7 @@ export class CommitPlanDetail extends LitElement {
 
     /**
      * Revert the plan: git checkout -- files → reverted.
-     * Checks backend success and shows error if operation failed.
+     * Backend raises HTTPException on error, so try/catch handles all cases.
      */
     async _revertPlan() {
         if (this._isReverting) return;
@@ -1146,11 +1129,7 @@ export class CommitPlanDetail extends LitElement {
         this._isReverting = true;
 
         try {
-            const envelope = await this._callAndCheckSuccess('revert_plan', { plan_id: this.planId });
-            if (!envelope.success) {
-                alert(`❌ Error al revertir: ${envelope.message || 'Error desconocido'}`);
-                return;
-            }
+            await this._client.call('revert_plan', { plan_id: this.planId });
             // Reload plan to get updated status
             await this._loadPlan();
             this.dispatchEvent(new CustomEvent('plan-updated', {
@@ -1163,20 +1142,6 @@ export class CommitPlanDetail extends LitElement {
         } finally {
             this._isReverting = false;
         }
-    }
-
-    /**
-     * Call an API function and return the full envelope {success, result, message}.
-     * Uses this._client.call() directly to access success/message metadata.
-     */
-    async _callAndCheckSuccess(funcName, params) {
-        const data = await this._client.call(funcName, params);
-        const hasEnvelopeShape = data && typeof data === 'object' && Object.prototype.hasOwnProperty.call(data, 'result');
-        return {
-            success: data?.success ?? true,
-            result: hasEnvelopeShape ? data.result : data,
-            message: data?.message ?? '',
-        };
     }
 
     // ========================================================================

@@ -620,11 +620,11 @@ export class GitDashboard extends LitElement {
      */
     async _loadPlans() {
         try {
-            const plans = await this._client.call(
+            const data = await this._client.call(
                 'list_commit_plans',
                 {}
             );
-            this._plans = plans || [];
+            this._plans = data?.plans || [];
         } catch (error) {
             console.error('❌ Error loading commit plans:', error);
             this._plans = [];

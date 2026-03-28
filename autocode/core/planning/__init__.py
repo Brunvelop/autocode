@@ -10,8 +10,9 @@ from .models import (
     ExecutionStep,
     CommitPlan,
     CommitPlanSummary,
-    CommitPlanOutput,
-    CommitPlanListOutput,
+    CommitPlanList,
+    DeleteResult,
+    PlanReviewMetrics,
     PlanExecutionState,
 )
 from .planner import (
@@ -51,8 +52,9 @@ __all__ = [
     "ExecutionStep",
     "CommitPlan",
     "CommitPlanSummary",
-    "CommitPlanOutput",
-    "CommitPlanListOutput",
+    "CommitPlanList",
+    "DeleteResult",
+    "PlanReviewMetrics",
     "PlanExecutionState",
     # Functions — CRUD
     "create_commit_plan",

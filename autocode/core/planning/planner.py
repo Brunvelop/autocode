@@ -12,16 +12,17 @@ con toda la información recopilada durante la conversación).
 import logging
 from datetime import datetime
 
+from fastapi import HTTPException
+
 from autocode.core.planning.persistence import save_plan, load_plan, list_plan_summaries, delete_plan
 from autocode.core.planning.transitions import validate_transition, InvalidTransitionError
 from refract import register_function
 from autocode.core.vcs.git import git, git_checked
-from autocode.core.models import GenericOutput
 from autocode.core.planning.models import (
     CommitPlan,
     CommitPlanSummary,
-    CommitPlanOutput,
-    CommitPlanListOutput,
+    CommitPlanList,
+    DeleteResult,
 )
 
 logger = logging.getLogger(__name__)
@@ -36,7 +37,7 @@ logger = logging.getLogger(__name__)
 def create_commit_plan(
     title: str,
     description: str = "",
-) -> CommitPlanOutput:
+) -> CommitPlan:
     """
     Crea un nuevo plan de commit.
 
@@ -62,19 +63,14 @@ def create_commit_plan(
         )
 
         save_plan(plan)
-
-        return CommitPlanOutput(
-            success=True,
-            result=plan,
-            message=f"Plan '{plan_id}' creado: {title}",
-        )
+        return plan
     except Exception as e:
         logger.error(f"Error creando plan: {e}")
-        return CommitPlanOutput(success=False, message=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @register_function(http_methods=["GET"], interfaces=["api", "mcp"])
-def list_commit_plans(status: str = "") -> CommitPlanListOutput:
+def list_commit_plans(status: str = "") -> CommitPlanList:
     """
     Lista todos los planes de commit guardados.
 
@@ -86,18 +82,14 @@ def list_commit_plans(status: str = "") -> CommitPlanListOutput:
     """
     try:
         summaries = list_plan_summaries(status)
-        return CommitPlanListOutput(
-            success=True,
-            result=summaries,
-            message=f"{len(summaries)} planes encontrados",
-        )
+        return CommitPlanList(plans=summaries)
     except Exception as e:
         logger.error(f"Error listando planes: {e}")
-        return CommitPlanListOutput(success=False, message=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @register_function(http_methods=["GET"], interfaces=["api", "mcp"])
-def get_commit_plan(plan_id: str) -> CommitPlanOutput:
+def get_commit_plan(plan_id: str) -> CommitPlan:
     """
     Obtiene el detalle completo de un plan de commit.
 
@@ -107,16 +99,13 @@ def get_commit_plan(plan_id: str) -> CommitPlanOutput:
     try:
         plan = load_plan(plan_id)
         if plan is None:
-            return CommitPlanOutput(success=False, message=f"Plan '{plan_id}' no encontrado")
-
-        return CommitPlanOutput(
-            success=True,
-            result=plan,
-            message=f"Plan '{plan_id}': {plan.title}",
-        )
+            raise HTTPException(status_code=404, detail=f"Plan '{plan_id}' no encontrado")
+        return plan
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error obteniendo plan {plan_id}: {e}")
-        return CommitPlanOutput(success=False, message=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @register_function(http_methods=["POST"], interfaces=["api", "mcp"])
@@ -125,7 +114,7 @@ def update_commit_plan(
     title: str = "",
     description: str = "",
     status: str = "",
-) -> CommitPlanOutput:
+) -> CommitPlan:
     """
     Actualiza parcialmente un plan de commit.
 
@@ -143,31 +132,27 @@ def update_commit_plan(
     try:
         plan = load_plan(plan_id)
         if plan is None:
-            return CommitPlanOutput(success=False, message=f"Plan '{plan_id}' no encontrado")
+            raise HTTPException(status_code=404, detail=f"Plan '{plan_id}' no encontrado")
 
         # Handle status change
         if status:
             # Recovery: plan stuck in "executing" without completed_at → allow reset to draft
             if _try_recover_stuck_plan(plan, status):
                 save_plan(plan)
-                return CommitPlanOutput(
-                    success=True,
-                    result=plan,
-                    message=f"Plan '{plan_id}' recovered from stuck executing state",
-                )
+                return plan
 
             # Only allow manually settable statuses through this endpoint
             if status not in MANUALLY_SETTABLE:
-                return CommitPlanOutput(
-                    success=False,
-                    message=f"Status '{status}' is managed by the executor and cannot be set manually",
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Status '{status}' is managed by the executor and cannot be set manually",
                 )
 
             # Validate the transition is allowed by the state machine
             try:
                 validate_transition(plan.status, status)
             except InvalidTransitionError as e:
-                return CommitPlanOutput(success=False, message=str(e))
+                raise HTTPException(status_code=400, detail=str(e))
 
             plan.status = status
 
@@ -179,19 +164,16 @@ def update_commit_plan(
 
         plan.updated_at = datetime.now().isoformat()
         save_plan(plan)
-
-        return CommitPlanOutput(
-            success=True,
-            result=plan,
-            message=f"Plan '{plan_id}' actualizado",
-        )
+        return plan
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error actualizando plan {plan_id}: {e}")
-        return CommitPlanOutput(success=False, message=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @register_function(http_methods=["POST"], interfaces=["api", "mcp"])
-def delete_commit_plan(plan_id: str) -> GenericOutput:
+def delete_commit_plan(plan_id: str) -> DeleteResult:
     """
     Elimina un plan de commit.
 
@@ -201,16 +183,13 @@ def delete_commit_plan(plan_id: str) -> GenericOutput:
     try:
         deleted = delete_plan(plan_id)
         if not deleted:
-            return GenericOutput(success=False, result=None, message=f"Plan '{plan_id}' no encontrado")
-
-        return GenericOutput(
-            success=True,
-            result={"deleted": plan_id},
-            message=f"Plan '{plan_id}' eliminado",
-        )
+            raise HTTPException(status_code=404, detail=f"Plan '{plan_id}' no encontrado")
+        return DeleteResult(deleted=plan_id)
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error eliminando plan {plan_id}: {e}")
-        return GenericOutput(success=False, result=None, message=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ==============================================================================

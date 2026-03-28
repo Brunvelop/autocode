@@ -9,8 +9,6 @@ estructurados en .autocode/plans/ y visualizarlos como ghost nodes en git-dashbo
 from typing import List, Optional, Literal
 from pydantic import BaseModel, Field
 
-from autocode.core.models import GenericOutput
-
 
 # Estados de un plan
 PlanStatus = Literal[
@@ -120,15 +118,22 @@ class CommitPlanSummary(BaseModel):
 
 
 # ==============================================================================
-# OUTPUT MODELS (GenericOutput wrappers)
+# DOMAIN OUTPUT MODELS (direct return, no envelope)
 # ==============================================================================
 
 
-class CommitPlanOutput(GenericOutput):
-    """Output de create/get/update commit plan."""
-    result: Optional[CommitPlan] = None
+class CommitPlanList(BaseModel):
+    """Lista de resúmenes de planes de commit."""
+    plans: List[CommitPlanSummary] = Field(default_factory=list)
 
 
-class CommitPlanListOutput(GenericOutput):
-    """Output de list_commit_plans."""
-    result: Optional[List[CommitPlanSummary]] = None
+class DeleteResult(BaseModel):
+    """Resultado de eliminación de un recurso."""
+    deleted: str = Field(..., description="ID del recurso eliminado")
+
+
+class PlanReviewMetrics(BaseModel):
+    """Métricas de review de un plan para la UI."""
+    files: List[dict] = Field(default_factory=list)
+    summary: dict = Field(default_factory=dict)
+    quality_gates: dict = Field(default_factory=dict)

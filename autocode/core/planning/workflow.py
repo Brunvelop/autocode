@@ -9,12 +9,13 @@ and transition plans to terminal states (completed, reverted).
 import logging
 from datetime import datetime
 
+from fastapi import HTTPException
+
 from autocode.core.vcs.git import git_checked
 from autocode.core.planning.persistence import load_plan, save_plan
 from autocode.core.planning.transitions import REVIEWABLE_STATUSES
 from refract import register_function
-from autocode.core.models import GenericOutput
-from autocode.core.planning.models import CommitPlanOutput
+from autocode.core.planning.models import CommitPlan, PlanReviewMetrics
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 
 @register_function(http_methods=["POST"], interfaces=["api", "mcp"])
-def approve_plan(plan_id: str, commit_message: str = "") -> CommitPlanOutput:
+def approve_plan(plan_id: str, commit_message: str = "") -> CommitPlan:
     """Aprueba un plan en pending_review: git add + commit → completed.
 
     Ejecuta git add para cada archivo cambiado, luego git commit
@@ -39,15 +40,12 @@ def approve_plan(plan_id: str, commit_message: str = "") -> CommitPlanOutput:
     try:
         plan = load_plan(plan_id)
         if plan is None:
-            return CommitPlanOutput(
-                success=False,
-                message=f"Plan '{plan_id}' no encontrado",
-            )
+            raise HTTPException(status_code=404, detail=f"Plan '{plan_id}' no encontrado")
 
         if plan.status not in REVIEWABLE_STATUSES:
-            return CommitPlanOutput(
-                success=False,
-                message=(
+            raise HTTPException(
+                status_code=400,
+                detail=(
                     f"Cannot approve plan in status '{plan.status}'. "
                     f"Must be in: {', '.join(sorted(REVIEWABLE_STATUSES))}"
                 ),
@@ -60,7 +58,7 @@ def approve_plan(plan_id: str, commit_message: str = "") -> CommitPlanOutput:
             else []
         )
 
-        # git add + commit (use _git_checked to detect failures)
+        # git add + commit (use git_checked to detect failures)
         message = commit_message or plan.title
         for f in files:
             git_checked("add", f)
@@ -75,18 +73,16 @@ def approve_plan(plan_id: str, commit_message: str = "") -> CommitPlanOutput:
         save_plan(plan)
 
         logger.info(f"Plan '{plan_id}' approved and committed: {commit_hash}")
-        return CommitPlanOutput(
-            success=True,
-            result=plan,
-            message=f"Plan '{plan_id}' approved. Commit: {commit_hash}",
-        )
+        return plan
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error approving plan {plan_id}: {e}")
-        return CommitPlanOutput(success=False, message=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @register_function(http_methods=["POST"], interfaces=["api", "mcp"])
-def revert_plan(plan_id: str) -> CommitPlanOutput:
+def revert_plan(plan_id: str) -> CommitPlan:
     """Revierte cambios de un plan: git checkout -- files → reverted.
 
     Restaura cada archivo modificado al estado del parent_commit
@@ -98,15 +94,12 @@ def revert_plan(plan_id: str) -> CommitPlanOutput:
     try:
         plan = load_plan(plan_id)
         if plan is None:
-            return CommitPlanOutput(
-                success=False,
-                message=f"Plan '{plan_id}' no encontrado",
-            )
+            raise HTTPException(status_code=404, detail=f"Plan '{plan_id}' no encontrado")
 
         if plan.status not in REVIEWABLE_STATUSES:
-            return CommitPlanOutput(
-                success=False,
-                message=(
+            raise HTTPException(
+                status_code=400,
+                detail=(
                     f"Cannot revert plan in status '{plan.status}'. "
                     f"Must be in: {', '.join(sorted(REVIEWABLE_STATUSES))}"
                 ),
@@ -129,12 +122,12 @@ def revert_plan(plan_id: str) -> CommitPlanOutput:
             files = [f for f in diff_output.split("\n") if f]
 
         if not files:
-            return CommitPlanOutput(
-                success=False,
-                message=f"Plan '{plan_id}' has no files to revert (files_changed is empty)",
+            raise HTTPException(
+                status_code=400,
+                detail=f"Plan '{plan_id}' has no files to revert (files_changed is empty)",
             )
 
-        # git checkout {parent_commit} -- file1 file2 ... (use _git_checked to detect failures)
+        # git checkout {parent_commit} -- file1 file2 ... (use git_checked to detect failures)
         ref = plan.parent_commit or "HEAD"
         for f in files:
             git_checked("checkout", ref, "--", f)
@@ -147,14 +140,12 @@ def revert_plan(plan_id: str) -> CommitPlanOutput:
         logger.info(
             f"Plan '{plan_id}' reverted: {len(files)} files restored to {ref}"
         )
-        return CommitPlanOutput(
-            success=True,
-            result=plan,
-            message=f"Plan '{plan_id}' reverted. {len(files)} files restored.",
-        )
+        return plan
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error reverting plan {plan_id}: {e}")
-        return CommitPlanOutput(success=False, message=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ==============================================================================
@@ -163,7 +154,7 @@ def revert_plan(plan_id: str) -> CommitPlanOutput:
 
 
 @register_function(http_methods=["GET"], interfaces=["api"])
-def get_plan_review_metrics(plan_id: str) -> GenericOutput:
+def get_plan_review_metrics(plan_id: str) -> PlanReviewMetrics:
     """Retorna métricas de review de un plan para la UI.
 
     Extrae file_metrics, quality_gates y summary del ReviewResult
@@ -176,18 +167,11 @@ def get_plan_review_metrics(plan_id: str) -> GenericOutput:
     try:
         plan = load_plan(plan_id)
         if plan is None:
-            return GenericOutput(
-                success=False, result=None,
-                message=f"Plan '{plan_id}' no encontrado",
-            )
+            raise HTTPException(status_code=404, detail=f"Plan '{plan_id}' no encontrado")
 
         review = plan.execution.review if plan.execution else None
         if review is None:
-            return GenericOutput(
-                success=True,
-                result={"files": [], "summary": {}, "quality_gates": {}},
-                message="No review data available",
-            )
+            return PlanReviewMetrics(files=[], summary={}, quality_gates={})
 
         # Transform file_metrics to flat format compatible with commit-detail table
         files = []
@@ -199,23 +183,21 @@ def get_plan_review_metrics(plan_id: str) -> GenericOutput:
                 **fm.deltas,
             })
 
-        return GenericOutput(
-            success=True,
-            result={
-                "files": files,
-                "summary": {
-                    "verdict": review.verdict,
-                    "summary": review.summary,
-                    "mode": review.mode,
-                    "reviewed_at": review.reviewed_at,
-                    "reviewed_by": review.reviewed_by,
-                    "issues": review.issues,
-                    "suggestions": review.suggestions,
-                },
-                "quality_gates": review.quality_gates,
+        return PlanReviewMetrics(
+            files=files,
+            summary={
+                "verdict": review.verdict,
+                "summary": review.summary,
+                "mode": review.mode,
+                "reviewed_at": review.reviewed_at,
+                "reviewed_by": review.reviewed_by,
+                "issues": review.issues,
+                "suggestions": review.suggestions,
             },
-            message=f"Review metrics for plan '{plan_id}'",
+            quality_gates=review.quality_gates,
         )
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error getting review metrics for {plan_id}: {e}")
-        return GenericOutput(success=False, result=None, message=str(e))
+        raise HTTPException(status_code=500, detail=str(e))

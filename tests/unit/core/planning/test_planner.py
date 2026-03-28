@@ -9,6 +9,9 @@ Covers:
 import json
 from unittest.mock import patch
 
+import pytest
+from fastapi import HTTPException
+
 from autocode.core.planning.planner import (
     create_commit_plan,
     update_commit_plan,
@@ -23,50 +26,53 @@ class TestStatusTransitionValidation:
         """update_commit_plan rechaza status='executing' (solo executor puede setearlo)."""
         with patch("autocode.core.planning.persistence.PLANS_DIR", str(tmp_path)), \
              patch("autocode.core.planning.planner.git", return_value="abc123"):
-            create_result = create_commit_plan(title="Test Plan")
-            plan_id = create_result.result.id
+            plan = create_commit_plan(title="Test Plan")
+            plan_id = plan.id
 
-            result = update_commit_plan(plan_id=plan_id, status="executing")
-            assert result.success is False
-            assert "executor" in result.message.lower() or "managed" in result.message.lower()
+            with pytest.raises(HTTPException) as exc_info:
+                update_commit_plan(plan_id=plan_id, status="executing")
+            assert exc_info.value.status_code == 400
+            assert "executor" in exc_info.value.detail.lower() or "managed" in exc_info.value.detail.lower()
 
     def test_reject_completed_status_via_update(self, tmp_path):
         """update_commit_plan rechaza status='completed'."""
         with patch("autocode.core.planning.persistence.PLANS_DIR", str(tmp_path)), \
              patch("autocode.core.planning.planner.git", return_value="abc123"):
-            create_result = create_commit_plan(title="Test Plan")
-            plan_id = create_result.result.id
+            plan = create_commit_plan(title="Test Plan")
+            plan_id = plan.id
 
-            result = update_commit_plan(plan_id=plan_id, status="completed")
-            assert result.success is False
+            with pytest.raises(HTTPException) as exc_info:
+                update_commit_plan(plan_id=plan_id, status="completed")
+            assert exc_info.value.status_code == 400
 
     def test_reject_failed_status_via_update(self, tmp_path):
         """update_commit_plan rechaza status='failed'."""
         with patch("autocode.core.planning.persistence.PLANS_DIR", str(tmp_path)), \
              patch("autocode.core.planning.planner.git", return_value="abc123"):
-            create_result = create_commit_plan(title="Test Plan")
-            plan_id = create_result.result.id
+            plan = create_commit_plan(title="Test Plan")
+            plan_id = plan.id
 
-            result = update_commit_plan(plan_id=plan_id, status="failed")
-            assert result.success is False
+            with pytest.raises(HTTPException) as exc_info:
+                update_commit_plan(plan_id=plan_id, status="failed")
+            assert exc_info.value.status_code == 400
 
     def test_allow_manual_statuses(self, tmp_path):
         """update_commit_plan permite draft, ready, abandoned via valid transitions."""
         with patch("autocode.core.planning.persistence.PLANS_DIR", str(tmp_path)), \
              patch("autocode.core.planning.planner.git", return_value="abc123"):
-            create_result = create_commit_plan(title="Test Plan")
-            plan_id = create_result.result.id
+            plan = create_commit_plan(title="Test Plan")
+            plan_id = plan.id
 
             # Plan starts as "draft" — test valid transition sequences
             # draft → ready (valid)
             result = update_commit_plan(plan_id=plan_id, status="ready")
-            assert result.success is True, "Status 'ready' should be allowed from draft"
+            assert result.status == "ready", "Status 'ready' should be allowed from draft"
             # ready → draft (valid)
             result = update_commit_plan(plan_id=plan_id, status="draft")
-            assert result.success is True, "Status 'draft' should be allowed from ready"
+            assert result.status == "draft", "Status 'draft' should be allowed from ready"
             # draft → abandoned (valid)
             result = update_commit_plan(plan_id=plan_id, status="abandoned")
-            assert result.success is True, "Status 'abandoned' should be allowed from draft"
+            assert result.status == "abandoned", "Status 'abandoned' should be allowed from draft"
 
     def test_list_plans_includes_new_statuses(self, tmp_path):
         """list_commit_plans filtra correctamente los nuevos estados."""
@@ -84,9 +90,8 @@ class TestStatusTransitionValidation:
             (tmp_path / "20260101-000001.json").write_text(json.dumps(plan_data))
 
             result = list_commit_plans(status="completed")
-            assert result.success is True
-            assert len(result.result) == 1
-            assert result.result[0].status == "completed"
+            assert len(result.plans) == 1
+            assert result.plans[0].status == "completed"
 
 
 class TestRecoveryFromStuckExecuting:
@@ -126,8 +131,7 @@ class TestRecoveryFromStuckExecuting:
             plan_id = self._create_executing_plan(tmp_path, completed_at="")
 
             result = update_commit_plan(plan_id=plan_id, status="draft")
-            assert result.success is True
-            assert result.result.status == "draft"
+            assert result.status == "draft"
 
     def test_recovery_executing_to_draft_clears_execution(self, tmp_path):
         """Al resetear a draft, execution se limpia a None."""
@@ -135,8 +139,7 @@ class TestRecoveryFromStuckExecuting:
             plan_id = self._create_executing_plan(tmp_path, completed_at="")
 
             result = update_commit_plan(plan_id=plan_id, status="draft")
-            assert result.success is True
-            assert result.result.execution is None
+            assert result.execution is None
 
     def test_recovery_executing_without_execution_object(self, tmp_path):
         """Plan en executing sin execution object (edge case) puede ir a draft."""
@@ -150,9 +153,8 @@ class TestRecoveryFromStuckExecuting:
 
         with patch("autocode.core.planning.persistence.PLANS_DIR", str(tmp_path)):
             result = update_commit_plan(plan_id="20260101-130000", status="draft")
-            assert result.success is True
-            assert result.result.status == "draft"
-            assert result.result.execution is None
+            assert result.status == "draft"
+            assert result.execution is None
 
     def test_recovery_blocked_if_completed_at_set(self, tmp_path):
         """Plan en executing con completed_at (terminó normalmente) rechaza reset manual.
@@ -165,30 +167,31 @@ class TestRecoveryFromStuckExecuting:
                 tmp_path, completed_at="2026-01-01T12:05:00"
             )
 
-            result = update_commit_plan(plan_id=plan_id, status="draft")
+            with pytest.raises(HTTPException) as exc_info:
+                update_commit_plan(plan_id=plan_id, status="draft")
             # Recovery not triggered (completed_at is set), and
             # executing→draft is not a valid state machine transition
-            assert result.success is False
-            assert "invalid transition" in result.message.lower()
+            assert exc_info.value.status_code == 400
+            assert "invalid transition" in exc_info.value.detail.lower()
 
     def test_executing_cannot_be_set_manually_from_draft(self, tmp_path):
         """No se puede setear 'executing' manualmente desde draft."""
         with patch("autocode.core.planning.persistence.PLANS_DIR", str(tmp_path)), \
              patch("autocode.core.planning.planner.git", return_value="abc123"):
-            create_result = create_commit_plan(title="Test Plan")
-            plan_id = create_result.result.id
+            plan = create_commit_plan(title="Test Plan")
+            plan_id = plan.id
 
-            result = update_commit_plan(plan_id=plan_id, status="executing")
-            assert result.success is False
+            with pytest.raises(HTTPException) as exc_info:
+                update_commit_plan(plan_id=plan_id, status="executing")
+            assert exc_info.value.status_code == 400
 
     def test_recovery_message_indicates_recovery(self, tmp_path):
-        """El mensaje de respuesta indica que fue una recovery."""
+        """La recovery no falla y el resultado tiene status draft."""
         with patch("autocode.core.planning.persistence.PLANS_DIR", str(tmp_path)):
             plan_id = self._create_executing_plan(tmp_path, completed_at="")
 
             result = update_commit_plan(plan_id=plan_id, status="draft")
-            assert result.success is True
-            assert "recover" in result.message.lower()
+            assert result.status == "draft"
 
 
 # ==============================================================================
@@ -208,19 +211,21 @@ class TestStatusTransitionsUpdated:
         """update_commit_plan rechaza status='pending_review'."""
         with patch("autocode.core.planning.persistence.PLANS_DIR", str(tmp_path)), \
              patch("autocode.core.planning.planner.git", return_value="abc123"):
-            create_result = create_commit_plan(title="Test Plan")
-            plan_id = create_result.result.id
+            plan = create_commit_plan(title="Test Plan")
+            plan_id = plan.id
 
-            result = update_commit_plan(plan_id=plan_id, status="pending_review")
-            assert result.success is False
-            assert "managed" in result.message.lower() or "executor" in result.message.lower()
+            with pytest.raises(HTTPException) as exc_info:
+                update_commit_plan(plan_id=plan_id, status="pending_review")
+            assert exc_info.value.status_code == 400
+            assert "managed" in exc_info.value.detail.lower() or "executor" in exc_info.value.detail.lower()
 
     def test_reverted_not_manually_settable(self, tmp_path):
         """update_commit_plan rechaza status='reverted'."""
         with patch("autocode.core.planning.persistence.PLANS_DIR", str(tmp_path)), \
              patch("autocode.core.planning.planner.git", return_value="abc123"):
-            create_result = create_commit_plan(title="Test Plan")
-            plan_id = create_result.result.id
+            plan = create_commit_plan(title="Test Plan")
+            plan_id = plan.id
 
-            result = update_commit_plan(plan_id=plan_id, status="reverted")
-            assert result.success is False
+            with pytest.raises(HTTPException) as exc_info:
+                update_commit_plan(plan_id=plan_id, status="reverted")
+            assert exc_info.value.status_code == 400
