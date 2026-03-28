@@ -66,18 +66,22 @@ uv run autocode serve --reload
 Autocode uses a **Registry-Driven Architecture**. The registry is the single source of truth:
 
 ```python
+from pydantic import BaseModel
 from refract import register_function
-from autocode.core.models import GenericOutput
+
+class MyResult(BaseModel):
+    value: int
+    label: str
 
 @register_function(http_methods=["GET", "POST"])
-def my_function(x: int, y: str = "default") -> GenericOutput:
+def my_function(x: int, y: str = "default") -> MyResult:
     """Does something useful.
 
     Args:
         x: First parameter
         y: Second parameter
     """
-    return GenericOutput(success=True, result=x, message=y)
+    return MyResult(value=x, label=y)
 ```
 
 That single decorator gives you:
@@ -304,14 +308,17 @@ autocode/
 1. Create your function in `autocode/core/`:
 
 ```python
+from pydantic import BaseModel, Field
 from refract import register_function
-from autocode.core.models import GenericOutput
+
+class GreetingResult(BaseModel):
+    greeting: str = Field(..., description="Generated greeting text")
 
 @register_function(
     http_methods=["GET", "POST"],       # REST methods
     interfaces=["api", "cli", "mcp"],   # Where to expose
 )
-def my_new_feature(name: str, count: int = 5) -> GenericOutput:
+def my_new_feature(name: str, count: int = 5) -> GreetingResult:
     """Short description shown in help and OpenAPI.
 
     Args:
@@ -319,7 +326,7 @@ def my_new_feature(name: str, count: int = 5) -> GenericOutput:
         count: How many times
     """
     greeting = f"Hello {name}! " * count
-    return GenericOutput(success=True, result=greeting, message="Done")
+    return GreetingResult(greeting=greeting)
 ```
 
 2. That's it. Restart the server and you have:

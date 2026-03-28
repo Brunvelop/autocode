@@ -1,8 +1,8 @@
-"""Tests for ArchitectureNode, ArchitectureSnapshot, ArchitectureSnapshotOutput models."""
+"""Tests for ArchitectureNode and ArchitectureSnapshot models (direct return, no Output wrapper)."""
 
 
 class TestArchitectureModels:
-    """Tests for ArchitectureNode, ArchitectureSnapshot, ArchitectureSnapshotOutput."""
+    """Tests for ArchitectureNode and ArchitectureSnapshot (returned directly as domain models)."""
 
     def test_architecture_node_file_defaults(self):
         """A file node should have sensible defaults for all metric fields."""
