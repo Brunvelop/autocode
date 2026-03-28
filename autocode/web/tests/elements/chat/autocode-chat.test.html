@@ -56,8 +56,8 @@
     <script type="module">
         import { TestRunner } from '../../utils/test-runner.js'; 
         
-        // Importar auto-element-generator primero (mock o real)
-        try { await import('/elements/auto-element-generator.js'); } catch {}
+        // Importar generator.js primero (mock o real)
+        try { await import('/refract/generator.js'); } catch {}
         
         // Importar componente principal
         try {

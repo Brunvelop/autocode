@@ -1,7 +1,7 @@
 """
 Tests for file operation tools registered as MCP.
 
-RED phase: These tests define the expected behavior for:
+Tests define the expected behavior for:
 - read_file_content: read files with size limits
 - write_file_content: create/overwrite files with directory creation
 - replace_in_file: search-and-replace with occurrence tracking
@@ -32,31 +32,25 @@ class TestReadFileContent:
         f.write_text("print('hello')", encoding="utf-8")
         with patch("autocode.core.planning.file_ops._resolve_path", return_value=f):
             result = read_file_content(path="hello.py")
-        assert result.success is True
-        assert result.result["content"] == "print('hello')"
+        assert result.content == "print('hello')"
 
     def test_read_nonexistent_file(self):
-        """Retorna error si el archivo no existe."""
+        """Lanza ValueError si el archivo no existe."""
         with patch(
             "autocode.core.planning.file_ops._resolve_path",
             return_value=Path("/nonexistent/file.py"),
         ):
-            result = read_file_content(path="nonexistent.py")
-        assert result.success is False
-        assert (
-            "no encontrado" in result.message.lower()
-            or "not found" in result.message.lower()
-        )
+            with pytest.raises(ValueError, match="not found"):
+                read_file_content(path="nonexistent.py")
 
     def test_read_file_size_limit(self, tmp_path):
-        """Retorna warning/truncamiento si el archivo excede el límite (~500KB)."""
+        """Trunca el contenido si el archivo excede el límite (~500KB) y marca truncated=True."""
         f = tmp_path / "big.txt"
         f.write_text("x" * 600_000, encoding="utf-8")
         with patch("autocode.core.planning.file_ops._resolve_path", return_value=f):
             result = read_file_content(path="big.txt")
-        # Debe indicar que es muy grande (puede ser truncamiento con warning)
-        assert result.success is True
-        assert "truncat" in result.message.lower() or "size" in result.message.lower()
+        assert result.truncated is True
+        assert len(result.content) == 500_000
 
     def test_read_file_returns_path_and_size(self, tmp_path):
         """El resultado incluye path y size además del contenido."""
@@ -64,8 +58,16 @@ class TestReadFileContent:
         f.write_text("content", encoding="utf-8")
         with patch("autocode.core.planning.file_ops._resolve_path", return_value=f):
             result = read_file_content(path="test.py")
-        assert "size" in result.result
-        assert "path" in result.result
+        assert result.size == len("content")
+        assert result.path == "test.py"
+
+    def test_read_file_not_truncated_when_small(self, tmp_path):
+        """Un archivo pequeño no está truncado."""
+        f = tmp_path / "small.py"
+        f.write_text("small content", encoding="utf-8")
+        with patch("autocode.core.planning.file_ops._resolve_path", return_value=f):
+            result = read_file_content(path="small.py")
+        assert result.truncated is False
 
 
 class TestWriteFileContent:
@@ -76,15 +78,14 @@ class TestWriteFileContent:
         target = tmp_path / "new_file.py"
         with patch("autocode.core.planning.file_ops._resolve_path", return_value=target):
             result = write_file_content(path="new_file.py", content="print('new')")
-        assert result.success is True
         assert target.read_text() == "print('new')"
+        assert result.path == "new_file.py"
 
     def test_write_creates_directories(self, tmp_path):
         """Crea directorios intermedios si no existen."""
         target = tmp_path / "deep" / "nested" / "dir" / "file.py"
         with patch("autocode.core.planning.file_ops._resolve_path", return_value=target):
             result = write_file_content(path="deep/nested/dir/file.py", content="# new")
-        assert result.success is True
         assert target.exists()
 
     def test_write_overwrites_existing(self, tmp_path):
@@ -93,7 +94,6 @@ class TestWriteFileContent:
         target.write_text("old content")
         with patch("autocode.core.planning.file_ops._resolve_path", return_value=target):
             result = write_file_content(path="existing.py", content="new content")
-        assert result.success is True
         assert target.read_text() == "new content"
 
     def test_write_returns_bytes_written(self, tmp_path):
@@ -101,7 +101,7 @@ class TestWriteFileContent:
         target = tmp_path / "test.py"
         with patch("autocode.core.planning.file_ops._resolve_path", return_value=target):
             result = write_file_content(path="test.py", content="hello")
-        assert result.result["bytes_written"] == 5
+        assert result.bytes_written == 5
 
 
 class TestReplaceInFile:
@@ -115,33 +115,27 @@ class TestReplaceInFile:
             result = replace_in_file(
                 path="code.py", old_string="'hello'", new_string="'world'"
             )
-        assert result.success is True
         assert f.read_text() == "def hello():\n    return 'world'\n"
+        assert result.replaced is True
 
     def test_replace_old_string_not_found(self, tmp_path):
-        """Retorna error si old_string no existe en el archivo."""
+        """Lanza ValueError si old_string no existe en el archivo."""
         f = tmp_path / "code.py"
         f.write_text("def hello(): pass\n")
         with patch("autocode.core.planning.file_ops._resolve_path", return_value=f):
-            result = replace_in_file(
-                path="code.py", old_string="nonexistent", new_string="new"
-            )
-        assert result.success is False
-        assert (
-            "not found" in result.message.lower()
-            or "no encontr" in result.message.lower()
-        )
+            with pytest.raises(ValueError, match="not found"):
+                replace_in_file(
+                    path="code.py", old_string="nonexistent", new_string="new"
+                )
 
     def test_replace_multiple_occurrences_replaces_first(self, tmp_path):
-        """Si hay múltiples ocurrencias, reemplaza solo la primera y avisa."""
+        """Si hay múltiples ocurrencias, reemplaza solo la primera y reporta el total."""
         f = tmp_path / "code.py"
         f.write_text("a = 1\nb = 1\nc = 1\n")
         with patch("autocode.core.planning.file_ops._resolve_path", return_value=f):
             result = replace_in_file(path="code.py", old_string="1", new_string="2")
-        assert result.success is True
-        content = f.read_text()
-        assert content == "a = 2\nb = 1\nc = 1\n"  # Solo primera
-        assert result.result["occurrences"] == 3  # Informa cuántas había
+        assert f.read_text() == "a = 2\nb = 1\nc = 1\n"  # Solo primera
+        assert result.occurrences == 3  # Informa cuántas había
 
     def test_replace_multiline_block(self, tmp_path):
         """Puede reemplazar bloques multilínea."""
@@ -151,17 +145,17 @@ class TestReplaceInFile:
         new = "    x = 10\n    y = 20\n    z = 30"
         with patch("autocode.core.planning.file_ops._resolve_path", return_value=f):
             result = replace_in_file(path="code.py", old_string=old, new_string=new)
-        assert result.success is True
         assert "z = 30" in f.read_text()
+        assert result.replaced is True
 
     def test_replace_nonexistent_file(self):
-        """Retorna error si el archivo no existe."""
+        """Lanza ValueError si el archivo no existe."""
         with patch(
             "autocode.core.planning.file_ops._resolve_path",
             return_value=Path("/nonexistent/file.py"),
         ):
-            result = replace_in_file(path="file.py", old_string="a", new_string="b")
-        assert result.success is False
+            with pytest.raises(ValueError, match="not found"):
+                replace_in_file(path="file.py", old_string="a", new_string="b")
 
 
 class TestDeleteFile:
@@ -173,17 +167,17 @@ class TestDeleteFile:
         f.write_text("delete me")
         with patch("autocode.core.planning.file_ops._resolve_path", return_value=f):
             result = delete_file(path="to_delete.py")
-        assert result.success is True
         assert not f.exists()
+        assert result.deleted == "to_delete.py"
 
     def test_delete_nonexistent_file(self):
-        """Retorna error si el archivo no existe."""
+        """Lanza ValueError si el archivo no existe."""
         with patch(
             "autocode.core.planning.file_ops._resolve_path",
             return_value=Path("/nonexistent/file.py"),
         ):
-            result = delete_file(path="nonexistent.py")
-        assert result.success is False
+            with pytest.raises(ValueError, match="not found"):
+                delete_file(path="nonexistent.py")
 
 
 class TestResolvePath:
@@ -211,11 +205,15 @@ class TestFileOpsRegistration:
     def test_functions_registered_as_mcp(self):
         """Las 4 funciones se registran con interfaces=['mcp']."""
         import importlib
-        from autocode.core import registry as reg_module
+        from autocode.app import app
+        from refract.registry import _clear_pending
         import autocode.core.planning.file_ops as file_ops_module
 
+        app.clear()
+        _clear_pending()
         importlib.reload(file_ops_module)
-        mcp_funcs = [f for f in reg_module._registry if "mcp" in f.interfaces]
+        app._drain_pending()
+        mcp_funcs = [f for f in app._registry if "mcp" in f.interfaces]
         names = [f.name for f in mcp_funcs]
         assert "read_file_content" in names
         assert "write_file_content" in names
@@ -225,11 +223,15 @@ class TestFileOpsRegistration:
     def test_functions_not_registered_as_api(self):
         """Las file_ops NO se exponen como API endpoints."""
         import importlib
-        from autocode.core import registry as reg_module
+        from autocode.app import app
+        from refract.registry import _clear_pending
         import autocode.core.planning.file_ops as file_ops_module
 
+        app.clear()
+        _clear_pending()
         importlib.reload(file_ops_module)
-        api_funcs = [f for f in reg_module._registry if "api" in f.interfaces]
+        app._drain_pending()
+        api_funcs = [f for f in app._registry if "api" in f.interfaces]
         names = [f.name for f in api_funcs]
         assert "read_file_content" not in names
         assert "write_file_content" not in names

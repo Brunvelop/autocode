@@ -5,6 +5,8 @@ import pytest
 from unittest.mock import Mock, patch
 from subprocess import CalledProcessError
 
+from fastapi import HTTPException
+
 from autocode.core.vcs import get_git_tree
 
 
@@ -31,11 +33,9 @@ class TestGetGitTree:
         mock_process.returncode = 0
         mock_run.return_value = mock_process
         
-        result = get_git_tree()
+        graph = get_git_tree()
         
-        # Verify result structure
-        assert result.success is True
-        graph = result.result
+        # Verify result structure (now returns GitTreeGraph directly)
         assert graph is not None
         assert graph.root_id == ""
         assert len(graph.nodes) >= 1
@@ -84,15 +84,15 @@ class TestGetGitTree:
 
     @patch('subprocess.run')
     def test_get_git_tree_error(self, mock_run):
-        """Test handling of git command errors."""
+        """Test handling of git command errors raises HTTPException."""
         # Simulate git error (e.g., not a git repo)
         mock_run.side_effect = CalledProcessError(128, ['git'], stderr="Not a git repository")
         
-        result = get_git_tree()
+        with pytest.raises(HTTPException) as exc_info:
+            get_git_tree()
         
-        assert result.success is False
-        assert "Not a git repository" in result.message
-        assert result.result is None
+        assert exc_info.value.status_code == 500
+        assert "Not a git repository" in exc_info.value.detail
 
     @patch('subprocess.run')
     def test_get_git_tree_empty(self, mock_run):
@@ -102,10 +102,8 @@ class TestGetGitTree:
         mock_process.returncode = 0
         mock_run.return_value = mock_process
         
-        result = get_git_tree()
+        graph = get_git_tree()
         
-        assert result.success is True
-        graph = result.result
         assert graph is not None
         assert graph.root_id == ""
         assert len(graph.nodes) == 1
@@ -123,10 +121,10 @@ class TestGetGitTree:
         mock_process.returncode = 0
         mock_run.return_value = mock_process
         
-        result = get_git_tree()
+        graph = get_git_tree()
         
-        assert result.success is True
-        nodes = {n.id: n for n in result.result.nodes}
+        assert graph is not None
+        nodes = {n.id: n for n in graph.nodes}
         
         # All intermediate directories should exist
         assert "a" in nodes

@@ -5,19 +5,19 @@ This module implements Server-Sent Events (SSE) streaming for chat operations,
 allowing real-time token delivery to the frontend.
 """
 import asyncio
-import json
 import logging
 from typing import AsyncGenerator, Dict, Any, Optional, List
 
 import dspy
 from dspy.streaming import StreamResponse, StatusMessage
+from autocode.core.utils.sse import format_sse_event as _format_sse
 
 from autocode.core.ai.providers import ModelType
 from autocode.core.ai.dspy_utils import (
     get_dspy_lm, MODULE_MAP, ModuleType,
     prepare_chat_tools
 )
-from autocode.core.ai.models import DspyOutput
+from autocode.core.ai.models import normalize_trajectory, serialize_value
 from autocode.core.ai.signatures import ChatSignature
 
 logger = logging.getLogger(__name__)
@@ -92,55 +92,43 @@ def _setup_streaming(
     return lm, module
 
 
-def _build_complete_event(prediction: Optional[Any], lm: Any) -> dict:
+def _build_complete_event(prediction: Any, lm: Any) -> dict:
     """Build the payload dict for the final 'complete' SSE event.
-    
-    Args:
-        prediction: DSPy Prediction object, or None if no prediction was received.
-        lm: Configured DSPy LM instance (used to extract call history).
-        
-    Returns:
-        Dict payload ready to be JSON-serialized into the SSE event.
-    """
-    if prediction is None:
-        return {
-            "success": False,
-            "result": {},
-            "message": "No prediction received",
-            "reasoning": None,
-            "trajectory": None,
-            "completions": None,
-            "history": None
-        }
 
-    result = {}
-    for field_name in ChatSignature.output_fields:
-        val = getattr(prediction, field_name, None)
-        if val is not None:
-            result[field_name] = val
+    Returns a ChatResult-shaped dict: {response, reasoning, trajectory,
+    history, completions}. Only called when prediction is not None.
+
+    Args:
+        prediction: DSPy Prediction object (must not be None).
+        lm: Configured DSPy LM instance (used to extract call history).
+
+    Returns:
+        ChatResult-shaped dict ready to be JSON-serialized into the SSE event.
+    """
+    response = getattr(prediction, 'response', '') or ''
 
     reasoning = getattr(prediction, 'reasoning', None)
-    trajectory = getattr(prediction, 'trajectory', None)
+    if reasoning is not None and not isinstance(reasoning, str):
+        reasoning = str(reasoning)
 
+    trajectory = getattr(prediction, 'trajectory', None)
     if isinstance(trajectory, (dict, list)):
-        trajectory = DspyOutput.normalize_trajectory(trajectory)
-        trajectory = DspyOutput.serialize_value(trajectory)
+        trajectory = normalize_trajectory(trajectory)
+        trajectory = serialize_value(trajectory)
 
     history = None
     if hasattr(lm, 'history') and lm.history:
         try:
-            history = DspyOutput.serialize_value(lm.history)
+            history = serialize_value(lm.history)
         except Exception as e:
             logger.warning(f"Could not serialize lm.history: {e}")
 
     return {
-        "success": True,
-        "result": result,
-        "message": "Streaming completado",
-        "reasoning": str(reasoning) if reasoning and not isinstance(reasoning, str) else reasoning,
+        "response": response,
+        "reasoning": reasoning,
         "trajectory": trajectory,
+        "history": history,
         "completions": None,
-        "history": history
     }
 
 
@@ -237,7 +225,10 @@ async def stream_chat(
                     prediction = chunk
 
         # 4. Evento final
-        yield _format_sse("complete", _build_complete_event(prediction, lm))
+        if prediction is None:
+            yield _format_sse("error", {"message": "No prediction received", "success": False})
+        else:
+            yield _format_sse("complete", _build_complete_event(prediction, lm))
 
     except (GeneratorExit, asyncio.CancelledError):
         logger.info("Client disconnected, stream cancelled")
@@ -261,14 +252,3 @@ async def stream_chat(
             yield _format_sse("error", {"message": error_msg, "success": False})
 
 
-def _format_sse(event: str, data: dict) -> str:
-    """Formatea un evento como SSE.
-    
-    Args:
-        event: Tipo de evento (token, status, complete, error)
-        data: Datos del evento como diccionario
-        
-    Returns:
-        String formateado como evento SSE
-    """
-    return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"

@@ -7,19 +7,20 @@ consultar la estructura de archivos del repositorio git.
 import subprocess
 import logging
 
-from autocode.core.registry import register_function
-from autocode.core.vcs.models import GitNodeEntry, GitTreeGraph, GitTreeOutput
+from fastapi import HTTPException
+from refract import register_function
+from autocode.core.vcs.models import GitNodeEntry, GitTreeGraph
 
 logger = logging.getLogger(__name__)
 
 
 @register_function(http_methods=["GET"], interfaces=["api"])
-def get_git_tree() -> GitTreeOutput:
+def get_git_tree() -> GitTreeGraph:
     """
     Obtiene la estructura del proyecto desde el índice git incluyendo tamaños de archivo.
     
     Returns:
-        GitTreeOutput conteniendo la estructura del árbol de archivos.
+        GitTreeGraph con la estructura del árbol de archivos.
     """
     try:
         # Obtener todos los archivos trackeados por git
@@ -106,30 +107,16 @@ def get_git_tree() -> GitTreeOutput:
                 logger.warning(f"Error parseando línea '{line}': {loop_e}")
                 continue
 
-        graph = GitTreeGraph(
+        return GitTreeGraph(
             root_id=root_id,
             nodes=list(nodes_by_id.values()),
-        )
-
-        return GitTreeOutput(
-            success=True,
-            result=graph,
-            message="Git tree retrieved successfully"
         )
         
     except subprocess.CalledProcessError as e:
         error_msg = f"Git error: {e.stderr.strip() if e.stderr else str(e)}"
         logger.error(error_msg)
-        return GitTreeOutput(
-            success=False,
-            result=None,
-            message=error_msg
-        )
+        raise HTTPException(status_code=500, detail=error_msg)
     except Exception as e:
         error_msg = f"Unexpected error retrieving git tree: {str(e)}"
         logger.error(error_msg)
-        return GitTreeOutput(
-            success=False,
-            result=None,
-            message=error_msg
-        )
+        raise HTTPException(status_code=500, detail=error_msg)

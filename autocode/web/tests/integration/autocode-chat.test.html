@@ -404,9 +404,9 @@
         // ============================================
 
         try {
-            await import('/elements/auto-element-generator.js');
+            await import('/refract/generator.js');
         } catch (e) {
-            console.warn('auto-element-generator.js no cargado:', e.message);
+            console.warn('generator.js no cargado:', e.message);
         }
 
         await runner.sleep(1000);

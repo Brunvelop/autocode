@@ -6,7 +6,7 @@
  */
 
 import { LitElement, html } from 'https://cdn.jsdelivr.net/gh/lit/dist@3/core/lit-core.min.js';
-import { AutoFunctionController } from '../auto-element-generator.js';
+import { RefractClient } from '/refract/client.js';
 import { themeTokens } from './styles/theme.js';
 import { commitPlanDetailStyles } from './styles/commit-plan-detail.styles.js';
 
@@ -78,6 +78,9 @@ export class CommitPlanDetail extends LitElement {
         this._isApproving = false;
         this._isReverting = false;
         this._isAnalyzingReview = false;
+
+        // HTTP client
+        this._client = new RefractClient();
     }
 
     connectedCallback() {
@@ -87,6 +90,12 @@ export class CommitPlanDetail extends LitElement {
 
     disconnectedCallback() {
         super.disconnectedCallback();
+        // Cancel any active SSE stream to avoid orphaned connections when the
+        // component is unmounted (e.g. navigating away mid-execution).
+        if (this._abortController) {
+            this._abortController.abort();
+            this._abortController = null;
+        }
         this._stopElapsedTimer();
     }
 
@@ -265,7 +274,7 @@ export class CommitPlanDetail extends LitElement {
         this._plan = null;
 
         try {
-            const result = await AutoFunctionController.executeFunction(
+            const result = await this._client.call(
                 'get_commit_plan',
                 { plan_id: this.planId }
             );
@@ -312,7 +321,7 @@ export class CommitPlanDetail extends LitElement {
     async _updateStatus(e) {
         const newStatus = e.target.value;
         try {
-            await AutoFunctionController.executeFunction(
+            await this._client.call(
                 'update_commit_plan',
                 { plan_id: this.planId, status: newStatus }
             );
@@ -331,7 +340,7 @@ export class CommitPlanDetail extends LitElement {
      */
     async _loadModelChoices() {
         try {
-            const result = await AutoFunctionController.executeFunction(
+            const result = await this._client.call(
                 'get_chat_config',
                 {}
             );
@@ -352,7 +361,7 @@ export class CommitPlanDetail extends LitElement {
         if (!confirm(`¿Eliminar plan "${this._plan?.title}"?`)) return;
 
         try {
-            await AutoFunctionController.executeFunction(
+            await this._client.call(
                 'delete_commit_plan',
                 { plan_id: this.planId }
             );
@@ -529,11 +538,7 @@ export class CommitPlanDetail extends LitElement {
         this._plan = { ...this._plan, status: 'executing' };
 
         try {
-            const controller = new AutoFunctionController();
-            controller.funcName = 'execute_commit_plan';
-            await controller.loadFunctionInfo();
-
-            for await (const { event, data } of controller.callStreamAPI(
+            for await (const { event, data } of this._client.stream(
                 'execute_commit_plan',
                 { plan_id: this.planId, backend: this._selectedBackend, model: this._selectedModel, review_mode: this._selectedReviewMode },
                 null,
@@ -719,7 +724,7 @@ export class CommitPlanDetail extends LitElement {
      */
     async _resetToDraft() {
         try {
-            await AutoFunctionController.executeFunction(
+            await this._client.call(
                 'update_commit_plan',
                 { plan_id: this.planId, status: 'draft' }
             );
@@ -1097,18 +1102,14 @@ export class CommitPlanDetail extends LitElement {
 
     /**
      * Approve the plan: git add + commit → completed.
-     * Checks backend success and shows error if operation failed.
+     * Backend raises HTTPException on error, so try/catch handles all cases.
      */
     async _approvePlan() {
         if (this._isApproving) return;
         this._isApproving = true;
 
         try {
-            const envelope = await this._callAndCheckSuccess('approve_plan', { plan_id: this.planId });
-            if (!envelope.success) {
-                alert(`❌ Error al aprobar: ${envelope.message || 'Error desconocido'}`);
-                return;
-            }
+            await this._client.call('approve_plan', { plan_id: this.planId });
             // Reload plan to get updated status + commit hash
             await this._loadPlan();
             this.dispatchEvent(new CustomEvent('plan-updated', {
@@ -1125,7 +1126,7 @@ export class CommitPlanDetail extends LitElement {
 
     /**
      * Revert the plan: git checkout -- files → reverted.
-     * Checks backend success and shows error if operation failed.
+     * Backend raises HTTPException on error, so try/catch handles all cases.
      */
     async _revertPlan() {
         if (this._isReverting) return;
@@ -1134,11 +1135,7 @@ export class CommitPlanDetail extends LitElement {
         this._isReverting = true;
 
         try {
-            const envelope = await this._callAndCheckSuccess('revert_plan', { plan_id: this.planId });
-            if (!envelope.success) {
-                alert(`❌ Error al revertir: ${envelope.message || 'Error desconocido'}`);
-                return;
-            }
+            await this._client.call('revert_plan', { plan_id: this.planId });
             // Reload plan to get updated status
             await this._loadPlan();
             this.dispatchEvent(new CustomEvent('plan-updated', {
@@ -1151,21 +1148,6 @@ export class CommitPlanDetail extends LitElement {
         } finally {
             this._isReverting = false;
         }
-    }
-
-    /**
-     * Call an API function and return the full envelope {success, result, message}.
-     * Unlike executeFunction which only returns result, this gives access to success/message.
-     */
-    async _callAndCheckSuccess(funcName, params) {
-        const controller = new AutoFunctionController();
-        controller.funcName = funcName;
-        await controller.loadFunctionInfo();
-        Object.entries(params).forEach(([key, value]) => {
-            controller.setParam(key, value);
-        });
-        await controller.execute();
-        return { success: controller.success, result: controller.result, message: controller.message };
     }
 
     // ========================================================================

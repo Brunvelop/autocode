@@ -8,41 +8,39 @@ y métricas de complejidad, mantenibilidad y acoplamiento.
 from .models import (
     CodeNode,
     CodeGraph,
-    CodeStructureOutput,
     CodeStructureResult,
-    CodeSummaryOutput,
+    CodeSummaryResult,
     # Metrics models
     FunctionMetrics,
     FileMetrics,
     PackageCoupling,
     MetricsSnapshot,
     MetricsComparison,
-    MetricsSnapshotOutput,
-    MetricsSnapshotListOutput,
+    MetricsSnapshotList,
     CommitMetrics,
     CommitFileMetrics,
-    CommitMetricsOutput,
     # Metrics history models
     MetricsHistoryPoint,
     MetricsHistory,
-    MetricsHistoryOutput,
     # Architecture models
     FileDependency,
     ArchitectureNode,
     ArchitectureSnapshot,
-    ArchitectureSnapshotOutput,
+    # Health check models
+    HealthViolation,
+    HealthCheckResult,
 )
 from .structure import get_code_structure, get_code_summary
 from .metrics import generate_code_metrics, get_metrics_snapshots, get_commit_metrics, get_metrics_history
 from .architecture import get_architecture_snapshot
+from .health import get_health_check
 
 __all__ = [
-    # Structure
+    # Structure models
     'CodeNode',
     'CodeGraph',
-    'CodeStructureOutput',
     'CodeStructureResult',
-    'CodeSummaryOutput',
+    'CodeSummaryResult',
     'get_code_structure',
     'get_code_summary',
     # Metrics models
@@ -51,15 +49,12 @@ __all__ = [
     'PackageCoupling',
     'MetricsSnapshot',
     'MetricsComparison',
-    'MetricsSnapshotOutput',
-    'MetricsSnapshotListOutput',
+    'MetricsSnapshotList',
     'CommitMetrics',
     'CommitFileMetrics',
-    'CommitMetricsOutput',
     # Metrics history models
     'MetricsHistoryPoint',
     'MetricsHistory',
-    'MetricsHistoryOutput',
     # Metrics functions
     'generate_code_metrics',
     'get_metrics_snapshots',
@@ -69,7 +64,11 @@ __all__ = [
     'FileDependency',
     'ArchitectureNode',
     'ArchitectureSnapshot',
-    'ArchitectureSnapshotOutput',
     # Architecture functions
     'get_architecture_snapshot',
+    # Health check models
+    'HealthViolation',
+    'HealthCheckResult',
+    # Health check function
+    'get_health_check',
 ]

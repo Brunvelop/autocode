@@ -1,4 +1,5 @@
 """Tests for get_architecture_snapshot() endpoint."""
+import pytest
 from unittest.mock import patch
 from pathlib import Path
 
@@ -42,11 +43,8 @@ class TestGetArchitectureSnapshot:
 
         mock_analyze.side_effect = analyze_side_effect
 
-        result = get_architecture_snapshot()
+        snapshot = get_architecture_snapshot()
 
-        assert result.success is True
-        snapshot = result.result
-        assert snapshot is not None
         assert snapshot.root_id == "."
         assert snapshot.commit_hash == "abc123def456789"
         assert snapshot.commit_short == "abc123d"
@@ -67,17 +65,17 @@ class TestGetArchitectureSnapshot:
     @patch("autocode.core.code.architecture.git")
     @patch("autocode.core.code.architecture.get_tracked_files")
     def test_snapshot_error_no_git(self, mock_get_files, mock_git):
-        """Should return error gracefully when git fails."""
+        """Should raise HTTPException when git fails."""
         from autocode.core.code.architecture import get_architecture_snapshot
+        from fastapi import HTTPException
 
         mock_git.side_effect = Exception("Not a git repository")
         mock_get_files.side_effect = Exception("git failed")
 
-        result = get_architecture_snapshot()
+        with pytest.raises(HTTPException) as exc_info:
+            get_architecture_snapshot()
 
-        assert result.success is False
-        assert result.result is None
-        assert result.message is not None
+        assert exc_info.value.status_code == 500
 
     @patch("autocode.core.code.architecture.git")
     @patch("autocode.core.code.architecture.get_tracked_files")
@@ -93,11 +91,8 @@ class TestGetArchitectureSnapshot:
 
         mock_get_files.return_value = []
 
-        result = get_architecture_snapshot()
+        snapshot = get_architecture_snapshot()
 
-        assert result.success is True
-        snapshot = result.result
-        assert snapshot is not None
         assert snapshot.total_files == 0
         assert snapshot.total_sloc == 0
         assert len(snapshot.nodes) == 1  # only root
@@ -154,11 +149,7 @@ class TestSnapshotWithDependencies:
         mock_analyze.side_effect = analyze_side_effect
 
         with patch.object(Path, "read_text", patched_read):
-            result = get_architecture_snapshot()
-
-        assert result.success is True
-        snapshot = result.result
-        assert snapshot is not None
+            snapshot = get_architecture_snapshot()
 
         assert hasattr(snapshot, "dependencies")
         assert isinstance(snapshot.dependencies, list)
@@ -247,11 +238,8 @@ class TestArchitectureSnapshotWithJS:
 
         mock_analyze.side_effect = analyze_side_effect
 
-        result = get_architecture_snapshot()
+        snapshot = get_architecture_snapshot()
 
-        assert result.success is True
-        snapshot = result.result
-        assert snapshot is not None
         assert snapshot.total_files == 3  # 1 py + 2 js
         assert snapshot.total_sloc == 300  # 3 * 100
 
@@ -289,9 +277,9 @@ class TestGetArchitectureSnapshotHistorical:
         mock_git_show.return_value = "x = 1\n"
         mock_analyze.return_value = make_simple_file_metrics("src/app.py")
 
-        result = get_architecture_snapshot(commit_hash="abc123")
+        snapshot = get_architecture_snapshot(commit_hash="abc123")
 
-        assert result.success is True
+        assert snapshot.root_id == "."
         mock_get_files_at.assert_called_once()
         mock_get_files.assert_not_called()
 
@@ -316,10 +304,10 @@ class TestGetArchitectureSnapshotHistorical:
         mock_analyze.return_value = make_simple_file_metrics("src/app.py")
 
         with patch.object(Path, "read_text") as mock_read:
-            result = get_architecture_snapshot(commit_hash="abc123")
+            snapshot = get_architecture_snapshot(commit_hash="abc123")
             mock_read.assert_not_called()
 
-        assert result.success is True
+        assert snapshot.root_id == "."
         mock_git_show.assert_called()
         call_args = mock_git_show.call_args_list
         assert any("abc123:src/app.py" in str(c) for c in call_args)
@@ -344,10 +332,8 @@ class TestGetArchitectureSnapshotHistorical:
         mock_git_show.return_value = "x = 1\n"
         mock_analyze.return_value = make_simple_file_metrics("src/app.py")
 
-        result = get_architecture_snapshot(commit_hash="abc123")
+        snapshot = get_architecture_snapshot(commit_hash="abc123")
 
-        assert result.success is True
-        snapshot = result.result
         assert snapshot.commit_hash == "abc123def456789"
         assert snapshot.commit_short == "abc123d"
 
@@ -373,9 +359,9 @@ class TestGetArchitectureSnapshotHistorical:
         mock_read.return_value = "x = 1\n"
         mock_analyze.return_value = make_simple_file_metrics("src/app.py")
 
-        result = get_architecture_snapshot()  # no commit_hash
+        snapshot = get_architecture_snapshot()  # no commit_hash
 
-        assert result.success is True
+        assert snapshot.root_id == "."
         mock_get_files.assert_called_once()
         mock_get_files_at.assert_not_called()
         mock_git_show.assert_not_called()

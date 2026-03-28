@@ -7,9 +7,9 @@ with DSPy generation for complete workflows.
 from typing import Dict, Any, Optional, List, get_args
 import os
 import litellm
-from autocode.core.registry import register_function, get_functions_for_interface
-from autocode.core.models import GenericOutput
-from autocode.core.ai.models import DspyOutput
+from fastapi import HTTPException
+from refract import register_function, Refract
+from autocode.core.ai.models import ChatResult, ContextUsage, ChatConfig
 from autocode.core.utils.openrouter import fetch_models_info
 from autocode.core.ai.providers import ModelType
 from autocode.core.ai.dspy_utils import (
@@ -56,12 +56,12 @@ def _read_path_content(path: str) -> str:
     return "\n".join(contents)
 
 
-@register_function(http_methods=["POST"], interfaces=["api", "cli"])
+@register_function(http_methods=["POST"], interfaces=["api"])
 def calculate_context_usage(
     model: ModelType,
     messages: Optional[List[Dict[str, str]]] = None,
     path: Optional[str] = None,
-) -> GenericOutput:
+) -> ContextUsage:
     """
     Calcula el uso actual y máximo de la ventana de contexto para un modelo.
     
@@ -77,19 +77,19 @@ def calculate_context_usage(
               Opcional si se proporcionan `messages`.
         
     Returns:
-        GenericOutput con result={"current": int, "max": int, "percentage": float}
+        ContextUsage con current, max y percentage
     """
+    all_messages: List[Dict[str, str]] = list(messages) if messages else []
+
+    # Si se proporciona path, añadir su contenido como mensaje user sintético
+    if path is not None:
+        if not os.path.exists(path):
+            raise HTTPException(status_code=404, detail=f"Path no encontrado: {path}")
+        path_content = _read_path_content(path)
+        if path_content:
+            all_messages.append({"role": "user", "content": path_content})
+
     try:
-        all_messages: List[Dict[str, str]] = list(messages) if messages else []
-
-        # Si se proporciona path, añadir su contenido como mensaje user sintético
-        if path is not None:
-            if not os.path.exists(path):
-                raise FileNotFoundError(f"Path no encontrado: {path}")
-            path_content = _read_path_content(path)
-            if path_content:
-                all_messages.append({"role": "user", "content": path_content})
-
         # Calcular tokens actuales usando litellm.token_counter
         current_tokens = litellm.token_counter(model=model, messages=all_messages)
         
@@ -99,25 +99,18 @@ def calculate_context_usage(
         # Calcular porcentaje de uso
         percentage = (current_tokens / max_tokens * 100) if max_tokens > 0 else 0
         
-        return GenericOutput(
-            success=True,
-            result={
-                "current": current_tokens,
-                "max": max_tokens,
-                "percentage": round(percentage, 2)
-            },
-            message=f"Context usage: {current_tokens}/{max_tokens} tokens ({percentage:.1f}%)"
+        return ContextUsage(
+            current=current_tokens,
+            max=max_tokens,
+            percentage=round(percentage, 2)
         )
-        
+    except HTTPException:
+        raise
     except Exception as e:
-        return GenericOutput(
-            success=False,
-            result={"current": 0, "max": 0, "percentage": 0},
-            message=f"Error calculando uso de contexto: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Error calculando uso de contexto: {str(e)}")
 
 
-@register_function(http_methods=["POST"], interfaces=["api", "cli"])
+@register_function(http_methods=["POST"], interfaces=["api"])
 def chat(
     message: str,
     conversation_history: str = "",
@@ -129,15 +122,15 @@ def chat(
     enabled_tools: Optional[List[str]] = None,
     lm_kwargs: Optional[Dict[str, Any]] = None,
     enable_prompt_cache: bool = True
-) -> DspyOutput:
+) -> ChatResult:
     """
     Chat conversacional con acceso a herramientas MCP.
-    
+
     Este endpoint usa DSPy con el módulo configurado para:
     - Usar las funciones MCP registradas como herramientas con schemas completos
     - Razonar sobre qué herramientas usar para responder (con ReAct)
-    - Retornar un DspyOutput completo con trajectory, reasoning, history, etc.
-    
+    - Retornar un ChatResult con response, trajectory, reasoning, history, etc.
+
     Args:
         message: Mensaje actual del usuario
         conversation_history: Historial de conversación en formato texto (opcional)
@@ -149,40 +142,43 @@ def chat(
         enabled_tools: Lista de nombres de funciones a habilitar como tools (si None, usa todas)
         lm_kwargs: Parámetros avanzados adicionales para el LLM (top_p, etc.)
         enable_prompt_cache: Activa cache de prompts del proveedor (Anthropic/OpenAI) para reducir costos y latencia (default: True)
-        
+
     Returns:
-        DspyOutput con:
-        - result: Dict con 'response', 'trajectory' (si ReAct), 'reasoning', etc.
+        ChatResult con:
+        - response: Respuesta principal del asistente
         - history: Historial completo de llamadas al LM con metadata
         - trajectory: Trayectoria de ReAct (thoughts, tool_names, tool_args, observations)
         - reasoning: Razonamiento paso a paso
         - completions: Múltiples completions si aplica
+
+    Raises:
+        HTTPException: Si ocurre algún error durante la ejecución
     """
     try:
         # Preparar tools usando helper compartido
         tools = prepare_chat_tools(enabled_tools)
-        
+
         # Preparar module_kwargs con tools para ReAct
         if module_kwargs is None:
             module_kwargs = {}
-        
+
         # Si es ReAct, asegurar que tenga tools y max_iters
         if module_type == 'ReAct':
             if 'tools' not in module_kwargs:
                 module_kwargs['tools'] = tools
             if 'max_iters' not in module_kwargs:
                 module_kwargs['max_iters'] = 5
-        
+
         # Generar respuesta usando el módulo configurado
         kwargs = lm_kwargs or {}
-        
+
         # Inyectar cache_control_injection_points para cache del proveedor (Anthropic/OpenAI)
         # Esto reduce costos y latencia cacheando prefijos de prompts en el servidor del proveedor
         if enable_prompt_cache and 'cache_control_injection_points' not in kwargs:
             kwargs['cache_control_injection_points'] = [
                 {"location": "message", "role": "system"}
             ]
-        
+
         return generate_with_dspy(
             signature_class=ChatSignature,
             inputs={
@@ -196,14 +192,11 @@ def chat(
             temperature=temperature,
             **kwargs
         )
-        
+
+    except HTTPException:
+        raise
     except Exception as e:
-        # Retornar error en formato DspyOutput
-        return DspyOutput(
-            success=False,
-            result={"error": f"Error en chat: {str(e)}"},
-            message=f"Error en chat: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Error en chat: {str(e)}")
 
 
 @register_function(
@@ -223,14 +216,14 @@ def chat_stream(
     enabled_tools: Optional[List[str]] = None,
     lm_kwargs: Optional[Dict[str, Any]] = None,
     enable_prompt_cache: bool = True
-) -> DspyOutput:
+) -> ChatResult:
     """Chat con streaming en tiempo real vía SSE.
-    
+
     Misma funcionalidad que chat() pero con streaming de tokens.
     Esta función existe como definición de schema para el registry.
     La ejecución real se hace vía stream_func (stream_chat).
     Si se invoca síncronamente (ej: desde CLI), delega a chat().
-    
+
     Args:
         message: Mensaje actual del usuario
         conversation_history: Historial de conversación en formato texto (opcional)
@@ -242,9 +235,9 @@ def chat_stream(
         enabled_tools: Lista de nombres de funciones a habilitar como tools (si None, usa todas)
         lm_kwargs: Parámetros avanzados adicionales para el LLM (top_p, etc.)
         enable_prompt_cache: Activa cache de prompts del proveedor (default: True)
-        
+
     Returns:
-        DspyOutput (en modo síncrono, delega a chat())
+        ChatResult (en modo síncrono, delega a chat())
     """
     return chat(
         message=message, conversation_history=conversation_history,
@@ -256,7 +249,7 @@ def chat_stream(
 
 
 @register_function(http_methods=["GET"], interfaces=["api"])
-def get_chat_config() -> GenericOutput:
+def get_chat_config() -> ChatConfig:
     """
     Obtiene la configuración disponible para el chat.
     
@@ -269,10 +262,7 @@ def get_chat_config() -> GenericOutput:
     según el module_type seleccionado y el modelo.
     
     Returns:
-        GenericOutput con:
-        - result.module_kwargs_schemas: Dict[module_type, {params, supports_tools}]
-        - result.available_tools: List[{name, description, enabled_by_default}]
-        - result.models: List[Dict] con info de cada modelo
+        ChatConfig con module_kwargs_schemas, available_tools y models
     """
     try:
         # Obtener lista base de modelos definidos en el sistema
@@ -294,21 +284,14 @@ def get_chat_config() -> GenericOutput:
                 "supported_parameters": info.get("supported_parameters", [])
             })
 
-        # Obtener funciones MCP del registry
-        mcp_functions = get_functions_for_interface("mcp")
+        mcp_functions = Refract.current().get_functions_for_interface("mcp")
 
-        return GenericOutput(
-            success=True,
-            result={
-                "module_kwargs_schemas": get_all_module_kwargs_schemas(),
-                "available_tools": get_available_tools_info(mcp_functions),
-                "models": models_data
-            },
-            message="Configuración de chat obtenida exitosamente"
+        return ChatConfig(
+            module_kwargs_schemas=get_all_module_kwargs_schemas(),
+            available_tools=get_available_tools_info(mcp_functions),
+            models=models_data
         )
+    except HTTPException:
+        raise
     except Exception as e:
-        return GenericOutput(
-            success=False,
-            result={},
-            message=f"Error obteniendo configuración: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Error obteniendo configuración: {str(e)}")

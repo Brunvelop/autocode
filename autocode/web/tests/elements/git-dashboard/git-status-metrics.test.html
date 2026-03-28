@@ -37,6 +37,7 @@
     <script type="module">
         import '../../utils/test-runner.js';
         import { TestRunner } from '../../utils/test-runner.js';
+        import { mockRefractCall } from '../../utils/mock-client.js';
 
         const runner = new TestRunner();
 
@@ -106,21 +107,17 @@
         };
 
         // ====================================================================
-        // MOCK: Intercept AutoFunctionController BEFORE component loads
+        // MOCK: Intercept RefractClient.prototype.call BEFORE component loads
         // ====================================================================
 
         let metricsCallCount = 0;
 
-        const autoGenModule = await import('../../../elements/auto-element-generator.js');
-        const originalExecute = autoGenModule.AutoFunctionController.executeFunction;
-
-        autoGenModule.AutoFunctionController.executeFunction = async function(funcName, params) {
+        await mockRefractCall(async (funcName) => {
             if (funcName === 'get_working_changes_metrics') {
                 metricsCallCount++;
                 return MOCK_METRICS_RESULT;
             }
-            return originalExecute.call(this, funcName, params);
-        };
+        });
 
         // Import git-status component (and files-metrics-table via its import)
         await import('../../../elements/git-dashboard/git-status.js');

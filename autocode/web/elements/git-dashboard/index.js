@@ -5,12 +5,12 @@
  * Muestra un grafo de commits con branches, tags, merge lines, etc.
  * Panel lateral con detalle del commit seleccionado (archivos cambiados, stats).
  *
- * Usa AutoFunctionController.executeFunction() para llamar al backend
- * (get_git_log, get_commit_detail) pero extiende LitElement directamente.
+ * Usa RefractClient.call() para llamar al backend
+ * (get_git_log, get_commit_detail) extendiendo LitElement directamente.
  */
 
 import { LitElement, html } from 'https://cdn.jsdelivr.net/gh/lit/dist@3/core/lit-core.min.js';
-import { AutoFunctionController } from '../auto-element-generator.js';
+import { RefractClient } from '/refract/client.js';
 import { themeTokens } from './styles/theme.js';
 import { gitDashboardStyles } from './styles/git-dashboard.styles.js';
 
@@ -58,6 +58,10 @@ export class GitDashboard extends LitElement {
 
     constructor() {
         super();
+
+        // HTTP client
+        this._client = new RefractClient();
+
         this.maxCount = 50;
 
         this._commits = [];
@@ -323,7 +327,7 @@ export class GitDashboard extends LitElement {
         this._gitError = null;
 
         try {
-            const result = await AutoFunctionController.executeFunction(
+            const result = await this._client.call(
                 'get_git_status',
                 {}
             );
@@ -347,7 +351,7 @@ export class GitDashboard extends LitElement {
         this._error = null;
 
         try {
-            const result = await AutoFunctionController.executeFunction(
+            const result = await this._client.call(
                 'get_git_log',
                 {
                     max_count: this.maxCount,
@@ -616,11 +620,11 @@ export class GitDashboard extends LitElement {
      */
     async _loadPlans() {
         try {
-            const plans = await AutoFunctionController.executeFunction(
+            const data = await this._client.call(
                 'list_commit_plans',
                 {}
             );
-            this._plans = plans || [];
+            this._plans = data?.plans || [];
         } catch (error) {
             console.error('❌ Error loading commit plans:', error);
             this._plans = [];

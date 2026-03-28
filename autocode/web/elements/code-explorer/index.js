@@ -1,17 +1,17 @@
 /**
  * index.js
  * CodeExplorer - Componente principal para exploración visual de código.
- * 
- * Usa AutoFunctionController.executeFunction() para llamar al backend,
- * pero extiende LitElement directamente (standalone con backend).
- * 
+ *
+ * Usa RefractClient.call() para llamar al backend,
+ * extendiendo LitElement directamente (standalone con backend).
+ *
  * El backend devuelve una estructura plana (graph.nodes con parent_id)
  * para evitar recursión en OpenAPI schema. Este componente reconstruye
  * el árbol en el cliente.
  */
 
 import { LitElement, html } from 'https://cdn.jsdelivr.net/gh/lit/dist@3/core/lit-core.min.js';
-import { AutoFunctionController } from '../auto-element-generator.js';
+import { RefractClient } from '/refract/client.js';
 import { themeTokens } from './styles/theme.js';
 import { codeExplorerStyles } from './styles/code-explorer.styles.js';
 
@@ -39,7 +39,10 @@ export class CodeExplorer extends LitElement {
 
     constructor() {
         super();
-        
+
+        // HTTP client
+        this._client = new RefractClient();
+
         // Configuración por defecto
         this.path = '.';
         this.depth = -1;  // Ilimitado
@@ -160,7 +163,7 @@ export class CodeExplorer extends LitElement {
         this._error = null;
 
         try {
-            const result = await AutoFunctionController.executeFunction(
+            const result = await this._client.call(
                 'get_code_structure',
                 {
                     path: this.path,

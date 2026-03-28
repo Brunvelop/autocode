@@ -9,8 +9,6 @@ estructurados en .autocode/plans/ y visualizarlos como ghost nodes en git-dashbo
 from typing import List, Optional, Literal
 from pydantic import BaseModel, Field
 
-from autocode.core.models import GenericOutput
-
 
 # Estados de un plan
 PlanStatus = Literal[
@@ -120,15 +118,54 @@ class CommitPlanSummary(BaseModel):
 
 
 # ==============================================================================
-# OUTPUT MODELS (GenericOutput wrappers)
+# DOMAIN OUTPUT MODELS (direct return, no envelope)
 # ==============================================================================
 
 
-class CommitPlanOutput(GenericOutput):
-    """Output de create/get/update commit plan."""
-    result: Optional[CommitPlan] = None
+class FileReadResult(BaseModel):
+    """Resultado de leer un archivo."""
+    content: str = Field(..., description="Contenido del archivo")
+    path: str = Field(..., description="Ruta del archivo leído")
+    size: int = Field(..., description="Tamaño en bytes del archivo")
+    truncated: bool = Field(False, description="Si el contenido fue truncado por exceder el límite")
 
 
-class CommitPlanListOutput(GenericOutput):
-    """Output de list_commit_plans."""
-    result: Optional[List[CommitPlanSummary]] = None
+class FileWriteResult(BaseModel):
+    """Resultado de escribir un archivo."""
+    path: str = Field(..., description="Ruta del archivo escrito")
+    bytes_written: int = Field(..., description="Bytes escritos")
+
+
+class FileReplaceResult(BaseModel):
+    """Resultado de reemplazar contenido en un archivo."""
+    replaced: bool = Field(..., description="Si se realizó el reemplazo")
+    occurrences: int = Field(..., description="Número total de ocurrencias encontradas")
+    path: str = Field(..., description="Ruta del archivo modificado")
+
+
+class FileDeleteResult(BaseModel):
+    """Resultado de eliminar un archivo."""
+    deleted: str = Field(..., description="Ruta del archivo eliminado")
+
+
+class CommitPlanList(BaseModel):
+    """Lista de resúmenes de planes de commit."""
+    plans: List[CommitPlanSummary] = Field(default_factory=list)
+
+
+class DeleteResult(BaseModel):
+    """Resultado de eliminación de un recurso."""
+    deleted: str = Field(..., description="ID del recurso eliminado")
+
+
+class PlanExecutionResult(BaseModel):
+    """Resultado de la ejecución síncrona de un plan (wrapper de execute_commit_plan)."""
+    status: str = Field(..., description="Estado final del plan tras la ejecución")
+    execution: Optional[dict] = Field(None, description="Estado de ejecución serializado")
+
+
+class PlanReviewMetrics(BaseModel):
+    """Métricas de review de un plan para la UI."""
+    files: List[dict] = Field(default_factory=list)
+    summary: dict = Field(default_factory=dict)
+    quality_gates: dict = Field(default_factory=dict)

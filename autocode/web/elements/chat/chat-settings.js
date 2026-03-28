@@ -75,8 +75,8 @@ export class ChatSettings extends LitElement {
         const moduleType = settings.module_type;
         const moduleConfig = this.chatConfig?.module_kwargs_schemas?.[moduleType];
         
-        // Si el módulo soporta tools (o fallback a ReAct hardcoded para compatibilidad antigua)
-        if ((moduleConfig?.supports_tools || moduleType === 'ReAct') && this._enabledTools.size > 0) {
+        // Si el módulo soporta tools según el schema del backend
+        if (moduleConfig?.supports_tools && this._enabledTools.size > 0) {
             settings.enabled_tools = Array.from(this._enabledTools);
         }
         
@@ -334,8 +334,8 @@ export class ChatSettings extends LitElement {
         const moduleType = this._settings.module_type;
         const schema = this.chatConfig?.module_kwargs_schemas?.[moduleType];
         
-        // Mostrar si el módulo soporta tools explicitamente O es ReAct (fallback)
-        const supportsTools = schema?.supports_tools || moduleType === 'ReAct';
+        // Mostrar el selector solo si el backend declara supports_tools en el schema
+        const supportsTools = schema?.supports_tools;
         
         if (!supportsTools || !this.chatConfig?.available_tools) {
             return '';

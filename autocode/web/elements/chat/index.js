@@ -1,14 +1,16 @@
 /**
  * index.js (autocode-chat)
  * Orquestador del chat que compone todos los sub-componentes.
- * Extiende AutoFunctionController para reutilizar la lógica de estado y API,
- * pero implementa su propia UI (ChatWindow) en lugar de la tarjeta genérica.
+ * Extiende LitElement directamente y usa RefractClient por composición
+ * para toda la comunicación con la API (ya no hereda de AutoFunctionController).
  * 
- * REFACTORIZACIÓN: Lógica pura separada de estilos siguiendo el patrón estándar de Lit
+ * REFACTORIZACIÓN: Herencia → Composición
+ * - Antes: extends AutoFunctionController (acoplamiento innecesario)
+ * - Ahora: extends LitElement + this._client = new RefractClient()
  */
 
-import { html } from 'https://cdn.jsdelivr.net/gh/lit/dist@3/core/lit-core.min.js';
-import { AutoFunctionController } from '../auto-element-generator.js';
+import { LitElement, html } from 'https://cdn.jsdelivr.net/gh/lit/dist@3/core/lit-core.min.js';
+import { RefractClient } from '/refract/client.js';
 import { themeTokens } from './styles/theme.js';
 import { badgeBase, ghostButton } from './styles/common.js';
 import { autocodeChatStyles } from './styles/autocode-chat.styles.js';
@@ -20,9 +22,25 @@ import './chat-window.js';
 import './context-bar.js';
 import './chat-settings.js';
 
-export class AutocodeChat extends AutoFunctionController {
+export class AutocodeChat extends LitElement {
     static properties = {
-        ...AutoFunctionController.properties,
+        // Schema de la función 'chat' cargado del registry
+        funcInfo: { type: Object, state: true },
+
+        // Estado de parámetros
+        params: { type: Object, state: true },
+
+        // Estado de respuesta
+        result: { type: Object, state: true },
+        envelope: { type: Object, state: true },
+        success: { type: Boolean, state: true },
+
+        // UI Status
+        _status: { type: String, state: true },
+        _statusMessage: { type: String, state: true },
+        _isExecuting: { type: Boolean, state: true },
+
+        // Config del chat (modelos disponibles, tools, etc.)
         _chatConfig: { state: true }
     };
 
@@ -30,26 +48,63 @@ export class AutocodeChat extends AutoFunctionController {
 
     constructor() {
         super();
-        this.funcName = 'chat'; // Hardcoded para este componente específico
-        
-        // Estado local del chat
-        this.conversationHistory = [];
-        this._pendingUserMessage = null;
-        this._chatConfig = null;
-        this._useStreaming = true; // Toggle streaming (controlado desde settings)
-        
-        // Inicializar params vacíos (se llenarán con defaults al cargar funcInfo)
+
+        // Capa 1: cliente HTTP puro (sin Lit)
+        this._client = new RefractClient();
+
+        // Schema de la función chat
+        this.funcInfo = null;
+
+        // Estado de parámetros
         this.params = {
             message: '',
             conversation_history: '',
             model: ''
         };
+
+        // Estado de respuesta
+        this.result = null;
+        this.envelope = null;
+        this.success = undefined;
+
+        // UI Status
+        this._status = 'default';
+        this._statusMessage = 'Listo';
+        this._isExecuting = false;
+
+        // Estado local del chat
+        this.conversationHistory = [];
+        this._pendingUserMessage = null;
+        this._chatConfig = null;
+        this._useStreaming = true; // Toggle streaming (controlado desde settings)
+        this._streamFuncInfo = null;
+
+        // AbortController para el stream SSE activo (null si no hay stream en curso)
+        this._abortController = null;
     }
 
-    connectedCallback() {
+    async connectedCallback() {
         super.connectedCallback();
+        await this._loadFuncInfo();
         this._loadChatConfig();
         this._loadStreamFuncInfo();
+    }
+
+    disconnectedCallback() {
+        super.disconnectedCallback();
+        // Cancelar cualquier stream SSE activo para evitar streams huérfanos
+        this._abortCurrentStream();
+    }
+
+    /**
+     * Cancela el stream SSE activo si existe.
+     * Seguro de llamar en cualquier momento (no-op si no hay stream).
+     */
+    _abortCurrentStream() {
+        if (this._abortController) {
+            this._abortController.abort();
+            this._abortController = null;
+        }
     }
 
     firstUpdated() {
@@ -76,11 +131,12 @@ export class AutocodeChat extends AutoFunctionController {
      * Aquí configuramos los settings cuando funcInfo se carga.
      */
     updated(changedProperties) {
-        super.updated(changedProperties);
-        
-        // Cuando funcInfo se carga, configurar el panel de settings
-        if (changedProperties.has('funcInfo') && this.funcInfo && this._settings) {
-            this._settings.configure(this.funcInfo);
+        // Cuando funcInfo se carga, inicializar params con defaults y configurar settings
+        if (changedProperties.has('funcInfo') && this.funcInfo) {
+            this._initParamsWithDefaults();
+            if (this._settings) {
+                this._settings.configure(this.funcInfo);
+            }
         }
     }
 
@@ -109,11 +165,68 @@ export class AutocodeChat extends AutoFunctionController {
                 
                 <!-- Footer: input y context bar -->
                 <div slot="footer" class="footer-container">
-                    <chat-input placeholder="Escribe tu mensaje..."></chat-input>
+                    <chat-input placeholder="Escribe tu mensaje..." ?disabled=${this._isExecuting}></chat-input>
                     <context-bar current="0" max="0"></context-bar>
                 </div>
             </chat-window>
         `;
+    }
+
+    // ========================================================================
+    // STATE MANAGEMENT (reemplaza métodos heredados de AutoFunctionController)
+    // ========================================================================
+
+    /**
+     * Establece el valor de un parámetro y actualiza el estado reactivo.
+     */
+    setParam(name, value) {
+        this.params = { ...this.params, [name]: value };
+    }
+
+    /**
+     * Obtiene el valor actual de un parámetro.
+     */
+    getParam(name) {
+        return this.params[name];
+    }
+
+    /**
+     * Inicializa params con los valores por defecto de funcInfo.
+     * Respeta cualquier valor ya establecido en this.params.
+     */
+    _initParamsWithDefaults() {
+        const newParams = { ...this.params };
+        this.funcInfo?.parameters?.forEach(p => {
+            if (newParams[p.name] === undefined && p.default !== null) {
+                newParams[p.name] = p.default;
+            }
+        });
+        this.params = newParams;
+    }
+
+    /**
+     * Actualiza el estado visual del componente.
+     */
+    _setStatus(type, message) {
+        this._status = type;
+        this._statusMessage = message;
+    }
+
+    // ========================================================================
+    // FUNCTION INFO LOADING
+    // ========================================================================
+
+    /**
+     * Carga el schema de la función 'chat' desde el registry.
+     * Usa getSchema() idiomático de RefractClient (aprovecha el cache interno).
+     */
+    async _loadFuncInfo() {
+        try {
+            await this._client.loadSchemas();
+            this.funcInfo = this._client.getSchema('chat');
+        } catch (error) {
+            console.warn('⚠️ Error loading chat funcInfo:', error);
+        }
     }
 
     // ========================================================================
@@ -150,8 +263,12 @@ export class AutocodeChat extends AutoFunctionController {
     }
 
     _handleNewChat() {
+        // Cancelar stream activo antes de limpiar el chat
+        this._abortCurrentStream();
+
         this.conversationHistory = [];
         this._pendingUserMessage = null;
+        this._isExecuting = false;
         this.setParam('conversation_history', '');
         
         if (this._messages) this._messages.clear();
@@ -160,8 +277,7 @@ export class AutocodeChat extends AutoFunctionController {
 
     async _loadChatConfig() {
         try {
-            const result = await AutoFunctionController.executeFunction('get_chat_config', {});
-            this._chatConfig = result;
+            this._chatConfig = await this._client.call('get_chat_config', {});
         } catch (error) {
             console.warn('⚠️ Error loading chat config:', error);
         }
@@ -169,13 +285,13 @@ export class AutocodeChat extends AutoFunctionController {
 
     /**
      * Pre-carga la info de chat_stream del registry para evitar latencia en el primer mensaje.
+     * Usa getSchema() idiomático de RefractClient (aprovecha el cache interno de loadSchemas).
      * Si chat_stream no está disponible, _streamFuncInfo queda null y se usa fallback síncrono.
      */
     async _loadStreamFuncInfo() {
         try {
-            const response = await fetch('/functions/details');
-            const data = await response.json();
-            this._streamFuncInfo = data.functions['chat_stream'] || null;
+            await this._client.loadSchemas();
+            this._streamFuncInfo = this._client.getSchema('chat_stream');
         } catch (e) {
             console.warn('⚠️ Could not pre-load chat_stream info');
             this._streamFuncInfo = null;
@@ -187,27 +303,17 @@ export class AutocodeChat extends AutoFunctionController {
     // ========================================================================
 
     /**
-     * Procesa el resultado de la ejecución y actualiza el historial y la UI
+     * Procesa el resultado de la ejecución y actualiza el historial y la UI.
+     * Recibe directamente un ChatResult (sin envelope wrapper).
      */
-    _processResult(envelopeOrPayload) {
-        if (!envelopeOrPayload) return;
+    _processResult(data) {
+        if (!data) return;
 
-        // A partir de ahora el Controller expone:
-        // - this.result: payload (data.result)
-        // - this.envelope: envelope completo (data)
-        // Preferimos procesar/mostrar el envelope para conservar metadatos.
-        const envelope = (envelopeOrPayload && typeof envelopeOrPayload === 'object' && Object.prototype.hasOwnProperty.call(envelopeOrPayload, 'result'))
-            ? envelopeOrPayload
-            : (this.envelope || envelopeOrPayload);
-
-        const isError = envelope?._isError || envelope?.success === false || this.success === false;
-
-        if (isError) {
-            // Pasar el objeto completo si es posible para mantener metadatos (history, debug info)
-            // Si no es objeto, usar el string de error
-            const content = (typeof envelope === 'object' && envelope !== null)
-                ? envelope
-                : (envelope?._message || envelope?.message || envelope?.error || 'Error desconocido');
+        // Los errores llegan como _isError (streaming) — los HTTP errors van por catch
+        if (data?._isError) {
+            const content = (typeof data === 'object' && data !== null)
+                ? data
+                : (data?._message || 'Error desconocido');
 
             if (this._messages) {
                 this._messages.addMessage('error', content);
@@ -217,29 +323,34 @@ export class AutocodeChat extends AutoFunctionController {
 
         // Mostrar respuesta
         if (this._messages) {
-            this._messages.addMessage('assistant', envelope);
+            this._messages.addMessage('assistant', data);
         }
 
-        // Actualizar historial interno
-        const responseText = envelope?.result?.response ||
-                           envelope?.response ||
-                           (typeof envelope === 'string' ? envelope : JSON.stringify(envelope?.result || envelope, null, 2));
-
-        if (this._pendingUserMessage) {
-            this.conversationHistory.push({ role: 'user', content: this._pendingUserMessage });
-            this._pendingUserMessage = null;
-        }
-        
-        this.conversationHistory.push({ role: 'assistant', content: responseText });
-
-        // Sincronizar historial con params para la próxima vuelta
-        this.setParam('conversation_history', this._formatHistory());
+        // Actualizar historial interno — ChatResult tiene response en el top level
+        const responseText = data?.response ||
+                             (typeof data === 'string' ? data : JSON.stringify(data));
+        this._appendToHistory(responseText);
     }
 
     _formatHistory() {
         return this.conversationHistory.map(msg => 
             `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content}`
         ).join(' | ');
+    }
+
+    /**
+     * Añade el mensaje del usuario pendiente y la respuesta del asistente al historial,
+     * y sincroniza el historial serializado con los params del backend.
+     * Punto único de actualización del historial — evita duplicación entre sync y stream.
+     * @param {string} responseText - Texto de la respuesta del asistente
+     */
+    _appendToHistory(responseText) {
+        if (this._pendingUserMessage) {
+            this.conversationHistory.push({ role: 'user', content: this._pendingUserMessage });
+            this._pendingUserMessage = null;
+        }
+        this.conversationHistory.push({ role: 'assistant', content: responseText });
+        this.setParam('conversation_history', this._formatHistory());
     }
 
     _getSimpleModelName() {
@@ -249,7 +360,8 @@ export class AutocodeChat extends AutoFunctionController {
 
     /**
      * Calcula y actualiza el uso de la ventana de contexto.
-     * Usa AutoFunctionController.executeFunction() para llamar al endpoint.
+     * Usa this._client.call() para llamar al endpoint (antes usaba
+     * AutoFunctionController.executeFunction()).
      */
     async _updateContext() {
         const messages = [...this.conversationHistory];
@@ -265,26 +377,24 @@ export class AutocodeChat extends AutoFunctionController {
         }
 
         try {
-            // Usar el método estático del Controller en lugar de fetch directo
-            const result = await AutoFunctionController.executeFunction(
+            const { current = 0, max = 0 } = await this._client.call(
                 'calculate_context_usage',
                 { 
                     model: this.getParam('model') || 'openrouter/openai/gpt-4o',
                     messages 
                 }
             );
-            
-            const { current = 0, max = 0 } = result;
             this._contextBar?.update(current, max);
         } catch (e) {
             console.warn('⚠️ Error calculating context:', e);
-            // No es crítico, solo log del error
         }
     }
 
     async _sendMessage(message) {
         if (!message?.trim()) return;
+        if (this._isExecuting) return;
 
+        this._isExecuting = true;
         this._pendingUserMessage = message;
         
         // 1. UI Optimista
@@ -304,10 +414,14 @@ export class AutocodeChat extends AutoFunctionController {
         }
 
         // 3. Usar streaming si disponible Y habilitado, sino fallback síncrono
-        if (this._streamFuncInfo?.streaming && this._useStreaming) {
-            await this._sendMessageStream(message);
-        } else {
-            await this._sendMessageSync(message);
+        try {
+            if (this._streamFuncInfo?.streaming && this._useStreaming) {
+                await this._sendMessageStream(message);
+            } else {
+                await this._sendMessageSync(message);
+            }
+        } finally {
+            this._isExecuting = false;
         }
 
         // 4. Limpieza
@@ -318,6 +432,8 @@ export class AutocodeChat extends AutoFunctionController {
     /**
      * Envía mensaje usando streaming SSE (chat_stream endpoint).
      * Muestra tokens incrementalmente conforme llegan del servidor.
+     * Usa this._client.stream() con AbortSignal para poder cancelar el stream
+     * en cualquier momento (nueva conversación, cierre del componente).
      */
     async _sendMessageStream(message) {
         const streamId = this._messages.addStreamingMessage();
@@ -325,15 +441,23 @@ export class AutocodeChat extends AutoFunctionController {
         const statusLog = [];
         let streamFailed = false;
 
-        // Resetear envelope para evitar guardar datos stale si hay error
+        // Resetear estado de respuesta
         this.envelope = null;
         this.result = null;
         this.success = undefined;
 
+        // Crear AbortController para este stream — permite cancelación desde fuera
+        this._abortController = new AbortController();
+
         try {
             this._setStatus('loading', 'Conectando...');
 
-            for await (const event of this.callStreamAPI('chat_stream', this.params, this._streamFuncInfo)) {
+            for await (const event of this._client.stream(
+                'chat_stream',
+                this.params,
+                this._streamFuncInfo,
+                { signal: this._abortController.signal }
+            )) {
                 switch (event.event) {
                     case 'token':
                         fullText += event.data.chunk;
@@ -350,13 +474,20 @@ export class AutocodeChat extends AutoFunctionController {
                         break;
 
                     case 'complete': {
-                        const envelope = { ...event.data, _statusLog: statusLog };
-                        this._messages.finalizeStreaming(streamId, envelope);
-                        this.envelope = envelope;
-                        this.result = event.data.result;
-                        this.success = event.data.success;
+                        // event.data is ChatResult-shaped: {response, reasoning, trajectory, history, completions}
+                        const data = { ...event.data, _statusLog: statusLog };
+                        this._messages.finalizeStreaming(streamId, data);
+                        this.envelope = data;
+                        this.result = data;
+                        this.success = true;
                         this._setStatus('success', 'Completado');
-                        // Notify other components (e.g. git-dashboard) that plans may have changed
+                        // Refract lifecycle event — allows other components to react generically
+                        this.dispatchEvent(new CustomEvent('after-execute', {
+                            detail: { funcName: 'chat', params: this.params, result: data, envelope: data },
+                            bubbles: true,
+                            composed: true
+                        }));
+                        // TODO: remove once all consumers migrate to 'after-execute'
                         window.dispatchEvent(new CustomEvent('plans-changed'));
                         break;
                     }
@@ -378,6 +509,12 @@ export class AutocodeChat extends AutoFunctionController {
                                 ...event.data, _isError: true, _statusLog: statusLog
                             });
                             this._setStatus('error', event.data.message);
+                            // Refract lifecycle event — server-side stream error
+                            this.dispatchEvent(new CustomEvent('execute-error', {
+                                detail: { funcName: 'chat', params: this.params, error: new Error(event.data.message) },
+                                bubbles: true,
+                                composed: true
+                            }));
                         }
                         break;
                 }
@@ -391,38 +528,77 @@ export class AutocodeChat extends AutoFunctionController {
 
             // Actualizar historial de conversación
             const responseText = fullText || this.result?.response || '';
-            if (this._pendingUserMessage) {
-                this.conversationHistory.push({ role: 'user', content: this._pendingUserMessage });
-                this._pendingUserMessage = null;
-            }
-            this.conversationHistory.push({ role: 'assistant', content: responseText });
-            this.setParam('conversation_history', this._formatHistory());
+            this._appendToHistory(responseText);
 
         } catch (error) {
+            // AbortError: cancelación intencional (nueva conversación, cierre del componente)
+            // No mostrar error al usuario — es una operación normal
+            if (error.name === 'AbortError') {
+                this._messages.finalizeStreaming(streamId, {
+                    message: 'Conversación cancelada', _statusLog: statusLog
+                });
+                this._setStatus('default', 'Listo');
+                return;
+            }
+
             this._messages.finalizeStreaming(streamId, {
                 _isError: true, _message: error.message, _statusLog: statusLog
             });
             this._setStatus('error', error.message);
+            // Refract lifecycle event — unexpected network/runtime error
+            this.dispatchEvent(new CustomEvent('execute-error', {
+                detail: { funcName: 'chat', params: this.params, error },
+                bubbles: true,
+                composed: true
+            }));
+        } finally {
+            // Liberar referencia al controller — el stream ha terminado (éxito, error o abort)
+            this._abortController = null;
         }
     }
 
     /**
      * Fallback síncrono: ejecuta chat() normal sin streaming.
      * Usado cuando chat_stream no está disponible en el registry.
+     * chat() retorna ChatResult directamente — sin envelope unwrap.
+     * Los errores llegan como HTTP exceptions → throw en RefractClient.
      */
     async _sendMessageSync(message) {
         try {
-            await this.execute();
-            // Procesar siempre el envelope para conservar success/message + metadata DSPy
-            this._processResult(this.envelope || this.result);
+            this._setStatus('loading', 'Ejecutando...');
 
-            // Notify other components (e.g. git-dashboard) that plans may have changed
+            // ChatResult: {response, reasoning, trajectory, history, completions}
+            const data = await this._client.call('chat', this.params, this.funcInfo);
+
+            this.envelope = data;
+            this.result = data;
+            this.success = true;
+
+            this._setStatus('success', 'Ejecutado correctamente');
+
+            // Procesar resultado y actualizar historial/UI
+            this._processResult(data);
+
+            // Refract lifecycle event — allows other components to react generically
+            this.dispatchEvent(new CustomEvent('after-execute', {
+                detail: { funcName: 'chat', params: this.params, result: data, envelope: data },
+                bubbles: true,
+                composed: true
+            }));
+            // TODO: remove once all consumers migrate to 'after-execute'
             window.dispatchEvent(new CustomEvent('plans-changed'));
 
         } catch (error) {
             if (this._messages) {
                 this._messages.addMessage('error', error.message || 'Error desconocido');
             }
+            this._setStatus('error', error.message || 'Error desconocido');
+            // Refract lifecycle event — lets consumers handle errors generically
+            this.dispatchEvent(new CustomEvent('execute-error', {
+                detail: { funcName: 'chat', params: this.params, error },
+                bubbles: true,
+                composed: true
+            }));
         }
     }
 }

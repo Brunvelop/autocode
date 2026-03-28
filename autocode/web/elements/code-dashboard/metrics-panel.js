@@ -11,11 +11,11 @@
  * Muestra snapshot actual con tarjetas resumen, distribución de complejidad,
  * top funciones complejas, peores MI, acoplamiento y comparación con snapshot previo.
  *
- * Usa AutoFunctionController.executeFunction() para llamar a generate_code_metrics.
+ * Usa RefractClient.call() para llamar a generate_code_metrics.
  */
 
 import { LitElement, html } from 'https://cdn.jsdelivr.net/gh/lit/dist@3/core/lit-core.min.js';
-import { AutoFunctionController } from '../auto-element-generator.js';
+import { RefractClient } from '/refract/client.js';
 import { themeTokens } from './styles/theme.js';
 import { metricsPanelStyles } from './styles/metrics-panel.styles.js';
 import './metrics-chart.js';
@@ -37,6 +37,10 @@ export class MetricsPanel extends LitElement {
 
     constructor() {
         super();
+
+        // HTTP client
+        this._client = new RefractClient();
+
         this._data = null;
         this._loading = false;
         this._error = null;
@@ -52,8 +56,7 @@ export class MetricsPanel extends LitElement {
         this._loading = true;
         this._error = null;
         try {
-            const result = await AutoFunctionController.executeFunction('generate_code_metrics', {});
-            this._data = result;
+            this._data = await this._client.call('generate_code_metrics', {});
         } catch (e) {
             this._error = e.message || 'Error generando métricas';
         } finally {

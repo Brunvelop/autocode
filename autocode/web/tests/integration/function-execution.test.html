@@ -29,11 +29,11 @@
 
         const runner = new TestRunner();
 
-        // Importar auto-element-generator para registrar los custom elements
+        // Importar generator.js para registrar los custom elements
         try {
-            await import('/elements/auto-element-generator.js');
+            await import('/refract/generator.js');
         } catch (e) {
-            console.warn('auto-element-generator.js no cargado:', e.message);
+            console.warn('generator.js no cargado:', e.message);
         }
 
         // Esperar a que se registren los elementos

@@ -38,6 +38,7 @@
 
     <script type="module">
         import { TestRunner } from '../../utils/test-runner.js';
+        import { mockRefractCall } from '../../utils/mock-client.js';
 
         const runner = new TestRunner();
 
@@ -82,16 +83,13 @@
         };
 
         // ====================================================================
-        // MOCK: Intercept AutoFunctionController
+        // MOCK: Intercept RefractClient.prototype.call
         // ====================================================================
 
         let currentMockPlans = [];
         let loadPlansCallCount = 0;
 
-        const autoGenModule = await import('../../../elements/auto-element-generator.js');
-        const originalExecute = autoGenModule.AutoFunctionController.executeFunction;
-
-        autoGenModule.AutoFunctionController.executeFunction = async function(funcName, params) {
+        const mock = await mockRefractCall(async (funcName) => {
             if (funcName === 'get_git_log') {
                 return MOCK_GIT_LOG;
             }
@@ -99,8 +97,7 @@
                 loadPlansCallCount++;
                 return [...currentMockPlans];
             }
-            return originalExecute.call(this, funcName, params);
-        };
+        });
 
         // Import git-dashboard component
         await import('../../../elements/git-dashboard/index.js');
@@ -416,15 +413,13 @@
                 const el = await createGitDashboard(stage);
 
                 // Make the mock throw
-                const savedMockPlans = currentMockPlans;
-                autoGenModule.AutoFunctionController.executeFunction = async function(funcName, params) {
+                mock.setHandler(async (funcName) => {
                     if (funcName === 'list_commit_plans') {
                         loadPlansCallCount++;
                         throw new Error('Network error');
                     }
                     if (funcName === 'get_git_log') return MOCK_GIT_LOG;
-                    return originalExecute.call(this, funcName, params);
-                };
+                });
 
                 // Should not throw
                 window.dispatchEvent(new CustomEvent('plans-changed'));
@@ -435,14 +430,13 @@
                 runner.assertTrue(Array.isArray(el._plans), '_plans debería seguir siendo un array');
 
                 // Restore mock
-                autoGenModule.AutoFunctionController.executeFunction = async function(funcName, params) {
+                mock.setHandler(async (funcName) => {
                     if (funcName === 'get_git_log') return MOCK_GIT_LOG;
                     if (funcName === 'list_commit_plans') {
                         loadPlansCallCount++;
                         return [...currentMockPlans];
                     }
-                    return originalExecute.call(this, funcName, params);
-                };
+                });
             });
 
             runner.test('plans-changed antes de que el componente termine de cargar no causa error', async (stage) => {

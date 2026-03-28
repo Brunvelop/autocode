@@ -24,8 +24,8 @@ A4. Shadow DOM obligatorio
     → Slots para composición (header, content, footer)
 
 A5. Tres patrones de extensión
-    → Con backend + UI genérica: AutoFunctionElement
-    → Con backend + UI custom: AutoFunctionController
+    → Con backend + UI genérica: AutoFunctionElement (auto-generado en /dashboard)
+    → Con backend + UI custom: LitElement + RefractClient (composición, NO herencia)
     → Standalone (sin backend): LitElement directo
 ```
 
@@ -35,6 +35,9 @@ A5. Tres patrones de extensión
 
 ```javascript
 // === Contrato de Controller (lógica pura) ===
+// Nota: los componentes custom de autocode usan RefractClient como composición
+// en lugar de heredar de AutoFunctionController.
+// AutoFunctionElement (generado por Refract) sigue disponible en /dashboard.
 AutoFunctionController extends LitElement:
     // Configuración
     funcName: String           // Nombre de función en registry
@@ -62,6 +65,13 @@ AutoFunctionController extends LitElement:
 
     // Método estático
     static executeFunction(funcName, params) → Promise  // Llama función sin DOM
+
+// === Contrato de RefractClient (patrón de composición en autocode/web) ===
+// Importado desde: import { RefractClient } from '/refract/client.js'
+RefractClient:
+    call(funcName, params) → Promise   // Llama función vía API
+    stream(funcName, params) → EventSource  // Streaming SSE
+    loadSchemas() → Promise            // Carga /functions/details
 
 // === Contrato de Element (UI genérica) ===
 AutoFunctionElement extends AutoFunctionController:
@@ -152,25 +162,31 @@ Uso:      Funciones simples sin necesidad de UI personalizada
 Herencia: AutoFunctionElement → AutoFunctionController → LitElement
 ```
 
-### P2: UI Custom con Backend (AutoFunctionController)
+### P2: UI Custom con Backend (composición con RefractClient)
 ```
-Entrada:  Necesidad de UI específica que usa registry
-Proceso:  Extender Controller → Override render() → Implementar UI propia
-Salida:   Componente con lógica heredada + UI custom
+Entrada:  Necesidad de UI específica que usa funciones del registry
+Proceso:  Extender LitElement → Componer con RefractClient → Implementar UI propia
+Salida:   Componente con UI custom que llama funciones del backend
 
-Uso:      Componentes complejos que consumen funciones del backend
-Herencia: MiComponente → AutoFunctionController → LitElement
+Uso:      Componentes complejos en autocode/web/elements (dashboards, chat)
+Patrón:   Composición con RefractClient, NO herencia de AutoFunctionController
 
 Ejemplo:
-  class MiComponente extends AutoFunctionController {
-      constructor() { super(); this.funcName = 'mi_funcion'; }
-      render() { return html`<mi-ui>...</mi-ui>`; }
+  import { RefractClient } from '/refract/client.js';
+  class MiComponente extends LitElement {
+      constructor() {
+          super();
+          this._client = new RefractClient();
+      }
+      async _fetchData() {
+          return await this._client.call('mi_funcion', { param: value });
+      }
   }
 ```
 
 ### P3: Standalone (sin Backend)
 ```
-Entrada:  Componente que NO necesita registry (UI pura)
+Entrada:  Componente que NO necesita funciones del registry (UI pura)
 Proceso:  Extender LitElement directamente → Encapsular lógica en servicios puros
 Salida:   Componente autónomo
 
@@ -186,11 +202,16 @@ Ejemplo:
 ### P4: Comunicación Inter-funciones
 ```
 Entrada:  Componente necesita ejecutar función sin crear elemento DOM
-Proceso:  AutoFunctionController.executeFunction(funcName, params)
+Proceso:  Instanciar RefractClient → client.call(funcName, params)
 Salida:   Resultado de la función
 
 Uso:      Validaciones cruzadas, cálculos auxiliares
-Invariante: Misma infraestructura que execute(), sin contaminar DOM
+Invariante: Misma infraestructura que el patrón P2
+            NO usar AutoFunctionController.executeFunction() en componentes custom
+
+Ejemplo:
+  const client = new RefractClient();
+  const result = await client.call('calculate_context_usage', { model, messages });
 ```
 
 ---
@@ -294,7 +315,7 @@ CSS Variable       ──────────────────►  Va
   → Usar setParam(name, value) para reactividad
 
 ✗ Hacer fetch directo a API desde componente custom
-  → Extender AutoFunctionController, usar execute()
+  → Usar RefractClient como composición: this._client = new RefractClient()
 
 ✗ Crear custom element manualmente para función registrada
   → AutoElementGenerator lo hace automáticamente
@@ -308,8 +329,9 @@ CSS Variable       ──────────────────►  Va
 ✗ Duplicar estilos entre componentes
   → Re-exportar desde shared/styles/
 
-✗ Extender AutoFunctionElement para UI custom
-  → Extender AutoFunctionController en su lugar
+✗ Extender AutoFunctionElement/AutoFunctionController para UI custom de autocode
+  → Usar RefractClient como composición (this._client = new RefractClient())
+    AutoFunctionController es para los auto-elements generados en /dashboard
 ```
 
 ---
@@ -319,11 +341,12 @@ CSS Variable       ──────────────────►  Va
 ```
 AÑADIR COMPONENTE CON BACKEND (UI custom):
 1. Crear carpeta component/
-2. index.js: class extends AutoFunctionController
-3. constructor: this.funcName = 'mi_funcion'
-4. render(): html con UI propia
-5. styles/: importar themeTokens + estilos propios
-6. customElements.define('mi-componente', MiComponente)
+2. index.js: class extends LitElement
+3. constructor: this._client = new RefractClient()  // composición, no herencia
+4. Usar this._client.call('func_name', params) para llamar al backend
+5. render(): html con UI propia
+6. styles/: importar themeTokens + estilos propios
+7. customElements.define('mi-componente', MiComponente)
 
 AÑADIR COMPONENTE STANDALONE (sin backend):
 1. Crear carpeta component/

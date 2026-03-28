@@ -9,9 +9,10 @@ Usa get_git_tree() para obtener solo archivos trackeados por git.
 from pathlib import Path
 from typing import List, Optional, Dict
 
-from autocode.core.registry import register_function
+from fastapi import HTTPException
+from refract import register_function
 from autocode.core.vcs import get_git_tree
-from .models import CodeNode, CodeGraph, CodeStructureOutput, CodeStructureResult, CodeSummaryOutput
+from .models import CodeNode, CodeGraph, CodeStructureResult, CodeSummaryResult
 
 
 # Extensiones parseables
@@ -23,7 +24,7 @@ def get_code_structure(
     path: str = ".",
     depth: int = -1,
     include_imports: bool = True
-) -> CodeStructureOutput:
+) -> CodeStructureResult:
     """
     Obtiene la estructura del código en un directorio.
     
@@ -40,16 +41,9 @@ def get_code_structure(
         Estructura del código con métricas agregadas
     """
     try:
-        # Obtener archivos trackeados por git
-        git_tree_output = get_git_tree()
-        
-        if not git_tree_output.success or not git_tree_output.result:
-            return CodeStructureOutput(
-                success=False,
-                message=f"Error obteniendo git tree: {git_tree_output.message}"
-            )
-        
-        git_nodes = git_tree_output.result.nodes
+        # Obtener archivos trackeados por git (ahora retorna GitTreeGraph directamente)
+        git_tree = get_git_tree()
+        git_nodes = git_tree.nodes
         
         # Filtrar archivos parseables y dentro del path solicitado
         # Si path es ".", incluir todos los archivos; si no, filtrar por prefijo
@@ -92,7 +86,7 @@ def get_code_structure(
             nodes=nodes
         )
         
-        result = CodeStructureResult(
+        return CodeStructureResult(
             graph=graph,
             languages=list(metrics['languages']),
             total_files=metrics['files'],
@@ -101,24 +95,17 @@ def get_code_structure(
             total_classes=metrics['classes']
         )
         
-        return CodeStructureOutput(
-            success=True,
-            result=result,
-            message=f"Estructura cargada: {metrics['files']} archivos, {metrics['loc']} LOC (solo git)"
-        )
-        
+    except HTTPException:
+        raise
     except Exception as e:
-        return CodeStructureOutput(
-            success=False,
-            message=f"Error analizando estructura: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Error analizando estructura: {str(e)}")
 
 
-@register_function(http_methods=["GET"], interfaces=["api", "mcp"])
+@register_function(http_methods=["GET"], interfaces=["api", "mcp", "cli"])
 def get_code_summary(
     path: str = ".",
     depth: int = -1,
-) -> CodeSummaryOutput:
+) -> CodeSummaryResult:
     """
     Obtiene un resumen compacto de la estructura del código en formato texto.
     
@@ -135,15 +122,8 @@ def get_code_summary(
     """
     try:
         # Reutilizar get_code_structure para obtener los nodos
-        structure_output = get_code_structure(path=path, depth=depth, include_imports=False)
+        result = get_code_structure(path=path, depth=depth, include_imports=False)
         
-        if not structure_output.success or not structure_output.result:
-            return CodeSummaryOutput(
-                success=False,
-                message=structure_output.message or "Error obteniendo estructura"
-            )
-        
-        result = structure_output.result
         nodes = result.graph.nodes
         root_id = result.graph.root_id
         
@@ -181,17 +161,12 @@ def get_code_summary(
         
         summary_text = "\n".join(lines)
         
-        return CodeSummaryOutput(
-            success=True,
-            result=summary_text,
-            message=f"Resumen: {result.total_files} archivos, {result.total_loc} LOC"
-        )
+        return CodeSummaryResult(summary=summary_text)
         
+    except HTTPException:
+        raise
     except Exception as e:
-        return CodeSummaryOutput(
-            success=False,
-            message=f"Error generando resumen: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Error generando resumen: {str(e)}")
 
 
 def _render_summary_tree(

@@ -33,13 +33,13 @@ import time
 from datetime import datetime
 from typing import AsyncGenerator
 
-from autocode.core.registry import register_function
-from autocode.core.models import GenericOutput
-from autocode.core.ai.streaming import _format_sse
+from refract import register_function
+from autocode.core.utils.sse import format_sse_event as _format_sse
 from autocode.core.planning.models import (
     CommitPlan,
     ExecutionStep,
     PlanExecutionState,
+    PlanExecutionResult,
     ReviewResult,
 )
 from autocode.core.planning.backends import get_backend
@@ -549,45 +549,33 @@ def execute_commit_plan(
     backend: str = "opencode",
     model: str = "",
     review_mode: str = "human",
-) -> GenericOutput:
-    """Ejecuta un plan de commit delegando a un backend pluggable.
+) -> PlanExecutionResult:
+    """Registration stub for the streaming SSE endpoint.
 
-    El backend (opencode, cline) ejecuta la instrucción del plan y reporta
-    pasos en tiempo real. Post-ejecución, se aplica review según review_mode.
+    This function body is never executed by any Refract surface.  When
+    ``streaming=True``, the API layer uses ``stream_func`` (``stream_execute_plan``)
+    exclusively to build a ``StreamingResponse`` — the sync body is bypassed
+    entirely.
 
-    Reads the final result from persisted plan state (not from SSE parsing),
-    which is more robust and decoupled from the SSE wire format.
+    Calling this function directly (outside of Refract) is intentionally
+    unsupported: the real execution logic lives in ``stream_execute_plan``.
 
     Args:
         plan_id: ID del plan a ejecutar
         backend: Backend de ejecución (opencode, cline)
         model: Modelo de inferencia a utilizar
         review_mode: Modo de review post-ejecución ("human" o "auto")
+
+    Returns:
+        Never returns — always raises.
+
+    Raises:
+        NotImplementedError: Always.  Use ``stream_execute_plan()`` directly
+            or call via the ``POST /execute_commit_plan`` SSE endpoint.
     """
-    import asyncio
-
-    async def _drain():
-        """Consume all SSE events from stream_execute_plan, discarding them.
-
-        The side-effects (plan persistence) happen inside stream_execute_plan;
-        we only need to drive the generator to completion.
-        """
-        async for _ in stream_execute_plan(plan_id, backend, model, review_mode):
-            pass
-
-    asyncio.run(_drain())
-
-    # Read authoritative final state from persistence — no SSE string parsing needed.
-    plan = load_plan(plan_id)
-    if not plan or not plan.execution:
-        return GenericOutput(
-            success=False,
-            result={},
-            message="Plan not found or not executed",
-        )
-
-    return GenericOutput(
-        success=plan.status in ("completed", "pending_review"),
-        result=plan.execution.model_dump() if plan.execution else {},
-        message=f"Plan {plan.status}",
+    raise NotImplementedError(
+        "execute_commit_plan is a streaming-only endpoint. "
+        "The sync body is never invoked by Refract (streaming=True routes exclusively "
+        "through stream_func=stream_execute_plan). "
+        "To drive execution programmatically, use stream_execute_plan() directly."
     )

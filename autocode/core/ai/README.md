@@ -16,7 +16,7 @@ Todas las funciones están registradas en el registry (accesibles vía API/CLI/M
 
 ---
 
-### `chat(message, conversation_history, model, ...) -> DspyOutput`
+### `chat(message, conversation_history, model, ...) -> ChatResult`
 Chat conversacional con acceso a herramientas MCP.
 
 ```python
@@ -26,13 +26,13 @@ result = chat(
     message="¿Qué archivos hay en el proyecto?",
     conversation_history=""
 )
-print(result.result['response'])
+print(result.response)
 ```
 
-### `chat_stream(message, conversation_history, model, ...) -> DspyOutput`
+### `chat_stream(message, conversation_history, model, ...) -> ChatResult`
 Chat con streaming en tiempo real vía SSE. Misma interfaz que `chat()`, pero emite tokens progresivamente cuando se invoca desde la API.
 
-### `calculate_context_usage(model, messages) -> GenericOutput`
+### `calculate_context_usage(model, messages) -> ContextUsage`
 Calcula el uso de la ventana de contexto para un modelo y mensajes dados.
 
 ```python
@@ -42,10 +42,11 @@ result = calculate_context_usage(
     model='openrouter/openai/gpt-4o',
     messages=[{"role": "user", "content": "Hola"}]
 )
-print(result.result)  # {"current": 10, "max": 128000, "percentage": 0.01}
+print(result.current, result.max, result.percentage)
+# 10, 128000, 0.0001
 ```
 
-### `get_chat_config() -> GenericOutput`
+### `get_chat_config() -> ChatConfig`
 Obtiene la configuración disponible para el chat: modelos, tools MCP y schemas de módulos DSPy.
 
 ---
@@ -101,7 +102,7 @@ result = generate_with_dspy(
     inputs={"message": "Hola", "conversation_history": ""},
     module_type='ChainOfThought'
 )
-print(result.result['response'])
+print(result.response)
 print(result.reasoning)  # Razonamiento paso a paso
 ```
 

@@ -9,10 +9,12 @@
 ```
 A1. Core es agnóstico de interfaces
     → Core NUNCA importa de api.py, cli.py, mcp.py
-    → Core SÍ importa de registry.py para @register_function
+    → Core usa `from refract import register_function` para registrar funciones
 
-A2. GenericOutput universal
+A2. GenericOutput como contrato actual (en transición)
     → Toda función registrada retorna GenericOutput o subclase tipada
+    → Las subclases con result tipado (ej: GitLogOutput) mejoran el OpenAPI schema
+    → Objetivo a largo plazo: devolver modelos de dominio directos
 
 A3. DSPy como motor de IA
     → Signatures declarativas definen inputs/outputs de IA
@@ -104,15 +106,15 @@ dspy.Signature:
                         │ popula via @register_function
                         ▼
 ┌─────────────────────────────────────────────────────────┐
-│                      REGISTRY                           │
-│  (interfaces/registry.py)                               │
+│                      REFRACT                            │
+│  (from refract import register_function)                │
 └─────────────────────────────────────────────────────────┘
 
 Dependencias internas de core:
   utils/ ← ai/pipelines
   vcs/models ← vcs/tree
-  interfaces/models ← {ai/models, vcs/models}
-  interfaces/registry ← {ai/pipelines, vcs/tree}
+  core/models ← {ai/models, vcs/models}
+  refract.register_function ← {ai/pipelines, vcs/tree, code/*, planning/*}
 ```
 
 ---
@@ -198,8 +200,9 @@ Invariante: stream_chat comparte prepare_chat_tools() con chat()
 
 ```
 ∀ f ∈ @register_function en core:
-    f.return_type ∈ {GenericOutput, DspyOutput, GitTreeOutput, ...}
+    f.return_type ∈ {GenericOutput, DspyOutput, GitTreeOutput, ...}  # en transición
     f no importa de api.py, cli.py, mcp.py
+    f usa `from refract import register_function` (no de autocode.interfaces)
 
 ∀ signature ∈ dspy.Signature:
     len(signature.input_fields) >= 1
@@ -243,6 +246,8 @@ git ls-tree -r -l  ──────────────────►  Gi
        output_field: str = dspy.OutputField(desc="...")
 
 2. PIPELINE CON REGISTRO (Dev time)
+   from refract import register_function
+
    @register_function(http_methods=["POST"])
    def my_pipeline(input_text: str) -> GenericOutput:
        output = generate_with_dspy(MySignature, {"input_field": input_text})
@@ -260,7 +265,7 @@ git ls-tree -r -l  ──────────────────►  Gi
 
 ```
 ✗ Importar api.py/cli.py desde core
-  → Core es agnóstico, solo importa de interfaces/registry
+  → Core es agnóstico, solo importa de refract (register_function)
 
 ✗ Usar dspy.LM() directamente en pipelines
   → Usar get_dspy_lm() que maneja configuración
@@ -315,6 +320,7 @@ AÑADIR PIPELINE AI CON STREAMING:
 ```
 autocode/core/
 ├── __init__.py
+├── models.py                # GenericOutput + subclases tipadas de dominio
 ├── ai/
 │   ├── __init__.py
 │   ├── dspy_utils.py        # get_dspy_lm, generate_with_dspy, prepare_chat_tools
@@ -325,13 +331,14 @@ autocode/core/
 │   └── README.md
 ├── utils/
 │   ├── __init__.py
-│   ├── file_utils.py        # read_file, write_file, read_design_document
 │   └── openrouter.py        # fetch_models_info
 ├── vcs/
 │   ├── __init__.py
 │   ├── models.py            # GitNodeEntry, GitTreeGraph, GitTreeOutput
 │   ├── operations.py        # GitOperations (wrapper GitPython)
 │   └── tree.py              # get_git_tree() registrada
+├── code/                    # Análisis de código: métricas, salud, estructura
+└── planning/                # Planificación de commits y operaciones de archivos
 ```
 
 ---
@@ -344,12 +351,12 @@ pytest tests/unit/core/
 
 # Verificar que funciones de core retornan GenericOutput
 python -c "
-from autocode.interfaces.registry import load_core_functions, FUNCTION_REGISTRY
-from autocode.interfaces.models import GenericOutput
-load_core_functions()
+from refract import FUNCTION_REGISTRY
+from autocode.core.models import GenericOutput
 for name, info in FUNCTION_REGISTRY.items():
-    assert info.return_type and issubclass(info.return_type, GenericOutput), \
-        f'{name} no retorna GenericOutput'
+    if info.return_type:
+        assert issubclass(info.return_type, GenericOutput), \
+            f'{name} no retorna GenericOutput'
 print(f'✓ {len(FUNCTION_REGISTRY)} funciones verificadas')
 "
 

@@ -13,14 +13,14 @@ Used by:
 - autocode.interfaces.cli (health-check command)
 - tests/health/test_code_health.py (health quality gates for autocode itself)
 """
-from __future__ import annotations
-
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
-from autocode.core.code.models import FileMetrics, PackageCoupling
+from refract import register_function
+
+from autocode.core.code.models import FileMetrics, PackageCoupling, HealthViolation, HealthCheckResult
 
 
 # ==============================================================================
@@ -98,49 +98,6 @@ def load_thresholds(project_root: Optional[Path] = None) -> HealthConfig:
     known_fields = set(HealthConfig.__dataclass_fields__)
     filtered = {k: v for k, v in section.items() if k in known_fields}
     return HealthConfig(**filtered)
-
-
-# ==============================================================================
-# VIOLATION + RESULT
-# ==============================================================================
-
-
-@dataclass
-class HealthViolation:
-    """Violación estructurada de una quality gate.
-
-    Attributes:
-        rule: Identificador de la regla violada.
-              Valores: "mi", "function_cc", "nesting", "sloc", "avg_cc",
-                       "rank_f", "circular_deps", "project_mi", "project_cc"
-        level: Severidad: "critical" (gate falla) o "warning" (aviso)
-        path: Archivo o función afectada (path relativo)
-        value: Valor medido que viola el umbral
-        threshold: Umbral violado
-        detail: Información extra (nombre de función, línea, etc.)
-    """
-
-    rule: str
-    level: str  # "critical" | "warning"
-    path: str
-    value: float
-    threshold: float
-    detail: Optional[str] = None
-
-
-@dataclass
-class HealthCheckResult:
-    """Resultado de ejecutar todas las quality gates.
-
-    Attributes:
-        passed: True si no hay ninguna violation de nivel "critical"
-        violations: Lista de todas las violations encontradas (critical + warning)
-        summary: Métricas agregadas para display (clave → valor como string)
-    """
-
-    passed: bool
-    violations: list[HealthViolation]
-    summary: dict[str, str]
 
 
 # ==============================================================================
@@ -396,3 +353,42 @@ def _build_summary(
         summary["Circular deps"] = f"{circ_count} {circ_icon}"
 
     return summary
+
+
+# ==============================================================================
+# REFRACTED FUNCTION — API + MCP interface
+# ==============================================================================
+
+
+@register_function(http_methods=["GET"], interfaces=["api", "mcp", "cli"])
+def get_health_check(strict: bool = False, project_root: str = ".") -> HealthCheckResult:
+    """Run code health quality gates against a project.
+
+    Analyzes all files tracked by git and checks them against quality thresholds
+    defined in [tool.codehealth] of pyproject.toml (or strict defaults with strict=True).
+
+    Args:
+        strict: Use strict default thresholds, ignoring any [tool.codehealth] in pyproject.toml.
+        project_root: Root directory of the project to analyze.
+    """
+    from autocode.core.code.analyzer import analyze_file_metrics
+    from autocode.core.code.coupling import analyze_coupling
+    from autocode.core.vcs.git import get_tracked_files
+
+    _ALL_EXTENSIONS = (".py", ".js", ".mjs", ".jsx")
+    root = Path(project_root).resolve()
+    config = HealthConfig() if strict else load_thresholds(root)
+    files = get_tracked_files(*_ALL_EXTENSIONS, cwd=str(root))
+
+    file_metrics = []
+    for fpath in files:
+        if any(Path(fpath).match(pattern) for pattern in config.exclude):
+            continue
+        try:
+            content = (root / fpath).read_text(encoding="utf-8")
+            file_metrics.append(analyze_file_metrics(fpath, content))
+        except Exception:
+            pass
+
+    coupling = analyze_coupling(files)
+    return run_health_check(config, file_metrics, coupling_result=coupling)

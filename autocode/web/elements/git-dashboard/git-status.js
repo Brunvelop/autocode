@@ -6,7 +6,7 @@
  */
 
 import { LitElement, html, css } from 'https://cdn.jsdelivr.net/gh/lit/dist@3/core/lit-core.min.js';
-import { AutoFunctionController } from '../auto-element-generator.js';
+import { RefractClient } from '/refract/client.js';
 import { themeTokens } from './styles/theme.js';
 import './files-metrics-table.js';
 
@@ -137,6 +137,10 @@ export class GitStatus extends LitElement {
 
     constructor() {
         super();
+
+        // HTTP client
+        this._client = new RefractClient();
+
         this.status = null;
         this.loading = false;
         this.error = null;
@@ -270,7 +274,7 @@ export class GitStatus extends LitElement {
     async _loadWorkingMetrics() {
         this._metricsLoading = true;
         try {
-            const result = await AutoFunctionController.executeFunction(
+            const result = await this._client.call(
                 'get_working_changes_metrics',
                 {}
             );

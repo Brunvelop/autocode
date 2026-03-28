@@ -8,7 +8,7 @@ from typing import Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field
 
-from autocode.core.models import GenericOutput
+FileStatus = Literal["added", "modified", "deleted", "renamed", "untracked", "staged"]
 
 
 class GitNodeEntry(BaseModel):
@@ -29,10 +29,41 @@ class GitTreeGraph(BaseModel):
     nodes: List[GitNodeEntry] = Field(default_factory=list, description="Todos los nodos del árbol")
 
 
-class GitTreeOutput(GenericOutput):
-    """Output específico para la estructura del árbol git."""
+# ==============================================================================
+# GIT STATUS MODELS
+# ==============================================================================
 
-    result: Optional[GitTreeGraph] = Field(default=None, description="Representación en grafo del árbol git")
+
+class GitFileStatus(BaseModel):
+    """Estado de un archivo individual en el repositorio."""
+
+    path: str = Field(..., description="Path relativo del archivo")
+    status: FileStatus = Field(..., description="Estado del archivo")
+    staged: bool = Field(default=False, description="Si está en staging area")
+    old_path: Optional[str] = Field(None, description="Path anterior (para renamed)")
+    additions: int = Field(default=0, description="Líneas añadidas")
+    deletions: int = Field(default=0, description="Líneas eliminadas")
+
+
+class GitStatusResult(BaseModel):
+    """Resultado del status del repositorio."""
+
+    branch: str = Field(..., description="Nombre de la branch actual")
+    is_clean: bool = Field(default=True, description="Si el repo está limpio")
+    files: List[GitFileStatus] = Field(default_factory=list, description="Archivos con cambios")
+
+    # Contadores por tipo
+    total_added: int = Field(default=0, description="Total archivos añadidos")
+    total_modified: int = Field(default=0, description="Total archivos modificados")
+    total_deleted: int = Field(default=0, description="Total archivos eliminados")
+    total_untracked: int = Field(default=0, description="Total archivos sin trackear")
+    total_staged: int = Field(default=0, description="Total archivos en staging")
+
+
+class GitStatusSummary(BaseModel):
+    """Resumen compacto del git status en texto plano (para MCP/LLM)."""
+
+    summary: str = Field(..., description="Texto compacto del status")
 
 
 # ==============================================================================
@@ -71,10 +102,10 @@ class GitLogGraph(BaseModel):
     branches: List[GitBranch] = Field(default_factory=list, description="Todas las ramas")
 
 
-class GitLogOutput(GenericOutput):
-    """Output de get_git_log()."""
+class GitLogSummary(BaseModel):
+    """Resumen compacto del historial de commits en texto plano (para MCP/LLM)."""
 
-    result: Optional[GitLogGraph] = Field(default=None, description="Grafo del log git")
+    summary: str = Field(..., description="Texto compacto del log")
 
 
 class GitFileChange(BaseModel):
@@ -104,7 +135,3 @@ class GitCommitDetail(BaseModel):
     )
 
 
-class GitCommitDetailOutput(GenericOutput):
-    """Output de get_commit_detail()."""
-
-    result: Optional[GitCommitDetail] = Field(default=None, description="Detalle del commit")

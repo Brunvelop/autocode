@@ -115,16 +115,16 @@ class TestExtractPythonImports:
 
         content = (
             "from autocode.core.code.models import FileMetrics\n"
-            "from autocode.interfaces.registry import register_function\n"
+            "from autocode.core.planning.workflow import execute_commit_plan\n"
         )
         top_pkgs = {"autocode"}
         result = _extract_python_imports(
             "autocode/core/code/metrics.py", content, top_pkgs
         )
-        # Both are internal: metrics→models is same pkg, metrics→registry is cross-pkg
+        # Both are internal to autocode.core
         # src_pkg = autocode.core for both
         # First tgt_pkg = autocode.core (same pkg → filtered by caller)
-        # Second tgt_pkg = autocode.interfaces (different → kept)
+        # Second tgt_pkg = autocode.core (same pkg → filtered by caller)
         # The function returns ALL internal imports; filtering same-pkg is done by caller
         assert len(result) == 2
 
@@ -160,7 +160,7 @@ class TestExtractPythonImports:
 
         content = (
             "from autocode.core.vcs.git import git\n"
-            "from autocode.interfaces.registry import register_function\n"
+            "from autocode.core.planning.workflow import execute_commit_plan\n"
             "from tests.conftest import fixture\n"
         )
         top_pkgs = {"autocode", "tests"}
@@ -185,9 +185,9 @@ class TestAnalyzeCoupling:
 
         contents = {
             "autocode/core/code/metrics.py": (
-                "from autocode.interfaces.registry import register_function\n"
+                "from autocode.web.elements.chat import ChatWindow\n"
             ),
-            "autocode/interfaces/registry.py": (
+            "autocode/web/elements/chat.py": (
                 "# no internal imports\nx = 1\n"
             ),
         }
@@ -198,18 +198,18 @@ class TestAnalyzeCoupling:
         with patch.object(Path, "read_text", patched_read):
             coupling, circulars = analyze_coupling(list(contents.keys()))
 
-        # Should have 2 packages: autocode.core and autocode.interfaces
+        # Should have 2 packages: autocode.core and autocode.web
         pkg_map = {c.name: c for c in coupling}
         assert "autocode.core" in pkg_map
-        assert "autocode.interfaces" in pkg_map
+        assert "autocode.web" in pkg_map
 
-        # autocode.core imports autocode.interfaces → Ce=1
+        # autocode.core imports autocode.web → Ce=1
         assert pkg_map["autocode.core"].ce == 1
         assert pkg_map["autocode.core"].ca == 0
 
-        # autocode.interfaces is imported by autocode.core → Ca=1
-        assert pkg_map["autocode.interfaces"].ce == 0
-        assert pkg_map["autocode.interfaces"].ca == 1
+        # autocode.web is imported by autocode.core → Ca=1
+        assert pkg_map["autocode.web"].ce == 0
+        assert pkg_map["autocode.web"].ca == 1
 
         # No circulars
         assert circulars == []
@@ -297,10 +297,10 @@ class TestAnalyzeCoupling:
 
         contents = {
             "autocode/core/code/metrics.py": (
-                "from autocode.interfaces.registry import register_function\n"
+                "from autocode.web.elements.chat import ChatWindow\n"
                 "from autocode.core.vcs.git import git\n"
             ),
-            "autocode/interfaces/registry.py": "x = 1\n",
+            "autocode/web/elements/chat.py": "x = 1\n",
             "autocode/core/vcs/git.py": "def git(): pass\n",
         }
 
@@ -312,11 +312,11 @@ class TestAnalyzeCoupling:
 
         pkg_map = {c.name: c for c in coupling}
 
-        # autocode.core imports autocode.interfaces
-        assert "autocode.interfaces" in pkg_map["autocode.core"].imports_to
+        # autocode.core imports autocode.web
+        assert "autocode.web" in pkg_map["autocode.core"].imports_to
 
-        # autocode.interfaces is imported by autocode.core
-        assert "autocode.core" in pkg_map["autocode.interfaces"].imported_by
+        # autocode.web is imported by autocode.core
+        assert "autocode.core" in pkg_map["autocode.web"].imported_by
 
     def test_self_package_imports_excluded(self):
         """Imports within the same 2-level package should NOT create coupling edges."""
@@ -473,11 +473,11 @@ class TestAnalyzeCouplingMixedLanguages:
         from autocode.core.code.coupling import analyze_coupling
 
         contents = {
-            # Python file importing from autocode.interfaces
+            # Python file importing from autocode.web (cross-package internal import)
             "autocode/core/code/metrics.py": (
-                "from autocode.interfaces.registry import register_function\n"
+                "from autocode.web.elements.chat import ChatWindow\n"
             ),
-            "autocode/interfaces/registry.py": "x = 1\n",
+            "autocode/web/elements/chat.py": "x = 1\n",
             # JS file with only external imports (no coupling)
             "autocode/web/elements/index.js": (
                 "import { LitElement } from 'lit';\n"
@@ -493,7 +493,7 @@ class TestAnalyzeCouplingMixedLanguages:
         pkg_map = {c.name: c for c in coupling}
         # Python coupling should still work
         assert "autocode.core" in pkg_map
-        assert "autocode.interfaces" in pkg_map
+        assert "autocode.web" in pkg_map
         assert pkg_map["autocode.core"].ce == 1
 
     def test_js_only_coupling(self):

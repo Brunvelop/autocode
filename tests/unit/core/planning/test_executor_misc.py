@@ -16,7 +16,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from autocode.core.planning.models import PlanExecutionState
 from autocode.core.planning.backends import get_backend
 from autocode.core.planning.executor import (
     stream_execute_plan,
@@ -197,72 +196,29 @@ class TestExecuteCommitPlanEndpoint:
 
 
 # ============================================================================
-# TEST: SYNC WRAPPER READS FROM PLAN, NOT FROM SSE PARSING
+# TEST: SYNC STUB RAISES NotImplementedError
 # ============================================================================
 
 
 class TestExecuteCommitPlanSync:
-    """execute_commit_plan (sync wrapper) returns correct result without parsing SSE."""
+    """execute_commit_plan sync body is a stub — always raises NotImplementedError.
 
-    def test_sync_wrapper_returns_success_from_plan(self):
-        """Sync wrapper reads final state from plan.execution, not from SSE parsing.
+    When streaming=True, Refract routes every API call exclusively through
+    stream_func (stream_execute_plan).  The decorated sync body is dead code
+    and intentionally raises NotImplementedError to prevent silent misuse.
+    """
 
-        The old implementation parsed SSE strings with split("data: ") — fragile
-        and coupled to SSE format. The new implementation drains the generator
-        (discarding SSE bytes) and then calls load_plan() to read the authoritative
-        final state from persistence.
+    def test_direct_call_raises_not_implemented(self):
+        """Calling execute_commit_plan() directly always raises NotImplementedError.
 
-        Key assertion: result.result contains 'started_at', a field present in
-        plan.execution.model_dump() but NOT in the plan_complete SSE event data.
+        No Refract surface ever invokes this body (the API uses stream_func).
+        The NotImplementedError acts as a clear signal if someone tries to call
+        it directly — e.g. from a test, a new MCP surface, or a future fallback.
         """
-        plan = _make_plan()
-        final_plan = plan.model_copy(deep=True)
-        final_plan.status = "pending_review"
-        final_plan.execution = PlanExecutionState(
-            started_at="2026-01-01T12:00:00",
-            completed_at="2026-01-01T12:01:00",
-            total_tokens=1500,
-            total_cost=0.003,
-            backend="mock",
-            files_changed=["a.py"],
-        )
+        from autocode.core.planning.executor import execute_commit_plan
 
-        with (
-            patch("autocode.core.planning.executor.load_plan", side_effect=[plan, final_plan]),
-            _patch_save_plan(),
-            _patch_backend(MockBackend()),
-            _patch_compute_review_metrics(),
-            _patch_getcwd(),
-        ):
-            from autocode.core.planning.executor import execute_commit_plan
-            result = execute_commit_plan("20260101-120000", backend="mock")
-
-        assert result.success is True
-        assert isinstance(result.result, dict)
-        assert "started_at" in result.result, (
-            "result.result should come from plan.execution.model_dump() (contains "
-            "'started_at'), not from SSE event data (which does not have 'started_at'). "
-            "This indicates the sync wrapper is still parsing SSE instead of reading "
-            "the final plan state from persistence."
-        )
-        assert result.message == "Plan pending_review", (
-            f"Expected message='Plan pending_review', got {result.message!r}. "
-            "The sync wrapper should set message based on the loaded plan's status."
-        )
-
-    def test_sync_wrapper_returns_failure_when_plan_not_found(self):
-        """Sync wrapper returns failure with explicit message when plan doesn't exist."""
-        with _patch_load_plan(None):
-            from autocode.core.planning.executor import execute_commit_plan
-            result = execute_commit_plan("nonexistent", backend="mock")
-
-        assert result.success is False
-        assert result.message == "Plan not found or not executed", (
-            f"Expected message='Plan not found or not executed', got {result.message!r}. "
-            "The old implementation returned str(SSE data dict) as the message, "
-            "which is an unstructured string. The new implementation should return "
-            "a clear error message."
-        )
+        with pytest.raises(NotImplementedError, match="streaming-only"):
+            execute_commit_plan("any-plan-id", backend="mock")
 
 
 # ============================================================================

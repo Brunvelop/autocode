@@ -578,9 +578,9 @@
         // IMPORT AND RUN
         // ========================================
         try {
-            await import('/elements/auto-element-generator.js');
+            await import('/refract/generator.js');
         } catch (e) {
-            console.warn('auto-element-generator.js import:', e.message);
+            console.warn('generator.js import:', e.message);
         }
 
         await runner.sleep(500);

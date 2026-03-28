@@ -7,6 +7,7 @@ Coverage target: calculate_context_usage, chat, chat_stream, get_chat_config.
 import pytest
 import os
 from unittest.mock import Mock, patch
+from fastapi import HTTPException
 
 from autocode.core.ai.pipelines import (
     calculate_context_usage,
@@ -14,8 +15,7 @@ from autocode.core.ai.pipelines import (
     chat_stream,
     get_chat_config,
 )
-from autocode.core.ai.models import DspyOutput
-from autocode.core.models import GenericOutput
+from autocode.core.ai.models import ChatResult, ContextUsage, ChatConfig
 
 
 # =============================================================================
@@ -27,7 +27,7 @@ class TestCalculateContextUsage:
 
     @patch('autocode.core.ai.pipelines.litellm')
     def test_happy_path_returns_correct_fields(self, mock_litellm):
-        """Returns success=True with current, max, percentage calculated from litellm."""
+        """Returns ContextUsage with current, max, percentage calculated from litellm."""
         mock_litellm.token_counter.return_value = 500
         mock_litellm.get_max_tokens.return_value = 4000
 
@@ -37,11 +37,10 @@ class TestCalculateContextUsage:
             messages=messages
         )
 
-        assert isinstance(result, GenericOutput)
-        assert result.success is True
-        assert result.result["current"] == 500
-        assert result.result["max"] == 4000
-        assert result.result["percentage"] == 12.5
+        assert isinstance(result, ContextUsage)
+        assert result.current == 500
+        assert result.max == 4000
+        assert result.percentage == 12.5
 
         mock_litellm.token_counter.assert_called_once_with(
             model='openrouter/openai/gpt-4o', messages=messages
@@ -59,8 +58,8 @@ class TestCalculateContextUsage:
             messages=[{"role": "user", "content": "x"}]
         )
 
-        assert result.success is True
-        assert result.result["percentage"] == 33.33
+        assert isinstance(result, ContextUsage)
+        assert result.percentage == 33.33
 
     @patch('autocode.core.ai.pipelines.litellm')
     def test_max_tokens_zero_no_division_error(self, mock_litellm):
@@ -73,26 +72,24 @@ class TestCalculateContextUsage:
             messages=[{"role": "user", "content": "Hello"}]
         )
 
-        assert result.success is True
-        assert result.result["percentage"] == 0
-        assert result.result["current"] == 500
-        assert result.result["max"] == 0
+        assert isinstance(result, ContextUsage)
+        assert result.percentage == 0
+        assert result.current == 500
+        assert result.max == 0
 
     @patch('autocode.core.ai.pipelines.litellm')
-    def test_litellm_error_returns_failure(self, mock_litellm):
-        """If litellm raises an exception, returns success=False with zero values."""
+    def test_litellm_error_raises_http_exception(self, mock_litellm):
+        """If litellm raises an exception, raises HTTPException 500."""
         mock_litellm.token_counter.side_effect = Exception("Model not found")
 
-        result = calculate_context_usage(
-            model='openrouter/openai/gpt-4o',
-            messages=[{"role": "user", "content": "Hello"}]
-        )
+        with pytest.raises(HTTPException) as exc_info:
+            calculate_context_usage(
+                model='openrouter/openai/gpt-4o',
+                messages=[{"role": "user", "content": "Hello"}]
+            )
 
-        assert result.success is False
-        assert result.result["current"] == 0
-        assert result.result["max"] == 0
-        assert result.result["percentage"] == 0
-        assert "Model not found" in result.message
+        assert exc_info.value.status_code == 500
+        assert "Model not found" in exc_info.value.detail
 
 
 # =============================================================================
@@ -116,8 +113,8 @@ class TestCalculateContextUsageWithPath:
             path=str(tmp_path)
         )
 
-        assert result.success is True
-        assert result.result["current"] == 200
+        assert isinstance(result, ContextUsage)
+        assert result.current == 200
 
         # token_counter was called with a list containing one user message with the file content
         call_kwargs = mock_litellm.token_counter.call_args.kwargs
@@ -142,8 +139,8 @@ class TestCalculateContextUsageWithPath:
             path=str(tmp_path)
         )
 
-        assert result.success is True
-        assert result.result["current"] == 300
+        assert isinstance(result, ContextUsage)
+        assert result.current == 300
 
         # token_counter was called with the original message + the path content message
         call_kwargs = mock_litellm.token_counter.call_args.kwargs
@@ -166,7 +163,7 @@ class TestCalculateContextUsageWithPath:
             path=str(single_file)
         )
 
-        assert result.success is True
+        assert isinstance(result, ContextUsage)
         call_kwargs = mock_litellm.token_counter.call_args.kwargs
         messages_passed = call_kwargs['messages']
         assert len(messages_passed) == 1
@@ -186,26 +183,23 @@ class TestCalculateContextUsageWithPath:
             path=str(tmp_path)
         )
 
-        assert result.success is True
+        assert isinstance(result, ContextUsage)
         # The readable file content is passed; binary file is ignored
         call_kwargs = mock_litellm.token_counter.call_args.kwargs
         messages_passed = call_kwargs['messages']
         assert len(messages_passed) == 1
         assert "print('hi')" in messages_passed[0]["content"]
 
-    @patch('autocode.core.ai.pipelines.litellm')
-    def test_path_nonexistent_returns_failure(self, mock_litellm):
-        """A path that does not exist returns success=False with a clear message."""
-        mock_litellm.get_max_tokens.return_value = 4000
+    def test_path_nonexistent_raises_http_404(self):
+        """A path that does not exist raises HTTPException 404."""
+        with pytest.raises(HTTPException) as exc_info:
+            calculate_context_usage(
+                model='openrouter/openai/gpt-4o',
+                path='/this/path/definitely/does/not/exist/xyz123'
+            )
 
-        result = calculate_context_usage(
-            model='openrouter/openai/gpt-4o',
-            path='/this/path/definitely/does/not/exist/xyz123'
-        )
-
-        assert result.success is False
-        assert result.result["current"] == 0
-        assert "Path no encontrado" in result.message
+        assert exc_info.value.status_code == 404
+        assert "Path no encontrado" in exc_info.value.detail
 
     @patch('autocode.core.ai.pipelines.litellm')
     def test_path_empty_directory_adds_no_content(self, mock_litellm, tmp_path):
@@ -218,7 +212,7 @@ class TestCalculateContextUsageWithPath:
             path=str(tmp_path)  # empty directory
         )
 
-        assert result.success is True
+        assert isinstance(result, ContextUsage)
         # No content to add → token_counter called with empty messages list
         call_kwargs = mock_litellm.token_counter.call_args.kwargs
         assert call_kwargs['messages'] == []
@@ -252,21 +246,16 @@ class TestChat:
 
     @patch('autocode.core.ai.pipelines.generate_with_dspy')
     @patch('autocode.core.ai.pipelines.prepare_chat_tools')
-    def test_happy_path_returns_dspy_output(self, mock_prepare_tools, mock_generate):
-        """Returns the DspyOutput produced by generate_with_dspy."""
+    def test_happy_path_returns_chat_result(self, mock_prepare_tools, mock_generate):
+        """Returns the ChatResult produced by generate_with_dspy."""
         mock_prepare_tools.return_value = []
-        expected = DspyOutput(
-            success=True,
-            result={"response": "Hello!"},
-            message="Generación exitosa"
-        )
+        expected = ChatResult(response="Hello!")
         mock_generate.return_value = expected
 
         result = chat(message="Hello", conversation_history="")
 
-        assert isinstance(result, DspyOutput)
-        assert result.success is True
-        assert result.result["response"] == "Hello!"
+        assert isinstance(result, ChatResult)
+        assert result.response == "Hello!"
 
     @patch('autocode.core.ai.pipelines.generate_with_dspy')
     @patch('autocode.core.ai.pipelines.prepare_chat_tools')
@@ -274,7 +263,7 @@ class TestChat:
         """With module_type='ReAct', tools and max_iters=5 are auto-injected."""
         mock_tools = [Mock(name="tool_a"), Mock(name="tool_b")]
         mock_prepare_tools.return_value = mock_tools
-        mock_generate.return_value = DspyOutput(success=True, result={})
+        mock_generate.return_value = ChatResult(response="")
 
         chat(
             message="Hello",
@@ -295,7 +284,7 @@ class TestChat:
     def test_react_does_not_overwrite_existing_tools(self, mock_prepare_tools, mock_generate):
         """If module_kwargs already has 'tools', it is NOT overwritten."""
         mock_prepare_tools.return_value = [Mock()]
-        mock_generate.return_value = DspyOutput(success=True, result={})
+        mock_generate.return_value = ChatResult(response="")
         custom_tools = [Mock(name="custom")]
 
         chat(
@@ -315,7 +304,7 @@ class TestChat:
     def test_non_react_no_tools_injection(self, mock_prepare_tools, mock_generate):
         """With non-ReAct module types, tools are NOT injected into module_kwargs."""
         mock_prepare_tools.return_value = []
-        mock_generate.return_value = DspyOutput(success=True, result={})
+        mock_generate.return_value = ChatResult(response="")
 
         chat(
             message="Hello",
@@ -334,7 +323,7 @@ class TestChat:
     def test_prompt_cache_default_enabled(self, mock_prepare_tools, mock_generate):
         """By default, cache_control_injection_points is added to lm_kwargs."""
         mock_prepare_tools.return_value = []
-        mock_generate.return_value = DspyOutput(success=True, result={})
+        mock_generate.return_value = ChatResult(response="")
 
         chat(message="Hello", conversation_history="", enable_prompt_cache=True)
 
@@ -346,7 +335,7 @@ class TestChat:
     def test_prompt_cache_disabled(self, mock_prepare_tools, mock_generate):
         """With enable_prompt_cache=False, cache_control_injection_points is NOT added."""
         mock_prepare_tools.return_value = []
-        mock_generate.return_value = DspyOutput(success=True, result={})
+        mock_generate.return_value = ChatResult(response="")
 
         chat(message="Hello", conversation_history="", enable_prompt_cache=False)
 
@@ -355,23 +344,23 @@ class TestChat:
 
     @patch('autocode.core.ai.pipelines.generate_with_dspy')
     @patch('autocode.core.ai.pipelines.prepare_chat_tools')
-    def test_exception_returns_error_dspy_output(self, mock_prepare_tools, mock_generate):
-        """If generate_with_dspy raises an exception, returns DspyOutput with success=False."""
+    def test_exception_raises_http_exception(self, mock_prepare_tools, mock_generate):
+        """If generate_with_dspy raises an exception, chat() raises HTTPException 500."""
         mock_prepare_tools.return_value = []
         mock_generate.side_effect = RuntimeError("Unexpected failure")
 
-        result = chat(message="Hello", conversation_history="")
+        with pytest.raises(HTTPException) as exc_info:
+            chat(message="Hello", conversation_history="")
 
-        assert isinstance(result, DspyOutput)
-        assert result.success is False
-        assert "Unexpected failure" in result.message
+        assert exc_info.value.status_code == 500
+        assert "Unexpected failure" in exc_info.value.detail
 
     @patch('autocode.core.ai.pipelines.generate_with_dspy')
     @patch('autocode.core.ai.pipelines.prepare_chat_tools')
     def test_inputs_passed_correctly_to_generate(self, mock_prepare_tools, mock_generate):
         """Verifies message and conversation_history are passed as inputs dict."""
         mock_prepare_tools.return_value = []
-        mock_generate.return_value = DspyOutput(success=True, result={})
+        mock_generate.return_value = ChatResult(response="")
 
         chat(message="What is Python?", conversation_history="User: hi | Assistant: hello")
 
@@ -391,7 +380,7 @@ class TestChatStream:
     @patch('autocode.core.ai.pipelines.chat')
     def test_delegates_to_chat_with_all_params(self, mock_chat):
         """chat_stream delegates to chat() passing all parameters unchanged."""
-        expected = DspyOutput(success=True, result={"response": "hi"})
+        expected = ChatResult(response="hi")
         mock_chat.return_value = expected
 
         result = chat_stream(
@@ -431,14 +420,16 @@ class TestGetChatConfig:
 
     @patch('autocode.core.ai.pipelines.get_available_tools_info')
     @patch('autocode.core.ai.pipelines.get_all_module_kwargs_schemas')
-    @patch('autocode.core.ai.pipelines.get_functions_for_interface')
+    @patch('autocode.core.ai.pipelines.Refract')
     @patch('autocode.core.ai.pipelines.fetch_models_info')
     def test_happy_path_returns_all_sections(
-        self, mock_fetch_models, mock_get_funcs, mock_schemas, mock_tools_info
+        self, mock_fetch_models, mock_refract_cls, mock_schemas, mock_tools_info
     ):
-        """Returns success=True with module_kwargs_schemas, available_tools, models."""
+        """Returns ChatConfig with module_kwargs_schemas, available_tools, models."""
         mock_fetch_models.return_value = {}
-        mock_get_funcs.return_value = []
+        mock_app = Mock()
+        mock_refract_cls.current.return_value = mock_app
+        mock_app.get_functions_for_interface.return_value = []
         mock_schemas.return_value = {
             "Predict": {"params": [], "supports_tools": False},
             "ReAct": {"params": [{"name": "max_iters"}], "supports_tools": True},
@@ -449,21 +440,19 @@ class TestGetChatConfig:
 
         result = get_chat_config()
 
-        assert isinstance(result, GenericOutput)
-        assert result.success is True
-        assert "module_kwargs_schemas" in result.result
-        assert "available_tools" in result.result
-        assert "models" in result.result
-
-        assert result.result["module_kwargs_schemas"]["ReAct"]["supports_tools"] is True
-        assert result.result["available_tools"][0]["name"] == "tool_a"
+        assert isinstance(result, ChatConfig)
+        assert "Predict" in result.module_kwargs_schemas
+        assert "ReAct" in result.module_kwargs_schemas
+        assert result.module_kwargs_schemas["ReAct"]["supports_tools"] is True
+        assert result.available_tools[0]["name"] == "tool_a"
+        assert isinstance(result.models, list)
 
     @patch('autocode.core.ai.pipelines.get_available_tools_info')
     @patch('autocode.core.ai.pipelines.get_all_module_kwargs_schemas')
-    @patch('autocode.core.ai.pipelines.get_functions_for_interface')
+    @patch('autocode.core.ai.pipelines.Refract')
     @patch('autocode.core.ai.pipelines.fetch_models_info')
     def test_models_data_structure(
-        self, mock_fetch_models, mock_get_funcs, mock_schemas, mock_tools_info
+        self, mock_fetch_models, mock_refract_cls, mock_schemas, mock_tools_info
     ):
         """Each model entry has the expected fields from merge of base list + OpenRouter info."""
         mock_fetch_models.return_value = {
@@ -475,14 +464,16 @@ class TestGetChatConfig:
                 "supported_parameters": ["temperature", "max_tokens"],
             }
         }
-        mock_get_funcs.return_value = []
+        mock_app = Mock()
+        mock_refract_cls.current.return_value = mock_app
+        mock_app.get_functions_for_interface.return_value = []
         mock_schemas.return_value = {}
         mock_tools_info.return_value = []
 
         result = get_chat_config()
 
-        assert result.success is True
-        models = result.result["models"]
+        assert isinstance(result, ChatConfig)
+        models = result.models
         assert isinstance(models, list)
         assert len(models) > 0
 
@@ -496,21 +487,23 @@ class TestGetChatConfig:
 
     @patch('autocode.core.ai.pipelines.get_available_tools_info')
     @patch('autocode.core.ai.pipelines.get_all_module_kwargs_schemas')
-    @patch('autocode.core.ai.pipelines.get_functions_for_interface')
+    @patch('autocode.core.ai.pipelines.Refract')
     @patch('autocode.core.ai.pipelines.fetch_models_info')
     def test_model_without_openrouter_info_uses_defaults(
-        self, mock_fetch_models, mock_get_funcs, mock_schemas, mock_tools_info
+        self, mock_fetch_models, mock_refract_cls, mock_schemas, mock_tools_info
     ):
         """Models not found in OpenRouter still appear with id and fallback name."""
         mock_fetch_models.return_value = {}  # No OpenRouter info for any model
-        mock_get_funcs.return_value = []
+        mock_app = Mock()
+        mock_refract_cls.current.return_value = mock_app
+        mock_app.get_functions_for_interface.return_value = []
         mock_schemas.return_value = {}
         mock_tools_info.return_value = []
 
         result = get_chat_config()
 
-        assert result.success is True
-        models = result.result["models"]
+        assert isinstance(result, ChatConfig)
+        models = result.models
         # All base models should still be present
         assert len(models) > 0
 
@@ -521,15 +514,15 @@ class TestGetChatConfig:
             assert model["name"] != ""  # Not empty
 
     @patch('autocode.core.ai.pipelines.fetch_models_info')
-    def test_error_returns_failure(self, mock_fetch_models):
-        """If an internal call raises, returns success=False with empty result."""
+    def test_error_raises_http_exception(self, mock_fetch_models):
+        """If an internal call raises, raises HTTPException 500."""
         mock_fetch_models.side_effect = RuntimeError("Network error")
 
-        result = get_chat_config()
+        with pytest.raises(HTTPException) as exc_info:
+            get_chat_config()
 
-        assert result.success is False
-        assert result.result == {}
-        assert "Network error" in result.message
+        assert exc_info.value.status_code == 500
+        assert "Network error" in exc_info.value.detail
 
 
 # =============================================================================
