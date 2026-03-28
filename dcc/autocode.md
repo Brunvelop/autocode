@@ -122,18 +122,20 @@ Invariante: Adapter no contiene lógica de dominio
             Adapter no valida reglas de negocio
 ```
 
-### P3: Controller-View Separation (Web)
+### P3: Composición en Web Components
 ```
-AutoFunctionController    AutoFunctionElement
-├─ params (state)         ├─ render()
-├─ result (state)         └─ renderParam()
-├─ execute()
-├─ validate()
-└─ callAPI()
+Auto-generados (/dashboard):          Componentes Custom (autocode/web/):
+LitElement                            LitElement
+    ↑                                     ↑
+AutoFunctionController                MiComponente
+    ↑                                 └─ this._client = new RefractClient()
+AutoFunctionElement                   └─ render(), _fetchData(), ...
+(UI genérica de tarjeta)
 
-Herencia:
-  LitElement ← AutoFunctionController ← AutoFunctionElement
-                                      ← CustomComponent (Chat, etc.)
+RefractClient:
+    call(funcName, params) → Promise
+    stream(funcName, params) → AsyncIterable
+    loadSchemas() → Promise
 ```
 
 ### P4: Shared Design Tokens
@@ -247,10 +249,11 @@ AÑADIR INTERFAZ:
 2. Leer de FUNCTION_REGISTRY
 3. Transformar a protocolo destino
 
-AÑADIR COMPONENTE CUSTOM:
-1. Extender AutoFunctionController
-2. Override render()
-3. Importar themeTokens
+AÑADIR COMPONENTE CUSTOM (con backend):
+1. Extender LitElement directamente
+2. Componer con RefractClient: this._client = new RefractClient()
+3. Usar this._client.call('func_name', params) para llamar al backend
+4. Importar themeTokens
 ```
 
 ---

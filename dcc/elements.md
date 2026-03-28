@@ -24,8 +24,8 @@ A4. Shadow DOM obligatorio
     → Slots para composición (header, content, footer)
 
 A5. Tres patrones de extensión
-    → Con backend + UI genérica: AutoFunctionElement
-    → Con backend + UI custom: AutoFunctionController
+    → Con backend + UI genérica: AutoFunctionElement (auto-generado en /dashboard)
+    → Con backend + UI custom: LitElement + RefractClient (composición, NO herencia)
     → Standalone (sin backend): LitElement directo
 ```
 
@@ -202,11 +202,16 @@ Ejemplo:
 ### P4: Comunicación Inter-funciones
 ```
 Entrada:  Componente necesita ejecutar función sin crear elemento DOM
-Proceso:  AutoFunctionController.executeFunction(funcName, params)
+Proceso:  Instanciar RefractClient → client.call(funcName, params)
 Salida:   Resultado de la función
 
 Uso:      Validaciones cruzadas, cálculos auxiliares
-Invariante: Misma infraestructura que execute(), sin contaminar DOM
+Invariante: Misma infraestructura que el patrón P2
+            NO usar AutoFunctionController.executeFunction() en componentes custom
+
+Ejemplo:
+  const client = new RefractClient();
+  const result = await client.call('calculate_context_usage', { model, messages });
 ```
 
 ---
