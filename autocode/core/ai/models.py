@@ -1,118 +1,11 @@
 """
 Modelos específicos para el módulo AI.
 
-Este módulo contiene modelos Pydantic especializados para operaciones de AI,
-más funciones de serialización standalone que antes vivían en DspyOutput.
+Este módulo contiene modelos Pydantic especializados para operaciones de AI.
 """
 
-import json
-import re
 from pydantic import BaseModel, Field
 from typing import Any, Dict, List, Optional, Union
-
-
-# ============================================================================
-# SERIALIZATION UTILITIES (standalone, previously DspyOutput static methods)
-# ============================================================================
-
-
-def normalize_trajectory(trajectory: Any) -> Any:
-    """
-    Detecta y normaliza trayectorias planas de DSPy (thought_0, tool_0...)
-    a una lista estructurada de pasos.
-
-    Args:
-        trajectory: Trayectoria raw de DSPy (dict, list u otro tipo).
-
-    Returns:
-        Lista de pasos si era dict plano con índices, o el valor original en otro caso.
-    """
-    if not isinstance(trajectory, dict):
-        return trajectory
-
-    steps = {}
-    has_indexed_keys = False
-
-    for key, value in trajectory.items():
-        match = re.search(r'^(.*)_(\d+)$', key)
-        if match:
-            has_indexed_keys = True
-            field_name = match.group(1)
-            step_idx = int(match.group(2))
-
-            if step_idx not in steps:
-                steps[step_idx] = {}
-
-            if field_name in ['tool', 'tool_name']:
-                steps[step_idx]['tool_name'] = value
-            else:
-                steps[step_idx][field_name] = value
-
-    if not has_indexed_keys:
-        return trajectory
-
-    return [steps[idx] for idx in sorted(steps.keys())]
-
-
-def _serialize_complex_object(value: Any) -> Any:
-    """
-    Serializa un objeto complejo (Pydantic, __dict__, o fallback JSON/str).
-
-    Gestiona la cascada de intentos para objetos que no son tipos básicos,
-    listas ni dicts: model_dump → __dict__ → json → str.
-
-    Args:
-        value: Objeto complejo a serializar.
-
-    Returns:
-        Valor serializado a tipos básicos.
-    """
-    if hasattr(value, 'model_dump') and callable(getattr(value, 'model_dump')):
-        try:
-            return serialize_value(value.model_dump())
-        except Exception:
-            pass
-
-    if hasattr(value, '__dict__'):
-        try:
-            obj_dict = {}
-            for key, val in value.__dict__.items():
-                if not key.startswith('_'):
-                    obj_dict[key] = serialize_value(val)
-            return obj_dict
-        except Exception:
-            pass
-
-    try:
-        return json.loads(json.dumps(value, default=str))
-    except (TypeError, ValueError):
-        return str(value)
-
-
-def serialize_value(value: Any) -> Any:
-    """
-    Serializa recursivamente un valor a tipos básicos de Python.
-
-    Args:
-        value: Valor a serializar (puede ser dict, list, object, etc.).
-
-    Returns:
-        Valor serializado a tipos básicos (dict, list, str, int, float, bool, None).
-    """
-    if value is None:
-        return None
-    if isinstance(value, (str, int, float, bool)):
-        return value
-    if isinstance(value, list):
-        return [serialize_value(item) for item in value]
-    if isinstance(value, dict):
-        return {key: serialize_value(val) for key, val in value.items()}
-    return _serialize_complex_object(value)
-
-
-# ============================================================================
-# DOMAIN MODELS
-# ============================================================================
 
 
 class ContextUsage(BaseModel):

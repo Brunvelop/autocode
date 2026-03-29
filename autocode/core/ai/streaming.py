@@ -5,7 +5,9 @@ This module implements Server-Sent Events (SSE) streaming for chat operations,
 allowing real-time token delivery to the frontend.
 """
 import asyncio
+import json
 import logging
+import re
 from typing import AsyncGenerator, Dict, Any, Optional, List
 
 import dspy
@@ -17,10 +19,92 @@ from autocode.core.ai.dspy_utils import (
     get_dspy_lm, MODULE_MAP, ModuleType,
     prepare_chat_tools
 )
-from autocode.core.ai.models import normalize_trajectory, serialize_value
 from autocode.core.ai.signatures import ChatSignature
 
 logger = logging.getLogger(__name__)
+
+
+# ============================================================================
+# SERIALIZATION UTILITIES
+# ============================================================================
+
+
+def _normalize_trajectory(trajectory: Any) -> Any:
+    """
+    Detecta y normaliza trayectorias planas de DSPy (thought_0, tool_0...)
+    a una lista estructurada de pasos.
+    """
+    if not isinstance(trajectory, dict):
+        return trajectory
+
+    steps = {}
+    has_indexed_keys = False
+
+    for key, value in trajectory.items():
+        match = re.search(r'^(.*)_(\d+)$', key)
+        if match:
+            has_indexed_keys = True
+            field_name = match.group(1)
+            step_idx = int(match.group(2))
+
+            if step_idx not in steps:
+                steps[step_idx] = {}
+
+            if field_name in ['tool', 'tool_name']:
+                steps[step_idx]['tool_name'] = value
+            else:
+                steps[step_idx][field_name] = value
+
+    if not has_indexed_keys:
+        return trajectory
+
+    return [steps[idx] for idx in sorted(steps.keys())]
+
+
+def _serialize_complex_object(value: Any) -> Any:
+    """
+    Serializa un objeto complejo (Pydantic, __dict__, o fallback JSON/str).
+    """
+    if hasattr(value, 'model_dump') and callable(getattr(value, 'model_dump')):
+        try:
+            return _serialize_value(value.model_dump())
+        except Exception:
+            pass
+
+    if hasattr(value, '__dict__'):
+        try:
+            obj_dict = {}
+            for key, val in value.__dict__.items():
+                if not key.startswith('_'):
+                    obj_dict[key] = _serialize_value(val)
+            return obj_dict
+        except Exception:
+            pass
+
+    try:
+        return json.loads(json.dumps(value, default=str))
+    except (TypeError, ValueError):
+        return str(value)
+
+
+def _serialize_value(value: Any) -> Any:
+    """
+    Serializa recursivamente un valor a tipos básicos de Python.
+    """
+    if value is None:
+        return None
+    if isinstance(value, (str, int, float, bool)):
+        return value
+    if isinstance(value, list):
+        return [_serialize_value(item) for item in value]
+    if isinstance(value, dict):
+        return {key: _serialize_value(val) for key, val in value.items()}
+    return _serialize_complex_object(value)
+
+
+# ============================================================================
+# STREAMING IMPLEMENTATION
+# ============================================================================
 
 
 class AutocodeStatusProvider(dspy.streaming.StatusMessageProvider):
@@ -113,13 +197,13 @@ def _build_complete_event(prediction: Any, lm: Any) -> dict:
 
     trajectory = getattr(prediction, 'trajectory', None)
     if isinstance(trajectory, (dict, list)):
-        trajectory = normalize_trajectory(trajectory)
-        trajectory = serialize_value(trajectory)
+        trajectory = _normalize_trajectory(trajectory)
+        trajectory = _serialize_value(trajectory)
 
     history = None
     if hasattr(lm, 'history') and lm.history:
         try:
-            history = serialize_value(lm.history)
+            history = _serialize_value(lm.history)
         except Exception as e:
             logger.warning(f"Could not serialize lm.history: {e}")
 
@@ -250,5 +334,3 @@ async def stream_chat(
             })
         else:
             yield _format_sse("error", {"message": error_msg, "success": False})
-
-
