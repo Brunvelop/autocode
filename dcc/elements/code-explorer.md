@@ -23,8 +23,8 @@ A3. Jerarquía natural
     → Lazy loading para performance en proyectos grandes
 
 A4. Standalone con backend
-    → CodeExplorer extiende LitElement (no AutoFunctionController)
-    → Usa AutoFunctionController.executeFunction() para llamar al backend
+    → CodeExplorer extiende LitElement
+    → Usa RefractClient por composición para llamar al backend
     → No está atado a una función específica del registry
 ```
 
@@ -136,10 +136,10 @@ NodeType: "directory" | "file" | "class" | "function" | "method" | "import" | "v
 
 Dependencias frontend:
   shared/styles/theme.js ← code-explorer/styles/theme.js ← todos los .styles.js
-  auto-element-generator.js::executeFunction ← code-explorer/index.js
+  /refract/client.js → RefractClient ← code-explorer/index.js
 
 Comunicación:
-  CodeExplorer → AutoFunctionController.executeFunction('get_code_structure', {path})
+  CodeExplorer → this._client.call('get_code_structure', {path})
              → Backend parsea código
              → Devuelve CodeStructureResult normalizado
 ```
@@ -329,7 +329,7 @@ loc <= 100         ──────────────────►  Ba
 2. CARGA DE ESTRUCTURA
    refresh()
    → this._loading = true
-   → AutoFunctionController.executeFunction('get_code_structure', {path, depth})
+   → this._client.call('get_code_structure', {path, depth})
    → this._structure = response
    → this._loading = false
    → dispatch 'structure-loaded'
@@ -376,9 +376,6 @@ loc <= 100         ──────────────────►  Ba
 
 ✗ Fallar si hay archivo con sintaxis inválida
   → Capturar excepciones, devolver nodo vacío con warning
-
-✗ Importar el componente chat o auto-element-generator completo
-  → Solo importar executeFunction estático si se necesita
 
 ✗ Usar Light DOM
   → Siempre Shadow DOM para encapsulación de estilos

@@ -2,8 +2,6 @@
 
 Este documento describe la arquitectura actual del sistema de Web Components en Autocode. El sistema está diseñado siguiendo el patrón **Composición sobre Herencia**: todos los componentes extienden `LitElement` directamente y usan `RefractClient` por composición para la comunicación con el backend.
 
-> **Nota histórica**: Una versión anterior usaba `AutoFunctionController` como clase base heredable. Esa arquitectura fue refactorizada a composición. `AutoFunctionController` sigue existiendo pero **solo** es usado por `AutoFunctionElement` (elementos auto-generados desde el registry). Ningún componente "real" hereda de él.
-
 ---
 
 ## 🏗️ Visión General
@@ -93,37 +91,6 @@ classDiagram
 
     note for AutocodeChat "Composición: LitElement + RefractClient"
     note for ScreenRecorder "Standalone puro: sin backend"
-```
-
-### Auto-generación (papel actual de AutoFunctionController)
-
-```mermaid
-classDiagram
-    direction TB
-
-    LitElement <|-- AutoFunctionController
-    AutoFunctionController <|-- AutoFunctionElement
-    AutoFunctionElement <|-- GeneratedAutoElement
-
-    class AutoFunctionController {
-        +funcName : String
-        +funcInfo : Object
-        +params : Object
-        +execute()
-        +callAPI(params)
-    }
-
-    class AutoFunctionElement {
-        +render()
-        +renderParam()
-    }
-
-    class GeneratedAutoElement {
-        +funcName : String
-    }
-
-    note for AutoFunctionController "Solo usado por auto-generación"
-    note for GeneratedAutoElement "Creado dinámicamente por AutoElementGenerator"
 ```
 
 ---
@@ -250,16 +217,6 @@ const funcInfo = this._client.getSchema('func_name'); // null si no existe
 **Manejo de errores:**
 - `call()` lanza excepciones en caso de error HTTP — usar `try/catch`
 - `stream()` emite eventos `{ event: 'error', data: {...} }` para errores del servidor
-
-### `AutoFunctionController` + `AutoFunctionElement` (Auto-generación)
-
-Conjunto de clases para generar automáticamente Web Components a partir del registry de funciones del backend.
-
-- **`AutoFunctionController`**: Clase base con lógica de estado, validación y API. No tiene UI propia.
-- **`AutoFunctionElement`**: UI genérica tipo "tarjeta" para elementos auto-generados.
-- **`AutoElementGenerator`**: Servicio que consulta `/functions/details` y registra dinámicamente nuevos Custom Elements.
-
-> **Cuándo usarlos**: Solo para exponer funciones del registry con una UI genérica (`<auto-calculator>`, etc.). Para componentes con lógica propia, usa el patrón `LitElement` + `RefractClient`.
 
 ---
 
@@ -457,9 +414,6 @@ async connectedCallback() {
 Para llamar a una función del backend desde cualquier contexto (sin crear elementos DOM):
 
 ```javascript
-// Antes: AutoFunctionController.executeFunction('func', params) — OBSOLETO
-// Ahora: usar una instancia de RefractClient
-
 const client = new RefractClient();
 const result = await client.call('calculate_context_usage', {
     model: 'openai/gpt-4o',
@@ -471,7 +425,7 @@ const result = await client.call('calculate_context_usage', {
 
 ## ⚠️ Reglas de Oro
 
-1. **Composición, no herencia**: Usa `this._client = new RefractClient()` en el constructor. Nunca extiendas `AutoFunctionController` para nuevos componentes.
+1. **Composición, no herencia**: Usa `this._client = new RefractClient()` en el constructor.
 
 2. **Estado inmutable**: Nunca mutes arrays/objetos de estado directamente. Crea nuevas referencias para activar la reactividad de Lit:
    ```javascript

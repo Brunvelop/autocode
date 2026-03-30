@@ -2,11 +2,7 @@
  * index.js (autocode-chat)
  * Orquestador del chat que compone todos los sub-componentes.
  * Extiende LitElement directamente y usa RefractClient por composición
- * para toda la comunicación con la API (ya no hereda de AutoFunctionController).
- * 
- * REFACTORIZACIÓN: Herencia → Composición
- * - Antes: extends AutoFunctionController (acoplamiento innecesario)
- * - Ahora: extends LitElement + this._client = new RefractClient()
+ * para toda la comunicación con la API.
  */
 
 import { LitElement, html } from 'https://cdn.jsdelivr.net/gh/lit/dist@3/core/lit-core.min.js';
@@ -173,7 +169,7 @@ export class AutocodeChat extends LitElement {
     }
 
     // ========================================================================
-    // STATE MANAGEMENT (reemplaza métodos heredados de AutoFunctionController)
+    // STATE MANAGEMENT
     // ========================================================================
 
     /**
@@ -360,8 +356,7 @@ export class AutocodeChat extends LitElement {
 
     /**
      * Calcula y actualiza el uso de la ventana de contexto.
-     * Usa this._client.call() para llamar al endpoint (antes usaba
-     * AutoFunctionController.executeFunction()).
+     * Usa this._client.call() para llamar al endpoint del backend.
      */
     async _updateContext() {
         const messages = [...this.conversationHistory];

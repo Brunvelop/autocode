@@ -124,13 +124,12 @@ Invariante: Adapter no contiene lógica de dominio
 
 ### P3: Composición en Web Components
 ```
-Auto-generados (/dashboard):          Componentes Custom (autocode/web/):
-LitElement                            LitElement
-    ↑                                     ↑
-AutoFunctionController                MiComponente
-    ↑                                 └─ this._client = new RefractClient()
-AutoFunctionElement                   └─ render(), _fetchData(), ...
-(UI genérica de tarjeta)
+Componentes Custom (autocode/web/):
+LitElement
+    ↑
+MiComponente
+└─ this._client = new RefractClient()
+└─ render(), _fetchData(), ...
 
 RefractClient:
     call(funcName, params) → Promise

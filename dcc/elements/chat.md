@@ -11,10 +11,10 @@ A1. Orquestador único
     → AutocodeChat (index.js) es el ÚNICO punto de entrada
     → Compone y coordina todos los sub-componentes
 
-A2. Herencia de Controller
-    → AutocodeChat extiende AutoFunctionController (no AutoFunctionElement)
-    → Reutiliza lógica de estado, params y callAPI()
-    → Implementa render() propio en lugar de UI genérica
+A2. Composición con RefractClient
+    → AutocodeChat extiende LitElement directamente
+    → Usa this._client = new RefractClient() para toda comunicación con el backend
+    → Gestiona su propio estado de params, result y status
 
 A3. Separación de estilos
     → Cada componente tiene su archivo .styles.js separado
@@ -37,23 +37,40 @@ A5. Design Tokens heredados
 
 ```javascript
 // === Orquestador Principal ===
-AutocodeChat extends AutoFunctionController:
-    // Configuración heredada
-    funcName: "chat"                    // Función del registry a consumir
-    funcInfo: Object                    // Metadata cargada automáticamente
-    params: Object                      // Estado de parámetros
+AutocodeChat extends LitElement:
+    // Cliente HTTP (composición)
+    _client: RefractClient              // Instancia en constructor
     
-    // Estado local
+    // Estado
+    funcInfo: Object                    // Schema de la función 'chat' del registry
+    params: Object                      // {message, conversation_history, model, ...}
+    result: Object                      // Resultado de la última llamada
+    envelope: Object                    // Mismo que result (nomenclatura legacy)
+    success: Boolean                    // true/false tras ejecución
+    _status: String                     // 'default'|'loading'|'success'|'error'
+    _statusMessage: String              // Mensaje de estado actual
+    _isExecuting: Boolean               // true durante llamada activa
+    
+    // Estado del chat
     conversationHistory: [Message]      // Historial de mensajes
     _chatConfig: Object                 // Config cargada de get_chat_config
     _pendingUserMessage: String?        // Mensaje optimista pendiente
     _streamFuncInfo: Object?            // Pre-cargado en connectedCallback()
+    _useStreaming: Boolean              // Toggle streaming (desde settings)
+    _abortController: AbortController? // Para cancelar stream activo
     
-    // Métodos de streaming
-    _loadStreamFuncInfo()               // Pre-carga chat_stream info del registry
+    // Métodos públicos de estado
+    setParam(name, value)               // Actualiza param con reactividad
+    getParam(name) → Any
+    
+    // Métodos de comunicación
+    _loadFuncInfo()                     // Carga schema 'chat' vía _client.loadSchemas()
+    _loadChatConfig()                   // Carga config vía _client.call('get_chat_config')
+    _loadStreamFuncInfo()               // Pre-carga chat_stream schema del registry
     _sendMessage(message)               // Decide stream vs sync según _streamFuncInfo
-    _sendMessageStream(message)         // SSE streaming vía callStreamAPI()
-    _sendMessageSync(message)           // Fallback síncrono vía execute()
+    _sendMessageStream(message)         // SSE streaming vía _client.stream()
+    _sendMessageSync(message)           // Fallback síncrono vía _client.call()
+    _updateContext()                    // Calcula uso de contexto vía _client.call()
     
     // Eventos escuchados
     'submit' → _handleInputSubmit()
@@ -170,15 +187,16 @@ ContextBar extends LitElement:
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│                     AutoFunctionController                          │
-│              (auto-element-generator.js)                            │
+│                     LitElement + RefractClient                      │
+│              (composición, no herencia)                             │
 └───────────────────────────────┬─────────────────────────────────────┘
-                                │ extends
+                                │ extends + compone
                                 ▼
 ┌─────────────────────────────────────────────────────────────────────┐
 │                        AutocodeChat                                 │
 │                         (index.js)                                  │
 │  ┌──────────────────────────────────────────────────────────────┐   │
+│  │ _client: RefractClient                                        │   │
 │  │ conversationHistory, _chatConfig, _pendingUserMessage         │   │
 │  │ _handleInputSubmit(), _sendMessage(), _processResult()        │   │
 │  └──────────────────────────────────────────────────────────────┘   │
@@ -295,29 +313,7 @@ Invariante: Si falla, _pendingUserMessage se descarta
             El historial solo contiene mensajes confirmados
 ```
 
-### P4: Controller Extension
-```
-Entrada:  Necesidad de UI custom con lógica de registry
-Proceso:  Extender AutoFunctionController (no Element)
-Salida:   Heredamos state management, NO heredamos render()
-
-class AutocodeChat extends AutoFunctionController {
-    constructor() {
-        super();
-        this.funcName = 'chat';  // ← Única configuración necesaria
-    }
-    
-    render() {
-        // UI completamente custom
-        return html`<chat-window>...</chat-window>`;
-    }
-}
-
-Invariante: execute(), setParam(), getParam(), callAPI() disponibles
-            funcInfo se carga automáticamente en connectedCallback()
-```
-
-### P5: Dialog Modal Pattern
+### P4: Dialog Modal Pattern
 ```
 Entrada:  Panel de configuración complejo
 Proceso:  Usar <dialog> nativo con showModal()
@@ -340,23 +336,19 @@ Invariante: dialog::backdrop para overlay
             Escape cierra automáticamente
 ```
 
-### P6: Streaming Message Pattern
+### P5: Streaming Message Pattern
 ```
 Entrada:  Usuario envía mensaje con streaming disponible
 Proceso:  
   1. _sendMessage() detecta _streamFuncInfo?.streaming === true
   2. Resetear envelope/result/success (evitar datos stale)
   3. addStreamingMessage() → crea bubble vacía con cursor ▊
-  4. callStreamAPI('chat_stream', params) → async generator de eventos SSE
+  4. _client.stream('chat_stream', params, funcInfo, {signal}) → async iterable SSE
   5. event: token  → appendToStreaming(id, chunk) — texto incremental
   6. event: status → _setStatus('loading', message) + push a statusLog
   7. event: complete → finalizeStreaming(id, envelope) — render normal
   8. event: error → finalizeStreaming(id, errorEnvelope)
 Salida:   Texto aparece token a token, luego se reemplaza por envelope rico
-
-// En AutoFunctionController (heredado):
-_processParams(params, funcInfoOverride)  // DRY: extrae conversión de tipos
-async *callStreamAPI(endpoint, params, funcInfo)  // Async generator SSE
 
 // En ChatMessages:
 addStreamingMessage() → id               // Crea msg {streaming: true, content: ''}
@@ -394,9 +386,9 @@ Invariante: envelope se resetea al inicio de cada stream (no stale)
     mensaje.timestamp = Number (Date.now())
 
 AutocodeChat:
-    this.funcName = 'chat' (hardcoded)
+    this._client = new RefractClient() en constructor
     this.conversationHistory sincronizado con params.conversation_history
-    execute() siempre precedido de setParam('message', msg)
+    _sendMessage() siempre precedido de setParam('message', msg)
 
 ChatSettings:
     _settings actualizado vía _updateSetting() (no directo)
@@ -452,10 +444,9 @@ SSE events         ──────────────────►  Ch
 ```
 1. INICIALIZACIÓN (Element attached)
    connectedCallback()
-   → AutoFunctionController.connectedCallback()
-     → loadFunctionInfo() para 'chat'
-   → _loadChatConfig() → fetch get_chat_config
-   → _loadStreamFuncInfo() → fetch chat_stream info (pre-carga)
+   → _loadFuncInfo() → _client.loadSchemas() + _client.getSchema('chat')
+   → _loadChatConfig() → _client.call('get_chat_config')
+   → _loadStreamFuncInfo() → _client.getSchema('chat_stream') (pre-carga)
    
    firstUpdated()
    → Obtener referencias: _window, _messages, _input, _settings
@@ -490,8 +481,8 @@ SSE events         ──────────────────►  Ch
    d. Actualizar conversationHistory con texto acumulado
 
 3b. ENVÍO SÍNCRONO (_sendMessageSync)
-   a. await this.execute() → callAPI()
-   b. _processResult(envelope)
+   a. await this._client.call('chat', this.params, this.funcInfo)
+   b. _processResult(data)
 
 4. PROCESAMIENTO DE RESPUESTA (solo sync path)
    _processResult(envelope)
@@ -506,7 +497,7 @@ SSE events         ──────────────────►  Ch
 5. CICLO DE CONTEXTO
    _updateContext()
    → Construir mensajes (history + input actual)
-   → executeFunction('calculate_context_usage', {model, messages})
+   → _client.call('calculate_context_usage', {model, messages})
    → _contextBar.update(current, max)
 ```
 
@@ -531,7 +522,7 @@ SSE events         ──────────────────►  Ch
   → Siempre Shadow DOM para encapsulación
 
 ✗ Hacer fetch directo a API desde sub-componentes
-  → Usar AutoFunctionController.executeFunction() o emitir evento
+  → Emitir evento al orquestador para que use su _client
 
 ✗ Pasar referencias de componentes como props
   → Usar eventos y slots para comunicación
@@ -598,14 +589,14 @@ const chat = document.querySelector('autocode-chat');
 chat.shadowRoot.addEventListener('submit', e => console.log('submit:', e.detail));
 chat.shadowRoot.addEventListener('settings-change', e => console.log('settings:', e.detail));
 
-# Verificar herencia
+# Verificar estado del componente
 const chat = document.querySelector('autocode-chat');
-console.log(chat instanceof AutoFunctionController);  // true
-console.log(chat.funcName);                           // 'chat'
 console.log(chat.funcInfo);                           // {name: 'chat', parameters: [...]}
+console.log(chat.params);                             // {message, model, conversation_history, ...}
+console.log(chat._client);                            // RefractClient instance
 ```
 
 ---
 
-> **Regeneración**: Este DCC + Lit + AutoFunctionController + API backend = autocode/web/elements/chat
+> **Regeneración**: Este DCC + Lit + RefractClient + API backend = autocode/web/elements/chat
 > **Extracción**: inspect(chat/*.js + chat/styles/*) = Este DCC

@@ -1,7 +1,7 @@
 /**
  * index.js (screen-recorder)
- * Componente orquestador principal que integra todos los subcomponentes
- * Patrón standalone: No extiende AutoFunctionController (no hay backend)
+ * Componente orquestador principal que integra todos los subcomponentes.
+ * Patrón standalone: sin backend, toda la lógica en el navegador.
  * 
  * Uso:
  * <screen-recorder></screen-recorder>

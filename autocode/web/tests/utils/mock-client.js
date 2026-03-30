@@ -4,7 +4,7 @@
  *
  * Los componentes usan `this._client = new RefractClient()` y llaman a
  * `this._client.call(funcName, params)` directamente. Este helper parchea
- * el prototype para interceptar TODAS las instancias sin tocar AutoFunctionController.
+ * el prototype para interceptar TODAS las instancias.
  *
  * @example
  * import { mockRefractCall } from '../../utils/mock-client.js';
