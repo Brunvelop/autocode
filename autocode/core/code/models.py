@@ -351,6 +351,39 @@ class DependencyCyclesResult(BaseModel):
     )
 
 
+class DependencyEdge(BaseModel):
+    """Compact dependency edge inside a local dependency slice."""
+
+    source: str = Field(..., description="Path del archivo origen")
+    target: str = Field(..., description="Path del archivo destino")
+
+
+class DependencySliceResult(BaseModel):
+    """Compact local dependency neighborhood for agent exploration."""
+
+    target: str = Field(..., description="Archivo objetivo del slice")
+    summary: dict = Field(
+        default_factory=dict,
+        description="Resumen compacto del slice de dependencias",
+    )
+    in_layers: List[List[str]] = Field(
+        default_factory=list,
+        description="Capas BFS de dependencias entrantes alrededor del target",
+    )
+    out_layers: List[List[str]] = Field(
+        default_factory=list,
+        description="Capas BFS de dependencias salientes alrededor del target",
+    )
+    edges: List[DependencyEdge] = Field(
+        default_factory=list,
+        description="Aristas contenidas dentro del slice resultante",
+    )
+    cycles: List[List[str]] = Field(
+        default_factory=list,
+        description="Ciclos reales que tocan al target dentro del slice",
+    )
+
+
 
 
 # ==============================================================================

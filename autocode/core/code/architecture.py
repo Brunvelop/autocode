@@ -26,6 +26,8 @@ from autocode.core.code.models import (
     ArchitectureSnapshot,
     DependencyCycle,
     DependencyCyclesResult,
+    DependencyEdge,
+    DependencySliceResult,
     FileDependency,
 )
 from autocode.core.vcs.git import git, git_show, get_tracked_files, get_tracked_files_at_commit
@@ -171,6 +173,104 @@ def get_dependency_cycles(
         raise
     except Exception as e:
         logger.error(f"Error obteniendo ciclos de dependencias: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@register_function(http_methods=["GET"], interfaces=["mcp"])
+def get_dependency_slice(
+    target: str,
+    direction: str = "both",
+    max_depth: int = 2,
+    path: str = ".",
+    max_nodes: int = 50,
+) -> DependencySliceResult:
+    """Return a compact local dependency slice around an exact file target."""
+    try:
+        normalized_path = path.strip() or "."
+        normalized_target = target.strip()
+        normalized_direction = direction.strip().lower()
+
+        if not normalized_target:
+            raise HTTPException(status_code=400, detail="target is required")
+        if normalized_direction not in {"in", "out", "both"}:
+            raise HTTPException(status_code=400, detail="direction must be one of: in, out, both")
+        if max_depth < 0:
+            raise HTTPException(status_code=400, detail="max_depth must be >= 0")
+        if max_nodes < 1:
+            raise HTTPException(status_code=400, detail="max_nodes must be >= 1")
+
+        all_files = get_tracked_files(*_ALL_EXTENSIONS)
+        filtered_files = _filter_files_by_path(all_files, normalized_path)
+        if normalized_target not in filtered_files:
+            raise HTTPException(
+                status_code=404,
+                detail=f"target not found in path scope: {normalized_target}",
+            )
+
+        dependencies, _ = _resolve_file_dependencies(filtered_files)
+        edge_map = {
+            (dep.source, dep.target): set(dep.import_names)
+            for dep in dependencies
+        }
+        outgoing = _build_dependency_adjacency(edge_map)
+        incoming = _build_reverse_dependency_adjacency(edge_map)
+
+        allowed_nodes = {normalized_target}
+        in_layers: List[List[str]] = []
+        out_layers: List[List[str]] = []
+        truncated = False
+
+        if normalized_direction in {"in", "both"}:
+            in_layers, in_truncated = _collect_dependency_layers(
+                normalized_target,
+                incoming,
+                max_depth=max_depth,
+                max_nodes=max_nodes,
+                allowed_nodes=allowed_nodes,
+            )
+            truncated = truncated or in_truncated
+
+        if normalized_direction in {"out", "both"}:
+            out_layers, out_truncated = _collect_dependency_layers(
+                normalized_target,
+                outgoing,
+                max_depth=max_depth,
+                max_nodes=max_nodes,
+                allowed_nodes=allowed_nodes,
+            )
+            truncated = truncated or out_truncated
+
+        slice_edges = [
+            DependencyEdge(source=source, target=target)
+            for source, target in sorted(edge_map)
+            if source in allowed_nodes and target in allowed_nodes
+        ]
+        cycles = [
+            cycle for cycle in _find_dependency_cycles(edge_map)
+            if normalized_target in cycle and set(cycle).issubset(allowed_nodes)
+        ]
+
+        return DependencySliceResult(
+            target=normalized_target,
+            summary={
+                "path": normalized_path,
+                "direction": normalized_direction,
+                "max_depth": max_depth,
+                "max_nodes": max_nodes,
+                "node_count": len(allowed_nodes),
+                "edge_count": len(slice_edges),
+                "cycles_count": len(cycles),
+                "truncated": truncated,
+            },
+            in_layers=in_layers,
+            out_layers=out_layers,
+            edges=slice_edges,
+            cycles=cycles,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error obteniendo slice de dependencias: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -623,6 +723,81 @@ def _find_dependency_cycles(
     adjacency = _build_dependency_adjacency(edges)
     components = _find_strongly_connected_components(adjacency)
     return [component for component in components if len(component) > 1]
+
+
+def _build_reverse_dependency_adjacency(
+    edges: Dict[Tuple[str, str], Set[str]],
+) -> Dict[str, List[str]]:
+    """Build deterministic reverse adjacency for incoming dependency traversal."""
+    reversed_edges = {
+        (target, source): names
+        for (source, target), names in edges.items()
+    }
+    return _build_dependency_adjacency(reversed_edges)
+
+
+def _collect_dependency_layers(
+    start: str,
+    adjacency: Dict[str, List[str]],
+    max_depth: int,
+    max_nodes: int,
+    allowed_nodes: Set[str],
+) -> Tuple[List[List[str]], bool]:
+    """Collect deterministic BFS layers, capping total nodes across the slice."""
+    if max_depth == 0 or len(allowed_nodes) >= max_nodes:
+        return [], False
+
+    visited = set(allowed_nodes)
+    current_layer = [start]
+    layers: List[List[str]] = []
+    truncated = False
+    reached_depth_limit_with_more = False
+
+    for depth in range(max_depth):
+        next_candidates: List[str] = []
+        seen_in_layer: Set[str] = set()
+
+        for node in current_layer:
+            for neighbor in adjacency.get(node, []):
+                if neighbor in visited or neighbor in seen_in_layer:
+                    continue
+                next_candidates.append(neighbor)
+                seen_in_layer.add(neighbor)
+
+        if not next_candidates:
+            break
+
+        remaining_capacity = max_nodes - len(allowed_nodes)
+        if remaining_capacity <= 0:
+            truncated = True
+            break
+
+        accepted = next_candidates[:remaining_capacity]
+        if len(accepted) < len(next_candidates):
+            truncated = True
+
+        if not accepted:
+            break
+
+        layers.append(accepted)
+        allowed_nodes.update(accepted)
+        visited.update(accepted)
+        current_layer = accepted
+
+        if depth == max_depth - 1:
+            for node in current_layer:
+                for neighbor in adjacency.get(node, []):
+                    if neighbor not in visited:
+                        reached_depth_limit_with_more = True
+                        break
+                if reached_depth_limit_with_more:
+                    break
+
+        if len(allowed_nodes) >= max_nodes:
+            truncated = True
+            break
+
+    return layers, (truncated or reached_depth_limit_with_more)
 
 
 def _build_dependency_list(

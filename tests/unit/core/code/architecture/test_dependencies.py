@@ -367,6 +367,140 @@ class TestGetDependencyCycles:
         assert result.cycles == []
 
 
+class TestGetDependencySlice:
+    """Tests for the compact MCP dependency slice endpoint."""
+
+    @patch("autocode.core.code.architecture.get_tracked_files")
+    @patch("pathlib.Path.read_text")
+    def test_returns_both_direction_layers(self, mock_read, mock_tracked_files):
+        from autocode.core.code.architecture import get_dependency_slice
+
+        contents = {
+            "pkg/in_a.py": "from pkg.target import A\n",
+            "pkg/in_b.py": "from pkg.target import B\n",
+            "pkg/target.py": "from pkg.out_a import X\nfrom pkg.out_b import Y\n",
+            "pkg/out_a.py": "VALUE = 1\n",
+            "pkg/out_b.py": "VALUE = 2\n",
+        }
+        mock_tracked_files.return_value = list(contents.keys())
+
+        def patched_read(self, *args, **kwargs):
+            return contents.get(str(self), "")
+
+        with patch.object(Path, "read_text", patched_read):
+            result = get_dependency_slice(target="pkg/target.py")
+
+        assert result.target == "pkg/target.py"
+        assert result.in_layers == [["pkg/in_a.py", "pkg/in_b.py"]]
+        assert result.out_layers == [["pkg/out_a.py", "pkg/out_b.py"]]
+        assert result.summary == {
+            "path": ".",
+            "direction": "both",
+            "max_depth": 2,
+            "max_nodes": 50,
+            "node_count": 5,
+            "edge_count": 4,
+            "cycles_count": 0,
+            "truncated": False,
+        }
+        assert [(edge.source, edge.target) for edge in result.edges] == [
+            ("pkg/in_a.py", "pkg/target.py"),
+            ("pkg/in_b.py", "pkg/target.py"),
+            ("pkg/target.py", "pkg/out_a.py"),
+            ("pkg/target.py", "pkg/out_b.py"),
+        ]
+
+    @patch("autocode.core.code.architecture.get_tracked_files")
+    @patch("pathlib.Path.read_text")
+    def test_respects_direction_and_depth(self, mock_read, mock_tracked_files):
+        from autocode.core.code.architecture import get_dependency_slice
+
+        contents = {
+            "pkg/a.py": "from pkg.target import A\n",
+            "pkg/target.py": "from pkg.b import B\n",
+            "pkg/b.py": "from pkg.c import C\n",
+            "pkg/c.py": "VALUE = 1\n",
+        }
+        mock_tracked_files.return_value = list(contents.keys())
+
+        def patched_read(self, *args, **kwargs):
+            return contents.get(str(self), "")
+
+        with patch.object(Path, "read_text", patched_read):
+            result = get_dependency_slice(
+                target="pkg/target.py",
+                direction="out",
+                max_depth=1,
+            )
+
+        assert result.in_layers == []
+        assert result.out_layers == [["pkg/b.py"]]
+        assert [(edge.source, edge.target) for edge in result.edges] == [
+            ("pkg/target.py", "pkg/b.py"),
+        ]
+
+    @patch("autocode.core.code.architecture.get_tracked_files")
+    @patch("pathlib.Path.read_text")
+    def test_respects_max_nodes(self, mock_read, mock_tracked_files):
+        from autocode.core.code.architecture import get_dependency_slice
+
+        contents = {
+            "pkg/in_a.py": "from pkg.target import A\n",
+            "pkg/in_b.py": "from pkg.target import B\n",
+            "pkg/target.py": "from pkg.out_a import X\nfrom pkg.out_b import Y\n",
+            "pkg/out_a.py": "VALUE = 1\n",
+            "pkg/out_b.py": "VALUE = 2\n",
+        }
+        mock_tracked_files.return_value = list(contents.keys())
+
+        def patched_read(self, *args, **kwargs):
+            return contents.get(str(self), "")
+
+        with patch.object(Path, "read_text", patched_read):
+            result = get_dependency_slice(target="pkg/target.py", max_nodes=3)
+
+        assert result.summary["node_count"] == 3
+        assert result.summary["truncated"] is True
+        assert result.in_layers == [["pkg/in_a.py", "pkg/in_b.py"]]
+        assert result.out_layers == []
+
+    @patch("autocode.core.code.architecture.get_tracked_files")
+    @patch("pathlib.Path.read_text")
+    def test_includes_cycles_touching_target(self, mock_read, mock_tracked_files):
+        from autocode.core.code.architecture import get_dependency_slice
+
+        contents = {
+            "pkg/a.py": "from pkg.target import A\n",
+            "pkg/target.py": "from pkg.b import B\n",
+            "pkg/b.py": "from pkg.a import C\n",
+        }
+        mock_tracked_files.return_value = list(contents.keys())
+
+        def patched_read(self, *args, **kwargs):
+            return contents.get(str(self), "")
+
+        with patch.object(Path, "read_text", patched_read):
+            result = get_dependency_slice(target="pkg/target.py", max_depth=2)
+
+        assert result.cycles == [["pkg/a.py", "pkg/b.py", "pkg/target.py"]]
+        assert result.summary["cycles_count"] == 1
+
+    @patch("autocode.core.code.architecture.get_tracked_files")
+    def test_raises_when_target_is_missing(self, mock_tracked_files):
+        from fastapi import HTTPException
+        from autocode.core.code.architecture import get_dependency_slice
+
+        mock_tracked_files.return_value = ["pkg/a.py"]
+
+        try:
+            get_dependency_slice(target="pkg/missing.py")
+        except HTTPException as exc:
+            assert exc.status_code == 404
+            assert exc.detail == "target not found in path scope: pkg/missing.py"
+        else:
+            raise AssertionError("Expected HTTPException for missing target")
+
+
 # ==============================================================================
 # I) JS FILE DEPENDENCY RESOLUTION
 # ==============================================================================
