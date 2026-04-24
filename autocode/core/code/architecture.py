@@ -23,6 +23,8 @@ from fastapi import HTTPException
 from refract import register_function
 from autocode.core.code.models import (
     ArchitectureNode,
+    ArchitectureHotspot,
+    ArchitectureHotspotsResult,
     ArchitectureSnapshot,
     DependencyCycle,
     DependencyCyclesResult,
@@ -271,6 +273,51 @@ def get_dependency_slice(
         raise
     except Exception as e:
         logger.error(f"Error obteniendo slice de dependencias: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@register_function(http_methods=["GET"], interfaces=["mcp"])
+def get_architecture_hotspots(
+    limit: int = 10,
+    path: str = ".",
+) -> ArchitectureHotspotsResult:
+    """Return a compact ranking of architecture hotspots for agent triage."""
+    try:
+        normalized_path = path.strip() or "."
+        if limit < 1:
+            raise HTTPException(status_code=400, detail="limit must be >= 1")
+
+        all_files = get_tracked_files(*_ALL_EXTENSIONS)
+        filtered_files = _filter_files_by_path(all_files, normalized_path)
+        nodes = _build_architecture_nodes(filtered_files)
+        file_nodes = sorted(
+            (node for node in nodes if node.type == "file"),
+            key=lambda node: node.path,
+        )
+
+        dependencies, _ = _resolve_file_dependencies(filtered_files)
+        edge_map = {
+            (dep.source, dep.target): set(dep.import_names)
+            for dep in dependencies
+        }
+        cycles = _find_dependency_cycles(edge_map)
+
+        hotspots = _rank_architecture_hotspots(file_nodes, edge_map, cycles)[:limit]
+
+        return ArchitectureHotspotsResult(
+            summary={
+                "path": normalized_path,
+                "files_analyzed": len(file_nodes),
+                "hotspot_count": len(hotspots),
+                "cycle_files": len({node for cycle in cycles for node in cycle}),
+                "returned_limit": limit,
+            },
+            hotspots=hotspots,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error obteniendo hotspots de arquitectura: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -798,6 +845,64 @@ def _collect_dependency_layers(
             break
 
     return layers, (truncated or reached_depth_limit_with_more)
+
+
+def _rank_architecture_hotspots(
+    file_nodes: List[ArchitectureNode],
+    edges: Dict[Tuple[str, str], Set[str]],
+    cycles: List[List[str]],
+) -> List[ArchitectureHotspot]:
+    """Rank files using a simple transparent score for agent-oriented triage."""
+    outgoing = _build_dependency_adjacency(edges)
+    incoming = _build_reverse_dependency_adjacency(edges)
+    cycle_members = {node for cycle in cycles for node in cycle}
+
+    hotspots: List[ArchitectureHotspot] = []
+    for node in file_nodes:
+        fan_out = len(outgoing.get(node.path, []))
+        fan_in = len(incoming.get(node.path, []))
+        in_cycle = node.path in cycle_members
+        cycle_bonus = 5.0 if in_cycle else 0.0
+        mi_penalty = max(0.0, (60.0 - node.mi) / 10.0)
+        score = round(
+            node.avg_complexity
+            + (node.max_complexity * 0.5)
+            + fan_in
+            + fan_out
+            + cycle_bonus
+            + mi_penalty,
+            2,
+        )
+
+        reasons: List[str] = []
+        if node.avg_complexity > 0:
+            reasons.append(f"avg_complexity={node.avg_complexity}")
+        if node.max_complexity > 0:
+            reasons.append(f"max_complexity={node.max_complexity}")
+        if fan_in > 0:
+            reasons.append(f"fan_in={fan_in}")
+        if fan_out > 0:
+            reasons.append(f"fan_out={fan_out}")
+        if in_cycle:
+            reasons.append("in_cycle")
+        if node.mi < 60:
+            reasons.append(f"mi={node.mi}")
+
+        hotspots.append(
+            ArchitectureHotspot(
+                path=node.path,
+                score=score,
+                avg_complexity=node.avg_complexity,
+                max_complexity=node.max_complexity,
+                fan_in=fan_in,
+                fan_out=fan_out,
+                in_cycle=in_cycle,
+                reasons=reasons,
+            )
+        )
+
+    hotspots.sort(key=lambda hotspot: (-hotspot.score, hotspot.path))
+    return hotspots
 
 
 def _build_dependency_list(

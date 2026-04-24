@@ -384,6 +384,35 @@ class DependencySliceResult(BaseModel):
     )
 
 
+class ArchitectureHotspot(BaseModel):
+    """Compact architecture hotspot entry for agent triage."""
+
+    path: str = Field(..., description="Path relativo del archivo candidato")
+    score: float = Field(..., description="Score agregado de hotspot")
+    avg_complexity: float = Field(0.0, description="Complejidad ciclomática media del archivo")
+    max_complexity: int = Field(0, description="Complejidad ciclomática máxima del archivo")
+    fan_in: int = Field(0, description="Número de dependencias entrantes")
+    fan_out: int = Field(0, description="Número de dependencias salientes")
+    in_cycle: bool = Field(False, description="Si el archivo participa en un ciclo real")
+    reasons: List[str] = Field(
+        default_factory=list,
+        description="Señales compactas que explican el score",
+    )
+
+
+class ArchitectureHotspotsResult(BaseModel):
+    """Compact hotspot ranking for architecture-oriented MCP analysis."""
+
+    summary: dict = Field(
+        default_factory=dict,
+        description="Resumen compacto del ranking de hotspots",
+    )
+    hotspots: List[ArchitectureHotspot] = Field(
+        default_factory=list,
+        description="Archivos ordenados por relevancia arquitectónica",
+    )
+
+
 
 
 # ==============================================================================

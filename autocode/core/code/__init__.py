@@ -30,13 +30,15 @@ from .models import (
     DependencyCyclesResult,
     DependencyEdge,
     DependencySliceResult,
+    ArchitectureHotspot,
+    ArchitectureHotspotsResult,
     # Health check models
     HealthViolation,
     HealthCheckResult,
 )
 from .structure import get_code_structure, get_code_summary
 from .metrics import generate_code_metrics, get_metrics_snapshots, get_commit_metrics, get_metrics_history
-from .architecture import get_architecture_snapshot, get_dependency_cycles, get_dependency_slice
+from .architecture import get_architecture_snapshot, get_dependency_cycles, get_dependency_slice, get_architecture_hotspots
 from .health import get_health_check
 
 __all__ = [
@@ -72,10 +74,13 @@ __all__ = [
     'DependencyCyclesResult',
     'DependencyEdge',
     'DependencySliceResult',
+    'ArchitectureHotspot',
+    'ArchitectureHotspotsResult',
     # Architecture functions
     'get_architecture_snapshot',
     'get_dependency_cycles',
     'get_dependency_slice',
+    'get_architecture_hotspots',
     # Health check models
     'HealthViolation',
     'HealthCheckResult',
