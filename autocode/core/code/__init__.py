@@ -26,13 +26,15 @@ from .models import (
     FileDependency,
     ArchitectureNode,
     ArchitectureSnapshot,
+    DependencyCycle,
+    DependencyCyclesResult,
     # Health check models
     HealthViolation,
     HealthCheckResult,
 )
 from .structure import get_code_structure, get_code_summary
 from .metrics import generate_code_metrics, get_metrics_snapshots, get_commit_metrics, get_metrics_history
-from .architecture import get_architecture_snapshot
+from .architecture import get_architecture_snapshot, get_dependency_cycles
 from .health import get_health_check
 
 __all__ = [
@@ -64,8 +66,11 @@ __all__ = [
     'FileDependency',
     'ArchitectureNode',
     'ArchitectureSnapshot',
+    'DependencyCycle',
+    'DependencyCyclesResult',
     # Architecture functions
     'get_architecture_snapshot',
+    'get_dependency_cycles',
     # Health check models
     'HealthViolation',
     'HealthCheckResult',

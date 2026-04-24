@@ -240,6 +240,133 @@ class TestResolveFileDependencies:
         assert deps[0].target == "pkg/bad.py"
 
 
+class TestGetDependencyCycles:
+    """Tests for the compact MCP dependency cycle endpoint."""
+
+    @patch("autocode.core.code.architecture.get_tracked_files")
+    @patch("pathlib.Path.read_text")
+    def test_returns_transitive_cycles(self, mock_read, mock_tracked_files):
+        from autocode.core.code.architecture import get_dependency_cycles
+
+        contents = {
+            "pkg/a.py": "from pkg.b import X\n",
+            "pkg/b.py": "from pkg.c import Y\n",
+            "pkg/c.py": "from pkg.a import Z\n",
+        }
+        mock_tracked_files.return_value = list(contents.keys())
+
+        def patched_read(self, *args, **kwargs):
+            return contents.get(str(self), "")
+
+        with patch.object(Path, "read_text", patched_read):
+            result = get_dependency_cycles()
+
+        assert result.summary == {
+            "path": ".",
+            "cycle_count": 1,
+            "returned_cycles": 1,
+            "files_in_cycles": 3,
+            "largest_cycle": 3,
+        }
+        assert len(result.cycles) == 1
+        assert result.cycles[0].files == ["pkg/a.py", "pkg/b.py", "pkg/c.py"]
+        assert result.cycles[0].size == 3
+
+    @patch("autocode.core.code.architecture.get_tracked_files")
+    def test_respects_path_filter(self, mock_tracked_files):
+        from autocode.core.code.architecture import get_dependency_cycles
+
+        mock_tracked_files.return_value = [
+            "pkg/a.py",
+            "pkg/b.py",
+            "pkg/c.py",
+            "web/x.js",
+            "web/y.js",
+        ]
+
+        with patch(
+            "autocode.core.code.architecture._resolve_file_dependencies",
+            return_value=(
+                [
+                    type("Dep", (), {"source": "pkg/a.py", "target": "pkg/b.py", "import_names": ["X"]})(),
+                    type("Dep", (), {"source": "pkg/b.py", "target": "pkg/a.py", "import_names": ["Y"]})(),
+                ],
+                [],
+            ),
+        ) as mock_resolve:
+            result = get_dependency_cycles(path="pkg")
+
+        assert mock_resolve.call_args.args[0] == ["pkg/a.py", "pkg/b.py", "pkg/c.py"]
+        assert result.summary["path"] == "pkg"
+
+    @patch("autocode.core.code.architecture.get_tracked_files")
+    def test_orders_by_size_and_limits_results(self, mock_tracked_files):
+        from autocode.core.code.architecture import get_dependency_cycles
+
+        mock_tracked_files.return_value = ["pkg/a.py"]
+
+        with patch(
+            "autocode.core.code.architecture._resolve_file_dependencies",
+            return_value=([], []),
+        ), patch(
+            "autocode.core.code.architecture._find_dependency_cycles",
+            return_value=[
+                ["pkg/d.py", "pkg/e.py"],
+                ["pkg/a.py", "pkg/b.py", "pkg/c.py"],
+            ],
+        ):
+            result = get_dependency_cycles(max_cycles=1)
+
+        assert result.summary["cycle_count"] == 2
+        assert result.summary["returned_cycles"] == 1
+        assert result.summary["largest_cycle"] == 3
+        assert result.cycles[0].files == ["pkg/a.py", "pkg/b.py", "pkg/c.py"]
+
+    @patch("autocode.core.code.architecture.get_tracked_files")
+    def test_applies_min_cycle_size(self, mock_tracked_files):
+        from autocode.core.code.architecture import get_dependency_cycles
+
+        mock_tracked_files.return_value = ["pkg/a.py"]
+
+        with patch(
+            "autocode.core.code.architecture._resolve_file_dependencies",
+            return_value=([], []),
+        ), patch(
+            "autocode.core.code.architecture._find_dependency_cycles",
+            return_value=[
+                ["pkg/a.py", "pkg/b.py"],
+                ["pkg/c.py", "pkg/d.py", "pkg/e.py"],
+            ],
+        ):
+            result = get_dependency_cycles(min_cycle_size=3)
+
+        assert result.summary["cycle_count"] == 1
+        assert result.cycles == [
+            type(result.cycles[0])(files=["pkg/c.py", "pkg/d.py", "pkg/e.py"], size=3)
+        ]
+
+    @patch("autocode.core.code.architecture.get_tracked_files")
+    def test_returns_empty_result_when_no_cycles_exist(self, mock_tracked_files):
+        from autocode.core.code.architecture import get_dependency_cycles
+
+        mock_tracked_files.return_value = ["pkg/a.py"]
+
+        with patch(
+            "autocode.core.code.architecture._resolve_file_dependencies",
+            return_value=([], []),
+        ):
+            result = get_dependency_cycles()
+
+        assert result.summary == {
+            "path": ".",
+            "cycle_count": 0,
+            "returned_cycles": 0,
+            "files_in_cycles": 0,
+            "largest_cycle": 0,
+        }
+        assert result.cycles == []
+
+
 # ==============================================================================
 # I) JS FILE DEPENDENCY RESOLUTION
 # ==============================================================================

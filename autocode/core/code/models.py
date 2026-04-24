@@ -328,6 +328,29 @@ class ArchitectureSnapshot(BaseModel):
     )
 
 
+class DependencyCycle(BaseModel):
+    """Compact representation of a real file dependency cycle."""
+
+    files: List[str] = Field(
+        default_factory=list,
+        description="Paths de archivos que forman el ciclo",
+    )
+    size: int = Field(0, description="Número de archivos en el ciclo")
+
+
+class DependencyCyclesResult(BaseModel):
+    """Compact result for agent-oriented dependency cycle analysis."""
+
+    summary: dict = Field(
+        default_factory=dict,
+        description="Resumen compacto del análisis de ciclos",
+    )
+    cycles: List[DependencyCycle] = Field(
+        default_factory=list,
+        description="Ciclos reales detectados a nivel archivo",
+    )
+
+
 
 
 # ==============================================================================

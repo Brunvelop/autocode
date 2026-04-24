@@ -24,6 +24,8 @@ from refract import register_function
 from autocode.core.code.models import (
     ArchitectureNode,
     ArchitectureSnapshot,
+    DependencyCycle,
+    DependencyCyclesResult,
     FileDependency,
 )
 from autocode.core.vcs.git import git, git_show, get_tracked_files, get_tracked_files_at_commit
@@ -120,6 +122,55 @@ def get_architecture_snapshot(path: str = ".", commit_hash: str = "") -> Archite
 
     except Exception as e:
         logger.error(f"Error generando snapshot de arquitectura: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@register_function(http_methods=["GET"], interfaces=["mcp"])
+def get_dependency_cycles(
+    path: str = ".",
+    max_cycles: int = 20,
+    min_cycle_size: int = 2,
+) -> DependencyCyclesResult:
+    """Return compact real dependency cycles for agent-oriented analysis."""
+    try:
+        normalized_path = path.strip() or "."
+        if max_cycles < 1:
+            raise HTTPException(status_code=400, detail="max_cycles must be >= 1")
+        if min_cycle_size < 2:
+            raise HTTPException(status_code=400, detail="min_cycle_size must be >= 2")
+
+        all_files = get_tracked_files(*_ALL_EXTENSIONS)
+        filtered_files = _filter_files_by_path(all_files, normalized_path)
+        dependencies, _ = _resolve_file_dependencies(filtered_files)
+
+        edge_map = {
+            (dep.source, dep.target): set(dep.import_names)
+            for dep in dependencies
+        }
+        cycles = _find_dependency_cycles(edge_map)
+        filtered_cycles = [cycle for cycle in cycles if len(cycle) >= min_cycle_size]
+        filtered_cycles.sort(key=lambda cycle: (-len(cycle), cycle))
+
+        limited_cycles = filtered_cycles[:max_cycles]
+        files_in_cycles = sorted({fpath for cycle in filtered_cycles for fpath in cycle})
+
+        return DependencyCyclesResult(
+            summary={
+                "path": normalized_path,
+                "cycle_count": len(filtered_cycles),
+                "returned_cycles": len(limited_cycles),
+                "files_in_cycles": len(files_in_cycles),
+                "largest_cycle": max((len(cycle) for cycle in filtered_cycles), default=0),
+            },
+            cycles=[
+                DependencyCycle(files=cycle, size=len(cycle))
+                for cycle in limited_cycles
+            ],
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error obteniendo ciclos de dependencias: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -483,6 +534,19 @@ def _resolve_file_dependencies(
     circular_dependencies = _detect_circular_pairs(edges)
 
     return dependencies, circular_dependencies
+
+
+def _filter_files_by_path(all_files: List[str], path: str) -> List[str]:
+    """Filter tracked files by relative path prefix, preserving deterministic order."""
+    if path == ".":
+        return sorted(all_files)
+
+    normalized = path.rstrip("/\\")
+    prefix = f"{normalized}/"
+    return sorted(
+        fpath for fpath in all_files
+        if fpath == normalized or fpath.startswith(prefix)
+    )
 
 
 def _build_dependency_adjacency(
