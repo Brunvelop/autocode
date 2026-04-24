@@ -133,8 +133,15 @@ That means the MCP is intentionally narrower than the full API/UI surface: plann
 | `get_metrics_history` | Metrics over time | API |
 | `get_architecture_snapshot` | Dependency graph and architecture | API |
 | `get_health_check` | Compact code health summary | API, CLI, MCP |
+| `get_dependency_cycles` | Compact real dependency cycles at file level | MCP |
+| `get_dependency_slice` | Compact local dependency slice around a target file | MCP |
 
 Dependency analysis is the main direction for architecture-focused MCP tools: the goal is to expose compact, agent-friendly dependency insights rather than forcing agents to consume full architecture snapshots.
+
+Example MCP workflows:
+
+- `get_dependency_cycles(path="autocode/core", max_cycles=10)` → shortlist the most relevant file-level cycles
+- `get_dependency_slice(target="autocode/core/code/architecture.py", direction="both", max_depth=2)` → inspect local impact around one file without requesting the whole graph
 
 ### 🔀 Git / VCS
 

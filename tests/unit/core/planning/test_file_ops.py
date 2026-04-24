@@ -237,3 +237,53 @@ class TestFileOpsRegistration:
         assert "write_file_content" not in names
         assert "replace_in_file" not in names
         assert "delete_file" not in names
+
+    def test_compact_mcp_catalog_keeps_file_ops_and_excludes_removed_tools(self):
+        """El catálogo MCP mantiene file ops y excluye planning/heavy tools fuera de scope."""
+        import importlib
+        from autocode.app import app
+        from refract.registry import _clear_pending
+
+        import autocode.core.code.architecture as architecture_module
+        import autocode.core.code.health as health_module
+        import autocode.core.code.structure as structure_module
+        import autocode.core.planning.file_ops as file_ops_module
+        import autocode.core.vcs.log as log_module
+        import autocode.core.vcs.status as status_module
+
+        app.clear()
+        _clear_pending()
+        importlib.reload(structure_module)
+        importlib.reload(health_module)
+        importlib.reload(architecture_module)
+        importlib.reload(status_module)
+        importlib.reload(log_module)
+        importlib.reload(file_ops_module)
+        app._drain_pending()
+
+        mcp_names = {f.name for f in app._registry if "mcp" in f.interfaces}
+
+        assert {
+            "get_code_summary",
+            "get_health_check",
+            "get_dependency_cycles",
+            "get_dependency_slice",
+            "get_git_status_summary",
+            "get_git_log_summary",
+            "read_file_content",
+            "write_file_content",
+            "replace_in_file",
+            "delete_file",
+        } <= mcp_names
+
+        assert {
+            "create_commit_plan",
+            "get_commit_plan",
+            "approve_plan",
+            "revert_plan",
+            "generate_code_metrics",
+            "get_metrics_snapshots",
+            "get_commit_metrics",
+            "get_metrics_history",
+            "get_commit_detail",
+        }.isdisjoint(mcp_names)
