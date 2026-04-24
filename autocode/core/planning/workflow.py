@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 # ==============================================================================
 
 
-@register_function(http_methods=["POST"], interfaces=["api", "mcp"])
+@register_function(http_methods=["POST"], interfaces=["api"])
 def approve_plan(plan_id: str, commit_message: str = "") -> CommitPlan:
     """Aprueba un plan en pending_review: git add + commit → completed.
 
@@ -81,7 +81,7 @@ def approve_plan(plan_id: str, commit_message: str = "") -> CommitPlan:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@register_function(http_methods=["POST"], interfaces=["api", "mcp"])
+@register_function(http_methods=["POST"], interfaces=["api"])
 def revert_plan(plan_id: str) -> CommitPlan:
     """Revierte cambios de un plan: git checkout -- files → reverted.
 
