@@ -96,6 +96,17 @@ That single decorator gives you:
 
 Type hints become validations. Docstrings become help text. No glue code.
 
+### MCP design goals
+
+Autocode's MCP surface is optimized for **compact code analysis that agents can chain together efficiently**.
+
+- **Compact outputs** — prefer summaries, counts, short lists, and small structured payloads
+- **High signal density** — return operational information, not large narrative blobs
+- **Token efficiency** — avoid exposing heavyweight responses by default when a compact answer is enough
+- **Agent composition** — make it easy to combine multiple MCP calls during exploration and debugging
+
+That means the MCP is intentionally narrower than the full API/UI surface: planning workflows and heavier historical/detail views may still exist elsewhere in the product, while MCP stays focused on low-token, high-utility analysis.
+
 ---
 
 ## Features
@@ -116,11 +127,14 @@ Type hints become validations. Docstrings become help text. No glue code.
 |----------|-------------|------------|
 | `get_code_structure` | Full code structure tree | API |
 | `get_code_summary` | Compact code summary | API, MCP |
-| `generate_code_metrics` | Generate metrics snapshot (CC, MI, SLOC) | API, MCP |
-| `get_metrics_snapshots` | List saved metrics snapshots | API, MCP |
-| `get_commit_metrics` | Metrics for a specific commit | API, MCP |
-| `get_metrics_history` | Metrics over time | API, MCP |
+| `generate_code_metrics` | Generate metrics snapshot (CC, MI, SLOC) | API |
+| `get_metrics_snapshots` | List saved metrics snapshots | API |
+| `get_commit_metrics` | Metrics for a specific commit | API |
+| `get_metrics_history` | Metrics over time | API |
 | `get_architecture_snapshot` | Dependency graph and architecture | API |
+| `get_health_check` | Compact code health summary | API, CLI, MCP |
+
+Dependency analysis is the main direction for architecture-focused MCP tools: the goal is to expose compact, agent-friendly dependency insights rather than forcing agents to consume full architecture snapshots.
 
 ### 🔀 Git / VCS
 
@@ -131,19 +145,21 @@ Type hints become validations. Docstrings become help text. No glue code.
 | `get_git_status_summary` | Compact status summary | API, MCP |
 | `get_git_log` | Commit history | API |
 | `get_git_log_summary` | Compact commit log | API, MCP |
-| `get_commit_detail` | Full diff and metadata for a commit | API, MCP |
+| `get_commit_detail` | Full diff and metadata for a commit | API |
 
 ### 📋 Planning
 
+Planning remains available through the product, but it is not the primary MCP use case. The MCP is being narrowed toward compact code-analysis workflows for agents, while planning continues to fit better in API/UI-driven flows.
+
 | Function | Description | Interfaces |
 |----------|-------------|------------|
-| `create_commit_plan` | AI-assisted commit plan creation | API, MCP |
-| `list_commit_plans` | List plans by status | API, MCP |
-| `get_commit_plan` | Get plan details | API, MCP |
-| `update_commit_plan` | Modify plan | API, MCP |
-| `delete_commit_plan` | Delete plan | API, MCP |
-| `approve_plan` | Approve and execute plan | API, MCP |
-| `revert_plan` | Revert executed plan | API, MCP |
+| `create_commit_plan` | AI-assisted commit plan creation | API |
+| `list_commit_plans` | List plans by status | API |
+| `get_commit_plan` | Get plan details | API |
+| `update_commit_plan` | Modify plan | API |
+| `delete_commit_plan` | Delete plan | API |
+| `approve_plan` | Approve and execute plan | API |
+| `revert_plan` | Revert executed plan | API |
 | `get_plan_review_metrics` | Plan review metrics | API |
 
 ### 📁 File Operations
@@ -154,17 +170,6 @@ Type hints become validations. Docstrings become help text. No glue code.
 | `write_file_content` | Write file content | MCP |
 | `replace_in_file` | Search & replace in file | MCP |
 | `delete_file` | Delete file | MCP |
-
-### 🔄 Workflow / Sessions
-
-| Function | Description | Interfaces |
-|----------|-------------|------------|
-| `start_ai_session` | Start tracked AI session | API, CLI |
-| `save_conversation` | Save conversation to session | API, CLI |
-| `finalize_ai_session` | Finalize session with summary | API, CLI |
-| `abort_ai_session` | Abort session | API, CLI |
-| `get_current_session` | Get active session | API, CLI |
-| `list_ai_sessions` | List all sessions | API, CLI |
 
 ---
 
@@ -297,7 +302,7 @@ autocode/
     └── elements/               # Lit web components (custom dashboards, chat)
 ```
 
-**Key principle:** Add functions in `core/`, Refract exposes them automatically as REST API, CLI commands, MCP tools, and web components (`/dashboard`). You never write adapter code.
+**Key principle:** Add functions in `core/`, Refract exposes them automatically to the interfaces you choose (REST API, CLI, MCP, and web components via `/dashboard`). You never write adapter code.
 
 ---
 
@@ -333,7 +338,7 @@ def my_new_feature(name: str, count: int = 5) -> GreetingResult:
    - `GET /my_new_feature?name=World`
    - `POST /my_new_feature` with `{"name": "World", "count": 3}`
    - `autocode my-new-feature --name World --count 3`
-   - MCP tool `my_new_feature` discovered by AI assistants
+   - MCP tool `my_new_feature` discovered by AI assistants (when exposed through the MCP interface)
    - `<auto-my-new-feature>` web component
 
 ### Add a new quality gate
