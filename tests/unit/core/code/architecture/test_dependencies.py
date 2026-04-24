@@ -139,6 +139,47 @@ class TestResolveFileDependencies:
         assert pair == ["pkg/a.py", "pkg/b.py"]
 
     @patch("pathlib.Path.read_text")
+    def test_resolve_transitive_cycle_detected_by_backend_helpers(self, mock_read):
+        """A -> B -> C -> A should be detected as a real cycle by SCC helpers."""
+        from autocode.core.code.architecture import (
+            _find_dependency_cycles,
+            _resolve_file_dependencies,
+        )
+
+        contents = {
+            "pkg/a.py": "from pkg.b import X\n",
+            "pkg/b.py": "from pkg.c import Y\n",
+            "pkg/c.py": "from pkg.a import Z\n",
+        }
+
+        def patched_read(self, *args, **kwargs):
+            return contents.get(str(self), "")
+
+        with patch.object(Path, "read_text", patched_read):
+            deps, circulars = _resolve_file_dependencies(list(contents.keys()))
+
+        assert len(deps) == 3
+        assert circulars == []
+
+        edge_map = {(dep.source, dep.target): set(dep.import_names) for dep in deps}
+        cycles = _find_dependency_cycles(edge_map)
+        assert cycles == [["pkg/a.py", "pkg/b.py", "pkg/c.py"]]
+
+    def test_find_dependency_cycles_ignores_acyclic_branches(self):
+        """SCC detection should only return cyclic components."""
+        from autocode.core.code.architecture import _find_dependency_cycles
+
+        edges = {
+            ("pkg/a.py", "pkg/b.py"): {"X"},
+            ("pkg/b.py", "pkg/c.py"): {"Y"},
+            ("pkg/c.py", "pkg/a.py"): {"Z"},
+            ("pkg/c.py", "pkg/d.py"): {"W"},
+        }
+
+        cycles = _find_dependency_cycles(edges)
+        assert cycles == [["pkg/a.py", "pkg/b.py", "pkg/c.py"]]
+
+    @patch("pathlib.Path.read_text")
     def test_resolve_aggregates_import_names(self, mock_read):
         """Multiple imports from same target should merge into one FileDependency."""
         from autocode.core.code.architecture import _resolve_file_dependencies
@@ -264,6 +305,32 @@ class TestResolveFileDependenciesJS:
         assert len(circulars) == 1
         pair = sorted(circulars[0])
         assert pair == ["web/a.js", "web/b.js"]
+
+    def test_js_transitive_cycle_detected_by_backend_helpers(self):
+        """JS A -> B -> C -> A should be detected by SCC helpers."""
+        from autocode.core.code.architecture import (
+            _find_dependency_cycles,
+            _resolve_file_dependencies,
+        )
+
+        contents = {
+            "web/a.js": "import { B } from './b.js';\n",
+            "web/b.js": "import { C } from './c.js';\n",
+            "web/c.js": "import { A } from './a.js';\n",
+        }
+
+        def patched_read(self, *args, **kwargs):
+            return contents.get(str(self), "")
+
+        with patch.object(Path, "read_text", patched_read):
+            deps, circulars = _resolve_file_dependencies(list(contents.keys()))
+
+        assert len(deps) == 3
+        assert circulars == []
+
+        edge_map = {(dep.source, dep.target): set(dep.import_names) for dep in deps}
+        cycles = _find_dependency_cycles(edge_map)
+        assert cycles == [["web/a.js", "web/b.js", "web/c.js"]]
 
     def test_mixed_py_and_js_dependencies(self):
         """Mixed Python and JS files should each resolve their own imports."""

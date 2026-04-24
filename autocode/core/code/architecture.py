@@ -485,6 +485,82 @@ def _resolve_file_dependencies(
     return dependencies, circular_dependencies
 
 
+def _build_dependency_adjacency(
+    edges: Dict[Tuple[str, str], Set[str]],
+) -> Dict[str, List[str]]:
+    """Build a deterministic adjacency list from raw dependency edges."""
+    adjacency: Dict[str, Set[str]] = defaultdict(set)
+
+    for source, target in edges:
+        adjacency[source].add(target)
+        adjacency.setdefault(target, set())
+
+    return {
+        node: sorted(neighbors)
+        for node, neighbors in sorted(adjacency.items())
+    }
+
+
+def _find_strongly_connected_components(
+    adjacency: Dict[str, List[str]],
+) -> List[List[str]]:
+    """Find strongly connected components using Tarjan's algorithm.
+
+    Returns SCCs with stable ordering so tests and downstream consumers get
+    deterministic results.
+    """
+    index = 0
+    stack: List[str] = []
+    on_stack: Set[str] = set()
+    indices: Dict[str, int] = {}
+    lowlinks: Dict[str, int] = {}
+    components: List[List[str]] = []
+
+    def strongconnect(node: str) -> None:
+        nonlocal index
+        indices[node] = index
+        lowlinks[node] = index
+        index += 1
+        stack.append(node)
+        on_stack.add(node)
+
+        for neighbor in adjacency.get(node, []):
+            if neighbor not in indices:
+                strongconnect(neighbor)
+                lowlinks[node] = min(lowlinks[node], lowlinks[neighbor])
+            elif neighbor in on_stack:
+                lowlinks[node] = min(lowlinks[node], indices[neighbor])
+
+        if lowlinks[node] == indices[node]:
+            component: List[str] = []
+            while stack:
+                member = stack.pop()
+                on_stack.remove(member)
+                component.append(member)
+                if member == node:
+                    break
+            components.append(sorted(component))
+
+    for node in sorted(adjacency):
+        if node not in indices:
+            strongconnect(node)
+
+    components.sort(key=lambda component: (len(component), component))
+    return components
+
+
+def _find_dependency_cycles(
+    edges: Dict[Tuple[str, str], Set[str]],
+) -> List[List[str]]:
+    """Find real file dependency cycles from raw edges.
+
+    A cycle is any strongly connected component with more than one file.
+    """
+    adjacency = _build_dependency_adjacency(edges)
+    components = _find_strongly_connected_components(adjacency)
+    return [component for component in components if len(component) > 1]
+
+
 def _build_dependency_list(
     edges: Dict[Tuple[str, str], Set[str]],
 ) -> List[FileDependency]:
@@ -526,13 +602,18 @@ def _detect_circular_pairs(
     seen_pairs: Set[Tuple[str, str]] = set()
     edge_keys = set(edges.keys())
 
-    for source, target in edge_keys:
-        if (target, source) in edge_keys:
-            pair = tuple(sorted([source, target]))
-            if pair not in seen_pairs:
-                seen_pairs.add(pair)
-                circular_dependencies.append(list(pair))
+    for component in _find_dependency_cycles(edges):
+        if len(component) < 2:
+            continue
+        for idx, source in enumerate(component):
+            for target in component[idx + 1:]:
+                if (source, target) in edge_keys and (target, source) in edge_keys:
+                    pair = (source, target)
+                    if pair not in seen_pairs:
+                        seen_pairs.add(pair)
+                        circular_dependencies.append(list(pair))
 
+    circular_dependencies.sort()
     return circular_dependencies
 
 
