@@ -139,7 +139,7 @@ def get_git_log_summary(max_count: int = 15, branch: str = "") -> GitLogSummary:
         raise HTTPException(status_code=500, detail=error_msg)
 
 
-@register_function(http_methods=["GET"], interfaces=["api", "mcp"])
+@register_function(http_methods=["GET"], interfaces=["api"])
 def get_commit_detail(commit_hash: str) -> GitCommitDetail:
     """
     Obtiene el detalle de un commit específico incluyendo archivos cambiados.

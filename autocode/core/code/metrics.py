@@ -50,7 +50,7 @@ _ALL_EXTENSIONS = (".py", ".js", ".mjs", ".jsx")
 # ==============================================================================
 
 
-@register_function(http_methods=["GET"], interfaces=["api", "mcp"])
+@register_function(http_methods=["GET"], interfaces=["api"])
 def generate_code_metrics() -> MetricsComparison:
     """
     Genera un snapshot completo de métricas del proyecto y lo compara con el anterior.
@@ -81,7 +81,7 @@ def generate_code_metrics() -> MetricsComparison:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@register_function(http_methods=["GET"], interfaces=["api", "mcp"])
+@register_function(http_methods=["GET"], interfaces=["api"])
 def get_metrics_snapshots() -> MetricsSnapshotList:
     """
     Lista todos los snapshots de métricas guardados.
@@ -97,7 +97,7 @@ def get_metrics_snapshots() -> MetricsSnapshotList:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@register_function(http_methods=["GET"], interfaces=["api", "mcp"])
+@register_function(http_methods=["GET"], interfaces=["api"])
 def get_commit_metrics(commit_hash: str) -> CommitMetrics:
     """
     Calcula métricas before/after de los archivos cambiados en un commit.
@@ -115,7 +115,7 @@ def get_commit_metrics(commit_hash: str) -> CommitMetrics:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@register_function(http_methods=["GET"], interfaces=["api", "mcp"])
+@register_function(http_methods=["GET"], interfaces=["api"])
 def get_working_changes_metrics() -> CommitMetrics:
     """
     Calcula métricas before/after de los archivos modificados en el working directory.
@@ -131,7 +131,7 @@ def get_working_changes_metrics() -> CommitMetrics:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@register_function(http_methods=["GET"], interfaces=["api", "mcp"])
+@register_function(http_methods=["GET"], interfaces=["api"])
 def get_metrics_history(max_count: int = 100) -> MetricsHistory:
     """
     Obtiene la serie temporal de métricas agregadas para graficar.
