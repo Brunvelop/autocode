@@ -198,12 +198,31 @@ def get_dependency_cycles(
             level.depth for level in levels
             if level.granularity == "grouped" and level.cycle_count > 0
         ]
+        top_level_cycles = file_level.cycles
+        summary_cycle_count = len(filtered_cycles)
+        summary_returned_cycles = len(limited_cycles)
+        summary_largest_cycle = max((len(cycle) for cycle in filtered_cycles), default=0)
+
+        if normalized_granularity == "grouped":
+            grouped_level = next(
+                (level for level in levels if level.granularity == "grouped"),
+                None,
+            )
+            if grouped_level is not None:
+                top_level_cycles = grouped_level.cycles
+                summary_cycle_count = grouped_level.cycle_count
+                summary_returned_cycles = grouped_level.returned_cycles
+                summary_largest_cycle = max(
+                    (cycle.size for cycle in grouped_level.cycles),
+                    default=0,
+                )
+
         summary = {
             "path": normalized_path,
-            "cycle_count": len(filtered_cycles),
-            "returned_cycles": len(limited_cycles),
+            "cycle_count": summary_cycle_count,
+            "returned_cycles": summary_returned_cycles,
             "files_in_cycles": len(files_in_cycles),
-            "largest_cycle": max((len(cycle) for cycle in filtered_cycles), default=0),
+            "largest_cycle": summary_largest_cycle,
         }
         if normalized_granularity != "file" or depth is not None or max_depth is not None:
             summary.update({
@@ -216,7 +235,7 @@ def get_dependency_cycles(
 
         return DependencyCyclesResult(
             summary=summary,
-            cycles=file_level.cycles,
+            cycles=top_level_cycles,
             levels=levels,
         )
     except HTTPException:

@@ -385,11 +385,14 @@ class TestGetDependencyCycles:
         with patch.object(Path, "read_text", patched_read):
             result = get_dependency_cycles(granularity="grouped", depth=2)
 
+        assert result.summary["cycle_count"] == 1
+        assert result.summary["returned_cycles"] == 1
+        assert result.summary["largest_cycle"] == 3
         assert result.summary["file_cycle_count"] == 0
         assert result.summary["grouped_cycle_depths"] == [2]
-        assert result.cycles == []
         assert len(result.levels) == 1
         level = result.levels[0]
+        assert result.cycles == level.cycles
         assert level.granularity == "grouped"
         assert level.depth == 2
         assert level.cycle_count == 1
@@ -422,6 +425,37 @@ class TestGetDependencyCycles:
                     "import_names": ["D"],
                 }],
             },
+        ]
+
+    @patch("autocode.core.code.architecture.get_tracked_files")
+    @patch("pathlib.Path.read_text")
+    def test_grouped_depth_four_uses_grouped_cycles_as_top_level(self, mock_read, mock_tracked_files):
+        from autocode.core.code.architecture import get_dependency_cycles
+
+        contents = {
+            "app/core/project/steps/a.py": "from app.core.review.steps.b import B\n",
+            "app/core/review/steps/b.py": "from app.core.templates.steps.c import C\n",
+            "app/core/templates/steps/c.py": "from app.core.project.steps.d import D\n",
+            "app/core/project/steps/d.py": "VALUE = 1\n",
+        }
+        mock_tracked_files.return_value = list(contents.keys())
+
+        def patched_read(self, *args, **kwargs):
+            return contents.get(str(self), "")
+
+        with patch.object(Path, "read_text", patched_read):
+            result = get_dependency_cycles(granularity="grouped", depth=4)
+
+        assert result.summary["cycle_count"] == 1
+        assert result.summary["returned_cycles"] == 1
+        assert result.summary["file_cycle_count"] == 0
+        assert result.cycles == result.levels[0].cycles
+        assert result.cycles[0].granularity == "grouped"
+        assert result.cycles[0].depth == 4
+        assert result.cycles[0].nodes == [
+            "app/core/project/steps",
+            "app/core/review/steps",
+            "app/core/templates/steps",
         ]
 
     @patch("autocode.core.code.architecture.get_tracked_files")
