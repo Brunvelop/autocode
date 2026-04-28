@@ -366,6 +366,91 @@ class TestGetDependencyCycles:
         }
         assert result.cycles == []
 
+    @patch("autocode.core.code.architecture.get_tracked_files")
+    @patch("pathlib.Path.read_text")
+    def test_returns_grouped_cycles_with_supporting_edges(self, mock_read, mock_tracked_files):
+        from autocode.core.code.architecture import get_dependency_cycles
+
+        contents = {
+            "pkg/a/one.py": "from pkg.b.two import B\n",
+            "pkg/b/two.py": "from pkg.c.three import C\n",
+            "pkg/c/three.py": "from pkg.a.four import D\n",
+            "pkg/a/four.py": "VALUE = 1\n",
+        }
+        mock_tracked_files.return_value = list(contents.keys())
+
+        def patched_read(self, *args, **kwargs):
+            return contents.get(str(self), "")
+
+        with patch.object(Path, "read_text", patched_read):
+            result = get_dependency_cycles(granularity="grouped", depth=2)
+
+        assert result.summary["file_cycle_count"] == 0
+        assert result.summary["grouped_cycle_depths"] == [2]
+        assert result.cycles == []
+        assert len(result.levels) == 1
+        level = result.levels[0]
+        assert level.granularity == "grouped"
+        assert level.depth == 2
+        assert level.cycle_count == 1
+        assert level.cycles[0].nodes == ["pkg/a", "pkg/b", "pkg/c"]
+        assert level.cycles[0].supporting_edges == [
+            {
+                "source": "pkg/a",
+                "target": "pkg/b",
+                "file_edges": [{
+                    "source": "pkg/a/one.py",
+                    "target": "pkg/b/two.py",
+                    "import_names": ["B"],
+                }],
+            },
+            {
+                "source": "pkg/b",
+                "target": "pkg/c",
+                "file_edges": [{
+                    "source": "pkg/b/two.py",
+                    "target": "pkg/c/three.py",
+                    "import_names": ["C"],
+                }],
+            },
+            {
+                "source": "pkg/c",
+                "target": "pkg/a",
+                "file_edges": [{
+                    "source": "pkg/c/three.py",
+                    "target": "pkg/a/four.py",
+                    "import_names": ["D"],
+                }],
+            },
+        ]
+
+    @patch("autocode.core.code.architecture.get_tracked_files")
+    @patch("pathlib.Path.read_text")
+    def test_all_granularity_reports_file_and_grouped_levels(self, mock_read, mock_tracked_files):
+        from autocode.core.code.architecture import get_dependency_cycles
+
+        contents = {
+            "pkg/a/one.py": "from pkg.b.two import B\n",
+            "pkg/b/two.py": "from pkg.a.three import C\n",
+            "pkg/a/three.py": "VALUE = 1\n",
+        }
+        mock_tracked_files.return_value = list(contents.keys())
+
+        def patched_read(self, *args, **kwargs):
+            return contents.get(str(self), "")
+
+        with patch.object(Path, "read_text", patched_read):
+            result = get_dependency_cycles(granularity="all", max_depth=2)
+
+        assert result.summary["file_cycle_count"] == 0
+        assert result.summary["grouped_cycle_depths"] == [2]
+        assert [(level.granularity, level.depth) for level in result.levels] == [
+            ("file", None),
+            ("grouped", 1),
+            ("grouped", 2),
+        ]
+        assert result.levels[2].cycles[0].nodes == ["pkg/a", "pkg/b"]
+
 
 class TestGetDependencySlice:
     """Tests for the compact MCP dependency slice endpoint."""

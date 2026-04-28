@@ -27,6 +27,7 @@ from autocode.core.code.models import (
     ArchitectureHotspotsResult,
     ArchitectureSnapshot,
     DependencyCycle,
+    DependencyCycleLevel,
     DependencyCyclesResult,
     DependencyEdge,
     DependencySliceResult,
@@ -134,14 +135,24 @@ def get_dependency_cycles(
     path: str = ".",
     max_cycles: int = 20,
     min_cycle_size: int = 2,
+    granularity: str = "file",
+    depth: Optional[int] = None,
+    max_depth: Optional[int] = None,
 ) -> DependencyCyclesResult:
-    """Return compact real dependency cycles for agent-oriented analysis."""
+    """Return compact dependency cycles for agent-oriented analysis."""
     try:
         normalized_path = path.strip() or "."
+        normalized_granularity = granularity.strip().lower()
         if max_cycles < 1:
             raise HTTPException(status_code=400, detail="max_cycles must be >= 1")
         if min_cycle_size < 2:
             raise HTTPException(status_code=400, detail="min_cycle_size must be >= 2")
+        if normalized_granularity not in {"file", "grouped", "all"}:
+            raise HTTPException(status_code=400, detail="granularity must be one of: file, grouped, all")
+        if depth is not None and depth < 1:
+            raise HTTPException(status_code=400, detail="depth must be >= 1")
+        if max_depth is not None and max_depth < 1:
+            raise HTTPException(status_code=400, detail="max_depth must be >= 1")
 
         all_files = get_tracked_files(*_ALL_EXTENSIONS)
         filtered_files = _filter_files_by_path(all_files, normalized_path)
@@ -157,19 +168,56 @@ def get_dependency_cycles(
 
         limited_cycles = filtered_cycles[:max_cycles]
         files_in_cycles = sorted({fpath for cycle in filtered_cycles for fpath in cycle})
-
-        return DependencyCyclesResult(
-            summary={
-                "path": normalized_path,
-                "cycle_count": len(filtered_cycles),
-                "returned_cycles": len(limited_cycles),
-                "files_in_cycles": len(files_in_cycles),
-                "largest_cycle": max((len(cycle) for cycle in filtered_cycles), default=0),
-            },
+        file_level = DependencyCycleLevel(
+            granularity="file",
+            depth=None,
+            cycle_count=len(filtered_cycles),
+            returned_cycles=len(limited_cycles),
             cycles=[
                 DependencyCycle(files=cycle, size=len(cycle))
                 for cycle in limited_cycles
             ],
+        )
+
+        levels = []
+        if normalized_granularity in {"file", "all"}:
+            levels.append(file_level)
+        if normalized_granularity in {"grouped", "all"}:
+            grouped_depths = _select_grouped_cycle_depths(filtered_files, depth, max_depth)
+            levels.extend(
+                _build_grouped_cycle_level(
+                    dependencies,
+                    group_depth,
+                    max_cycles=max_cycles,
+                    min_cycle_size=min_cycle_size,
+                )
+                for group_depth in grouped_depths
+            )
+
+        grouped_cycle_depths = [
+            level.depth for level in levels
+            if level.granularity == "grouped" and level.cycle_count > 0
+        ]
+        summary = {
+            "path": normalized_path,
+            "cycle_count": len(filtered_cycles),
+            "returned_cycles": len(limited_cycles),
+            "files_in_cycles": len(files_in_cycles),
+            "largest_cycle": max((len(cycle) for cycle in filtered_cycles), default=0),
+        }
+        if normalized_granularity != "file" or depth is not None or max_depth is not None:
+            summary.update({
+                "granularity": normalized_granularity,
+                "depth": depth,
+                "file_cycle_count": len(filtered_cycles),
+                "grouped_cycle_depths": grouped_cycle_depths,
+                "max_depth": _max_dependency_depth(filtered_files),
+            })
+
+        return DependencyCyclesResult(
+            summary=summary,
+            cycles=file_level.cycles,
+            levels=levels,
         )
     except HTTPException:
         raise
@@ -770,6 +818,99 @@ def _find_dependency_cycles(
     adjacency = _build_dependency_adjacency(edges)
     components = _find_strongly_connected_components(adjacency)
     return [component for component in components if len(component) > 1]
+
+
+def _max_dependency_depth(files: List[str]) -> int:
+    """Return the deepest path segment count in the analyzed files."""
+    return max((len(fpath.replace("\\", "/").split("/")) for fpath in files), default=1)
+
+
+def _select_grouped_cycle_depths(
+    files: List[str],
+    depth: Optional[int],
+    max_depth: Optional[int],
+) -> List[int]:
+    """Select grouped depths to analyze, excluding file-level depth."""
+    file_depth = _max_dependency_depth(files)
+    highest_group_depth = max(1, file_depth - 1)
+    if depth is not None:
+        return [min(depth, highest_group_depth)]
+
+    upper = min(max_depth or highest_group_depth, highest_group_depth)
+    return list(range(1, upper + 1))
+
+
+def _file_to_dependency_group(fpath: str, depth: int) -> str:
+    """Group a file path by its first ``depth`` path segments."""
+    parts = fpath.replace("\\", "/").split("/")
+    return "/".join(parts[:depth]) or "."
+
+
+def _build_grouped_dependency_edges(
+    dependencies: List[FileDependency],
+    depth: int,
+) -> Dict[Tuple[str, str], List[dict]]:
+    """Aggregate file-level dependencies into group-level edges."""
+    grouped_edges: Dict[Tuple[str, str], List[dict]] = defaultdict(list)
+    for dep in dependencies:
+        source_group = _file_to_dependency_group(dep.source, depth)
+        target_group = _file_to_dependency_group(dep.target, depth)
+        if source_group == target_group:
+            continue
+
+        grouped_edges[(source_group, target_group)].append({
+            "source": dep.source,
+            "target": dep.target,
+            "import_names": sorted(dep.import_names),
+        })
+
+    for file_edges in grouped_edges.values():
+        file_edges.sort(key=lambda edge: (edge["source"], edge["target"], edge["import_names"]))
+    return dict(sorted(grouped_edges.items()))
+
+
+def _build_grouped_cycle_level(
+    dependencies: List[FileDependency],
+    depth: int,
+    max_cycles: int,
+    min_cycle_size: int,
+) -> DependencyCycleLevel:
+    """Build grouped SCC cycles for one package depth."""
+    grouped_edges = _build_grouped_dependency_edges(dependencies, depth)
+    adjacency = _build_dependency_adjacency({edge: set() for edge in grouped_edges})
+    cycles = [
+        cycle for cycle in _find_strongly_connected_components(adjacency)
+        if len(cycle) >= min_cycle_size
+    ]
+    cycles.sort(key=lambda cycle: (-len(cycle), cycle))
+
+    cycle_models: List[DependencyCycle] = []
+    for cycle in cycles[:max_cycles]:
+        cycle_nodes = set(cycle)
+        supporting_edges = [
+            {
+                "source": source,
+                "target": target,
+                "file_edges": grouped_edges[(source, target)],
+            }
+            for source, target in sorted(grouped_edges)
+            if source in cycle_nodes and target in cycle_nodes
+        ]
+        cycle_models.append(DependencyCycle(
+            nodes=cycle,
+            size=len(cycle),
+            granularity="grouped",
+            depth=depth,
+            supporting_edges=supporting_edges,
+        ))
+
+    return DependencyCycleLevel(
+        granularity="grouped",
+        depth=depth,
+        cycle_count=len(cycles),
+        returned_cycles=len(cycle_models),
+        cycles=cycle_models,
+    )
 
 
 def _build_reverse_dependency_adjacency(

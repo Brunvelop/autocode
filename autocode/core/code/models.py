@@ -329,13 +329,39 @@ class ArchitectureSnapshot(BaseModel):
 
 
 class DependencyCycle(BaseModel):
-    """Compact representation of a real file dependency cycle."""
+    """Compact representation of a dependency cycle."""
 
     files: List[str] = Field(
         default_factory=list,
         description="Paths de archivos que forman el ciclo",
     )
+    nodes: List[str] = Field(
+        default_factory=list,
+        description="Nodos que forman el ciclo (archivos o grupos)",
+    )
     size: int = Field(0, description="Número de archivos en el ciclo")
+    granularity: Literal["file", "grouped"] = Field(
+        "file",
+        description="Granularidad del ciclo detectado",
+    )
+    depth: Optional[int] = Field(
+        None,
+        description="Profundidad de agrupación para ciclos agregados",
+    )
+    supporting_edges: List[dict] = Field(
+        default_factory=list,
+        description="Aristas file-level que justifican aristas agregadas",
+    )
+
+
+class DependencyCycleLevel(BaseModel):
+    """Dependency cycles detected at one granularity/depth level."""
+
+    granularity: Literal["file", "grouped"] = Field(..., description="Nivel analizado")
+    depth: Optional[int] = Field(None, description="Profundidad si granularity=grouped")
+    cycle_count: int = Field(0, description="Total de ciclos detectados en este nivel")
+    returned_cycles: int = Field(0, description="Ciclos devueltos tras aplicar límite")
+    cycles: List[DependencyCycle] = Field(default_factory=list)
 
 
 class DependencyCyclesResult(BaseModel):
@@ -348,6 +374,10 @@ class DependencyCyclesResult(BaseModel):
     cycles: List[DependencyCycle] = Field(
         default_factory=list,
         description="Ciclos reales detectados a nivel archivo",
+    )
+    levels: List[DependencyCycleLevel] = Field(
+        default_factory=list,
+        description="Ciclos por granularidad/profundidad",
     )
 
 

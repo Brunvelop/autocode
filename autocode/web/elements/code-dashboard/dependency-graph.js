@@ -428,6 +428,7 @@ export class DependencyGraph extends LitElement {
 
     _renderLegend() {
         const config = METRIC_COLOR_CONFIGS[this._colorMetric] || METRIC_COLOR_CONFIGS.mi;
+        const cycleLabel = this._cycleLegendLabel();
         return html`
             <div class="graph-legend" id="dg-legend">
                 <div class="legend-title">${config.label}</div>
@@ -443,10 +444,17 @@ export class DependencyGraph extends LitElement {
                 </div>
                 <div class="legend-row">
                     <span class="legend-line dashed"></span>
-                    <span>Ciclo</span>
+                    <span>${cycleLabel}</span>
                 </div>
             </div>
         `;
+    }
+
+    _cycleLegendLabel() {
+        const maxDepth = this._getMaxDepth();
+        return this._depth >= maxDepth
+            ? 'Ciclo file-level'
+            : `Ciclo agregado, depth=${this._depth}`;
     }
 
     // ========================================================================
@@ -1085,6 +1093,7 @@ export class DependencyGraph extends LitElement {
 
         // Use simple DOM approach for the legend (no Lit render needed)
         const config = METRIC_COLOR_CONFIGS[this._colorMetric] || METRIC_COLOR_CONFIGS.mi;
+        const cycleLabel = this._cycleLegendLabel();
         const legendEl = document.createElement('div');
         legendEl.className = 'graph-legend';
         legendEl.innerHTML = `
@@ -1101,7 +1110,7 @@ export class DependencyGraph extends LitElement {
             </div>
             <div class="legend-row">
                 <span class="legend-line dashed" style="display:inline-block; width:20px; height:2px; background: repeating-linear-gradient(to right,#dc2626 0,#dc2626 4px,transparent 4px,transparent 7px); flex-shrink:0"></span>
-                <span>Ciclo</span>
+                <span>${cycleLabel}</span>
             </div>
         `;
         container.appendChild(legendEl);
